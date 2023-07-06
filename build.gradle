@@ -1,0 +1,40 @@
+plugins {
+    id "java"
+    id 'application'
+    id "io.freefair.lombok" version "8.0.1"
+}
+
+group = "com.epam.deltix.dial"
+version = "1.0"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.slf4j:slf4j-api:1.7.32'
+    implementation 'com.epam.deltix:gflog-api:3.0.3'
+    implementation 'com.epam.deltix:gflog-core:3.0.3'
+    implementation "io.vertx:vertx-core:4.4.4"
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation 'com.auth0:java-jwt:4.4.0'
+
+    runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.0'
+    testImplementation 'org.mockito:mockito-core:5.4.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
+}
+
+application {
+    mainClass = "com.epam.deltix.dial.proxy.ProxyApp"
+}
+
+test {
+    useJUnitPlatform()
+}

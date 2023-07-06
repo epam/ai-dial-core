@@ -1,0 +1,70 @@
+{
+  "routes" : {
+    "route-rate" : {
+      "paths": ["/+v1/rate"],
+      "methods": ["POST"],
+      "response" : {
+        "status": 200
+      }
+    }
+  },
+  "addons": {
+    "search": {"endpoint": "http://localhost:7010/search"},
+    "forecast": {"endpoint": "http://localhost:7010/forecast"},
+    "calculator": {"endpoint": "http://localhost:7010/calculator"}
+  },
+  "assistant": {
+    "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
+
+    "assistants": {
+      "ass": {
+        "prompt": "Commands: sit_down, get_up, run_away",
+        "addons": ["search"]
+      }
+    }
+  },
+  "applications": {
+    "app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions"
+    }
+  },
+  "models": {
+    "chat-gpt-35-turbo": {
+      "type": "chat",
+      "endpoint" : "http://localhost:7001",
+      "upstreams": {
+        "http://localhost:7001": "modelKey1",
+        "http://localhost:7002": "modelKey2",
+        "http://localhost:7003": "modelKey3"
+      },
+      "userRoles": ["user"]
+    },
+    "embedding-ada": {
+      "type": "embedding",
+      "endpoint" : "http://localhost:7001",
+      "upstreams": {
+        "http://localhost:7001": "modelKey4"
+      },
+      "userRoles": ["user"]
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default",
+      "userAuth": true
+    },
+    "proxyKey2": {
+      "project": "EPM-RTC-RAIL",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {
+        "chat-gpt-35-turbo": {"minute": "100000", "day": "10000000"},
+        "embedding-ada": {"minute": "100000", "day": "10000000"}
+      }
+    }
+  }
+}
