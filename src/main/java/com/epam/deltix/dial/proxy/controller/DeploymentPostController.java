@@ -178,7 +178,7 @@ public class DeploymentPostController {
         context.setProxyResponseBody(proxyResponseBody);
         proxy.getLogStore().save(context);
 
-        if (context.getDeployment() instanceof Model) {
+        if (context.getDeployment() instanceof Model && context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
             TokenUsage tokenUsage = TokenUsageParser.parse(proxyResponseBody);
             context.setTokenUsage(tokenUsage);
             proxy.getRateLimiter().increase(context);
