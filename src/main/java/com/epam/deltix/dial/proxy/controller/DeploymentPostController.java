@@ -45,7 +45,7 @@ public class DeploymentPostController {
         Deployment deployment = select(deploymentId, deploymentApi);
         context.setDeployment(deployment);
 
-        if (deployment == null || (!isAssistant(deployment) && !DeploymentController.hasAssessByLimits(context, deployment))) {
+        if (deployment == null || (!isAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
 
@@ -90,20 +90,6 @@ public class DeploymentPostController {
 
     private void handleRequestBody(Buffer requestBody) {
         context.setProxyRequestBody(requestBody);
-
-        try {
-            List<String> userRoles = ProxyUtil.extractUserRoles(requestBody, proxy.getPublicKey());
-            context.setUserRoles(userRoles);
-        } catch (Throwable e) {
-            context.respond(HttpStatus.BAD_REQUEST, "Bad user");
-            log.warn("Can't extract user roles from deployment post request: {}", e.getMessage());
-            return;
-        }
-
-        if (!isAssistant(context.getDeployment()) && !DeploymentController.hasAccessByUserRoles(context, context.getDeployment())) {
-            context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment for user");
-            return;
-        }
 
         if (context.getDeployment() instanceof Assistant) {
             try {

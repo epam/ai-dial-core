@@ -3,19 +3,14 @@ package com.epam.deltix.dial.proxy.util;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.MultiMap;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
-import lombok.Data;
 import lombok.experimental.UtilityClass;
 
-import java.io.InputStream;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
 import java.util.List;
@@ -98,13 +93,6 @@ public class ProxyUtil {
         return extractUserRoles(decodedJWT);
     }
 
-    public static List<String> extractUserRoles(Buffer requestBody, RSAPublicKey publicKey) throws Exception {
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            UserPayload payload = ProxyUtil.MAPPER.readValue(stream.readAllBytes(), UserPayload.class);
-            return ProxyUtil.extractUserRolesFromEncodedToken(payload.user, publicKey);
-        }
-    }
-
     private static int contentLength(MultiMap header, int defaultValue) {
         String text = header.get(HttpHeaders.CONTENT_LENGTH);
         if (text != null) {
@@ -115,11 +103,5 @@ public class ProxyUtil {
             }
         }
         return defaultValue;
-    }
-
-    @Data
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class UserPayload {
-        private String user;
     }
 }

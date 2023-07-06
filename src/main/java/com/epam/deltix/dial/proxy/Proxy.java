@@ -1,6 +1,5 @@
 package com.epam.deltix.dial.proxy;
 
-import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.deltix.dial.proxy.config.Config;
 import com.epam.deltix.dial.proxy.config.ConfigStore;
 import com.epam.deltix.dial.proxy.config.Key;
@@ -13,11 +12,7 @@ import com.epam.deltix.dial.proxy.util.HttpStatus;
 import com.epam.deltix.dial.proxy.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpHeaders;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.HttpVersion;
+import io.vertx.core.http.*;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,7 +85,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
 
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (request.method() == HttpMethod.GET && key.isUserAuth() && authorization == null) {
+        if (authorization == null && key.isUserAuth()) {
             return respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
         }
 
