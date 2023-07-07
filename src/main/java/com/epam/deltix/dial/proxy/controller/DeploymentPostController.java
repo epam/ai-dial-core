@@ -25,7 +25,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
 
 @Slf4j
@@ -184,8 +183,10 @@ public class DeploymentPostController {
             proxy.getRateLimiter().increase(context);
         }
 
-        log.info("Deployment workflow completed. Key: {}. Deployment: {}. Tokens: {}",
+        log.info("Deployment workflow completed. Key: {}. Deployment: {}. Status: {}. Time: {} ms. Tokens: {}",
                 context.getKey().getProject(), context.getDeployment().getName(),
+                context.getResponse().getStatusCode(),
+                System.currentTimeMillis() - context.getTimestamp(),
                 context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
     }
 
