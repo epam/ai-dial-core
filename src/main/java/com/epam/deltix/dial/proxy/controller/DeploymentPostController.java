@@ -146,8 +146,8 @@ public class DeploymentPostController {
         log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
                 proxyResponse.headers().size());
 
-        if (proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()
-                || proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode()) {
+        if ((proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode() || proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode())
+                && context.getEndpointRoute().hasNext()) {
             sendRequest(); // try next
             return;
         }
