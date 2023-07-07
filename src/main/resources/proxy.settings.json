@@ -3,10 +3,12 @@
     "idleTimeoutUnit": "MILLISECONDS",
     "idleTimeout": 60000,
     "connectTimeout": 10000,
-    "keepAlive": true
+    "keepAlive": true,
+    "maxPoolSize": 128
   },
   "server": {
     "port": 8080,
+    "acceptBacklog": 4096,
     "idleTimeoutUnit": "MILLISECONDS",
     "idleTimeout": 60000,
     "compressionSupported": true

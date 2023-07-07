@@ -51,7 +51,6 @@ public class ProxyApp {
             EndpointBalancer endpointBalancer = new EndpointBalancer();
 
             RSAPublicKey publicKey = decodePublicKey(settings("identityProvider").getString("publicKey"));
-
             Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, endpointBalancer, publicKey);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
