@@ -20,6 +20,7 @@ import lombok.Setter;
 import lombok.SneakyThrows;
 
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -36,6 +37,7 @@ public class ProxyContext {
     private EndpointProvider endpointProvider;
     private EndpointRoute endpointRoute;
     private HttpClientRequest proxyRequest;
+    private Map<String, String> requestHeaders = Map.of();
     private HttpClientResponse proxyResponse;
     private Buffer requestBody;
     private Buffer responseBody;

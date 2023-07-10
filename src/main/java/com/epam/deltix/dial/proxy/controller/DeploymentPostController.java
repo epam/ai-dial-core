@@ -2,7 +2,13 @@ package com.epam.deltix.dial.proxy.controller;
 
 import com.epam.deltix.dial.proxy.Proxy;
 import com.epam.deltix.dial.proxy.ProxyContext;
-import com.epam.deltix.dial.proxy.config.*;
+import com.epam.deltix.dial.proxy.config.Addon;
+import com.epam.deltix.dial.proxy.config.Assistant;
+import com.epam.deltix.dial.proxy.config.Assistants;
+import com.epam.deltix.dial.proxy.config.Config;
+import com.epam.deltix.dial.proxy.config.Deployment;
+import com.epam.deltix.dial.proxy.config.Model;
+import com.epam.deltix.dial.proxy.config.ModelType;
 import com.epam.deltix.dial.proxy.endpoint.DeploymentEndpointProvider;
 import com.epam.deltix.dial.proxy.endpoint.EndpointProvider;
 import com.epam.deltix.dial.proxy.endpoint.EndpointRoute;
@@ -18,13 +24,21 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.*;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -99,8 +113,9 @@ public class DeploymentPostController {
 
         if (context.getDeployment() instanceof Assistant) {
             try {
-                Buffer enhancedRequestBody = enhanceAssistantRequest(context);
-                context.setRequestBody(enhancedRequestBody);
+                Map.Entry<Buffer, Map<String, String>> enhancedRequest = enhanceAssistantRequest(context);
+                context.setRequestBody(enhancedRequest.getKey());
+                context.setRequestHeaders(enhancedRequest.getValue());
             } catch (HttpException e) {
                 context.respond(e.getStatus(), e.getMessage());
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
@@ -141,6 +156,7 @@ public class DeploymentPostController {
 
         Buffer requestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
+        context.getRequestHeaders().forEach(proxyRequest::putHeader);
 
         proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
@@ -295,7 +311,8 @@ public class DeploymentPostController {
         return endpoint + (query == null ? "" : "?" + query);
     }
 
-    private static Buffer enhanceAssistantRequest(ProxyContext context) throws Exception {
+    private static Map.Entry<Buffer, Map<String, String>> enhanceAssistantRequest(ProxyContext context)
+            throws Exception {
         Config config = context.getConfig();
         Assistant assistant = (Assistant) context.getDeployment();
         Buffer requestBody = context.getRequestBody();
@@ -323,6 +340,8 @@ public class DeploymentPostController {
             }
 
             addons.removeAll();
+            Map<String, String> headers = new HashMap<>();
+            int addonIndex = 0;
             for (String name : names) {
                 Addon addon = config.getAddons().get(name);
                 if (addon == null) {
@@ -335,6 +354,10 @@ public class DeploymentPostController {
 
                 String url = addon.getEndpoint();
                 addons.addObject().put("url", url);
+                if (addon.getToken() != null && !addon.getToken().isBlank()) {
+                    headers.put("x-addon-token-" + addonIndex, addon.getToken());
+                }
+                ++addonIndex;
             }
 
             String name = tree.get("model").asText(null);
@@ -348,7 +371,8 @@ public class DeploymentPostController {
                 throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden model: " + name);
             }
 
-            return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+            Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+            return Map.entry(updatedBody, headers);
         }
     }
 
