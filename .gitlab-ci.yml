@@ -1,0 +1,196 @@
+include:
+  - template: Jobs/Container-Scanning.gitlab-ci.yml
+  - project: Gitlab/ci
+    ref: 0.2.22
+    file: helm/helm-environment.gitlab-ci.yml
+
+variables:
+  DOCKER_PATH: "ai/dial/dial-proxy"
+  DOCKER_REGISTRY_SERVER: "registry-dev.deltixhub.com"
+  HELM_REPO: https://nexus.deltixhub.com/repository/epm-rtc-helm
+  SECRET_NAME: "epm-rtc-registry-dev"
+  CHART: "dial-proxy" # Helm chart name, e.g. "gitlab-runner"
+  VERSION: "0.1.1" # Helm chart version
+  NAMESPACE: "dial-proxy"
+
+  development_AWS_ACCESS_KEY_ID: ${staging_AWS_ACCESS_KEY_ID}
+  development_AWS_SECRET_ACCESS_KEY: ${staging_AWS_SECRET_ACCESS_KEY}
+  development_ENV_ID: "staging"
+  development_HELM_VALUES_FILE: "helm/development.yaml"
+  development_ENV_URL: "https://dial-proxy.staging.deltixhub.io"
+  development_HELM_EXTRA_ARGS: "-f ${HELM_SECRET_FILE}"
+
+  staging_DEPLOY_ENV: "false"
+
+  review_DEPLOY_ENV: "true"
+  review_ENV_ID: "staging"
+  review_HELM_VALUES_FILE: "helm/review.yaml"
+  review_ENV_URL: "https://${CI_PROJECT_NAME}-mr-${CI_MERGE_REQUEST_IID}.staging.deltixhub.io"
+  review_HELM_CUSTOM_VALUES: "ingress.hosts[0]=${CI_PROJECT_NAME}-mr-${CI_MERGE_REQUEST_IID}.staging.deltixhub.io,fullnameOverride=mr-${CI_MERGE_REQUEST_IID},image.tag=mr-${CI_MERGE_REQUEST_IID}"
+  review_RELEASE: ${CHART}-mr-${CI_MERGE_REQUEST_IID}
+  review_SECRET_NAME: "epm-rtc-registry-test"
+  review_DOCKER_REGISTRY_SERVER: "registry-test.deltixhub.com"
+  review_HELM_EXTRA_ARGS: "-f ${HELM_SECRET_FILE}"
+
+stages:
+  - tag
+  - build
+  - publish # publush docker images
+  - deploy
+  - promote # copy docker image to public repo
+  - production # Stage name used in include. Not used. ToDo - delete this
+
+deploy_development:
+  image: "registry.deltixhub.com/deltix.docker/devops/kubernetes-tools:0.17.1"
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "development"
+
+destroy_development:
+  image: "registry.deltixhub.com/deltix.docker/devops/kubernetes-tools:0.17.1"
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "development"
+      when: manual
+      allow_failure: true
+
+deploy_staging:
+  stage: deploy
+
+destroy_staging:
+  stage: deploy
+
+deploy_review:
+  image: "registry.deltixhub.com/deltix.docker/devops/kubernetes-tools:0.17.1"
+  stage: deploy
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "development" && $review_DEPLOY_ENV == "true"'
+
+destroy_review:
+  image: "registry.deltixhub.com/deltix.docker/devops/kubernetes-tools:0.17.1"
+  stage: deploy
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "development" && $review_DEPLOY_ENV == "true"'
+      when: manual
+      allow_failure: true
+
+build_backend:
+  stage: build
+  image: eclipse-temurin:17-alpine
+  variables:
+    GRADLE_CACHE_KEY: "1" # increase when bumping gradle/major dependency versions
+  # Overwrite Gradle cache directory.
+  before_script:
+    - export GRADLE_USER_HOME=`pwd`/.gradle
+  script:
+    - ./gradlew build
+  artifacts:
+    when: always
+    paths:
+      - build/distributions/dial-proxy-*.tar
+  cache:
+    key: "$GRADLE_CACHE_KEY"
+    paths:
+      - .gradle/wrapper
+      - .gradle/caches
+    policy: pull-push
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH  == "development"
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "development"'
+  tags:
+    - Linux
+    - DockerExecutor
+
+publish:
+  image: dockerhub.deltixhub.com/docker:stable
+  stage: publish
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  cache: {}
+  services:
+    - docker:stable-dind
+  before_script:
+    - mkdir -p $HOME/.docker
+    # Use DOCKER_AUTH_CONFIG for login to deltix repo
+    - echo $DOCKER_AUTH_CONFIG > $HOME/.docker/config.json
+  script:
+    - imageUrl=$REPOSITORY/${DOCKER_PATH}
+    - docker build -t $imageUrl:${DOCKER_TAG} -t $imageUrl:${DOCKER_ADDITIONAL_TAG} .
+    - docker push $imageUrl:${DOCKER_TAG}
+    - docker push $imageUrl:${DOCKER_ADDITIONAL_TAG} 
+  rules:
+    - if: $CI_COMMIT_TAG
+      variables:
+        DOCKER_TAG: ${CI_COMMIT_TAG}
+        DOCKER_ADDITIONAL_TAG: latest
+        REPOSITORY: ${ARTIFACTORY_DOCKER_DEV_REPOSITORY}
+    - if: $CI_COMMIT_BRANCH  == "development"
+      variables:
+        DOCKER_TAG: ${CI_COMMIT_REF_SLUG}
+        DOCKER_ADDITIONAL_TAG: alpha
+        REPOSITORY: ${ARTIFACTORY_DOCKER_DEV_REPOSITORY}
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "development"'
+      variables:
+        DOCKER_TAG: gitlab-mr${CI_MERGE_REQUEST_ID}
+        DOCKER_ADDITIONAL_TAG: mr-${CI_MERGE_REQUEST_IID}
+        REPOSITORY: ${ARTIFACTORY_DOCKER_TEST_REPOSITORY}
+  tags:
+    - AWS
+    - DockerExecutor
+
+"Tag branch":
+  image: alpine/git:v2.32.0
+  stage: tag
+  script:
+    - ver=$(echo -n $CI_COMMIT_REF_NAME | cut -f 2 -d '-') || ver=0.0
+    - minor_tag=$(git describe --abbrev=0 --tags | cut -f 3 -d '.') || minor_tag=0
+    - release_tag=${ver}.$(( minor_tag+1 ))
+    - git remote set-url origin https://$GITLAB_ROBOT_NAME:$GITLAB_ROBOT_PUSH_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_PATH.git
+    - git config user.name $GITLAB_ROBOT_NAME
+    - git config user.email ${GITLAB_ROBOT_EMAIL}
+    - git diff --quiet && git diff --staged --quiet || git commit -am "RobotBuild ${release_tag}"
+    - git tag ${release_tag}
+    - git push origin HEAD:${CI_COMMIT_REF_NAME} --tags
+  dependencies: []
+  rules:
+    - if: "$CI_COMMIT_REF_SLUG =~ /^release-/ && $CI_COMMIT_MESSAGE !~ /^RobotBuild/"
+  tags:
+    - kubernetes
+
+container_scanning:
+  stage: promote
+  variables:
+    GIT_STRATEGY: none
+    CS_IMAGE: ${ARTIFACTORY_DOCKER_DEV_REPOSITORY}/${DOCKER_PATH}:$CI_COMMIT_TAG
+    CS_REGISTRY_USER: ${ARTIFACTORY_USER}
+    CS_REGISTRY_PASSWORD: ${ARTIFACTORY_PASS}
+  dependencies: []
+  rules:
+    - if: $CI_COMMIT_TAG
+  tags:
+    - AWS
+    - DockerExecutor
+
+### Copy frontend and backend docker images to public repository. Run on git tag manually
+promote:
+  image: dockerhub.deltixhub.com/curlimages/curl:7.88.1
+  stage: promote
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - 'curl --retry 6 --retry-all-errors --no-progress-meter --fail -X POST "${ARTIFACTORY_URL}/api/docker/epm-rtc-docker/v2/promote" -H "Content-Type: application/json" -u${ARTIFACTORY_USER}:${ARTIFACTORY_PASS} -d ''{ "targetRepo": "epm-rtc-public-docker", "dockerRepository": "''"${DOCKER_PATH}"''", "tag" : "''"$CI_COMMIT_TAG"''", "copy": true }'''
+    - >
+      if [ ! -z "$DOCKER_ADDITIONAL_TAG" ]; then
+      curl --retry 6 --retry-all-errors --no-progress-meter --fail -X POST "${ARTIFACTORY_URL}/api/docker/epm-rtc-docker/v2/promote" -H "Content-Type: application/json" -u${ARTIFACTORY_USER}:${ARTIFACTORY_PASS} -d '{ "targetRepo": "epm-rtc-public-docker", "dockerRepository": '\"${DOCKER_PATH}\"', "tag" : '\"$DOCKER_ADDITIONAL_TAG\"', "copy": true }';
+      fi
+  dependencies: []
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+      variables:
+        DOCKER_ADDITIONAL_TAG: latest
+  tags:
+    - AWS
+    - DockerExecutor

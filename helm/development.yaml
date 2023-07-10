@@ -1,0 +1,67 @@
+image:
+  pullPolicy: Always
+  registry: registry-dev.deltixhub.com
+  repository: ai/dial/dial-proxy
+  tag: development
+  pullSecrets: 
+    - epm-rtc-registry-dev
+
+replicaCount: 1
+resources:
+  limits:
+    cpu: 0.25
+    memory: 512Gi
+  requests:
+    cpu: 0.1
+    memory: 256Mi
+
+podAnnotations:
+  autorestart: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC" }}'
+
+
+ingress:
+  enabled: true
+  ingressClassName: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: "internet-facing"
+    alb.ingress.kubernetes.io/target-type: "ip"
+    alb.ingress.kubernetes.io/backend-protocol: "HTTP"
+    alb.ingress.kubernetes.io/healthcheck-path: "/aiproxy/status200"
+    alb.ingress.kubernetes.io/healthcheck-protocol: "HTTP"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/target-group-attributes: "stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400"
+    alb.ingress.kubernetes.io/load-balancer-attributes: "routing.http2.enabled=true"
+    alb.ingress.kubernetes.io/listen-ports: '[{ "HTTP" : 80, "HTTPS" : 443 }]'
+    alb.ingress.kubernetes.io/ssl-policy: "ELBSecurityPolicy-TLS-1-2-Ext-2018-06"
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:eu-north-1:725751206603:certificate/373e8fd1-088e-4022-adf1-5f3e7820fb4a"
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/group.name: "allow-all"
+  hosts:
+    - dial-proxy.staging.deltixhub.io
+
+serviceAccount:
+  create: true
+
+extraVolumes:
+  - name: config
+    secret:
+      secretName: '{{ template "dialProxy.names.fullname" . }}'
+      items:
+        - key: proxy.config.json
+          path: proxy.config.json
+
+extraVolumeMounts:
+  - name: config
+    mountPath: "/opt/deltix/dial/proxy/config/proxy.config.json"
+    subPath: proxy.config.json
+    readOnly: true
+
+bedrock:
+  enabled: false
+
+vertex:
+  enabled: false
+
+logger:
+  enabled: true
