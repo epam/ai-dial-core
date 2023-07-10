@@ -32,6 +32,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_CORRELATION_ID = "X-CORRELATION-ID";
     public static final String HEADER_UPSTREAM_ENDPOINT = "X-UPSTREAM-ENDPOINT";
     public static final String HEADER_UPSTREAM_KEY = "X-UPSTREAM-KEY";
+    public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
 
     public static final int REQUEST_BODY_MAX_SIZE = 16 * 1024 * 1024;

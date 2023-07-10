@@ -158,9 +158,12 @@ public class DeploymentPostController {
         context.setProxyResponseStream(proxyResponseStream);
 
         HttpServerResponse response = context.getResponse();
+
         response.setChunked(true);
         response.setStatusCode(proxyResponse.statusCode());
+
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getEndpointRoute().attempts()));
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)

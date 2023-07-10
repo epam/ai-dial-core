@@ -15,6 +15,10 @@ public class EndpointRoute implements Iterator<String> {
     private String current;
     private int count;
 
+    public int attempts() {
+        return count;
+    }
+
     @Override
     public boolean hasNext() {
         return count < endpoints.length;
