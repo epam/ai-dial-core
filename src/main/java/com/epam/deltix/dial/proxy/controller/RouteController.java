@@ -49,7 +49,7 @@ public class RouteController implements Controller {
             context.setEndpointRoute(endpointRoute);
         } else {
             context.getResponse().setStatusCode(response.getStatus());
-            context.setProxyResponseBody(Buffer.buffer(response.getBody()));
+            context.setResponseBody(Buffer.buffer(response.getBody()));
         }
 
         return context.getRequest().body()
@@ -78,12 +78,12 @@ public class RouteController implements Controller {
     }
 
     private void handleRequestBody(Buffer requestBody) {
-        context.setProxyRequestBody(requestBody);
+        context.setRequestBody(requestBody);
 
-        if (context.getProxyResponseBody() == null) {
+        if (context.getResponseBody() == null) {
             sendRequest();
         } else {
-            context.getResponse().send(context.getProxyResponseBody());
+            context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(context);
         }
     }
@@ -105,7 +105,7 @@ public class RouteController implements Controller {
         String endpointKey = endpointProvider.getEndpoints().get(endpoint.get());
         proxyRequest.headers().set(Proxy.HEADER_API_KEY, endpointKey);
 
-        Buffer proxyRequestBody = context.getProxyRequestBody();
+        Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.headers().set(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
 
         proxyRequest.send(proxyRequestBody)
@@ -129,7 +129,7 @@ public class RouteController implements Controller {
                 ProxyUtil.contentLength(proxyResponse, 1024));
 
         context.setProxyResponse(proxyResponse);
-        context.setProxyResponseStream(proxyResponseStream);
+        context.setResponseStream(proxyResponseStream);
 
         HttpServerResponse response = context.getResponse();
         response.setChunked(true);
@@ -147,8 +147,8 @@ public class RouteController implements Controller {
      * Called when proxy sent response from the origin to the client.
      */
     private void handleResponse() {
-        Buffer proxyResponseBody = context.getProxyResponseStream().getContent();
-        context.setProxyResponseBody(proxyResponseBody);
+        Buffer proxyResponseBody = context.getResponseStream().getContent();
+        context.setResponseBody(proxyResponseBody);
         proxy.getLogStore().save(context);
     }
 

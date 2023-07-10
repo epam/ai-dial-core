@@ -79,16 +79,16 @@ public class GFLogStore implements LogStore {
         append(entry, request.uri(), true);
 
         append(entry, "\",\"time\":\"", false);
-        append(entry, formatTimestamp(context.getTimestamp()), true);
+        append(entry, formatTimestamp(context.getRequestTimestamp()), true);
 
         append(entry, "\",\"body\":\"", false);
-        append(entry, context.getProxyRequestBody());
+        append(entry, context.getRequestBody());
 
         append(entry, "\"},\"response\":{\"status\":\"", false);
         append(entry, Integer.toString(response.getStatusCode()), true);
 
         append(entry, "\",\"body\":\"", false);
-        append(entry, context.getProxyResponseBody());
+        append(entry, context.getResponseBody());
 
         append(entry, "\"}}", false);
     }

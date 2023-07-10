@@ -88,12 +88,13 @@ public class DeploymentPostController {
     }
 
     private void handleRequestBody(Buffer requestBody) {
-        context.setProxyRequestBody(requestBody);
+        context.setRequestBody(requestBody);
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
 
         if (context.getDeployment() instanceof Assistant) {
             try {
                 Buffer enhancedRequestBody = enhanceAssistantRequest(context);
-                context.setProxyRequestBody(enhancedRequestBody);
+                context.setRequestBody(enhancedRequestBody);
             } catch (HttpException e) {
                 context.respond(e.getStatus(), e.getMessage());
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
@@ -116,6 +117,7 @@ public class DeploymentPostController {
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
+        context.setProxyConnectTimestamp(System.currentTimeMillis());
 
         EndpointProvider endpointProvider = context.getEndpointProvider();
         EndpointRoute endpointRoute = context.getEndpointRoute();
@@ -130,10 +132,10 @@ public class DeploymentPostController {
             proxyRequest.headers().set(Proxy.HEADER_UPSTREAM_KEY, endpointKey);
         }
 
-        Buffer proxyRequestBody = context.getProxyRequestBody();
-        proxyRequest.headers().set(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
+        Buffer requestBody = context.getRequestBody();
+        proxyRequest.headers().set(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
 
-        proxyRequest.send(proxyRequestBody)
+        proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
     }
@@ -151,11 +153,12 @@ public class DeploymentPostController {
             return;
         }
 
-        BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
+        BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024));
 
         context.setProxyResponse(proxyResponse);
-        context.setProxyResponseStream(proxyResponseStream);
+        context.setProxyResponseTimestamp(System.currentTimeMillis());
+        context.setResponseStream(responseStream);
 
         HttpServerResponse response = context.getResponse();
 
@@ -165,7 +168,7 @@ public class DeploymentPostController {
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
         response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getEndpointRoute().attempts()));
 
-        proxyResponseStream.pipe()
+        responseStream.pipe()
                 .endOnFailure(false)
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
@@ -176,20 +179,25 @@ public class DeploymentPostController {
      * Called when proxy sent response from the origin to the client.
      */
     private void handleResponse() {
-        Buffer proxyResponseBody = context.getProxyResponseStream().getContent();
-        context.setProxyResponseBody(proxyResponseBody);
+        Buffer responseBody = context.getResponseStream().getContent();
+        context.setResponseBody(responseBody);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
         proxy.getLogStore().save(context);
 
         if (context.getDeployment() instanceof Model && context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-            TokenUsage tokenUsage = TokenUsageParser.parse(proxyResponseBody);
+            TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
             context.setTokenUsage(tokenUsage);
             proxy.getRateLimiter().increase(context);
         }
 
-        log.info("Deployment workflow completed. Key: {}. Deployment: {}. Status: {}. Time: {} ms. Tokens: {}",
+        log.info("Sent response to client. Key: {}. Deployment: {}. Status: {}. Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
                 context.getKey().getProject(), context.getDeployment().getName(),
                 context.getResponse().getStatusCode(),
-                System.currentTimeMillis() - context.getTimestamp(),
+                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
                 context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
     }
 
@@ -281,7 +289,7 @@ public class DeploymentPostController {
     private static Buffer enhanceAssistantRequest(ProxyContext context) throws Exception {
         Config config = context.getConfig();
         Assistant assistant = (Assistant) context.getDeployment();
-        Buffer requestBody = context.getProxyRequestBody();
+        Buffer requestBody = context.getRequestBody();
 
         try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);

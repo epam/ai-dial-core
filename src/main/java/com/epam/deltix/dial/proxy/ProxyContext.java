@@ -37,18 +37,22 @@ public class ProxyContext {
     private EndpointRoute endpointRoute;
     private HttpClientRequest proxyRequest;
     private HttpClientResponse proxyResponse;
-    private Buffer proxyRequestBody;
-    private Buffer proxyResponseBody;
-    private BufferingReadStream proxyResponseStream; // received from origin
-    private long timestamp;
+    private Buffer requestBody;
+    private Buffer responseBody;
+    private BufferingReadStream responseStream; // received from origin
+    private long requestTimestamp;
+    private long requestBodyTimestamp;
+    private long proxyConnectTimestamp;
+    private long proxyResponseTimestamp;
+    private long responseBodyTimestamp;
 
     public ProxyContext(Config config, HttpServerRequest request, Key key, List<String> userRoles) {
         this.config = config;
         this.key = key;
         this.request = request;
         this.response = request.response();
-        this.timestamp = System.currentTimeMillis();
         this.userRoles = userRoles;
+        this.requestTimestamp = System.currentTimeMillis();
     }
 
     public Future<Void> respond(HttpStatus status) {
