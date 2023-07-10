@@ -8,4 +8,5 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = true)
 public class Addon extends Deployment {
+    private String token;
 }
