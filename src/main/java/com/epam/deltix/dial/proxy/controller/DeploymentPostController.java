@@ -52,6 +52,9 @@ public class DeploymentPostController {
             return context.respond(HttpStatus.TOO_MANY_REQUESTS, "Hit token rate limit");
         }
 
+        log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getKey().getProject(),
+                context.getDeployment().getName(), context.getRequest().headers().size());
+
         EndpointProvider endpointProvider = new DeploymentEndpointProvider(deployment);
         EndpointRoute endpointRoute = proxy.getEndpointBalancer().balance(endpointProvider);
 
@@ -88,6 +91,9 @@ public class DeploymentPostController {
     }
 
     private void handleRequestBody(Buffer requestBody) {
+        log.info("Received body from client. Key: {}. Deployment: {}. Length: {}", context.getKey().getProject(),
+                context.getDeployment().getName(), requestBody.length());
+
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
@@ -113,7 +119,8 @@ public class DeploymentPostController {
      * Called when proxy connected to the origin.
      */
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin: {}", proxyRequest.connection().remoteAddress());
+        log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getKey().getProject(),
+                context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -144,8 +151,9 @@ public class DeploymentPostController {
      * Called when proxy received the response headers from the origin.
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
-                proxyResponse.headers().size());
+        log.info("Received header from origin. Key: {}. Deployment: {}. Status: {}. Headers: {}",
+                context.getKey().getProject(), context.getDeployment().getName(),
+                proxyResponse.statusCode(), proxyResponse.headers().size());
 
         if ((proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode() || proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode())
                 && context.getEndpointRoute().hasNext()) {
@@ -190,9 +198,10 @@ public class DeploymentPostController {
             proxy.getRateLimiter().increase(context);
         }
 
-        log.info("Sent response to client. Key: {}. Deployment: {}. Status: {}. Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+        log.info("Sent response to client. Key: {}. Deployment: {}. Status: {}. Length: {}. Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
                 context.getKey().getProject(), context.getDeployment().getName(),
                 context.getResponse().getStatusCode(),
+                context.getResponseBody().length(),
                 context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
                 context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
                 context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
