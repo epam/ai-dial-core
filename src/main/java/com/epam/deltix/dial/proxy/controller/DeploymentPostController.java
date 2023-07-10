@@ -135,12 +135,12 @@ public class DeploymentPostController {
             String endpoint = endpointRoute.get();
             String endpointKey = endpointProvider.getEndpoints().get(endpoint);
 
-            proxyRequest.headers().set(Proxy.HEADER_UPSTREAM_ENDPOINT, endpoint);
-            proxyRequest.headers().set(Proxy.HEADER_UPSTREAM_KEY, endpointKey);
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, endpoint);
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, endpointKey);
         }
 
         Buffer requestBody = context.getRequestBody();
-        proxyRequest.headers().set(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
 
         proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
