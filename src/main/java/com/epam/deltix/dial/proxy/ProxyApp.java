@@ -6,6 +6,7 @@ import com.epam.deltix.dial.proxy.endpoint.EndpointBalancer;
 import com.epam.deltix.dial.proxy.limiter.RateLimiter;
 import com.epam.deltix.dial.proxy.log.GFLogStore;
 import com.epam.deltix.dial.proxy.log.LogStore;
+import com.epam.deltix.dial.proxy.security.IdentityProvider;
 import com.epam.deltix.gflog.core.LogConfigFactory;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import io.vertx.core.Future;
@@ -37,7 +38,7 @@ public class ProxyApp {
     private HttpServer server;
     private HttpClient client;
 
-    public void start() throws Exception {
+    private void start() throws Exception {
         LogConfigurator.configure(LogConfigFactory.loadDefault());
 
         try {
@@ -50,8 +51,8 @@ public class ProxyApp {
             RateLimiter rateLimiter = new RateLimiter();
             EndpointBalancer endpointBalancer = new EndpointBalancer();
 
-            RSAPublicKey publicKey = decodePublicKey(settings("identityProvider").getString("publicKey"));
-            Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, endpointBalancer, publicKey);
+            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"));
+            Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, endpointBalancer, identityProvider);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -65,7 +66,7 @@ public class ProxyApp {
         }
     }
 
-    public void stop() {
+    private void stop() {
         try {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
@@ -123,12 +124,6 @@ public class ProxyApp {
 
     private interface AsyncCloser<R> {
         Future<Void> close(R resource);
-    }
-
-    private static RSAPublicKey decodePublicKey(String encodedKey) throws Exception {
-        byte[] publicKeyByteServer = Base64.getDecoder().decode(encodedKey);
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        return (RSAPublicKey) keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyByteServer));
     }
 
     public static void main(String[] args) throws Exception {
