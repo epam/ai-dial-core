@@ -14,6 +14,7 @@
     "compressionSupported": true
   },
   "identityProvider" : {
-    "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvnZ3sSwPqeBZ9HiH8jJDBZxnaL8naQ9c08UFF5FVVxl+SlE4K9GRFfdrNzHa9sIIw56ikygWoXKtjbp7FPVMw7HL3GwMK+HjxgjX8Msd7DNCHdptzy8vp5vn204xkRqcbvm6HeXIXRpNNzHIs2RdQ9TuptYTQojxcxGTUUIC+RGvMnWpltur9iT1ibms0XWRpqTS9rhD2vzDRKYOd1Hl2Jj7J1YV9A6KLvX64ahJkgzgcNUhuPFRgJ2G0BlXuAnmHeZ3NpMmLkC7cUkbcZ5BjPAS5yoLDLjKecB05zF+vEP7l2gj6LYYgXh5hAeGduTg2mbBkiqV80dVkyawCECquwIDAQAB"
+    "jwksUrl": "https://kctest.staging.deltixhub.io/realms/EPAM/protocol/openid-connect/certs",
+    "appName": "dial"
   }
 }

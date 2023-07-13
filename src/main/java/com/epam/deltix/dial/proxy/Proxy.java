@@ -8,16 +8,20 @@ import com.epam.deltix.dial.proxy.controller.ControllerSelector;
 import com.epam.deltix.dial.proxy.endpoint.EndpointBalancer;
 import com.epam.deltix.dial.proxy.limiter.RateLimiter;
 import com.epam.deltix.dial.proxy.log.LogStore;
+import com.epam.deltix.dial.proxy.security.IdentityProvider;
 import com.epam.deltix.dial.proxy.util.HttpStatus;
 import com.epam.deltix.dial.proxy.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.http.*;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpVersion;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.security.interfaces.RSAPublicKey;
 import java.util.List;
 import java.util.Objects;
 
@@ -42,7 +46,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final LogStore logStore;
     private final RateLimiter rateLimiter;
     private final EndpointBalancer endpointBalancer;
-    private final RSAPublicKey publicKey;
+    private final IdentityProvider identityProvider;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -92,8 +96,9 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         List<String> userRoles;
         try {
-            userRoles = ProxyUtil.extractUserRolesFromAuthHeader(authorization, publicKey);
+            userRoles = identityProvider.extractUserRolesFromAuthHeader(authorization);
         } catch (Throwable e) {
+            log.error("Can't extract user roles from authorization header", e);
             return respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
         }
 
