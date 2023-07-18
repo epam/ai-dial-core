@@ -58,8 +58,11 @@ public class ModelController {
 
         if (model.getType() == ModelType.EMBEDDING) {
             data.getCapabilities().setEmbeddings(true);
-        } else if (model.getType() == ModelType.COMPLETION || model.getType() == ModelType.CHAT) {
+        } else if (model.getType() == ModelType.COMPLETION) {
             data.getCapabilities().setCompletion(true);
+        } else if (model.getType() == ModelType.CHAT) {
+            data.getCapabilities().setCompletion(true);
+            data.getCapabilities().setChatCompletion(true);
         }
 
         return data;

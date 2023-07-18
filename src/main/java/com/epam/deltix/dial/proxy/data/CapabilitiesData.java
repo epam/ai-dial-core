@@ -11,6 +11,7 @@ import lombok.Data;
 public class CapabilitiesData {
     private String[] scaleTypes = {"standard"};
     private boolean completion;
+    private boolean chatCompletion;
     private boolean embeddings;
     private boolean fineTune;
     private boolean inference;
