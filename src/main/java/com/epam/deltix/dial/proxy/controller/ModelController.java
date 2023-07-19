@@ -61,7 +61,6 @@ public class ModelController {
         } else if (model.getType() == ModelType.COMPLETION) {
             data.getCapabilities().setCompletion(true);
         } else if (model.getType() == ModelType.CHAT) {
-            data.getCapabilities().setCompletion(true);
             data.getCapabilities().setChatCompletion(true);
         }
 
