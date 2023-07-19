@@ -2,13 +2,7 @@ package com.epam.deltix.dial.proxy.controller;
 
 import com.epam.deltix.dial.proxy.Proxy;
 import com.epam.deltix.dial.proxy.ProxyContext;
-import com.epam.deltix.dial.proxy.config.Addon;
-import com.epam.deltix.dial.proxy.config.Assistant;
-import com.epam.deltix.dial.proxy.config.Assistants;
-import com.epam.deltix.dial.proxy.config.Config;
-import com.epam.deltix.dial.proxy.config.Deployment;
-import com.epam.deltix.dial.proxy.config.Model;
-import com.epam.deltix.dial.proxy.config.ModelType;
+import com.epam.deltix.dial.proxy.config.*;
 import com.epam.deltix.dial.proxy.endpoint.DeploymentEndpointProvider;
 import com.epam.deltix.dial.proxy.endpoint.EndpointProvider;
 import com.epam.deltix.dial.proxy.endpoint.EndpointRoute;
@@ -24,22 +18,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpHeaders;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
+import io.vertx.core.http.*;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -321,10 +306,9 @@ public class DeploymentPostController {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
             ArrayNode messages = (ArrayNode) tree.get("messages");
-            if (assistant.getPrompt() != null && !hasPrompt(messages)) {
-                messages.insertObject(0)
-                        .put("role", "system")
-                        .put("content", assistant.getPrompt());
+            if (assistant.getPrompt() != null) {
+                deletePrompt(messages);
+                insertPrompt(messages, assistant.getPrompt());
             }
 
             Set<String> names = new LinkedHashSet<>(assistant.getAddons());
@@ -376,15 +360,21 @@ public class DeploymentPostController {
         }
     }
 
-    private static boolean hasPrompt(ArrayNode messages) {
-        for (JsonNode message : messages) {
+    private static ObjectNode insertPrompt(ArrayNode messages, String prompt) {
+        return messages.insertObject(0)
+                .put("role", "system")
+                .put("content", prompt);
+    }
+
+    private static void deletePrompt(ArrayNode messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            JsonNode message = messages.get(i);
             String role = message.get("role").asText("");
+
             if ("system".equals(role)) {
-                return true;
+                messages.remove(i);
             }
         }
-
-        return false;
     }
 
     private static boolean isAssistant(Deployment deployment) {
