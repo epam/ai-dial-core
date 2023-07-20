@@ -4,9 +4,10 @@ import com.epam.deltix.dial.proxy.Proxy;
 import com.epam.deltix.dial.proxy.ProxyContext;
 import com.epam.deltix.dial.proxy.config.Config;
 import com.epam.deltix.dial.proxy.config.Route;
-import com.epam.deltix.dial.proxy.endpoint.EndpointProvider;
-import com.epam.deltix.dial.proxy.endpoint.EndpointRoute;
-import com.epam.deltix.dial.proxy.endpoint.RouteEndpointProvider;
+import com.epam.deltix.dial.proxy.config.Upstream;
+import com.epam.deltix.dial.proxy.upstream.RouteEndpointProvider;
+import com.epam.deltix.dial.proxy.upstream.UpstreamProvider;
+import com.epam.deltix.dial.proxy.upstream.UpstreamRoute;
 import com.epam.deltix.dial.proxy.util.BufferingReadStream;
 import com.epam.deltix.dial.proxy.util.HttpStatus;
 import com.epam.deltix.dial.proxy.util.ProxyUtil;
@@ -38,15 +39,14 @@ public class RouteController implements Controller {
 
         Route.Response response = route.getResponse();
         if (response == null) {
-            EndpointProvider endpointProvider = new RouteEndpointProvider(route);
-            EndpointRoute endpointRoute = proxy.getEndpointBalancer().balance(endpointProvider);
+            UpstreamProvider upstreamProvider = new RouteEndpointProvider(route);
+            UpstreamRoute upstreamRoute = proxy.getUpstreamBalancer().balance(upstreamProvider);
 
-            if (!endpointRoute.hasNext()) {
+            if (!upstreamRoute.hasNext()) {
                 return context.respond(HttpStatus.BAD_GATEWAY, "No route");
             }
 
-            context.setEndpointProvider(endpointProvider);
-            context.setEndpointRoute(endpointRoute);
+            context.setUpstreamRoute(upstreamRoute);
         } else {
             context.getResponse().setStatusCode(response.getStatus());
             context.setResponseBody(Buffer.buffer(response.getBody()));
@@ -59,16 +59,16 @@ public class RouteController implements Controller {
 
     @SneakyThrows
     private Future<?> sendRequest() {
-        EndpointRoute route = context.getEndpointRoute();
+        UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
-        String endpoint = route.next();
+        Upstream upstream = route.next();
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(new URL(endpoint))
+                .setAbsoluteURI(new URL(upstream.getEndpoint()))
                 .setURI(request.uri())
                 .setMethod(request.method());
 
@@ -97,16 +97,12 @@ public class RouteController implements Controller {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
 
-        EndpointProvider endpointProvider = context.getEndpointProvider();
-        EndpointRoute endpoint = context.getEndpointRoute();
-
+        Upstream upstream = context.getUpstreamRoute().get();
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
-
-        String endpointKey = endpointProvider.getEndpoints().get(endpoint.get());
-        proxyRequest.headers().set(Proxy.HEADER_API_KEY, endpointKey);
+        proxyRequest.putHeader(Proxy.HEADER_API_KEY, upstream.getKey());
 
         Buffer proxyRequestBody = context.getRequestBody();
-        proxyRequest.headers().set(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
 
         proxyRequest.send(proxyRequestBody)
                 .onSuccess(this::handleProxyResponse)

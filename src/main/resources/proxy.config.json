@@ -32,18 +32,18 @@
     "chat-gpt-35-turbo": {
       "type": "chat",
       "endpoint" : "http://localhost:7001",
-      "upstreams": {
-        "http://localhost:7001": "modelKey1",
-        "http://localhost:7002": "modelKey2",
-        "http://localhost:7003": "modelKey3"
-      }
+      "upstreams": [
+        {"endpoint": "http://localhost:7001", "key": "modelKey1"},
+        {"endpoint": "http://localhost:7002", "key": "modelKey2"},
+        {"endpoint": "http://localhost:7003", "key": "modelKey3"}
+      ]
     },
     "embedding-ada": {
       "type": "embedding",
       "endpoint" : "http://localhost:7001",
-      "upstreams": {
-        "http://localhost:7001": "modelKey4"
-      }
+      "upstreams": [
+        {"endpoint": "http://localhost:7001", "key": "modelKey4"}
+      ]
     }
   },
   "keys": {

@@ -2,7 +2,7 @@ package com.epam.deltix.dial.proxy;
 
 import com.epam.deltix.dial.proxy.config.ConfigStore;
 import com.epam.deltix.dial.proxy.config.FileConfigStore;
-import com.epam.deltix.dial.proxy.endpoint.EndpointBalancer;
+import com.epam.deltix.dial.proxy.upstream.UpstreamBalancer;
 import com.epam.deltix.dial.proxy.limiter.RateLimiter;
 import com.epam.deltix.dial.proxy.log.GFLogStore;
 import com.epam.deltix.dial.proxy.log.LogStore;
@@ -23,10 +23,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
-import java.security.interfaces.RSAPublicKey;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -49,10 +45,10 @@ public class ProxyApp {
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"));
             LogStore logStore = new GFLogStore(vertx);
             RateLimiter rateLimiter = new RateLimiter();
-            EndpointBalancer endpointBalancer = new EndpointBalancer();
+            UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
             IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"));
-            Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, endpointBalancer, identityProvider);
+            Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

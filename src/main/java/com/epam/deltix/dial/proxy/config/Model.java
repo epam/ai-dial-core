@@ -4,12 +4,12 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
-import java.util.Map;
+import java.util.List;
 
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = true)
 public class Model extends Deployment {
     private ModelType type;
-    private Map<String, String> upstreams = Map.of();
+    private List<Upstream> upstreams = List.of();
 }

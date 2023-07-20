@@ -1,18 +1,21 @@
-package com.epam.deltix.dial.proxy.endpoint;
+package com.epam.deltix.dial.proxy.upstream;
 
+import com.epam.deltix.dial.proxy.config.Upstream;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 @RequiredArgsConstructor
-public class EndpointRoute implements Iterator<String> {
+public class UpstreamRoute implements Iterator<Upstream> {
 
-    private final String[] endpoints;
+    private final List<Upstream> upstreams;
     private final AtomicLong counter;
     private final int offset;
-    private String current;
+
+    private Upstream current;
     private int count;
 
     public int attempts() {
@@ -21,21 +24,21 @@ public class EndpointRoute implements Iterator<String> {
 
     @Override
     public boolean hasNext() {
-        return count < endpoints.length;
+        return count < upstreams.size();
     }
 
     /**
      * @return next endpoint to route to.
      */
     @Override
-    public String next() {
+    public Upstream next() {
         if (hasNext()) {
             if (count > 0) {
                 counter.incrementAndGet(); // advance but do not use, anyway we need to write smart thing later
             }
 
-            int index = (offset + count++) % endpoints.length;
-            current = endpoints[index];
+            int index = (offset + count++) % upstreams.size();
+            current = upstreams.get(index);
             return current;
         }
 
@@ -45,7 +48,7 @@ public class EndpointRoute implements Iterator<String> {
     /**
      * @return current endpoint to route to.
      */
-    public String get() {
+    public Upstream get() {
         Objects.requireNonNull(current);
         return current;
     }

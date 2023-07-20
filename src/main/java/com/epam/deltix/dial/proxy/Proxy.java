@@ -5,7 +5,7 @@ import com.epam.deltix.dial.proxy.config.ConfigStore;
 import com.epam.deltix.dial.proxy.config.Key;
 import com.epam.deltix.dial.proxy.controller.Controller;
 import com.epam.deltix.dial.proxy.controller.ControllerSelector;
-import com.epam.deltix.dial.proxy.endpoint.EndpointBalancer;
+import com.epam.deltix.dial.proxy.upstream.UpstreamBalancer;
 import com.epam.deltix.dial.proxy.limiter.RateLimiter;
 import com.epam.deltix.dial.proxy.log.LogStore;
 import com.epam.deltix.dial.proxy.security.IdentityProvider;
@@ -45,7 +45,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigStore configStore;
     private final LogStore logStore;
     private final RateLimiter rateLimiter;
-    private final EndpointBalancer endpointBalancer;
+    private final UpstreamBalancer upstreamBalancer;
     private final IdentityProvider identityProvider;
 
     @Override

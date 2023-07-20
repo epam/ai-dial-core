@@ -28,7 +28,6 @@ public class TokenUsageParser {
     private TokenUsage parseUsage(Buffer body) throws Exception {
         int index = findUsage(body);
         if (index < 0) {
-            log.warn("Can't find token usage");
             return null;
         }
 

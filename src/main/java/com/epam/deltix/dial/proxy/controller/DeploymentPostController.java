@@ -3,11 +3,11 @@ package com.epam.deltix.dial.proxy.controller;
 import com.epam.deltix.dial.proxy.Proxy;
 import com.epam.deltix.dial.proxy.ProxyContext;
 import com.epam.deltix.dial.proxy.config.*;
-import com.epam.deltix.dial.proxy.endpoint.DeploymentEndpointProvider;
-import com.epam.deltix.dial.proxy.endpoint.EndpointProvider;
-import com.epam.deltix.dial.proxy.endpoint.EndpointRoute;
 import com.epam.deltix.dial.proxy.token.TokenUsage;
 import com.epam.deltix.dial.proxy.token.TokenUsageParser;
+import com.epam.deltix.dial.proxy.upstream.DeploymentUpstreamProvider;
+import com.epam.deltix.dial.proxy.upstream.UpstreamProvider;
+import com.epam.deltix.dial.proxy.upstream.UpstreamRoute;
 import com.epam.deltix.dial.proxy.util.BufferingReadStream;
 import com.epam.deltix.dial.proxy.util.HttpException;
 import com.epam.deltix.dial.proxy.util.HttpStatus;
@@ -54,11 +54,9 @@ public class DeploymentPostController {
         log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getKey().getProject(),
                 context.getDeployment().getName(), context.getRequest().headers().size());
 
-        EndpointProvider endpointProvider = new DeploymentEndpointProvider(deployment);
-        EndpointRoute endpointRoute = proxy.getEndpointBalancer().balance(endpointProvider);
-
-        context.setEndpointProvider(endpointProvider);
-        context.setEndpointRoute(endpointRoute);
+        UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
+        UpstreamRoute endpointRoute = proxy.getUpstreamBalancer().balance(endpointProvider);
+        context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.hasNext()) {
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
@@ -71,14 +69,16 @@ public class DeploymentPostController {
 
     @SneakyThrows
     private Future<?> sendRequest() {
-        EndpointRoute route = context.getEndpointRoute();
+        UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
-        String upstream = route.next();
+        Upstream upstream = route.next();
+        Objects.requireNonNull(upstream);
+
         String uri = buildUri(context);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
@@ -126,17 +126,12 @@ public class DeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        EndpointProvider endpointProvider = context.getEndpointProvider();
-        EndpointRoute endpointRoute = context.getEndpointRoute();
-
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
-            String endpoint = endpointRoute.get();
-            String endpointKey = endpointProvider.getEndpoints().get(endpoint);
-
-            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, endpoint);
-            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, endpointKey);
+            Upstream upstream = context.getUpstreamRoute().get();
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
         }
 
         Buffer requestBody = context.getRequestBody();
@@ -157,7 +152,7 @@ public class DeploymentPostController {
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
         if ((proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode() || proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode())
-                && context.getEndpointRoute().hasNext()) {
+                && context.getUpstreamRoute().hasNext()) {
             sendRequest(); // try next
             return;
         }
@@ -175,7 +170,7 @@ public class DeploymentPostController {
         response.setStatusCode(proxyResponse.statusCode());
 
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getEndpointRoute().attempts()));
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().attempts()));
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -197,6 +192,15 @@ public class DeploymentPostController {
             TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
             context.setTokenUsage(tokenUsage);
             proxy.getRateLimiter().increase(context);
+
+            if (tokenUsage == null) {
+                log.warn("Can't find token usage. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                        context.getKey().getProject(), context.getDeployment().getName(),
+                        context.getDeployment().getEndpoint(),
+                        context.getUpstreamRoute().get().getEndpoint(),
+                        context.getResponse().getStatusCode(),
+                        context.getResponseBody().length());
+            }
         }
 
         log.info("Sent response to client. Key: {}. Deployment: {}. Status: {}. Length: {}. Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
