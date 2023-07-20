@@ -1,23 +1,8 @@
 {
-  "client": {
-    "idleTimeoutUnit": "MILLISECONDS",
-    "idleTimeout": 60000,
-    "connectTimeout": 10000,
-    "keepAlive": true,
-    "maxPoolSize": 128
-  },
   "server": {
-    "port": 80,
-    "acceptBacklog": 4096,
-    "idleTimeoutUnit": "MILLISECONDS",
-    "idleTimeout": 60000,
-    "compressionSupported": true
+    "port": 80
   },
-  "config" : {
-    "files" : ["/opt/deltix/dial/proxy/config/proxy.config.json"]
-  },
-  "identityProvider" : {
-    "jwksUrl": "https://kctest.staging.deltixhub.io/realms/EPAM/protocol/openid-connect/certs",
-    "appName": "dial"
+  "config": {
+    "files": ["/opt/deltix/dial/proxy/config/proxy.config.json"]
   }
 }

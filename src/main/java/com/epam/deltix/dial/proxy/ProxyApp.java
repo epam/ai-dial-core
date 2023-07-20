@@ -2,13 +2,14 @@ package com.epam.deltix.dial.proxy;
 
 import com.epam.deltix.dial.proxy.config.ConfigStore;
 import com.epam.deltix.dial.proxy.config.FileConfigStore;
-import com.epam.deltix.dial.proxy.upstream.UpstreamBalancer;
 import com.epam.deltix.dial.proxy.limiter.RateLimiter;
 import com.epam.deltix.dial.proxy.log.GFLogStore;
 import com.epam.deltix.dial.proxy.log.LogStore;
 import com.epam.deltix.dial.proxy.security.IdentityProvider;
+import com.epam.deltix.dial.proxy.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigFactory;
 import com.epam.deltix.gflog.core.LogConfigurator;
+import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
@@ -20,9 +21,12 @@ import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -81,23 +85,42 @@ public class ProxyApp {
     }
 
     private static JsonObject settings() throws Exception {
-        String file = System.getenv().getOrDefault("PROXY_SETTINGS", "proxy.settings.json");
-        InputStream stream;
+        return defaultSettings()
+                .mergeIn(fileSettings(), true)
+                .mergeIn(envSettings(), true);
+    }
 
-        try {
-            stream = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            stream = ProxyApp.class.getClassLoader().getResourceAsStream(file);
-        }
+    private static JsonObject defaultSettings() throws IOException {
+        String file = "proxy.settings.json";
 
-        if (stream == null) {
-            throw new FileNotFoundException("Proxy settings file is not found: " + file);
-        }
-
-        try (InputStream resource = stream) {
+        try (InputStream stream = ProxyApp.class.getClassLoader().getResourceAsStream(file)) {
+            Objects.requireNonNull(stream, "Default resource file with settings is not found");
             String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             return new JsonObject(json);
         }
+    }
+
+    private static JsonObject fileSettings() throws IOException {
+        String file = System.getenv().get("PROXY_SETTINGS");
+        if (file == null) {
+            return new JsonObject();
+        }
+
+        try (InputStream stream = new FileInputStream(file)) {
+            String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            return new JsonObject(json);
+        }
+    }
+
+    private static JsonObject envSettings() {
+        String prefix = "proxy.";
+        Properties properties = new Properties();
+        System.getenv().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith(prefix))
+                .map(entry -> Map.entry(entry.getKey().substring(prefix.length()), entry.getValue()))
+                .forEach(entry -> properties.put(entry.getKey(), entry.getValue()));
+
+        return JsonObjectHelper.from(properties, false, true);
     }
 
     private static <R> void open(R resource, AsyncOpener<R> opener) throws Exception {
