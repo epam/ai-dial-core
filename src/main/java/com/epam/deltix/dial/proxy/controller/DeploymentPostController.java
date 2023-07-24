@@ -147,8 +147,9 @@ public class DeploymentPostController {
      * Called when proxy received the response headers from the origin.
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received header from origin. Key: {}. Deployment: {}. Status: {}. Headers: {}",
+        log.info("Received header from origin. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
                 context.getKey().getProject(), context.getDeployment().getName(),
+                context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
         if ((proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode() || proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode())
@@ -203,8 +204,10 @@ public class DeploymentPostController {
             }
         }
 
-        log.info("Sent response to client. Key: {}. Deployment: {}. Status: {}. Length: {}. Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+        log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}. Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
                 context.getKey().getProject(), context.getDeployment().getName(),
+                context.getDeployment().getEndpoint(),
+                context.getUpstreamRoute().get().getEndpoint(),
                 context.getResponse().getStatusCode(),
                 context.getResponseBody().length(),
                 context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
