@@ -41,6 +41,15 @@ public class ProxyUtil {
         }
     }
 
+    public static String stripExtraLeadingSlashes(String uri) {
+        int index = 0;
+        while (index < uri.length() && uri.charAt(index) == '/') {
+            index++;
+        }
+
+        return (index <= 1) ? uri : uri.substring(index - 1);
+    }
+
     public static int contentLength(HttpServerRequest request, int defaultValue) {
         return contentLength(request.headers(), defaultValue);
     }

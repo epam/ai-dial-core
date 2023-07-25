@@ -296,7 +296,7 @@ public class DeploymentPostController {
         String endpoint = deployment.getEndpoint();
 
         if (deployment instanceof Model) {
-            return endpoint + request.uri();
+            return endpoint + ProxyUtil.stripExtraLeadingSlashes(request.uri());
         }
 
         String query = request.query();
