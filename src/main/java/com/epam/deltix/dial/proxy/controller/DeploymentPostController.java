@@ -36,7 +36,8 @@ public class DeploymentPostController {
     private final ProxyContext context;
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
-        if (!Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE))) {
+        String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+        if (contentType == null || !contentType.contains(Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return context.respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
 
