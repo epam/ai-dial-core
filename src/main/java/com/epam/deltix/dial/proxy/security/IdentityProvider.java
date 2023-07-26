@@ -64,10 +64,6 @@ public class IdentityProvider {
     }
 
     public List<String> extractUserRolesFromAuthHeader(String authHeader) throws JwkException {
-        if (authHeader == null) {
-            return null;
-        }
-
         // Take the 1st authorization parameter from the header value:
         // Authorization: <auth-scheme> <authorization-parameters>
         String encodedToken = authHeader.split(" ")[1];

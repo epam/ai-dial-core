@@ -136,6 +136,10 @@ public class DeploymentPostController {
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
         }
 
+        if (!context.getKey().isUserAuth()) {
+            proxyRequest.headers().remove(HttpHeaders.AUTHORIZATION);
+        }
+
         Buffer requestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
         context.getRequestHeaders().forEach(proxyRequest::putHeader);
