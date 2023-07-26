@@ -22,6 +22,7 @@ import io.vertx.core.http.*;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.InputStream;
 import java.util.*;
@@ -37,7 +38,7 @@ public class DeploymentPostController {
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
-        if (contentType == null || !contentType.contains(Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
+        if (!StringUtils.containsIgnoreCase(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return context.respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
 
