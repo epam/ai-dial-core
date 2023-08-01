@@ -158,8 +158,10 @@ public class DeploymentPostController {
                 context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        if ((proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode() || proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode())
-                && context.getUpstreamRoute().hasNext()) {
+        if (context.getUpstreamRoute().hasNext() &&
+                (proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode() ||
+                        proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode() ||
+                        proxyResponse.statusCode() == HttpStatus.GATEWAY_TIMEOUT.getCode())) {
             sendRequest(); // try next
             return;
         }

@@ -10,10 +10,7 @@ import com.epam.deltix.dial.proxy.util.HttpStatus;
 import com.epam.deltix.dial.proxy.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.*;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -62,6 +59,7 @@ public class ProxyContext {
     @SneakyThrows
     public Future<Void> respond(HttpStatus status, Object object) {
         String json = ProxyUtil.MAPPER.writeValueAsString(object);
+        response.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
         return respond(status, json);
     }
 
