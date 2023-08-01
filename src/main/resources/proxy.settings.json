@@ -1,7 +1,7 @@
 {
   "client": {
     "idleTimeoutUnit": "MILLISECONDS",
-    "idleTimeout": 60000,
+    "idleTimeout": 300000,
     "connectTimeout": 10000,
     "keepAlive": true,
     "maxPoolSize": 128
