@@ -54,6 +54,9 @@ public class ApplicationController {
         ApplicationData data = new ApplicationData();
         data.setId(application.getName());
         data.setApplication(application.getName());
+        data.setDisplayName(application.getDisplayName());
+        data.setIconUrl(application.getIconUrl());
+        data.setDescription(application.getDescription());
         return data;
     }
 }

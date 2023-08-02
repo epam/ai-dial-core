@@ -54,6 +54,9 @@ public class AddonController {
         AddonData data = new AddonData();
         data.setId(addon.getName());
         data.setAddon(addon.getName());
+        data.setDisplayName(addon.getDisplayName());
+        data.setIconUrl(addon.getIconUrl());
+        data.setDescription(addon.getDescription());
         return data;
     }
 }

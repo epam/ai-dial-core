@@ -55,6 +55,9 @@ public class ModelController {
         ModelData data = new ModelData();
         data.setId(model.getName());
         data.setModel(model.getName());
+        data.setDisplayName(model.getDisplayName());
+        data.setIconUrl(model.getIconUrl());
+        data.setDescription(model.getDescription());
 
         if (model.getType() == ModelType.EMBEDDING) {
             data.getCapabilities().setEmbeddings(true);

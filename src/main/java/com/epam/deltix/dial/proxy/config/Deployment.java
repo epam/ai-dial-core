@@ -8,5 +8,8 @@ import java.util.Set;
 public abstract class Deployment {
     private String name;
     private String endpoint;
+    private String displayName;
+    private String iconUrl;
+    private String description;
     private Set<String> userRoles = Set.of();
 }
