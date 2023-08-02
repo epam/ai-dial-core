@@ -14,6 +14,9 @@ public class DeploymentData {
     private String addon;
     private String assistant;
     private String application;
+    private String displayName;
+    private String iconUrl;
+    private String description;
     private String owner = "organization-owner";
     private String object = "deployment";
     private String status = "succeeded";

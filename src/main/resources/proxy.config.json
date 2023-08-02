@@ -9,7 +9,12 @@
     }
   },
   "addons": {
-    "search": {"endpoint": "http://localhost:7010/search"},
+    "search": {
+      "endpoint": "http://localhost:7010/search",
+      "displayName": "Search",
+      "iconUrl": "http://localhost:7001/search_addon.png",
+      "description": "Some description of the addon for testing"
+    },
     "forecast": {"endpoint": "http://localhost:7010/forecast"},
     "calculator": {"endpoint": "http://localhost:7010/calculator"}
   },
@@ -19,18 +24,27 @@
     "assistants": {
       "ass": {
         "prompt": "Commands: sit_down, get_up, run_away",
-        "addons": ["search"]
+        "addons": ["search"],
+        "displayName": "Search Assistant",
+        "iconUrl": "http://localhost:7001/search_app.png",
+        "description": "Some description of the assistant for testing"
       }
     }
   },
   "applications": {
     "app": {
-      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions"
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "10k",
+      "iconUrl": "http://localhost:7001/logo10k.png",
+      "description": "Some description of the application for testing"
     }
   },
   "models": {
     "chat-gpt-35-turbo": {
       "type": "chat",
+      "displayName": "GPT 3.5",
+      "iconUrl": "http://localhost:7001/logo.png",
+      "description": "Some description of the model for testing",
       "endpoint" : "http://localhost:7001",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey1"},
