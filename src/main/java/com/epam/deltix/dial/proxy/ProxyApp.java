@@ -7,8 +7,8 @@ import com.epam.deltix.dial.proxy.log.GFLogStore;
 import com.epam.deltix.dial.proxy.log.LogStore;
 import com.epam.deltix.dial.proxy.security.IdentityProvider;
 import com.epam.deltix.dial.proxy.upstream.UpstreamBalancer;
-import com.epam.deltix.gflog.core.LogConfigFactory;
 import com.epam.deltix.gflog.core.LogConfigurator;
+import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -18,6 +18,8 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.metrics.MetricsOptions;
+import io.vertx.micrometer.MicrometerMetricsOptions;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.FileInputStream;
@@ -39,11 +41,13 @@ public class ProxyApp {
     private HttpClient client;
 
     private void start() throws Exception {
-        LogConfigurator.configure(LogConfigFactory.loadDefault());
-
         try {
             settings = settings();
-            vertx = Vertx.vertx(new VertxOptions(settings("vertx")));
+
+            VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
+            setupMetrics(vertxOptions);
+
+            vertx = Vertx.vertx(vertxOptions);
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"));
@@ -147,5 +151,22 @@ public class ProxyApp {
 
     public static void main(String[] args) throws Exception {
         new ProxyApp().start();
+    }
+
+    private static void setupMetrics(VertxOptions options) {
+        MetricsOptions metrics = options.getMetricsOptions();
+        if (metrics == null || !metrics.isEnabled()) {
+            return;
+        }
+
+        JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
+        if (oltp == null || !oltp.getBoolean("enabled", false)) {
+            return;
+        }
+
+        MicrometerMetricsOptions micrometer = new MicrometerMetricsOptions(metrics.toJson());
+        micrometer.setMicrometerRegistry(new OtlpMeterRegistry());
+
+        options.setMetricsOptions(micrometer);
     }
 }
