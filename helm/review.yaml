@@ -62,6 +62,9 @@ bedrock:
 vertex:
   enabled: false
 
+assistant:
+  enabled: false
+
 logger:
   enabled: true
 
