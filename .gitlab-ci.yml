@@ -10,7 +10,7 @@ variables:
   HELM_REPO: https://nexus.deltixhub.com/repository/epm-rtc-helm
   SECRET_NAME: "epm-rtc-registry-dev"
   CHART: "dial-proxy" # Helm chart name, e.g. "gitlab-runner"
-  VERSION: "0.1.1" # Helm chart version
+  VERSION: "0.1.3" # Helm chart version
   NAMESPACE: "dial-proxy"
 
   development_AWS_ACCESS_KEY_ID: ${staging_AWS_ACCESS_KEY_ID}

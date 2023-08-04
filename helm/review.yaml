@@ -64,3 +64,20 @@ vertex:
 
 logger:
   enabled: true
+
+service:
+  extraPorts:
+    - name: metrics
+      port: 9464
+      targetPort: 9464
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+    port: metrics
+    # path: "/metrics"   # default
+    interval: "10s"
+    labels:
+      monitoring: application
