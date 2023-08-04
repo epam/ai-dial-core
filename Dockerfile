@@ -8,4 +8,5 @@ ENV PROXY_SETTINGS=/opt/deltix/dial/proxy/config/proxy.settings.json
 ENV JAVA_OPTS="-Dgflog.config=/opt/deltix/dial/proxy/config/gflog.xml"
 
 EXPOSE 80
+EXPOSE 9464
 ENTRYPOINT ["/opt/deltix/dial/proxy/bin/dial-proxy"]

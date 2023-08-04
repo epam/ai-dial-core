@@ -1,4 +1,25 @@
 {
+  "vertx": {
+    "metricsOptions": {
+      "enabled": true,
+      "jvmMetricsEnabled": true,
+      "labels": [
+        "HTTP_METHOD",
+        "HTTP_CODE",
+        "HTTP_PATH"
+      ],
+      "prometheusOptions": {
+        "enabled": true,
+        "startEmbeddedServer": true,
+        "embeddedServerOptions": {
+          "port": 9464
+        }
+      },
+      "oltpOptions": {
+        "enabled": false
+      }
+    }
+  },
   "client": {
     "idleTimeoutUnit": "MILLISECONDS",
     "idleTimeout": 300000,
@@ -13,7 +34,7 @@
     "idleTimeout": 60000,
     "compressionSupported": true
   },
-  "identityProvider" : {
+  "identityProvider": {
     "jwksUrl": "https://kctest.staging.deltixhub.io/realms/EPAM/protocol/openid-connect/certs",
     "appName": "dial"
   }
