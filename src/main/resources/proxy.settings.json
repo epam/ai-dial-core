@@ -1,7 +1,7 @@
 {
   "vertx": {
     "metricsOptions": {
-      "enabled": false,
+      "enabled": true,
       "jvmMetricsEnabled": true,
       "labels": [
         "HTTP_METHOD",
@@ -9,10 +9,10 @@
         "HTTP_PATH"
       ],
       "prometheusOptions": {
-        "enabled": false,
+        "enabled": true,
         "startEmbeddedServer": true,
         "embeddedServerOptions": {
-          "port": 8081
+          "port": 9464
         }
       },
       "oltpOptions": {
