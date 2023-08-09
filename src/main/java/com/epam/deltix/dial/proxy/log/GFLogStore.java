@@ -58,7 +58,7 @@ public class GFLogStore implements LogStore {
         HttpServerResponse response = context.getResponse();
 
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
-        append(entry, request.getHeader(Proxy.HEADER_CORRELATION_ID), true);
+        append(entry, request.getHeader(Proxy.HEADER_CONVERSATION_ID), true);
 
         append(entry, "\"},\"project\":{\"id\":\"", false);
         append(entry, context.getKey().getProject(), true);
