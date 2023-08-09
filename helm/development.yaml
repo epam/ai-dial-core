@@ -43,19 +43,21 @@ ingress:
 serviceAccount:
   create: true
 
+env:
+  proxy.config.files: '["/mnt/secrets-store/dialConfig","/mnt/secrets-store/dialKey","/mnt/secrets-store/dialAida"]'
+
 extraVolumes:
-  - name: config
-    secret:
-      secretName: '{{ template "dialProxy.names.fullname" . }}'
-      items:
-        - key: proxy.config.json
-          path: proxy.config.json
+  - name: secrets
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: vault-dial-config-dev
 
 extraVolumeMounts:
-  - name: config
-    mountPath: "/opt/deltix/dial/proxy/config/proxy.config.json"
-    subPath: proxy.config.json
+  - name: secrets
     readOnly: true
+    mountPath: /mnt/secrets-store
 
 bedrock:
   enabled: false
@@ -85,3 +87,25 @@ metrics:
     interval: "10s"
     labels:
       monitoring: application
+
+extraDeploy:
+  - apiVersion: secrets-store.csi.x-k8s.io/v1
+    kind: SecretProviderClass
+    metadata:
+      name: vault-dial-config-dev
+    spec:
+      provider: vault
+      parameters:
+        roleName: "dial"
+        vaultAddress: 'https://vault.vault:8200'
+        vaultCACertPath: '/vault/tls/ca.crt'
+        objects: |
+          - objectName: "dialConfig"
+            secretPath: "dial/data/development"
+            secretKey: "config"
+          - objectName: "dialKey"
+            secretPath: "dial/data/development"
+            secretKey: "keys"
+          - objectName: "dialAida"
+            secretPath: "dial/data/aida"
+            secretKey: "config"
