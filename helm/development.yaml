@@ -71,6 +71,31 @@ assistant:
 logger:
   enabled: true
 
+  config: | 
+    sources:
+      proxy_logs:
+        type: "file"
+        max_line_bytes: 100000000
+        oldest_first: true
+        include:
+          - /opt/deltix/dial/proxy/log/*.log
+
+    sinks:
+      console:
+        inputs:
+          - proxy_logs
+        type: console
+        target: "stdout"
+        encoding:
+          codec: "text"
+      http_sink:
+        inputs:
+          - proxy_logs
+        type: http
+        uri: http://dial-analytics.dial-analytics/data
+        encoding:
+          codec: "json"
+
 service:
   extraPorts:
     - name: metrics
