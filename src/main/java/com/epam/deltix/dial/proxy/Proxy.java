@@ -5,6 +5,7 @@ import com.epam.deltix.dial.proxy.config.ConfigStore;
 import com.epam.deltix.dial.proxy.config.Key;
 import com.epam.deltix.dial.proxy.controller.Controller;
 import com.epam.deltix.dial.proxy.controller.ControllerSelector;
+import com.epam.deltix.dial.proxy.security.ExtractedClaims;
 import com.epam.deltix.dial.proxy.upstream.UpstreamBalancer;
 import com.epam.deltix.dial.proxy.limiter.RateLimiter;
 import com.epam.deltix.dial.proxy.log.LogStore;
@@ -31,7 +32,6 @@ import java.util.Objects;
 public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEADER_API_KEY = "API-KEY";
-    public static final String HEADER_USER = "X-USER";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
     public static final String HEADER_UPSTREAM_ENDPOINT = "X-UPSTREAM-ENDPOINT";
@@ -88,7 +88,7 @@ public class Proxy implements Handler<HttpServerRequest> {
             return respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
         }
 
-        List<String> userRoles = null;
+        ExtractedClaims extractedClaims = null;
         if (key.isUserAuth()) {
             String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
             if (authorization == null) {
@@ -96,14 +96,14 @@ public class Proxy implements Handler<HttpServerRequest> {
             }
 
             try {
-                userRoles = identityProvider.extractUserRolesFromAuthHeader(authorization);
+                extractedClaims = identityProvider.extractClaims(authorization);
             } catch (Throwable e) {
                 log.error("Can't extract user roles from authorization header", e);
                 return respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
             }
         }
 
-        ProxyContext context = new ProxyContext(config, request, key, userRoles);
+        ProxyContext context = new ProxyContext(config, request, key, extractedClaims);
         Controller controller = ControllerSelector.select(this, context);
 
         return controller.handle();
