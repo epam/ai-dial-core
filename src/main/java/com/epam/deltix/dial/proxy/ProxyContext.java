@@ -3,6 +3,7 @@ package com.epam.deltix.dial.proxy;
 import com.epam.deltix.dial.proxy.config.Config;
 import com.epam.deltix.dial.proxy.config.Deployment;
 import com.epam.deltix.dial.proxy.config.Key;
+import com.epam.deltix.dial.proxy.security.ExtractedClaims;
 import com.epam.deltix.dial.proxy.token.TokenUsage;
 import com.epam.deltix.dial.proxy.upstream.UpstreamRoute;
 import com.epam.deltix.dial.proxy.util.BufferingReadStream;
@@ -29,6 +30,7 @@ public class ProxyContext {
 
     private Deployment deployment;
     private List<String> userRoles;
+    private String userHash;
     private TokenUsage tokenUsage;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;
@@ -43,13 +45,17 @@ public class ProxyContext {
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
 
-    public ProxyContext(Config config, HttpServerRequest request, Key key, List<String> userRoles) {
+    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims) {
         this.config = config;
         this.key = key;
         this.request = request;
         this.response = request.response();
-        this.userRoles = userRoles;
         this.requestTimestamp = System.currentTimeMillis();
+
+        if (extractedClaims != null) {
+            this.userRoles = extractedClaims.userRoles();
+            this.userHash = extractedClaims.userHash();
+        }
     }
 
     public Future<Void> respond(HttpStatus status) {

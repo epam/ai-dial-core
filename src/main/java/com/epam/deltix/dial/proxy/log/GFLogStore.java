@@ -64,7 +64,7 @@ public class GFLogStore implements LogStore {
         append(entry, context.getKey().getProject(), true);
 
         append(entry, "\"},\"user\":{\"id\":\"", false);
-        append(entry, request.getHeader(Proxy.HEADER_USER), true);
+        append(entry, context.getUserHash(), true);
 
         append(entry, "\",\"title\":\"", false);
         append(entry, request.getHeader(Proxy.HEADER_JOB_TITLE), true);
@@ -86,6 +86,9 @@ public class GFLogStore implements LogStore {
 
         append(entry, "\"},\"response\":{\"status\":\"", false);
         append(entry, Integer.toString(response.getStatusCode()), true);
+
+        append(entry, "\",\"upstream_uri\":\"", false);
+        append(entry, context.getUpstreamRoute().get().getEndpoint(), true);
 
         append(entry, "\",\"body\":\"", false);
         append(entry, context.getResponseBody());
