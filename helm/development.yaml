@@ -45,7 +45,6 @@ serviceAccount:
 
 env:
   proxy.config.files: '["/mnt/secrets-store/dialConfig","/mnt/secrets-store/dialKey","/mnt/secrets-store/dialAida"]'
-  proxy.identityProvider: '{"loggingKey": "email", "loggingSalt": "some"}'
 
 extraVolumes:
   - name: secrets
