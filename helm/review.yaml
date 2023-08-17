@@ -42,19 +42,20 @@ ingress:
 serviceAccount:
   create: false
 
+#### Use dev config for mr
 extraVolumes:
-  - name: config
-    secret:
-      secretName: '{{ template "dialProxy.names.fullname" . }}'
-      items:
-        - key: proxy.config.json
-          path: proxy.config.json
+  - name: secrets
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: vault-dial-config-dev
 
 extraVolumeMounts:
-  - name: config
-    mountPath: "/opt/deltix/dial/proxy/config/proxy.config.json"
-    subPath: proxy.config.json
+  - name: secrets
     readOnly: true
+    mountPath: /mnt/secrets-store
+###
 
 bedrock:
   enabled: false
