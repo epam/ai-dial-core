@@ -88,18 +88,20 @@ public class Proxy implements Handler<HttpServerRequest> {
             return respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
         }
 
-        ExtractedClaims extractedClaims = null;
-        if (key.isUserAuth()) {
-            String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-            if (authorization == null) {
-                return respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
-            }
+        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authorization == null && key.isUserAuth()) {
+            return respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
+        }
 
-            try {
-                extractedClaims = identityProvider.extractClaims(authorization);
-            } catch (Throwable e) {
-                log.error("Can't extract user roles from authorization header", e);
+        ExtractedClaims extractedClaims = null;
+        try {
+            extractedClaims = identityProvider.extractClaims(authorization);
+        } catch (Throwable e) {
+            if (key.isUserAuth()) {
+                log.error("Can't extract claims from authorization header", e);
                 return respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
+            } else {
+                log.info("Can't extract claims from authorization header");
             }
         }
 
