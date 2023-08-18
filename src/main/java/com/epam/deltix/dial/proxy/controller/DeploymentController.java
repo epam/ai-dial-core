@@ -75,7 +75,7 @@ public class DeploymentController {
         List<String> actualUserRoles = context.getUserRoles();
 
         if (actualUserRoles == null) {
-            return !key.isUserAuth();
+            return key.getUserAuth() != UserAuth.ENABLED;
         }
 
         if (expectedUserRoles.isEmpty()) {

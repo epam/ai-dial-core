@@ -3,6 +3,7 @@ package com.epam.deltix.dial.proxy;
 import com.epam.deltix.dial.proxy.config.Config;
 import com.epam.deltix.dial.proxy.config.ConfigStore;
 import com.epam.deltix.dial.proxy.config.Key;
+import com.epam.deltix.dial.proxy.config.UserAuth;
 import com.epam.deltix.dial.proxy.controller.Controller;
 import com.epam.deltix.dial.proxy.controller.ControllerSelector;
 import com.epam.deltix.dial.proxy.security.ExtractedClaims;
@@ -89,19 +90,22 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (authorization == null && key.isUserAuth()) {
+        if (authorization == null && key.getUserAuth() == UserAuth.ENABLED) {
             return respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
         }
 
         ExtractedClaims extractedClaims = null;
-        try {
-            extractedClaims = identityProvider.extractClaims(authorization);
-        } catch (Throwable e) {
-            if (key.isUserAuth()) {
-                log.error("Can't extract claims from authorization header", e);
-                return respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
-            } else {
-                log.info("Can't extract claims from authorization header");
+        if (authorization != null) {
+            try {
+                final boolean isJwtMustBeValidated = key.getUserAuth() != UserAuth.DISABLED;
+                extractedClaims = identityProvider.extractClaims(authorization, isJwtMustBeValidated);
+            } catch (Throwable e) {
+                if (key.getUserAuth() == UserAuth.ENABLED) {
+                    log.error("Can't extract claims from authorization header", e);
+                    return respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
+                } else {
+                    log.info("Can't extract claims from authorization header");
+                }
             }
         }
 
