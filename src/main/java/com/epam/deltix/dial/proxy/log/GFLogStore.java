@@ -87,8 +87,10 @@ public class GFLogStore implements LogStore {
         append(entry, "\"},\"response\":{\"status\":\"", false);
         append(entry, Integer.toString(response.getStatusCode()), true);
 
-        append(entry, "\",\"upstream_uri\":\"", false);
-        append(entry, context.getUpstreamRoute().get().getEndpoint(), true);
+        if (context.getUpstreamRoute() != null) {
+            append(entry, "\",\"upstream_uri\":\"", false);
+            append(entry, context.getUpstreamRoute().get().getEndpoint(), true);
+        }
 
         append(entry, "\",\"body\":\"", false);
         append(entry, context.getResponseBody());
