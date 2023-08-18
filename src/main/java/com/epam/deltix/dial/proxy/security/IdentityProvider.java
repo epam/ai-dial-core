@@ -80,11 +80,14 @@ public class IdentityProvider {
         return roles == null ? Collections.emptyList() : roles;
     }
 
+    private DecodedJWT decodeJwtToken(String encodedToken) {
+        return JWT.decode(encodedToken);
+    }
+
     private DecodedJWT decodeAndVerifyJwtToken(String encodedToken) throws JwkException {
-        DecodedJWT jwt = JWT.decode(encodedToken);
-//        Jwk jwk = jwkProvider.get(jwt.getKeyId());
-//        return JWT.require(Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null)).build().verify(encodedToken);
-        return jwt;
+        DecodedJWT jwt = decodeJwtToken(encodedToken);
+        Jwk jwk = jwkProvider.get(jwt.getKeyId());
+        return JWT.require(Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null)).build().verify(encodedToken);
     }
 
     private String extractUserHash(final DecodedJWT decodedJWT) {
@@ -104,18 +107,21 @@ public class IdentityProvider {
         return null;
     }
 
-    public ExtractedClaims extractClaims(final String authHeader) throws JwkException  {
+    public ExtractedClaims extractClaims(final String authHeader,
+                                         final boolean isJwtMustBeVerified) throws JwkException  {
         // Take the 1st authorization parameter from the header value:
         // Authorization: <auth-scheme> <authorization-parameters>
         final String encodedToken = authHeader.split(" ")[1];
-        return extractClaimsFromEncodedToken(encodedToken);
+        return extractClaimsFromEncodedToken(encodedToken, isJwtMustBeVerified);
     }
 
-    public ExtractedClaims extractClaimsFromEncodedToken(final String encodedToken) throws JwkException {
+    public ExtractedClaims extractClaimsFromEncodedToken(final String encodedToken,
+                                                         final boolean isJwtMustBeVerified) throws JwkException {
         if (encodedToken == null) {
             return null;
         }
-        final DecodedJWT decodedJWT = decodeAndVerifyJwtToken(encodedToken);
+        final DecodedJWT decodedJWT = isJwtMustBeVerified ? decodeAndVerifyJwtToken(encodedToken)
+                : decodeJwtToken(encodedToken);
 
         return new ExtractedClaims(extractUserRoles(decodedJWT), extractUserHash(decodedJWT));
     }

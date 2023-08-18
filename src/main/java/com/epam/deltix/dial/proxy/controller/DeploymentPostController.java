@@ -136,7 +136,7 @@ public class DeploymentPostController {
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
         }
 
-        if (!context.getKey().isUserAuth()) {
+        if (context.getKey().getUserAuth() == UserAuth.DISABLED) {
             proxyRequest.headers().remove(HttpHeaders.AUTHORIZATION);
         }
 
