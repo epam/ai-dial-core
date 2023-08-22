@@ -31,7 +31,7 @@
     "port": 8080,
     "acceptBacklog": 4096,
     "idleTimeoutUnit": "MILLISECONDS",
-    "idleTimeout": 60000,
+    "idleTimeout": 300000,
     "compressionSupported": true
   },
   "identityProvider": {
