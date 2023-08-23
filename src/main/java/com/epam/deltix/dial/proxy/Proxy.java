@@ -94,6 +94,8 @@ public class Proxy implements Handler<HttpServerRequest> {
             return respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
         }
 
+        log.info("Authorization header: {}", authorization);
+
         ExtractedClaims extractedClaims = null;
         if (authorization != null) {
             try {
