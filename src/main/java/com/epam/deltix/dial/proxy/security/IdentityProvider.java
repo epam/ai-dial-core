@@ -6,11 +6,7 @@ import com.auth0.jwk.JwkException;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
-import io.vertx.core.Future;
-import io.vertx.core.Vertx;
-import io.vertx.core.impl.future.SucceededFuture;
 import io.vertx.core.json.JsonObject;
 
 import java.net.MalformedURLException;
@@ -48,7 +44,7 @@ public class IdentityProvider {
 
         loggingKey = settings.getString("loggingKey");
         if (loggingKey != null) {
-            loggingSalt = Objects.requireNonNull(settings.getString("appName"), "appName is missed");
+            loggingSalt = Objects.requireNonNull(settings.getString("loggingKey"), "loggingKey is missed");
         } else {
             loggingSalt = null;
         }
