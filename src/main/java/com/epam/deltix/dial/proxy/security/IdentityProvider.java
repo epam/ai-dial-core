@@ -44,7 +44,7 @@ public class IdentityProvider {
 
         loggingKey = settings.getString("loggingKey");
         if (loggingKey != null) {
-            loggingSalt = Objects.requireNonNull(settings.getString("loggingKey"), "loggingKey is missed");
+            loggingSalt = Objects.requireNonNull(settings.getString("loggingSalt"), "loggingSalt is missed");
         } else {
             loggingSalt = null;
         }
