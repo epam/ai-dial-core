@@ -31,7 +31,7 @@
   "models": {
     "chat-gpt-35-turbo": {
       "type": "chat",
-      "endpoint" : "http://localhost:7001",
+      "endpoint" : "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey1"},
         {"endpoint": "http://localhost:7002", "key": "modelKey2"},
@@ -40,7 +40,7 @@
     },
     "embedding-ada": {
       "type": "embedding",
-      "endpoint" : "http://localhost:7001",
+      "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
       ]
