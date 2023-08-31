@@ -302,6 +302,11 @@ public class DeploymentPostController {
         HttpServerRequest request = context.getRequest();
         Deployment deployment = context.getDeployment();
         String endpoint = deployment.getEndpoint();
+
+        if (deployment instanceof Model) {
+            return endpoint + ProxyUtil.stripExtraLeadingSlashes(request.uri());
+        }
+
         String query = request.query();
         return endpoint + (query == null ? "" : "?" + query);
     }
