@@ -45,7 +45,7 @@
       "displayName": "GPT 3.5",
       "iconUrl": "http://localhost:7001/logo.png",
       "description": "Some description of the model for testing",
-      "endpoint" : "http://localhost:7001",
+      "endpoint" : "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey1"},
         {"endpoint": "http://localhost:7002", "key": "modelKey2"},
@@ -54,7 +54,7 @@
     },
     "embedding-ada": {
       "type": "embedding",
-      "endpoint" : "http://localhost:7001",
+      "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
       ]
