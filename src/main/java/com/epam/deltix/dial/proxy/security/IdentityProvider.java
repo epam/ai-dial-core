@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 
 public class IdentityProvider {
 
+    public static final ExtractedClaims CLAIMS_WITH_EMPTY_ROLES = new ExtractedClaims(Collections.emptyList(), null);
+
     private final String appName;
 
     private final GuavaCachedJwkProvider jwkProvider;
@@ -105,6 +107,9 @@ public class IdentityProvider {
 
     public ExtractedClaims extractClaims(final String authHeader,
                                          final boolean isJwtMustBeVerified) throws JwkException  {
+        if (authHeader == null) {
+            return null;
+        }
         // Take the 1st authorization parameter from the header value:
         // Authorization: <auth-scheme> <authorization-parameters>
         final String encodedToken = authHeader.split(" ")[1];

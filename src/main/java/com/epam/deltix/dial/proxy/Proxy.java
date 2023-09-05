@@ -24,7 +24,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.List;
 import java.util.Objects;
 
 @Slf4j
@@ -106,6 +105,8 @@ public class Proxy implements Handler<HttpServerRequest> {
                     return respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
                 } else {
                     log.info("Can't extract claims from authorization header");
+                    // if token is invalid set user roles to empty list
+                    extractedClaims = IdentityProvider.CLAIMS_WITH_EMPTY_ROLES;
                 }
             }
         }
