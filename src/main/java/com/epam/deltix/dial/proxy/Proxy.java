@@ -89,7 +89,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        //log.info("Authorization header: {}", authorization);
+        log.debug("Authorization header: {}", authorization);
         if (authorization == null && key.getUserAuth() == UserAuth.ENABLED) {
             return respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
         }
