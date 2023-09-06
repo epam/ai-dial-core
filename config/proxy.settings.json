@@ -1,8 +1,0 @@
-{
-  "server": {
-    "port": 80
-  },
-  "config": {
-    "files": ["/opt/deltix/dial/proxy/config/proxy.config.json"]
-  }
-}

@@ -4,7 +4,7 @@ plugins {
     id "io.freefair.lombok" version "8.0.1"
 }
 
-group = "com.epam.deltix.dial"
+group = "com.epam.aidial"
 version = "1.0"
 
 java {
@@ -41,7 +41,7 @@ dependencies {
 }
 
 application {
-    mainClass = "com.epam.deltix.dial.proxy.ProxyApp"
+    mainClass = "com.epam.aidial.core.AIDial"
 }
 
 test {

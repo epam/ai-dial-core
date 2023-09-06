@@ -87,7 +87,7 @@ build_backend:
   artifacts:
     when: always
     paths:
-      - build/distributions/dial-proxy-*.tar
+      - build/distributions/aidial-core-*.tar
   cache:
     key: "$GRADLE_CACHE_KEY"
     paths:
