@@ -1,5 +1,7 @@
 package com.epam.aidial.core.controller;
 
+import com.epam.aidial.core.Proxy;
+import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Addon;
 import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Assistants;
@@ -9,17 +11,15 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UserAuth;
-import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
-import com.epam.aidial.core.util.ProxyUtil;
-import com.epam.aidial.core.Proxy;
-import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
+import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;

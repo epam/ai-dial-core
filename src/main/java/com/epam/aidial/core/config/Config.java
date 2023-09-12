@@ -1,7 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.*;
+import lombok.Data;
 
 import java.util.Map;
 

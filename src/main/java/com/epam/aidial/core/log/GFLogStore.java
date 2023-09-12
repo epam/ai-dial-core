@@ -27,7 +27,7 @@ public class GFLogStore implements LogStore {
     private final Vertx vertx;
 
     public GFLogStore(Vertx vertx) {
-       this.vertx = vertx;
+        this.vertx = vertx;
     }
 
     @Override

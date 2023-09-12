@@ -11,6 +11,6 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ListData<T> {
-   private List<T> data = List.of();
-   private String object = "list";
+    private List<T> data = List.of();
+    private String object = "list";
 }

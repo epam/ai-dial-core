@@ -1,7 +1,7 @@
 package com.epam.aidial.core.controller;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.data.ApplicationData;
 import com.epam.aidial.core.data.ListData;

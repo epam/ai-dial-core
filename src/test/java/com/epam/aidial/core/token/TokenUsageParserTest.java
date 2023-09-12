@@ -134,7 +134,7 @@ class TokenUsageParserTest {
                        }
                  
                  data: [DONE]
-                
+                                
                 """, 10, 20, 30);
     }
 

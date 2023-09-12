@@ -106,7 +106,7 @@ public class IdentityProvider {
     }
 
     public ExtractedClaims extractClaims(final String authHeader,
-                                         final boolean isJwtMustBeVerified) throws JwkException  {
+                                         final boolean isJwtMustBeVerified) throws JwkException {
         if (authHeader == null) {
             return null;
         }

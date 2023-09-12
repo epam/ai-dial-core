@@ -1,11 +1,11 @@
 package com.epam.aidial.core.controller;
 
-import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Assistant;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.data.AssistantData;
 import com.epam.aidial.core.data.ListData;
+import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 

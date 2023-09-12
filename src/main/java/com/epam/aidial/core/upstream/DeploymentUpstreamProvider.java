@@ -1,8 +1,8 @@
 package com.epam.aidial.core.upstream;
 
-import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 
 import java.util.List;
 
