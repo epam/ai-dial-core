@@ -1,12 +1,13 @@
 FROM eclipse-temurin:17-jdk-alpine
 
-ADD ./build/distributions/dial-proxy*.tar /opt/deltix/dial/
-RUN mv /opt/deltix/dial/dial-proxy-* /opt/deltix/dial/proxy
-COPY ./config/* /opt/deltix/dial/proxy/config/
+ADD ./build/distributions/aidial-core*.tar /opt/epam/aidial/
+RUN mv /opt/epam/aidial/aidial-core-*/* /opt/epam/aidial/
+RUN rmdir /opt/epam/aidial/aidial-core-*
+COPY ./config/* /opt/epam/aidial/config/
 
-ENV PROXY_SETTINGS=/opt/deltix/dial/proxy/config/proxy.settings.json
-ENV JAVA_OPTS="-Dgflog.config=/opt/deltix/dial/proxy/config/gflog.xml"
+ENV AIDIAL_SETTINGS=/opt/epam/aidial/config/aidial.settings.json
+ENV JAVA_OPTS="-Dgflog.config=/opt/epam/aidial/config/gflog.xml"
 
 EXPOSE 80
 EXPOSE 9464
-ENTRYPOINT ["/opt/deltix/dial/proxy/bin/dial-proxy"]
+ENTRYPOINT ["/opt/epam/aidial/bin/aidial-core"]

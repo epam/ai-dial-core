@@ -1,7 +1,7 @@
 <config>
     <appender name="console" factory="com.epam.deltix.gflog.core.appender.ConsoleAppenderFactory"/>
     <appender name="file" factory="com.epam.deltix.gflog.core.appender.DailyRollingFileAppenderFactory"
-              bufferCapacity="32m" file="log/proxy.log" maxFiles="10" maxFileSize="1g">
+              bufferCapacity="32m" file="log/aidial.log" maxFiles="10" maxFileSize="1g">
         <layout template="%m%n"/>
     </appender>
 
@@ -9,7 +9,7 @@
         <appender-ref ref="console"/>
     </logger>
 
-    <logger level="INFO" name="proxy.log">
+    <logger level="INFO" name="aidial.log">
         <appender-ref ref="file"/>
     </logger>
 

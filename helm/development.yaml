@@ -44,7 +44,7 @@ serviceAccount:
   create: true
 
 env:
-  proxy.config.files: '["/mnt/secrets-store/dialConfig","/mnt/secrets-store/dialKey","/mnt/secrets-store/dialAida"]'
+  aidial.config.files: '["/mnt/secrets-store/dialConfig","/mnt/secrets-store/dialKey","/mnt/secrets-store/dialAida"]'
 
 extraVolumes:
   - name: secrets
@@ -73,24 +73,24 @@ logger:
 
   config: | 
     sources:
-      proxy_logs:
+      aidial_logs:
         type: "file"
         max_line_bytes: 100000000
         oldest_first: true
         include:
-          - /opt/deltix/dial/proxy/log/*.log
+          - /opt/epam/aidial/log/*.log
 
     sinks:
       console:
         inputs:
-          - proxy_logs
+          - aidial_logs
         type: console
         target: "stdout"
         encoding:
           codec: "text"
       http_sink:
         inputs:
-          - proxy_logs
+          - aidial_logs
         type: http
         uri: http://dial-analytics.dial-analytics/data
         encoding:
