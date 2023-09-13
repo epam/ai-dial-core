@@ -9,4 +9,4 @@ env:
 
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/publish_docker.yml@feat/test-ci
+    uses: epam/ai-dial-ci/.github/workflows/publish_docker_gradle.yml@feat/test-ci
