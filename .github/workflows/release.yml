@@ -1,0 +1,12 @@
+name: Release version
+
+on:
+  push:
+    branches: [ development, release-* ]
+
+env:
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  release:
+    uses: epam/ai-dial-ci/.github/workflows/publish_docker.yml@feat/test-ci
