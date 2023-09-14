@@ -8,6 +8,7 @@ COPY ./config/* /opt/epam/aidial/config/
 ENV AIDIAL_SETTINGS=/opt/epam/aidial/config/aidial.settings.json
 ENV JAVA_OPTS="-Dgflog.config=/opt/epam/aidial/config/gflog.xml"
 
+
 EXPOSE 80
 EXPOSE 9464
 ENTRYPOINT ["/opt/epam/aidial/bin/aidial-core"]
