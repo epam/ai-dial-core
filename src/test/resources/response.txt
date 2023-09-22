@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
+  "object": "chat.completion",
+  "created": 1687781517,
+  "model": "gpt-35-turbo",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "As an AI language model, I do not have emotions like humans. However, I am functioning well and ready to assist you. How can I help you today?"
+      }
+    }
+  ],
+  "usage": {
+    "completion_tokens": 33,
+    "prompt_tokens": 19,
+    "total_tokens": 52
+  }
+}

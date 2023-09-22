@@ -1,0 +1,55 @@
+plugins {
+    id "java"
+    id 'checkstyle'
+    id 'application'
+    id 'io.freefair.lombok' version '8.0.1'
+}
+
+group = 'com.epam.aidial'
+version = "1.0"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+checkstyle {
+    configDirectory = file("$rootProject.projectDir/checkstyle")
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.google.protobuf:protobuf-java:3.19.6'
+    implementation 'org.slf4j:slf4j-api:1.7.32'
+    implementation 'com.epam.deltix:gflog-api:3.0.3'
+    implementation 'com.epam.deltix:gflog-core:3.0.3'
+    implementation 'io.vertx:vertx-core:4.4.4'
+    implementation 'io.vertx:vertx-config:4.4.4'
+    implementation 'io.vertx:vertx-opentelemetry:4.4.4'
+    implementation 'io.vertx:vertx-micrometer-metrics:4.4.4'
+    implementation 'io.micrometer:micrometer-registry-prometheus:1.11.2'
+    implementation 'io.micrometer:micrometer-registry-otlp:1.11.2'
+    implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.28.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.28.0'
+    implementation 'org.apache.commons:commons-lang3:3.12.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation 'com.auth0:java-jwt:4.4.0'
+    implementation 'com.auth0:jwks-rsa:0.22.1'
+
+    runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.0'
+    testImplementation 'org.mockito:mockito-core:5.4.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
+}
+
+application {
+    mainClass = 'com.epam.aidial.core.AiDial'
+}
+
+test {
+    useJUnitPlatform()
+}

@@ -1,0 +1,13 @@
+curl -X GET http://localhost:8080/openai/deployments?api-version=2023-03-15-preview -H "api-key: proxyKey1"
+curl -X GET http://localhost:8080/openai/deployments/assistant?api-version=2023-03-15-preview -H "api-key: proxyKey1"
+
+curl -X GET http://localhost:8080/openai/models?api-version=2023-03-15-preview -H "api-key: proxyKey1" -d 123
+curl -X GET http://localhost:8080/openai/models/chat-gpt-35-turbo?api-version=2023-03-15-preview -H "api-key: proxyKey1"
+
+curl -X GET http://localhost:8080/openai/addons?api-version=2023-03-15-preview -H "api-key: proxyKey1"
+curl -X GET http://localhost:8080/openai/assistants?api-version=2023-03-15-preview -H "api-key: proxyKey1"
+curl -X GET http://localhost:8080/openai/applications?api-version=2023-03-15-preview -H "api-key: proxyKey1"
+
+curl -X POST http://localhost:8080/openai/deployments/chat-gpt-35-turbo/chat/completions?api-version=2023-03-15-preview -H "api-key: proxyKey1" -d @src/test/resources/request.txt
+curl -X POST http://localhost:8080/openai/deployments/ass/chat/completions?api-version=2023-03-15-preview -H "api-key: proxyKey1" -d @src/test/resources/request.txt
+curl -X POST http://localhost:8080/openai/deployments/app/chat/completions?api-version=2023-03-15-preview -H "api-key: proxyKey1" -d @src/test/resources/request.txt
