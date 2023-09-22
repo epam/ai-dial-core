@@ -1,0 +1,16 @@
+name: Code checks - tests
+
+on:
+  pull_request:
+    branches:
+      - development
+      - release-*
+
+jobs:
+  run_tests:
+    uses: epam/ai-dial-ci/.github/workflows/test_gradle_docker.yml@0.1.0
+    secrets: inherit
+    with:
+      bypass_checks: false
+      java_version: 17
+      java_distribution: temurin
