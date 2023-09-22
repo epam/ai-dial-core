@@ -1,0 +1,15 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": ""
+    },
+    {
+      "role": "user",
+      "content": "How are you?"
+    }
+  ],
+  "max_tokens": 500,
+  "temperature": 1,
+  "stream": true
+}
