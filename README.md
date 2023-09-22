@@ -21,7 +21,6 @@ Or run com.epam.aidial.core.AIDial class from your favorite IDE.
 
 ## Configuration
 
-
 ## License
 Copyright (C) 2023 EPAM Systems
 
