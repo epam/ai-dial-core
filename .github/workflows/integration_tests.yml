@@ -8,5 +8,5 @@ on:
 
 jobs:
   integration_tests:
-    uses: epam/ai-dial-ci/.github/workflows/trigger_integration_tests.yml@0.1.0
+    uses: epam/ai-dial-ci/.github/workflows/trigger_integration_tests.yml@0.3.0
     secrets: inherit
