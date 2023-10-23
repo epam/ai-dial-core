@@ -1,13 +1,29 @@
+FROM gradle:8.2.0-jdk17-alpine as cache
+WORKDIR /home/gradle/src
+ENV GRADLE_USER_HOME /cache
+COPY build.gradle settings.gradle ./
+RUN gradle --no-daemon build --stacktrace
+
+FROM gradle:8.2.0-jdk17-alpine as builder
+COPY --from=cache /cache /home/gradle/.gradle
+COPY --chown=gradle:gradle . /home/gradle/src
+WORKDIR /home/gradle/src
+RUN gradle --no-daemon build --stacktrace -PdisableCompression=true
+RUN mkdir /build && tar -xf /home/gradle/src/build/distributions/aidial-core*.tar --strip-components=1 -C /build
+
 FROM eclipse-temurin:17-jdk-alpine
 
-ADD ./build/distributions/aidial-core*.tar /opt/epam/aidial/
-RUN mv /opt/epam/aidial/aidial-core-*/* /opt/epam/aidial/
-RUN rmdir /opt/epam/aidial/aidial-core-*
-COPY ./config/* /opt/epam/aidial/config/
+ENV AIDIAL_SETTINGS=/app/config/aidial.settings.json
+ENV JAVA_OPTS="-Dgflog.config=/app/config/gflog.xml"
+WORKDIR /app
 
-ENV AIDIAL_SETTINGS=/opt/epam/aidial/config/aidial.settings.json
-ENV JAVA_OPTS="-Dgflog.config=/opt/epam/aidial/config/gflog.xml"
+RUN adduser -u 1001 --disabled-password --gecos "" appuser 
 
-EXPOSE 80
-EXPOSE 9464
-ENTRYPOINT ["/opt/epam/aidial/bin/aidial-core"]
+COPY --from=builder --chown=appuser:appuser /build/ .
+COPY --chown=appuser:appuser ./config/* /app/config/
+RUN mkdir /app/log && chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 8080 9464
+ENTRYPOINT ["/app/bin/aidial-core"]
