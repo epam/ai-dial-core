@@ -1,8 +1,8 @@
 {
   "server": {
-    "port": 80
+    "port": 8080
   },
   "config": {
-    "files": ["/opt/epam/aidial/config/aidial.config.json"]
+    "files": ["/app/config/aidial.config.json"]
   }
 }

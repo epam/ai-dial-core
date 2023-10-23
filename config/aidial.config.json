@@ -48,11 +48,11 @@
   },
   "keys": {
     "proxyKey1": {
-      "project": "EPM-RTC-GPT",
+      "project": "TestProject1",
       "role": "default"
     },
     "proxyKey2": {
-      "project": "EPM-RTC-RAIL",
+      "project": "TestProject2",
       "role": "default"
     }
   },
