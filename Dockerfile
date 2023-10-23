@@ -1,10 +1,10 @@
-FROM gradle:8.3.0-jdk17-alpine as cache
+FROM gradle:8.2.0-jdk17-alpine as cache
 WORKDIR /home/gradle/src
 ENV GRADLE_USER_HOME /cache
 COPY build.gradle settings.gradle ./
 RUN gradle --no-daemon build --stacktrace
 
-FROM gradle:8.3.0-jdk17-alpine as builder
+FROM gradle:8.2.0-jdk17-alpine as builder
 COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
