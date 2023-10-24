@@ -39,6 +39,7 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     implementation 'com.auth0:java-jwt:4.4.0'
     implementation 'com.auth0:jwks-rsa:0.22.1'
+    implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
 
     runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.0'
     testImplementation 'org.mockito:mockito-core:5.4.0'

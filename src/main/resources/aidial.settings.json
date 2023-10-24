@@ -41,5 +41,12 @@
   "identityProvider": {
     "jwksUrl": null,
     "appName": "dial"
+  },
+  "storage": {
+    "provider" : "s3",
+    "endpoint" : "http://localhost:9000",
+    "identity": "access-key",
+    "credential": "secret-key",
+    "bucket": "dail"
   }
 }

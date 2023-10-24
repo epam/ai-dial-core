@@ -10,11 +10,13 @@ import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.security.IdentityProvider;
+import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
@@ -42,14 +44,16 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
 
-    public static final int REQUEST_BODY_MAX_SIZE = 16 * 1024 * 1024;
+    public static final int REQUEST_BODY_MAX_SIZE = 512 * 1024 * 1024;
 
+    private final Vertx vertx;
     private final HttpClient client;
     private final ConfigStore configStore;
     private final LogStore logStore;
     private final RateLimiter rateLimiter;
     private final UpstreamBalancer upstreamBalancer;
     private final IdentityProvider identityProvider;
+    private final BlobStorage storage;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -74,7 +78,8 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        if (request.method() != HttpMethod.GET && request.method() != HttpMethod.POST) {
+        HttpMethod requestMethod = request.method();
+        if (requestMethod != HttpMethod.GET && requestMethod != HttpMethod.POST && requestMethod != HttpMethod.DELETE) {
             respond(request, HttpStatus.METHOD_NOT_ALLOWED);
             return;
         }
@@ -141,7 +146,8 @@ public class Proxy implements Handler<HttpServerRequest> {
         });
     }
 
-    private void onExtractClaimsFailure(Throwable error, Config config, HttpServerRequest request, Key key) throws Exception {
+    private void onExtractClaimsFailure(Throwable error, Config config, HttpServerRequest request, Key key)
+            throws Exception {
         if (key.getUserAuth() == UserAuth.ENABLED) {
             log.error("Can't extract claims from authorization header", error);
             respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
@@ -152,7 +158,8 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config, HttpServerRequest request, Key key) throws Exception {
+    private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
+                                        HttpServerRequest request, Key key) throws Exception {
         ProxyContext context = new ProxyContext(config, request, key, extractedClaims);
         Controller controller = ControllerSelector.select(this, context);
         controller.handle();

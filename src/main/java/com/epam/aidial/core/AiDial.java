@@ -2,10 +2,12 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.FileConfigStore;
+import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.IdentityProvider;
+import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -17,6 +19,7 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -40,6 +43,8 @@ public class AiDial {
     private HttpServer server;
     private HttpClient client;
 
+    private BlobStorage storage;
+
     private void start() throws Exception {
         try {
             settings = settings();
@@ -56,7 +61,9 @@ public class AiDial {
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
             IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx);
-            Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider);
+            Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
+            storage = new BlobStorage(storageConfig);
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider, storage);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -75,6 +82,9 @@ public class AiDial {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
             close(vertx, Vertx::close);
+            if (storage != null) {
+                storage.close();
+            }
             log.info("Proxy stopped");
             LogConfigurator.unconfigure();
         } catch (Throwable e) {
