@@ -26,7 +26,7 @@ RUN mkdir /app/log && chown -R appuser:appuser /app
 USER appuser
 
 HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
-  CMD wget --no-verbose --spider --tries=1 http://localhost:80/health || exit 1
+  CMD wget --no-verbose --spider --tries=1 http://localhost:8080/health || exit 1
 
 EXPOSE 8080 9464
 ENTRYPOINT ["/app/bin/aidial-core"]
