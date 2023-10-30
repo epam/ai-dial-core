@@ -24,12 +24,16 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 @Slf4j
 @Getter
 @RequiredArgsConstructor
 public class Proxy implements Handler<HttpServerRequest> {
+
+    public static final String HEALTH_CHECK_PATH = "/health";
 
     public static final String HEADER_API_KEY = "API-KEY";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
@@ -74,6 +78,11 @@ public class Proxy implements Handler<HttpServerRequest> {
         // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
         if (ProxyUtil.contentLength(request, 1024) > REQUEST_BODY_MAX_SIZE) {
             return respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
+        }
+
+        String path = URLDecoder.decode(request.path(), StandardCharsets.UTF_8);
+        if (request.method() == HttpMethod.GET && path.equals(HEALTH_CHECK_PATH)) {
+            return respond(request, HttpStatus.OK);
         }
 
         String apiKey = request.headers().get(HEADER_API_KEY);

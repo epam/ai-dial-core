@@ -17,13 +17,16 @@ ENV AIDIAL_SETTINGS=/app/config/aidial.settings.json
 ENV JAVA_OPTS="-Dgflog.config=/app/config/gflog.xml"
 WORKDIR /app
 
-RUN adduser -u 1001 --disabled-password --gecos "" appuser 
+RUN adduser -u 1001 --disabled-password --gecos "" appuser
 
 COPY --from=builder --chown=appuser:appuser /build/ .
 COPY --chown=appuser:appuser ./config/* /app/config/
 RUN mkdir /app/log && chown -R appuser:appuser /app
 
 USER appuser
+
+HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
+  CMD wget --no-verbose --spider --tries=1 http://localhost:8080/health || exit 1
 
 EXPOSE 8080 9464
 ENTRYPOINT ["/app/bin/aidial-core"]
