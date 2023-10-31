@@ -39,7 +39,7 @@
     "reload": 60000
   },
   "identityProvider": {
-    "jwksUrl": "https://kctest.staging.deltixhub.io/realms/EPAM/protocol/openid-connect/certs",
+    "jwksUrl": null,
     "appName": "dial"
   }
 }
