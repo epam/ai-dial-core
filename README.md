@@ -2,7 +2,7 @@
 
 ## Overview
 
-HTTP Proxy provides unified API to different chat completion and embedding models, assistants and applications. 
+HTTP Proxy provides unified API to different chat completion and embedding models, assistants and applications.
 Written in Java 17 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ## Build
@@ -11,7 +11,7 @@ Build the project with Gradle and Java 17:
 ```
 ./gradlew build
 ```
-## Run
+## Run huh
 
 Run the project with Gradle:
 ```
