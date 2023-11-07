@@ -9,5 +9,5 @@ env:
 
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/publish_gradle_docker.yml@1.0.0
+    uses: epam/ai-dial-ci/.github/workflows/publish_gradle_docker.yml@1.0.1
     secrets: inherit

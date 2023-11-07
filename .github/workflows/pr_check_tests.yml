@@ -8,7 +8,7 @@ on:
 
 jobs:
   run_tests:
-    uses: epam/ai-dial-ci/.github/workflows/test_gradle_docker.yml@1.0.0
+    uses: epam/ai-dial-ci/.github/workflows/test_gradle_docker.yml@1.0.1
     secrets: inherit
     with:
       bypass_checks: false
