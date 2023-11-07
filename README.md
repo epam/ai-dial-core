@@ -10,6 +10,8 @@ huh
 
 huh
 
+huh
+
 HTTP Proxy provides unified API to different chat completion and embedding models, assistants and applications.
 Written in Java 17 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
