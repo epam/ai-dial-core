@@ -26,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 
 @Slf4j
 @Getter
@@ -55,82 +54,115 @@ public class Proxy implements Handler<HttpServerRequest> {
     @Override
     public void handle(HttpServerRequest request) {
         try {
-            Future<?> future = handleRequest(request);
-            Objects.requireNonNull(future);
+            handleRequest(request);
         } catch (Throwable e) {
-            log.warn("Can't handle request: {}", e.getMessage());
-            respond(request, HttpStatus.INTERNAL_SERVER_ERROR);
+            handleError(e, request);
         }
+    }
+
+    private void handleError(Throwable error, HttpServerRequest request) {
+        log.warn("Can't handle request: {}", error.getMessage());
+        respond(request, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     /**
      * Called when proxy received the request headers from a client.
      */
-    private Future<?> handleRequest(HttpServerRequest request) throws Exception {
+    private void handleRequest(HttpServerRequest request) throws Exception {
         if (request.version() != HttpVersion.HTTP_1_1) {
-            return respond(request, HttpStatus.HTTP_VERSION_NOT_SUPPORTED);
+            respond(request, HttpStatus.HTTP_VERSION_NOT_SUPPORTED);
+            return;
         }
 
         if (request.method() != HttpMethod.GET && request.method() != HttpMethod.POST) {
-            return respond(request, HttpStatus.METHOD_NOT_ALLOWED);
+            respond(request, HttpStatus.METHOD_NOT_ALLOWED);
+            return;
         }
 
         // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
         if (ProxyUtil.contentLength(request, 1024) > REQUEST_BODY_MAX_SIZE) {
-            return respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
+            respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
+            return;
         }
 
         String path = URLDecoder.decode(request.path(), StandardCharsets.UTF_8);
         if (request.method() == HttpMethod.GET && path.equals(HEALTH_CHECK_PATH)) {
-            return respond(request, HttpStatus.OK);
+            respond(request, HttpStatus.OK);
+            return;
         }
 
         String apiKey = request.headers().get(HEADER_API_KEY);
         if (apiKey == null) {
-            return respond(request, HttpStatus.UNAUTHORIZED, "Missing API-KEY header");
+            respond(request, HttpStatus.UNAUTHORIZED, "Missing API-KEY header");
+            return;
         }
 
         Config config = configStore.load();
         Key key = config.getKeys().get(apiKey);
 
         if (key == null) {
-            return respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
+            respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
+            return;
         }
 
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.debug("Authorization header: {}", authorization);
         if (authorization == null && key.getUserAuth() == UserAuth.ENABLED) {
-            return respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
+            respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
+            return;
         }
 
-        ExtractedClaims extractedClaims = null;
+        request.pause();
+        Future<ExtractedClaims> extractedClaims;
         if (authorization != null) {
             try {
                 final boolean isJwtMustBeValidated = key.getUserAuth() != UserAuth.DISABLED;
                 extractedClaims = identityProvider.extractClaims(authorization, isJwtMustBeValidated);
             } catch (Throwable e) {
-                if (key.getUserAuth() == UserAuth.ENABLED) {
-                    log.error("Can't extract claims from authorization header", e);
-                    return respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
-                } else {
-                    log.info("Can't extract claims from authorization header");
-                    // if token is invalid set user roles to empty list
-                    extractedClaims = IdentityProvider.CLAIMS_WITH_EMPTY_ROLES;
-                }
+                onExtractClaimsFailure(e, config, request, key);
+                return;
             }
+        } else {
+            extractedClaims = Future.succeededFuture();
         }
 
+        extractedClaims.onComplete(result -> {
+            try {
+                if (result.succeeded()) {
+                    onExtractClaimsSuccess(result.result(), config, request, key);
+                } else {
+                    onExtractClaimsFailure(result.cause(), config, request, key);
+                }
+            } catch (Throwable e) {
+                handleError(e, request);
+            } finally {
+                request.resume();
+            }
+        });
+    }
+
+    private void onExtractClaimsFailure(Throwable error, Config config, HttpServerRequest request, Key key) throws Exception {
+        if (key.getUserAuth() == UserAuth.ENABLED) {
+            log.error("Can't extract claims from authorization header", error);
+            respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
+        } else {
+            log.info("Can't extract claims from authorization header");
+            // if token is invalid set user roles to empty list
+            onExtractClaimsSuccess(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, config, request, key);
+        }
+    }
+
+    private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config, HttpServerRequest request, Key key) throws Exception {
         ProxyContext context = new ProxyContext(config, request, key, extractedClaims);
         Controller controller = ControllerSelector.select(this, context);
-
-        return controller.handle();
+        controller.handle();
     }
 
-    private Future<?> respond(HttpServerRequest request, HttpStatus status) {
-        return request.response().setStatusCode(status.getCode()).end();
+    private void respond(HttpServerRequest request, HttpStatus status) {
+        request.response().setStatusCode(status.getCode()).end();
     }
 
-    private Future<?> respond(HttpServerRequest request, HttpStatus status, String body) {
-        return request.response().setStatusCode(status.getCode()).end(body);
+    private void respond(HttpServerRequest request, HttpStatus status, String body) {
+        request.response().setStatusCode(status.getCode()).end(body);
     }
 }

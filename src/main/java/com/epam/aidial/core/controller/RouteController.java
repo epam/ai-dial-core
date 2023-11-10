@@ -75,7 +75,6 @@ public class RouteController implements Controller {
         Upstream upstream = route.next();
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(upstream.getEndpoint()))
-                .setURI(request.uri())
                 .setMethod(request.method());
 
         return proxy.getClient().request(options)

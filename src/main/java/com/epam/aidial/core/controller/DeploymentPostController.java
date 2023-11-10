@@ -11,6 +11,8 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.config.UserAuth;
+import com.epam.aidial.core.data.ErrorData;
+import com.epam.aidial.core.limiter.RateLimitResult;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
 import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
@@ -32,6 +34,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.net.SocketAddress;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +42,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.InputStream;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -49,6 +53,9 @@ import java.util.Set;
 public class DeploymentPostController {
 
     private static final String ASSISTANT = "assistant";
+    private static final Set<Integer> RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
+            HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
+            HttpStatus.SERVICE_UNAVAILABLE.getCode());
 
     private final Proxy proxy;
     private final ProxyContext context;
@@ -65,9 +72,13 @@ public class DeploymentPostController {
         if (deployment == null || (!isAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
-
-        if (deployment instanceof Model && proxy.getRateLimiter().limit(context)) {
-            return context.respond(HttpStatus.TOO_MANY_REQUESTS, "Hit token rate limit");
+        RateLimitResult rateLimitResult;
+        if (deployment instanceof Model && (rateLimitResult = proxy.getRateLimiter().limit(context)).status() != HttpStatus.OK) {
+            // Returning an error similar to the Azure format.
+            ErrorData rateLimitError = new ErrorData();
+            rateLimitError.getError().setCode(String.valueOf(rateLimitResult.status().getCode()));
+            rateLimitError.getError().setMessage(rateLimitResult.errorMessage());
+            return context.respond(rateLimitResult.status(), rateLimitError);
         }
 
         log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getKey().getProject(),
@@ -145,16 +156,21 @@ public class DeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        Deployment deployment = context.getDeployment();
+        Set<CharSequence> excludeHeaders = new HashSet<>();
+        if (!deployment.isForwardApiKey()) {
+            excludeHeaders.add(Proxy.HEADER_API_KEY);
+        }
+        if (!deployment.isForwardAuthToken() || context.getKey().getUserAuth() == UserAuth.DISABLED) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION);
+        }
+
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = context.getUpstreamRoute().get();
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
-        }
-
-        if (context.getKey().getUserAuth() == UserAuth.DISABLED) {
-            proxyRequest.headers().remove(HttpHeaders.AUTHORIZATION);
         }
 
         Buffer requestBody = context.getRequestBody();
@@ -163,7 +179,7 @@ public class DeploymentPostController {
 
         proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
-                .onFailure(this::handleProxyRequestError);
+                .onFailure(this::handleProxyResponseError);
     }
 
     /**
@@ -175,10 +191,7 @@ public class DeploymentPostController {
                 context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        if (context.getUpstreamRoute().hasNext()
-                && (proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()
-                || proxyResponse.statusCode() == HttpStatus.BAD_GATEWAY.getCode()
-                || proxyResponse.statusCode() == HttpStatus.GATEWAY_TIMEOUT.getCode())) {
+        if (context.getUpstreamRoute().hasNext() && RETRIABLE_HTTP_CODES.contains(proxyResponse.statusCode())) {
             sendRequest(); // try next
             return;
         }
@@ -256,16 +269,24 @@ public class DeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        log.warn("Can't connect to origin: {}", error.getMessage());
+        String projectName = context.getKey().getProject();
+        String deploymentName = context.getDeployment().getName();
+        String uri = buildUri(context);
+        log.warn("Can't connect to origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
+                deploymentName, uri, error.getMessage());
         context.respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
     }
 
     /**
-     * Called when proxy failed to send request to the origin.
+     * Called when proxy received failed response the origin.
      */
-    private void handleProxyRequestError(Throwable error) {
-        log.warn("Can't send request to origin: {}", error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "Failed to send request to origin");
+    private void handleProxyResponseError(Throwable error) {
+        String projectName = context.getKey().getProject();
+        String deploymentName = context.getDeployment().getName();
+        SocketAddress proxyAddress = context.getProxyRequest().connection().remoteAddress();
+        log.warn("Proxy received response error from origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
+                deploymentName, proxyAddress, error.getMessage());
+        context.respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
     }
 
     /**
