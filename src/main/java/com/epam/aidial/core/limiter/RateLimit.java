@@ -1,6 +1,7 @@
 package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.config.Limit;
+import com.epam.aidial.core.util.HttpStatus;
 
 public class RateLimit {
 
@@ -12,10 +13,21 @@ public class RateLimit {
         day.add(timestamp, count);
     }
 
-    public synchronized boolean update(long timestamp, Limit limit) {
+    public synchronized RateLimitResult update(long timestamp, Limit limit) {
         long minuteTotal = minute.update(timestamp);
         long dayTotal = day.update(timestamp);
 
-        return minuteTotal >= limit.getMinute() || dayTotal >= limit.getDay();
+        boolean result = minuteTotal >= limit.getMinute() || dayTotal >= limit.getDay();
+        if (result) {
+            String errorMsg = String.format("""
+                            Hit token rate limit:
+                             - minute limit: %d / %d tokens
+                             - day limit: %d / %d tokens
+                            """,
+                    minuteTotal, limit.getMinute(), dayTotal, limit.getDay());
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg);
+        } else {
+            return RateLimitResult.SUCCESS;
+        }
     }
 }
