@@ -1,11 +1,11 @@
 {
   "routes" : {
-    "10k-rate" : {
-      "paths": ["/+v1/10k/rate"],
+    "route-rate" : {
+      "paths": ["/+v1/rate"],
       "methods": ["POST"],
-      "upstreams": [
-        {"endpoint": "http://localhost:7001/openai/deployments/10k/rate", "key": "10k"}
-      ]
+      "response" : {
+        "status": 200
+      }
     }
   },
   "addons": {
