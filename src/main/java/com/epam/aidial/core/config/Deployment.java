@@ -12,4 +12,14 @@ public abstract class Deployment {
     private String iconUrl;
     private String description;
     private Set<String> userRoles = Set.of();
+    /**
+     * Forward Http header with authorization token when request is sent to deployment.
+     * Authorization token is forwarded by default.
+     */
+    private boolean forwardAuthToken = true;
+    /**
+     * Forward Http header with API key when request is sent to deployment.
+     * API key is forwarded by default.
+     */
+    private boolean forwardApiKey = true;
 }

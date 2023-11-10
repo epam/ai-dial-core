@@ -55,7 +55,7 @@ public class AiDial {
             RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
-            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"));
+            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx);
             Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);

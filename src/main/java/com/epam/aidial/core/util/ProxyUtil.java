@@ -8,7 +8,9 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
 
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
 @UtilityClass
 public class ProxyUtil {
@@ -31,11 +33,15 @@ public class ProxyUtil {
             .add(HttpHeaders.ACCEPT_ENCODING, "whatever");
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
+        copyHeaders(from, to, Collections.emptySet());
+    }
+
+    public static void copyHeaders(MultiMap from, MultiMap to, Set<CharSequence> excludeHeaders) {
         for (Map.Entry<String, String> entry : from.entries()) {
             String key = entry.getKey();
             String value = entry.getValue();
 
-            if (!HOP_BY_HOP_HEADERS.contains(key)) {
+            if (!HOP_BY_HOP_HEADERS.contains(key) && !excludeHeaders.contains(key)) {
                 to.add(key, value);
             }
         }
