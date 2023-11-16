@@ -147,8 +147,8 @@ public class IdentityProvider {
         }
     }
 
-    private String extractUserSub(DecodedJWT decodedJWT) {
-        return decodedJWT.getClaim("sub").asString();
+    private String extractUserSub(DecodedJWT decodedJwt) {
+        return decodedJwt.getClaim("sub").asString();
     }
 
     private String extractUserHash(DecodedJWT decodedJwt) {
