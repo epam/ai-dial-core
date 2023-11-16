@@ -2,6 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.InputStreamReader;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
@@ -20,14 +21,25 @@ import java.io.IOException;
 @AllArgsConstructor
 public class DownloadFileController {
 
+    private static final String PATH_TYPE_QUERY_PARAMETER = "path";
+    private static final String ABSOLUTE_PATH_TYPE = "absolute";
+
+    static final String PURPOSE_FILE_QUERY_PARAMETER = "purpose";
+
+    static final String QUERY_METADATA_QUERY_PARAMETER_VALUE = "metadata";
+
     private final Proxy proxy;
     private final ProxyContext context;
 
-    public Future<?> download(String fileId) throws Exception {
-        Future<Blob> blobFuture = proxy.getVertx().executeBlocking(result -> {
-            Blob blob = proxy.getStorage().load(fileId);
-            result.complete(blob);
-        });
+    public Future<?> download(String filePath) {
+        String pathType = context.getRequest().params().get(PATH_TYPE_QUERY_PARAMETER);
+        String absoluteFilePath;
+        if (!ABSOLUTE_PATH_TYPE.equals(pathType)) {
+            absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, filePath);
+        } else {
+            absoluteFilePath = filePath;
+        }
+        Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() -> proxy.getStorage().load(absoluteFilePath));
 
         Promise<Void> result = Promise.promise();
         blobFuture.onSuccess(blob -> {
@@ -52,12 +64,13 @@ public class DownloadFileController {
                 stream.pipeTo(response, result);
                 result.future().onFailure(error -> {
                     stream.close();
-                    context.getResponse().close();
+                    context.getResponse().reset();
                 });
             } catch (IOException e) {
                 result.fail(e);
             }
-        }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to fetch file with ID " + fileId));
+        }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Failed to fetch file with ID " + filePath));
 
         return result.future();
     }

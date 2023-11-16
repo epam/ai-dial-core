@@ -31,10 +31,6 @@ public class ControllerSelector {
 
     private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files(.*)");
 
-    private static final Pattern PATTERN_FILE = Pattern.compile("/v1/files/([-a-zA-Z0-9]+)");
-
-    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("/v1/files/metadata([-a-zA-Z0-9/]*)");
-
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = URLDecoder.decode(context.getRequest().path(), StandardCharsets.UTF_8);
         HttpMethod method = context.getRequest().method();
@@ -119,18 +115,17 @@ public class ControllerSelector {
             return controller::getApplications;
         }
 
-        match = match(PATTERN_FILES_METADATA, path);
+        match = match(PATTERN_FILES, path);
         if (match != null) {
             String filePath = match.group(1);
-            FileMetadataController controller = new FileMetadataController(proxy, context);
-            return () -> controller.list(filePath);
-        }
-
-        match = match(PATTERN_FILE, path);
-        if (match != null) {
-            DownloadFileController controller = new DownloadFileController(proxy, context);
-            String fileId = match.group(1);
-            return () -> controller.download(fileId);
+            String purpose = context.getRequest().params().get(DownloadFileController.PURPOSE_FILE_QUERY_PARAMETER);
+            if (DownloadFileController.QUERY_METADATA_QUERY_PARAMETER_VALUE.equals(purpose)) {
+                FileMetadataController controller = new FileMetadataController(proxy, context);
+                return () -> controller.list(filePath);
+            } else {
+                DownloadFileController controller = new DownloadFileController(proxy, context);
+                return () -> controller.download(filePath);
+            }
         }
 
         return null;
@@ -146,20 +141,20 @@ public class ControllerSelector {
         }
         match = match(PATTERN_FILES, path);
         if (match != null) {
-            String filePath = match.group(1);
+            String relativeFilePath = match.group(1);
             UploadFileController controller = new UploadFileController(proxy, context);
-            return () -> controller.upload(filePath);
+            return () -> controller.upload(relativeFilePath);
         }
 
         return null;
     }
 
     private static Controller selectDelete(Proxy proxy, ProxyContext context, String path) {
-        Matcher match = match(PATTERN_FILE, path);
+        Matcher match = match(PATTERN_FILES, path);
         if (match != null) {
-            String fileId = match.group(1);
+            String relativeFilePath = match.group(1);
             DeleteFileController controller = new DeleteFileController(proxy, context);
-            return () -> controller.delete(fileId);
+            return () -> controller.delete(relativeFilePath);
         }
 
         return null;

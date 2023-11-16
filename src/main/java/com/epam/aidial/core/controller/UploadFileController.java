@@ -8,13 +8,10 @@ import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.impl.MimeMapping;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.impl.PipeImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.UUID;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -24,22 +21,18 @@ public class UploadFileController {
     private final ProxyContext context;
 
     public Future<?> upload(String path) {
-        String fileId = UUID.randomUUID().toString();
+        String absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
         Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
                 .uploadHandler(upload -> {
                     String filename = upload.filename();
-                    String mimeType = MimeMapping.getMimeTypeForFilename(filename);
-                    String contentType = mimeType == null ? "application/octet-stream" : mimeType;
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
                     BlobWriteStream writeStream = new BlobWriteStream(
                             proxy.getVertx(),
                             proxy.getStorage(),
                             filename,
-                            contentType,
-                            fileId,
-                            BlobStorageUtil.removeLeadingAndTrailingPathSeparators(path));
+                            absoluteFilePath);
                     pipe.to(writeStream, result);
 
                     result.future()

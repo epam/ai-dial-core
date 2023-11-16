@@ -31,12 +31,8 @@ import java.util.Map;
 @Slf4j
 public class BlobStorage {
 
-    private static final String FILE_NAME_METADATA_KEY = "file_name";
-    private static final String CONTENT_TYPE_METADATA_KEY = "content_type";
-
     private final BlobStoreContext storeContext;
     private final BlobStore blobStore;
-    private final StorageCache cache;
     private final String bucketName;
 
     public BlobStorage(Storage config) {
@@ -48,12 +44,11 @@ public class BlobStorage {
         this.storeContext = builder.buildView(BlobStoreContext.class);
         this.blobStore = storeContext.getBlobStore();
         this.bucketName = config.getBucket();
-        this.cache = new StorageCache();
         createBucketIfNeeded(config);
     }
 
-    public MultipartUpload initMultipartUpload(String fileId, String path, String resourceName, String contentType) {
-        BlobMetadata metadata = buildBlobMetadata(fileId, path, resourceName, contentType, bucketName);
+    public MultipartUpload initMultipartUpload(String fileName, String path, String contentType) {
+        BlobMetadata metadata = buildBlobMetadata(fileName, path, contentType, bucketName);
         return blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE);
     }
 
@@ -61,10 +56,8 @@ public class BlobStorage {
         return blobStore.uploadMultipartPart(multipart, part, new BufferPayload(buffer));
     }
 
-    public void completeMultipartUpload(FileMetadata metadata, MultipartUpload multipart, List<MultipartPart> parts) {
+    public void completeMultipartUpload(MultipartUpload multipart, List<MultipartPart> parts) {
         String etag = blobStore.completeMultipartUpload(multipart, parts);
-        // temp fileId to resource linking
-        cache.cache(metadata.getId(), metadata);
         log.info("Stored etag: " + etag);
     }
 
@@ -74,57 +67,36 @@ public class BlobStorage {
 
     public void store(FileMetadata metadata, Buffer data) {
         String fileName = metadata.getName();
-        String fileId = metadata.getId();
         String contentType = metadata.getContentType();
-        String parentPath = metadata.getPath();
-        Map<String, String> userMetadata = buildUserMetadata(fileName, contentType);
-        String filePath = BlobStorageUtil.buildFilePath(parentPath, fileId);
+        String path = metadata.getPath();
+        String filePath = BlobStorageUtil.buildFilePath(fileName, path);
         Blob blob = blobStore.blobBuilder(filePath)
                 .payload(new BufferPayload(data))
                 .contentLength(data.length())
                 .contentType(contentType)
-                .userMetadata(userMetadata)
                 .build();
 
         String etag = blobStore.putBlob(bucketName, blob);
-        // temp fileId to resource linking
-        cache.cache(fileId, metadata);
         log.info("Stored etag: " + etag);
     }
 
-    public Blob load(String fileId) {
-        FileMetadata metadata = cache.load(fileId);
-        if (metadata == null) {
-            return null;
-        }
-        String parentPath = metadata.getPath();
-        String id = metadata.getId();
-        String resourceLocation = BlobStorageUtil.buildFilePath(parentPath, id);
-        return blobStore.getBlob(bucketName, resourceLocation);
+    public Blob load(String absoluteFilePath) {
+        return blobStore.getBlob(bucketName, absoluteFilePath);
     }
 
-    public void delete(String fileId) {
-        FileMetadata metadata = cache.load(fileId);
-        if (metadata == null) {
-            throw new IllegalArgumentException("File with ID %s not found".formatted(fileId));
-        }
-        String parentPath = metadata.getPath();
-        String id = metadata.getId();
-        String resourceLocation = BlobStorageUtil.buildFilePath(parentPath, id);
-        blobStore.removeBlob(bucketName, resourceLocation);
-        cache.remove(fileId);
+    public void delete(String absoluteFilePath) {
+        blobStore.removeBlob(bucketName, absoluteFilePath);
     }
 
-    public List<FileMetadataBase> listMetadata(String path, boolean recursive) {
+    public List<FileMetadataBase> listMetadata(String path) {
         List<FileMetadataBase> metadata = new ArrayList<>();
-        ListContainerOptions options = buildListContainerOptions(BlobStorageUtil.normalizePathForQuery(path), recursive);
+        ListContainerOptions options = buildListContainerOptions(BlobStorageUtil.normalizePathForQuery(path));
         PageSet<? extends StorageMetadata> list = blobStore.list(bucketName, options);
         list.forEach(meta -> {
             StorageType objectType = meta.getType();
             switch (objectType) {
                 case BLOB -> metadata.add(buildFileMetadata(meta));
-                case FOLDER, RELATIVE_PATH ->
-                        metadata.add(new FolderMetadata(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(meta.getName())));
+                case FOLDER, RELATIVE_PATH -> metadata.add(buildFolderMetadata(meta));
                 default -> throw new IllegalArgumentException("Can't list container");
             }
         });
@@ -132,45 +104,36 @@ public class BlobStorage {
         return metadata;
     }
 
-    private static ListContainerOptions buildListContainerOptions(String prefix, boolean recursive) {
-        ListContainerOptions options = new ListContainerOptions()
-                .withDetails()
-                .delimiter(BlobStorageUtil.PATH_SEPARATOR);
-        if (prefix != null) {
-            options.prefix(prefix);
-        }
-        if (recursive) {
-            options.recursive();
-        }
-
-        return options;
-    }
-
-    private static FileMetadata buildFileMetadata(StorageMetadata metadata) {
-        Map<String, String> userMetadata = metadata.getUserMetadata();
-        String fullFileName = metadata.getName();
-        String fileName = userMetadata.get(FILE_NAME_METADATA_KEY);
-        String contentType = userMetadata.get(CONTENT_TYPE_METADATA_KEY);
-        String[] elements = fullFileName.split(BlobStorageUtil.PATH_SEPARATOR);
-        String fileId = elements[elements.length - 1];
-        // strip /UUID if needed
-        String parentPath = elements.length > 1 ? fullFileName.substring(0, fullFileName.length() - 37) : null;
-        return new FileMetadata(fileId, fileName, parentPath, metadata.getSize(), contentType);
-    }
-
-    private static Map<String, String> buildUserMetadata(String fileName, String contentType) {
-        return Map.of(FILE_NAME_METADATA_KEY, fileName, CONTENT_TYPE_METADATA_KEY, contentType);
-    }
-
     public void close() {
         storeContext.close();
     }
 
-    private static BlobMetadata buildBlobMetadata(String fileId, String path, String resourceName, String contentType, String bucketName) {
-        Map<String, String> userMetadata = buildUserMetadata(resourceName, contentType);
-        String filePath = BlobStorageUtil.buildFilePath(path, fileId);
+    private static ListContainerOptions buildListContainerOptions(String prefix) {
+        return new ListContainerOptions()
+                .prefix(prefix)
+                .delimiter(BlobStorageUtil.PATH_SEPARATOR);
+    }
+
+    private static FileMetadata buildFileMetadata(StorageMetadata metadata) {
+        String absoluteFilePath = metadata.getName();
+        String[] elements = absoluteFilePath.split(BlobStorageUtil.PATH_SEPARATOR);
+        String fileName = elements[elements.length - 1];
+        String path = absoluteFilePath.substring(0, absoluteFilePath.length() - fileName.length() - 1);
+        return new FileMetadata(fileName, path, metadata.getSize(), BlobStorageUtil.getContentType(fileName));
+    }
+
+    private static FolderMetadata buildFolderMetadata(StorageMetadata metadata) {
+        String absoluteFolderPath = metadata.getName();
+        String[] elements = absoluteFolderPath.split(BlobStorageUtil.PATH_SEPARATOR);
+        String lastFolderName = elements[elements.length - 1];
+        String path = absoluteFolderPath.substring(0, absoluteFolderPath.length() - lastFolderName.length() - 1);
+        return new FolderMetadata(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(lastFolderName), path);
+    }
+
+    private static BlobMetadata buildBlobMetadata(String fileName, String path, String contentType, String bucketName) {
+        String filePath = BlobStorageUtil.buildFilePath(fileName, path);
         ContentMetadata contentMetadata = buildContentMetadata(contentType);
-        return new BlobMetadataImpl(fileId, filePath, null, null, null, null, null, userMetadata, null, bucketName, contentMetadata, null, Tier.STANDARD);
+        return new BlobMetadataImpl(null, filePath, null, null, null, null, null, Map.of(), null, bucketName, contentMetadata, null, Tier.STANDARD);
     }
 
     private static ContentMetadata buildContentMetadata(String contentType) {

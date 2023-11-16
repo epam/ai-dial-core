@@ -33,6 +33,7 @@ public class ProxyContext {
     private final HttpServerResponse response;
 
     private Deployment deployment;
+    private String userSub;
     private List<String> userRoles;
     private String userHash;
     private TokenUsage tokenUsage;
@@ -59,6 +60,7 @@ public class ProxyContext {
         if (extractedClaims != null) {
             this.userRoles = extractedClaims.userRoles();
             this.userHash = extractedClaims.userHash();
+            this.userSub = extractedClaims.sub();
         }
     }
 

@@ -22,7 +22,6 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private final Vertx vertx;
     private final BlobStorage storage;
-    private final String fileId;
     private final String parentPath;
     private final String fileName;
     private final String contentType;
@@ -47,15 +46,12 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     public BlobWriteStream(Vertx vertx,
                            BlobStorage storage,
                            String fileName,
-                           String contentType,
-                           String fileId,
                            String parentPath) {
         this.vertx = vertx;
         this.storage = storage;
         this.fileName = fileName;
-        this.contentType = contentType;
-        this.fileId = fileId;
         this.parentPath = parentPath;
+        this.contentType = BlobStorageUtil.getContentType(fileName);
     }
 
     @Override
@@ -93,15 +89,14 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     @Override
     public void end(Handler<AsyncResult<Void>> handler) {
-        Future<Void> result = vertx.executeBlocking(promise -> {
+        Future<Void> result = vertx.executeBlocking(() -> {
             synchronized (this) {
                 if (exception != null) {
-                    promise.fail(exception);
-                    return;
+                    throw new RuntimeException(exception);
                 }
 
                 Buffer lastChunk = chunkBuffer.slice(0, position);
-                metadata = new FileMetadata(fileId, fileName, parentPath, bytesHandled, contentType);
+                metadata = new FileMetadata(fileName, parentPath, bytesHandled, contentType);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
                     storage.store(metadata, lastChunk);
@@ -111,11 +106,11 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                         parts.add(part);
                     }
 
-                    storage.completeMultipartUpload(metadata, mpu, parts);
+                    storage.completeMultipartUpload(mpu, parts);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 
-                promise.complete();
+                return null;
             }
         });
         result.onSuccess(success -> {
@@ -143,11 +138,11 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     @Override
     public WriteStream<Buffer> drainHandler(Handler<Void> handler) {
-        vertx.executeBlocking((promise) -> {
+        vertx.executeBlocking(() -> {
             synchronized (this) {
                 try {
                     if (mpu == null) {
-                        mpu = storage.initMultipartUpload(fileId, parentPath, fileName, contentType);
+                        mpu = storage.initMultipartUpload(parentPath, fileName, contentType);
                     }
                     MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkBuffer.slice(0, position));
                     parts.add(part);
@@ -161,6 +156,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
                 }
             }
+            return null;
         });
 
         return this;

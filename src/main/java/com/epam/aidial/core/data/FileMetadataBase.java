@@ -7,5 +7,6 @@ import lombok.Data;
 @Data
 public abstract class FileMetadataBase {
     private String name;
+    private String path;
     private FileType type;
 }

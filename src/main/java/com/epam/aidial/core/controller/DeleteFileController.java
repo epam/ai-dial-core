@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
@@ -14,15 +15,16 @@ public class DeleteFileController {
     private final Proxy proxy;
     private final ProxyContext context;
 
-    public Future<?> delete(String fileId) {
+    public Future<?> delete(String filePath) {
+        String absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, filePath);
         BlobStorage storage = proxy.getStorage();
-        Future<Void> result = proxy.getVertx().executeBlocking(future -> {
+        Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             try {
-                storage.delete(fileId);
-                future.complete();
+                storage.delete(absoluteFilePath);
+                return null;
             } catch (Exception ex) {
-                log.error("Failed to delete file " + fileId, ex);
-                future.fail(ex);
+                log.error("Failed to delete file " + absoluteFilePath, ex);
+                throw new RuntimeException(ex);
             }
         });
 
