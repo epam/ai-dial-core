@@ -47,28 +47,55 @@ public class BlobStorage {
         createBucketIfNeeded(config);
     }
 
+    /**
+     * Initialize s3 multipart upload
+     *
+     * @param fileName    name of the file, for example: data.csv
+     * @param path        absolute path according to the bucket, for example: Users/user1/files/input data
+     * @param contentType MIME type of the content, for example: text/csv
+     */
     public MultipartUpload initMultipartUpload(String fileName, String path, String contentType) {
         BlobMetadata metadata = buildBlobMetadata(fileName, path, contentType, bucketName);
         return blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE);
     }
 
+    /**
+     * Upload part/chunk of the file
+     *
+     * @param multipart MultipartUpload that chunk related to
+     * @param part      chunk number, starting from 1
+     * @param buffer    data
+     */
     public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, Buffer buffer) {
         return blobStore.uploadMultipartPart(multipart, part, new BufferPayload(buffer));
     }
 
+    /**
+     * Commit multipart upload.
+     * This method must be called after all parts/chunks uploaded
+     */
     public void completeMultipartUpload(MultipartUpload multipart, List<MultipartPart> parts) {
         String etag = blobStore.completeMultipartUpload(multipart, parts);
         log.info("Stored etag: " + etag);
     }
 
+    /**
+     * Abort multipart upload.
+     * This method must be called if something was wrong during upload to clean up uploaded parts/chunks
+     */
     public void abortMultipartUpload(MultipartUpload multipart) {
         blobStore.abortMultipartUpload(multipart);
     }
 
-    public void store(FileMetadata metadata, Buffer data) {
-        String fileName = metadata.getName();
-        String contentType = metadata.getContentType();
-        String path = metadata.getPath();
+    /**
+     * Upload file in a single request
+     *
+     * @param fileName    name of the file, for example: data.csv
+     * @param path        absolute path according to the bucket, for example: Users/user1/files/input data
+     * @param contentType MIME type of the content, for example: text/csv
+     * @param data        whole content data
+     */
+    public void store(String fileName, String path, String contentType, Buffer data) {
         String filePath = BlobStorageUtil.buildFilePath(fileName, path);
         Blob blob = blobStore.blobBuilder(filePath)
                 .payload(new BufferPayload(data))
@@ -80,14 +107,30 @@ public class BlobStorage {
         log.info("Stored etag: " + etag);
     }
 
-    public Blob load(String absoluteFilePath) {
-        return blobStore.getBlob(bucketName, absoluteFilePath);
+    /**
+     * Load file content from blob store
+     *
+     * @param filePath absolute file path, for example: Users/user1/files/inputs/data.csv
+     * @return Blob instance if file was found, null - otherwise
+     */
+    public Blob load(String filePath) {
+        return blobStore.getBlob(bucketName, filePath);
     }
 
-    public void delete(String absoluteFilePath) {
-        blobStore.removeBlob(bucketName, absoluteFilePath);
+    /**
+     * Delete file content from blob store
+     *
+     * @param filePath absolute file path, for example: Users/user1/files/inputs/data.csv
+     */
+    public void delete(String filePath) {
+        blobStore.removeBlob(bucketName, filePath);
     }
 
+    /**
+     * List all files/folder metadata for a given path
+     *
+     * @param path absolute path for a folder, for example: Users/user1/files
+     */
     public List<FileMetadataBase> listMetadata(String path) {
         List<FileMetadataBase> metadata = new ArrayList<>();
         ListContainerOptions options = buildListContainerOptions(BlobStorageUtil.normalizePathForQuery(path));

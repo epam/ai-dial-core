@@ -18,6 +18,12 @@ public class FileMetadataController {
     private final Proxy proxy;
     private final ProxyContext context;
 
+    /**
+     * Lists all files and folders that belong to the provided path.
+     * Current API implementation requires a relative path, absolute path will be calculated based on authentication context
+     *
+     * @param path relative path, for example: /inputs
+     */
     public Future<?> list(String path) {
         BlobStorage storage = proxy.getStorage();
         return proxy.getVertx().executeBlocking(() -> {

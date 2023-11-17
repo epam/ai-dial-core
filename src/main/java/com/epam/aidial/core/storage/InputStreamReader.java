@@ -6,6 +6,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.buffer.impl.BufferImpl;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.WriteStream;
@@ -15,6 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
 
+/**
+ * Implementation of vertx {@link io.vertx.core.streams.ReadStream} that wraps {@link java.io.InputStream}.
+ */
 @Slf4j
 public class InputStreamReader implements ReadStream<Buffer> {
 
@@ -91,14 +95,13 @@ public class InputStreamReader implements ReadStream<Buffer> {
         return this;
     }
 
-    private synchronized void readDataFromStream() {
-        Future<Buffer> fetchResult = vertx.executeBlocking(future -> {
+    private void readDataFromStream() {
+        Future<Buffer> fetchResult = vertx.executeBlocking(() -> {
             try {
                 byte[] data = in.readNBytes(bufferSize);
-                Buffer chunk = Buffer.buffer(Unpooled.wrappedBuffer(data));
-                future.complete(chunk);
+                return BufferImpl.buffer(Unpooled.wrappedBuffer(data));
             } catch (Exception e) {
-                future.fail(e);
+                throw new RuntimeException(e);
             }
         });
         fetchResult.onSuccess(buf -> {
@@ -109,7 +112,7 @@ public class InputStreamReader implements ReadStream<Buffer> {
         }).onFailure(error -> {
             log.info("Failed to read data from InputStream", error);
             close();
-            synchronized (this) {
+            synchronized (InputStreamReader.this) {
                 if (exceptionHandler != null) {
                     exceptionHandler.handle(error);
                 }
@@ -129,13 +132,9 @@ public class InputStreamReader implements ReadStream<Buffer> {
 
     private synchronized void handleEnd() {
         close();
-        Handler<Void> endHandler;
-        synchronized (this) {
-            this.dataHandler.handle(Buffer.buffer());
-            dataHandler = null;
-            endHandler = this.endHandler;
-        }
-        endHandler.handle(null);
+        this.dataHandler.handle(Buffer.buffer());
+        dataHandler = null;
+        this.endHandler.handle(null);
     }
 
     public synchronized void close() {

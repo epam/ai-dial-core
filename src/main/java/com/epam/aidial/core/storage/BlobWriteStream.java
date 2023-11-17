@@ -15,6 +15,12 @@ import org.jclouds.blobstore.domain.MultipartUpload;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Implementation of vertx {@link io.vertx.core.streams.WriteStream} that handles data chunks (from {@link io.vertx.core.streams.ReadStream}) and writes them to the blob storage.
+ * If file content is bigger than 5MB - multipart upload will be used.
+ * Chunk size can be configured via {@link #setWriteQueueMaxSize(int)} method, but should be no less than 5 MB according to the s3 specification.
+ * If any exception is caught in between - multipart upload will be aborted.
+ */
 @Slf4j
 public class BlobWriteStream implements WriteStream<Buffer> {
 
@@ -90,7 +96,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     @Override
     public void end(Handler<AsyncResult<Void>> handler) {
         Future<Void> result = vertx.executeBlocking(() -> {
-            synchronized (this) {
+            synchronized (BlobWriteStream.this) {
                 if (exception != null) {
                     throw new RuntimeException(exception);
                 }
@@ -99,7 +105,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 metadata = new FileMetadata(fileName, parentPath, bytesHandled, contentType);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
-                    storage.store(metadata, lastChunk);
+                    storage.store(fileName, parentPath, contentType, lastChunk);
                 } else {
                     if (position != 0) {
                         MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, lastChunk);
@@ -139,7 +145,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     @Override
     public WriteStream<Buffer> drainHandler(Handler<Void> handler) {
         vertx.executeBlocking(() -> {
-            synchronized (this) {
+            synchronized (BlobWriteStream.this) {
                 try {
                     if (mpu == null) {
                         mpu = storage.initMultipartUpload(parentPath, fileName, contentType);

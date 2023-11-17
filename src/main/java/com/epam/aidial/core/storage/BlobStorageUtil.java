@@ -33,22 +33,27 @@ public class BlobStorageUtil {
         if (path == null || path.isBlank() || path.equals(PATH_SEPARATOR)) {
             return "";
         }
-        if (path.charAt(0) == DELIMITER) {
-            path = path.substring(1);
-        }
+        path = removeLeadingPathSeparator(path);
+        return removeTrailingPathSeparator(path);
+    }
 
-        if (path.charAt(path.length() - 1) == DELIMITER) {
-            path = path.substring(0, path.length() - 1);
+    public String removeLeadingPathSeparator(String path) {
+        if (path == null) {
+            return null;
         }
+        return path.charAt(0) == DELIMITER ? path.substring(1) : path;
+    }
 
-        return path;
+    public String removeTrailingPathSeparator(String path) {
+        if (path == null) {
+            return null;
+        }
+        int length = path.length();
+        return path.charAt(length - 1) == DELIMITER ? path.substring(0, length - 1) : path;
     }
 
     public String buildFilePath(String fileName, String path) {
-        if (path.charAt(path.length() - 1) == DELIMITER) {
-            return path + fileName;
-        }
-
+        path = removeTrailingPathSeparator(path);
         return path + PATH_SEPARATOR + fileName;
     }
 

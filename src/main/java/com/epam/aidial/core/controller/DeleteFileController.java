@@ -15,8 +15,14 @@ public class DeleteFileController {
     private final Proxy proxy;
     private final ProxyContext context;
 
-    public Future<?> delete(String filePath) {
-        String absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, filePath);
+    /**
+     * Deletes file from storage.
+     * Current API implementation requires a relative path, absolute path will be calculated based on authentication context
+     *
+     * @param path relative path, for example: /inputs/data.csv
+     */
+    public Future<?> delete(String path) {
+        String absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
         BlobStorage storage = proxy.getStorage();
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             try {

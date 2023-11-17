@@ -31,13 +31,20 @@ public class DownloadFileController {
     private final Proxy proxy;
     private final ProxyContext context;
 
-    public Future<?> download(String filePath) {
+    /**
+     * Downloads file content from provided path.
+     * Path can be either absolute or relative.
+     * Path type determined by "path" query parameter which can be "absolute" or "relative"(default value)
+     *
+     * @param path file path; absolute or relative
+     */
+    public Future<?> download(String path) {
         String pathType = context.getRequest().params().get(PATH_TYPE_QUERY_PARAMETER);
         String absoluteFilePath;
         if (!ABSOLUTE_PATH_TYPE.equals(pathType)) {
-            absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, filePath);
+            absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
         } else {
-            absoluteFilePath = filePath;
+            absoluteFilePath = path;
         }
         Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() ->
                 proxy.getStorage().load(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(absoluteFilePath)));
@@ -71,7 +78,7 @@ public class DownloadFileController {
                 result.fail(e);
             }
         }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to fetch file with ID " + filePath));
+                "Failed to fetch file with ID " + path));
 
         return result.future();
     }

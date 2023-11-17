@@ -20,6 +20,13 @@ public class UploadFileController {
     private final Proxy proxy;
     private final ProxyContext context;
 
+    /**
+     * Uploads file to the storage.
+     * Current API implementation requires a relative path, absolute path will be calculated based on authentication context.
+     * File name defined in multipart/form-data context
+     *
+     * @param path relative path, for example: /inputs
+     */
     public Future<?> upload(String path) {
         String absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
         Promise<Void> result = Promise.promise();
