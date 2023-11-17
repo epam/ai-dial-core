@@ -170,7 +170,8 @@ public class BlobStorage {
         String[] elements = absoluteFolderPath.split(BlobStorageUtil.PATH_SEPARATOR);
         String lastFolderName = elements[elements.length - 1];
         String path = absoluteFolderPath.substring(0, absoluteFolderPath.length() - lastFolderName.length() - 1);
-        return new FolderMetadata(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(lastFolderName), path);
+        return new FolderMetadata(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(lastFolderName),
+                BlobStorageUtil.removeTrailingPathSeparator(path));
     }
 
     private static BlobMetadata buildBlobMetadata(String fileName, String path, String contentType, String bucketName) {
