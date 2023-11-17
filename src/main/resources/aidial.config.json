@@ -1,7 +1,7 @@
 {
   "routes" : {
     "route-rate" : {
-      "paths": ["/+v1/rate"],
+      "paths": ["/+v1/*/rate"],
       "methods": ["POST"],
       "response" : {
         "status": 200
