@@ -39,8 +39,7 @@ public class RateResponseController {
         }
 
         if (deployment.getRateEndpoint() == null) {
-            context.getResponse().setStatusCode(200);
-            context.getResponse().send();
+            context.respond(HttpStatus.OK);
             proxy.getLogStore().save(context);
         } else {
             context.setDeployment(deployment);
@@ -164,7 +163,6 @@ public class RateResponseController {
      */
     private void handleProxyRequestError(Throwable error) {
         log.warn("Can't send request to origin: {}", error.getMessage());
-        sendRequest(); // try next
     }
 
     /**
