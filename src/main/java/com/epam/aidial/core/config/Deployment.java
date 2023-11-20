@@ -22,4 +22,5 @@ public abstract class Deployment {
      * API key is forwarded by default.
      */
     private boolean forwardApiKey = true;
+    private String rateEndpoint;
 }
