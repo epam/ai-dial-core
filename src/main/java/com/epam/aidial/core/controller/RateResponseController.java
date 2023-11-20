@@ -163,6 +163,7 @@ public class RateResponseController {
      */
     private void handleProxyRequestError(Throwable error) {
         log.warn("Can't send request to origin: {}", error.getMessage());
+        context.respond(HttpStatus.BAD_GATEWAY, "deployment responded with error");
     }
 
     /**
