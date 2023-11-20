@@ -29,6 +29,8 @@ public class ControllerSelector {
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("/+openai/applications/([-.@a-zA-Z0-9]+)");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("/+openai/applications");
 
+    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/[-.@a-zA-Z0-9]+/rate");
+
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = URLDecoder.decode(context.getRequest().path(), StandardCharsets.UTF_8);
         HttpMethod method = context.getRequest().method();
@@ -121,6 +123,13 @@ public class ControllerSelector {
             String deploymentApi = match.group(2);
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId, deploymentApi);
+        }
+
+        match = match(PATTERN_RATE_RESPONSE, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+            RateResponseController controller = new RateResponseController(proxy, context);
+            return () -> controller.handle(deploymentId);
         }
 
         return null;

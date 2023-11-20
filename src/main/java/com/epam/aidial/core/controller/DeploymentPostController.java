@@ -52,7 +52,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DeploymentPostController {
 
-    private static final String ASSISTANT = "assistant";
+    public static final String ASSISTANT = "assistant";
     private static final Set<Integer> RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());

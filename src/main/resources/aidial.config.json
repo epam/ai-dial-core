@@ -1,13 +1,5 @@
 {
-  "routes" : {
-    "route-rate" : {
-      "paths": ["/+v1/[-.@a-zA-Z0-9]+/rate"],
-      "methods": ["POST"],
-      "response" : {
-        "status": 200
-      }
-    }
-  },
+  "routes" : {},
   "addons": {
     "search": {
       "endpoint": "http://localhost:7010/search",
