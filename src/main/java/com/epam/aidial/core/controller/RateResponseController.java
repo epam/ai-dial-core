@@ -38,15 +38,10 @@ public class RateResponseController {
             return;
         }
 
-        if (deployment.getRateEndpoint() == null) {
-            context.respond(HttpStatus.OK);
-            proxy.getLogStore().save(context);
-        } else {
-            context.setDeployment(deployment);
-            context.getRequest().body()
-                    .onSuccess(this::handleRequestBody)
-                    .onFailure(this::handleRequestBodyError);
-        }
+        context.setDeployment(deployment);
+        context.getRequest().body()
+                .onSuccess(this::handleRequestBody)
+                .onFailure(this::handleRequestBodyError);
     }
 
     private Deployment getDeployment(String id) {
@@ -81,7 +76,13 @@ public class RateResponseController {
 
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
-        sendRequest();
+        Deployment deployment = context.getDeployment();
+        if (deployment.getRateEndpoint() == null) {
+            context.respond(HttpStatus.OK);
+            proxy.getLogStore().save(context);
+        } else {
+            sendRequest();
+        }
     }
 
     /**
