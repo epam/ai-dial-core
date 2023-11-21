@@ -38,15 +38,10 @@ public class RateResponseController {
             return;
         }
 
-        if (deployment.getRateEndpoint() == null) {
-            context.respond(HttpStatus.OK);
-            proxy.getLogStore().save(context);
-        } else {
-            context.setDeployment(deployment);
-            context.getRequest().body()
-                    .onSuccess(this::handleRequestBody)
-                    .onFailure(this::handleRequestBodyError);
-        }
+        context.setDeployment(deployment);
+        context.getRequest().body()
+                .onSuccess(this::handleRequestBody)
+                .onFailure(this::handleRequestBodyError);
     }
 
     private Deployment getDeployment(String id) {
@@ -81,7 +76,13 @@ public class RateResponseController {
 
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
-        sendRequest();
+        Deployment deployment = context.getDeployment();
+        if (deployment.getRateEndpoint() == null) {
+            context.respond(HttpStatus.OK);
+            proxy.getLogStore().save(context);
+        } else {
+            sendRequest();
+        }
     }
 
     /**
@@ -109,11 +110,6 @@ public class RateResponseController {
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
                 proxyResponse.headers().size());
-
-        if (proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
-            sendRequest(); // try next
-            return;
-        }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024));
@@ -155,7 +151,7 @@ public class RateResponseController {
      */
     private void handleProxyConnectionError(Throwable error) {
         log.warn("Can't connect to origin: {}", error.getMessage());
-        sendRequest(); // try next
+        context.respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
     }
 
     /**
