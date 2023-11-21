@@ -41,6 +41,12 @@ Static settings are used on startup and cannot be changed while application is r
 |vertx.*                                       |-                          |Vertx settings.
 |server.*                                      |-                          |Vertx HTTP server settings for incoming requests.
 |client.*                                      |-                          |Vertx HTTP client settings for outbound requests.
+|storage.provider                              |-                          |Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage
+|storage.endpoint                              |-                          |Optional. Specifies endpoint url for s3 compatible storages
+|storage.identity                              |-                          |Blob storage access key
+|storage.credential                            |-                          |Blob storage secret key
+|storage.bucket                                |-                          |Blob storage bucket
+|storage.createBucket                          |false                      |Indicates whether bucket should be created on start-up
 
 ### Dynamic settings
 Dynamic settings are stored in JSON files, specified via "config.files" static setting, and reloaded at interval, specified via "config.reload" static setting.

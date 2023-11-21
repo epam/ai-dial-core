@@ -86,14 +86,15 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         String contentType = request.getHeader(HttpHeaders.CONTENT_TYPE);
+        int contentLength = ProxyUtil.contentLength(request, 1024);
         if (contentType != null && contentType.startsWith("multipart/form-data")) {
-            if (ProxyUtil.contentLength(request, 1024) > FILES_REQUEST_BODY_MAX_SIZE_BYTES) {
+            if (contentLength > FILES_REQUEST_BODY_MAX_SIZE_BYTES) {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
                 return;
             }
         } else {
             // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
-            if (ProxyUtil.contentLength(request, 1024) > REQUEST_BODY_MAX_SIZE_BYTES) {
+            if (contentLength > REQUEST_BODY_MAX_SIZE_BYTES) {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
                 return;
             }
