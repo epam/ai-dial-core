@@ -57,6 +57,8 @@ public class ApplicationController {
         data.setDisplayName(application.getDisplayName());
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
+        data.setInputAttachmentTypes(application.getInputAttachmentTypes());
+        data.setMaxInputAttachments(application.getMaxInputAttachments());
         return data;
     }
 }

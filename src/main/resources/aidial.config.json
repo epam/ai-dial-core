@@ -35,7 +35,9 @@
       "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
       "displayName": "10k",
       "iconUrl": "http://localhost:7001/logo10k.png",
-      "description": "Some description of the application for testing"
+      "description": "Some description of the application for testing",
+      "inputAttachmentTypes": ["*/*"],
+      "maxInputAttachments": 1
     }
   },
   "models": {
