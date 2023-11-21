@@ -149,6 +149,13 @@ public class ControllerSelector {
             return () -> controller.upload(relativeFilePath);
         }
 
+        match = match(PATTERN_RATE_RESPONSE, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+            RateResponseController controller = new RateResponseController(proxy, context);
+            return () -> controller.handle(deploymentId);
+        }
+
         return null;
     }
 
@@ -158,13 +165,6 @@ public class ControllerSelector {
             String relativeFilePath = match.group(1);
             DeleteFileController controller = new DeleteFileController(proxy, context);
             return () -> controller.delete(relativeFilePath);
-        }
-
-        match = match(PATTERN_RATE_RESPONSE, path);
-        if (match != null) {
-            String deploymentId = match.group(1);
-            RateResponseController controller = new RateResponseController(proxy, context);
-            return () -> controller.handle(deploymentId);
         }
 
         return null;
