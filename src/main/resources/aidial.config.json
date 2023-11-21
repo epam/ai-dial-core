@@ -52,6 +52,11 @@
       ],
       "limits": {
         "maxTotalTokens": 4096
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": 0.00005,
+        "completion": 0.0001
       }
     },
     "embedding-ada": {
@@ -62,6 +67,10 @@
       ],
       "limits": {
         "maxTotalTokens": 8192
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": 0.00005
       }
     },
     "exotic-model": {
