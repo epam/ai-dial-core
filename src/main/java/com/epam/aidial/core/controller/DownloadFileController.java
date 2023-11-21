@@ -47,7 +47,7 @@ public class DownloadFileController {
             absoluteFilePath = path;
         }
         Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() ->
-                proxy.getStorage().load(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(absoluteFilePath)));
+                proxy.getStorage().load(BlobStorageUtil.removeLeadingPathSeparator(absoluteFilePath)));
 
         Promise<Void> result = Promise.promise();
         blobFuture.onSuccess(blob -> {

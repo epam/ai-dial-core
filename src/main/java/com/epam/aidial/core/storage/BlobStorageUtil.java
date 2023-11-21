@@ -14,10 +14,19 @@ public class BlobStorageUtil {
     public static final String PATH_SEPARATOR = "/";
     private static final char DELIMITER = PATH_SEPARATOR.charAt(0);
 
-
+    /**
+     * Normalize provided path for listing files query by removing leading and adding trailing path separator.
+     * For example, path /Users/User1/files/folders will be transformed to Users/User1/files/folders/
+     *
+     * @return normalized path
+     */
     public String normalizePathForQuery(String path) {
         if (path == null || path.isBlank()) {
             return null;
+        }
+
+        if (path.equals(PATH_SEPARATOR)) {
+            return path;
         }
 
         // remove leading separator
@@ -38,14 +47,14 @@ public class BlobStorageUtil {
     }
 
     public String removeLeadingPathSeparator(String path) {
-        if (path == null) {
+        if (path == null || path.isBlank()) {
             return null;
         }
         return path.charAt(0) == DELIMITER ? path.substring(1) : path;
     }
 
     public String removeTrailingPathSeparator(String path) {
-        if (path == null) {
+        if (path == null || path.isBlank()) {
             return null;
         }
         int length = path.length();
