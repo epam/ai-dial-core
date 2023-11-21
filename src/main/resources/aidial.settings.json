@@ -39,7 +39,7 @@
     "reload": 60000
   },
   "identityProvider": {
-    "jwksUrl": null,
+    "jwksUrl": "http://fakeJwksUrl:8080",
     "appName": "dial"
   },
   "storage": {

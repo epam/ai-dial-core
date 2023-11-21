@@ -7,9 +7,8 @@
   },
   "assistant": {
     "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
-
     "assistants": {
-      "ass": {
+      "search_assistant": {
         "prompt": "Commands: sit_down, get_up, run_away",
         "addons": ["search"]
       }
@@ -56,7 +55,7 @@
         "search": {},
         "forecast": {},
         "calculator": {},
-        "ass": {},
+        "search_assistant": {},
         "app": {}
       }
     }
