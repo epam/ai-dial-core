@@ -2,12 +2,15 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.FileConfigStore;
+import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.IdentityProvider;
+import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
+import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
@@ -17,11 +20,13 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,7 +45,10 @@ public class AiDial {
     private HttpServer server;
     private HttpClient client;
 
-    private void start() throws Exception {
+    private BlobStorage storage;
+
+    @VisibleForTesting
+    void start() throws Exception {
         try {
             settings = settings();
 
@@ -56,13 +64,16 @@ public class AiDial {
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
             IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx);
-            Proxy proxy = new Proxy(client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider);
+            if (storage == null) {
+                Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
+                storage = new BlobStorage(storageConfig);
+            }
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider, storage);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
 
             log.info("Proxy started on {}", server.actualPort());
-            Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "shutdown-hook"));
         } catch (Throwable e) {
             log.warn("Proxy failed to start:", e);
             stop();
@@ -70,11 +81,13 @@ public class AiDial {
         }
     }
 
-    private void stop() {
+    @VisibleForTesting
+    void stop() {
         try {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
             close(vertx, Vertx::close);
+            close(storage);
             log.info("Proxy stopped");
             LogConfigurator.unconfigure();
         } catch (Throwable e) {
@@ -82,6 +95,16 @@ public class AiDial {
             LogConfigurator.unconfigure();
             System.exit(-1);
         }
+    }
+
+    @VisibleForTesting
+    HttpServer getServer() {
+        return server;
+    }
+
+    @VisibleForTesting
+    void setStorage(BlobStorage storage) {
+        this.storage = storage;
     }
 
     private JsonObject settings(String key) {
@@ -150,6 +173,12 @@ public class AiDial {
         }
     }
 
+    private static void close(Closeable resource) throws IOException {
+        if (resource != null) {
+            resource.close();
+        }
+    }
+
     private interface AsyncOpener<R> {
         Future<R> open(R resource);
     }
@@ -159,7 +188,9 @@ public class AiDial {
     }
 
     public static void main(String[] args) throws Exception {
-        new AiDial().start();
+        AiDial dial = new AiDial();
+        dial.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
     }
 
     private static void setupMetrics(VertxOptions options) {

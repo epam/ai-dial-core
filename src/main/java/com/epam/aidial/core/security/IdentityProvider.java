@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class IdentityProvider {
 
-    public static final ExtractedClaims CLAIMS_WITH_EMPTY_ROLES = new ExtractedClaims(Collections.emptyList(), null);
+    public static final ExtractedClaims CLAIMS_WITH_EMPTY_ROLES = new ExtractedClaims(null, Collections.emptyList(), null);
 
     private final String appName;
 
@@ -147,6 +147,10 @@ public class IdentityProvider {
         }
     }
 
+    private static String extractUserSub(DecodedJWT decodedJwt) {
+        return decodedJwt.getClaim("sub").asString();
+    }
+
     private String extractUserHash(DecodedJWT decodedJwt) {
         String keyClaim = decodedJwt.getClaim(loggingKey).asString();
         if (keyClaim != null && obfuscateUserEmail) {
@@ -180,7 +184,8 @@ public class IdentityProvider {
         }
         Future<DecodedJWT> decodedJwt = isJwtMustBeVerified ? decodeAndVerifyJwtToken(encodedToken)
                 : Future.succeededFuture(decodeJwtToken(encodedToken));
-        return decodedJwt.map(jwt -> new ExtractedClaims(extractUserRoles(jwt), extractUserHash(jwt)));
+        return decodedJwt.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
+                extractUserHash(jwt)));
     }
 
     private record JwkResult(Jwk jwk, Exception error, long expirationTime) {

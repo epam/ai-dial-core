@@ -29,6 +29,9 @@ public class ControllerSelector {
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("/+openai/applications/([-.@a-zA-Z0-9]+)");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("/+openai/applications");
 
+
+    private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files(.*)");
+
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
 
     public Controller select(Proxy proxy, ProxyContext context) {
@@ -37,15 +40,17 @@ public class ControllerSelector {
         Controller controller = null;
 
         if (method == HttpMethod.GET) {
-            controller = selectGet(context, path);
+            controller = selectGet(proxy, context, path);
         } else if (method == HttpMethod.POST) {
             controller = selectPost(proxy, context, path);
+        } else if (method == HttpMethod.DELETE) {
+            controller = selectDelete(proxy, context, path);
         }
 
         return (controller == null) ? new RouteController(proxy, context) : controller;
     }
 
-    private static Controller selectGet(ProxyContext context, String path) {
+    private static Controller selectGet(Proxy proxy, ProxyContext context, String path) {
         Matcher match;
 
         match = match(PATTERN_DEPLOYMENT, path);
@@ -113,6 +118,19 @@ public class ControllerSelector {
             return controller::getApplications;
         }
 
+        match = match(PATTERN_FILES, path);
+        if (match != null) {
+            String filePath = match.group(1);
+            String purpose = context.getRequest().params().get(DownloadFileController.PURPOSE_FILE_QUERY_PARAMETER);
+            if (DownloadFileController.QUERY_METADATA_QUERY_PARAMETER_VALUE.equals(purpose)) {
+                FileMetadataController controller = new FileMetadataController(proxy, context);
+                return () -> controller.list(filePath);
+            } else {
+                DownloadFileController controller = new DownloadFileController(proxy, context);
+                return () -> controller.download(filePath);
+            }
+        }
+
         return null;
     }
 
@@ -123,6 +141,23 @@ public class ControllerSelector {
             String deploymentApi = match.group(2);
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId, deploymentApi);
+        }
+        match = match(PATTERN_FILES, path);
+        if (match != null) {
+            String relativeFilePath = match.group(1);
+            UploadFileController controller = new UploadFileController(proxy, context);
+            return () -> controller.upload(relativeFilePath);
+        }
+
+        return null;
+    }
+
+    private static Controller selectDelete(Proxy proxy, ProxyContext context, String path) {
+        Matcher match = match(PATTERN_FILES, path);
+        if (match != null) {
+            String relativeFilePath = match.group(1);
+            DeleteFileController controller = new DeleteFileController(proxy, context);
+            return () -> controller.delete(relativeFilePath);
         }
 
         match = match(PATTERN_RATE_RESPONSE, path);

@@ -1,16 +1,16 @@
 {
   "vertx": {
     "metricsOptions": {
-      "enabled": true,
-      "jvmMetricsEnabled": true,
+      "enabled": false,
+      "jvmMetricsEnabled": false,
       "labels": [
         "HTTP_METHOD",
         "HTTP_CODE",
         "HTTP_PATH"
       ],
       "prometheusOptions": {
-        "enabled": true,
-        "startEmbeddedServer": true,
+        "enabled": false,
+        "startEmbeddedServer": false,
         "embeddedServerOptions": {
           "port": 9464
         }
@@ -28,7 +28,7 @@
     "maxPoolSize": 128
   },
   "server": {
-    "port": 8080,
+    "port": 0,
     "acceptBacklog": 4096,
     "idleTimeoutUnit": "MILLISECONDS",
     "idleTimeout": 300000,
@@ -39,14 +39,7 @@
     "reload": 60000
   },
   "identityProvider": {
-    "jwksUrl": null,
+    "jwksUrl": "http://fakeJwksUrl:8080",
     "appName": "dial"
-  },
-  "storage": {
-    "provider" : "s3",
-    "endpoint" : "http://localhost:9000",
-    "identity": "access-key",
-    "credential": "secret-key",
-    "bucket": "dail"
   }
 }
