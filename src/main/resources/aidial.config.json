@@ -20,9 +20,8 @@
   },
   "assistant": {
     "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
-
     "assistants": {
-      "ass": {
+      "search_assistant": {
         "prompt": "Commands: sit_down, get_up, run_away",
         "addons": ["search"],
         "displayName": "Search Assistant",
@@ -47,19 +46,29 @@
       "displayName": "GPT 3.5",
       "iconUrl": "http://localhost:7001/logo.png",
       "description": "Some description of the model for testing",
-      "endpoint" : "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
+      "endpoint" : "http://localhost:7001/v1/openai/deployments/gpt-35-turbo/chat/completions",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey1"},
         {"endpoint": "http://localhost:7002", "key": "modelKey2"},
         {"endpoint": "http://localhost:7003", "key": "modelKey3"}
-      ]
+      ],
+      "limits": {
+        "maxTotalTokens": 4096
+      }
     },
     "embedding-ada": {
       "type": "embedding",
       "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
-      ]
+      ],
+      "limits": {
+        "maxTotalTokens": 8192
+      }
+    },
+    "exotic-model": {
+      "type": "chat",
+      "endpoint" : "http://localhost:7001/openai/deployments/exotic-model/chat/completions"
     }
   },
   "keys": {
@@ -77,10 +86,11 @@
       "limits": {
         "chat-gpt-35-turbo": {"minute": "100000", "day": "10000000"},
         "embedding-ada": {"minute": "100000", "day": "10000000"},
+        "exotic-model": {},
         "search": {},
         "forecast": {},
         "calculator": {},
-        "ass": {},
+        "search_assistant": {},
         "app": {}
       }
     }

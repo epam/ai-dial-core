@@ -4,8 +4,10 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.TokenLimits;
 import com.epam.aidial.core.data.ListData;
 import com.epam.aidial.core.data.ModelData;
+import com.epam.aidial.core.data.TokenLimitsData;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -67,8 +69,19 @@ public class ModelController {
             data.getCapabilities().setChatCompletion(true);
         }
 
+        data.setLimits(createLimits(model.getLimits()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
+        return data;
+    }
+
+    private static TokenLimitsData createLimits(TokenLimits limits) {
+        TokenLimitsData data = new TokenLimitsData();
+        if (limits != null) {
+            data.setMaxPromptTokens(limits.getMaxPromptTokens());
+            data.setMaxCompletionTokens(limits.getMaxCompletionTokens());
+            data.setMaxTotalTokens(limits.getMaxTotalTokens());
+        }
         return data;
     }
 }
