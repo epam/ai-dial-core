@@ -2,6 +2,7 @@ package com.epam.aidial.core.config;
 
 import lombok.Data;
 
+import java.util.List;
 import java.util.Set;
 
 @Data
@@ -23,4 +24,6 @@ public abstract class Deployment {
      */
     private boolean forwardApiKey = true;
     private String rateEndpoint;
+    private List<String> inputAttachmentTypes;
+    private Integer maxInputAttachments;
 }

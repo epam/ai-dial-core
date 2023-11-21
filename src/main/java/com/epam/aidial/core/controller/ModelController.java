@@ -67,6 +67,9 @@ public class ModelController {
             data.getCapabilities().setChatCompletion(true);
         }
 
+        data.setInputAttachmentTypes(model.getInputAttachmentTypes());
+        data.setMaxInputAttachments(model.getMaxInputAttachments());
+
         return data;
     }
 }
