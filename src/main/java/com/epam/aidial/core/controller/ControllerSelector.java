@@ -29,7 +29,7 @@ public class ControllerSelector {
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("/+openai/applications/([-.@a-zA-Z0-9]+)");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("/+openai/applications");
 
-    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/[-.@a-zA-Z0-9]+/rate");
+    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
 
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = URLDecoder.decode(context.getRequest().path(), StandardCharsets.UTF_8);
