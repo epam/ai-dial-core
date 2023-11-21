@@ -142,6 +142,7 @@ public class ControllerSelector {
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId, deploymentApi);
         }
+
         match = match(PATTERN_FILES, path);
         if (match != null) {
             String relativeFilePath = match.group(1);
