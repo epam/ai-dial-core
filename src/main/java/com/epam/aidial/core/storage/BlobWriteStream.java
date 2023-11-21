@@ -24,7 +24,7 @@ import java.util.List;
 @Slf4j
 public class BlobWriteStream implements WriteStream<Buffer> {
 
-    private static final int MIN_PART_SIZE = 5 * 1024 * 1024;
+    private static final int MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
     private final Vertx vertx;
     private final BlobStorage storage;
@@ -33,7 +33,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     private final String contentType;
 
     private final Buffer chunkBuffer = Buffer.buffer();
-    private int chunkSize = MIN_PART_SIZE;
+    private int chunkSize = MIN_PART_SIZE_BYTES;
     private int position;
     private MultipartUpload mpu;
     private int chunkNumber = 0;
@@ -133,7 +133,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     @Override
     public synchronized WriteStream<Buffer> setWriteQueueMaxSize(int maxSize) {
-        assert maxSize > MIN_PART_SIZE;
+        assert maxSize > MIN_PART_SIZE_BYTES;
         chunkSize = maxSize;
         return this;
     }
@@ -182,6 +182,6 @@ public class BlobWriteStream implements WriteStream<Buffer> {
             errorHandler.handle(ex);
         }
 
-        log.info("Multipart upload aborted");
+        log.warn("Multipart upload aborted");
     }
 }

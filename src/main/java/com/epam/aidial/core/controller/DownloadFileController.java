@@ -78,7 +78,7 @@ public class DownloadFileController {
                 result.fail(e);
             }
         }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to fetch file with ID " + path));
+                "Failed to fetch file with path " + path));
 
         return result.future();
     }

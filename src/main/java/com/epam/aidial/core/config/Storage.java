@@ -27,4 +27,9 @@ public class Storage {
      * container name/root bucket
      */
     String bucket;
+
+    /**
+     * Indicates whether bucket should be created on start up
+     */
+    boolean createBucket;
 }

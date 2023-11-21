@@ -33,7 +33,7 @@ public class FileMetadataController {
                 context.respond(HttpStatus.OK, metadata);
             } catch (Exception ex) {
                 log.error("Failed to list files", ex);
-                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to list files metadata");
+                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to list files by path %s".formatted(path));
             }
 
             return null;

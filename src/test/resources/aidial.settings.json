@@ -1,0 +1,45 @@
+{
+  "vertx": {
+    "metricsOptions": {
+      "enabled": false,
+      "jvmMetricsEnabled": false,
+      "labels": [
+        "HTTP_METHOD",
+        "HTTP_CODE",
+        "HTTP_PATH"
+      ],
+      "prometheusOptions": {
+        "enabled": false,
+        "startEmbeddedServer": false,
+        "embeddedServerOptions": {
+          "port": 9464
+        }
+      },
+      "oltpOptions": {
+        "enabled": false
+      }
+    }
+  },
+  "client": {
+    "idleTimeoutUnit": "MILLISECONDS",
+    "idleTimeout": 300000,
+    "connectTimeout": 10000,
+    "keepAlive": true,
+    "maxPoolSize": 128
+  },
+  "server": {
+    "port": 0,
+    "acceptBacklog": 4096,
+    "idleTimeoutUnit": "MILLISECONDS",
+    "idleTimeout": 300000,
+    "compressionSupported": true
+  },
+  "config": {
+    "files": ["aidial.config.json"],
+    "reload": 60000
+  },
+  "identityProvider": {
+    "jwksUrl": "http://fakeJwksUrl:8080",
+    "appName": "dial"
+  }
+}

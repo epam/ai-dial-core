@@ -10,6 +10,7 @@ import com.epam.aidial.core.security.IdentityProvider;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
+import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
@@ -25,6 +26,7 @@ import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,7 +71,6 @@ public class AiDial {
             open(server, HttpServer::listen);
 
             log.info("Proxy started on {}", server.actualPort());
-            Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "shutdown-hook"));
         } catch (Throwable e) {
             log.warn("Proxy failed to start:", e);
             stop();
@@ -77,14 +78,44 @@ public class AiDial {
         }
     }
 
-    private void stop() {
+    @VisibleForTesting
+    void start(BlobStorage storage) throws Exception {
+        try {
+            settings = settings();
+
+            VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
+            setupMetrics(vertxOptions);
+
+            vertx = Vertx.vertx(vertxOptions);
+            client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
+
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"));
+            LogStore logStore = new GfLogStore(vertx);
+            RateLimiter rateLimiter = new RateLimiter();
+            UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
+
+            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx);
+            this.storage = storage;
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider, storage);
+
+            server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
+            open(server, HttpServer::listen);
+
+            log.info("Proxy started on {}", server.actualPort());
+        } catch (Throwable e) {
+            log.warn("Proxy failed to start:", e);
+            stop();
+            throw e;
+        }
+    }
+
+    @VisibleForTesting
+    void stop() {
         try {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
             close(vertx, Vertx::close);
-            if (storage != null) {
-                storage.close();
-            }
+            close(storage);
             log.info("Proxy stopped");
             LogConfigurator.unconfigure();
         } catch (Throwable e) {
@@ -92,6 +123,11 @@ public class AiDial {
             LogConfigurator.unconfigure();
             System.exit(-1);
         }
+    }
+
+    @VisibleForTesting
+    HttpServer getServer() {
+        return server;
     }
 
     private JsonObject settings(String key) {
@@ -160,6 +196,12 @@ public class AiDial {
         }
     }
 
+    private static void close(Closeable resource) throws IOException {
+        if (resource != null) {
+            resource.close();
+        }
+    }
+
     private interface AsyncOpener<R> {
         Future<R> open(R resource);
     }
@@ -169,7 +211,9 @@ public class AiDial {
     }
 
     public static void main(String[] args) throws Exception {
-        new AiDial().start();
+        AiDial dial = new AiDial();
+        dial.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
     }
 
     private static void setupMetrics(VertxOptions options) {

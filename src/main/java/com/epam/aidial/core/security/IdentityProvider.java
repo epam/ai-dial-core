@@ -147,7 +147,7 @@ public class IdentityProvider {
         }
     }
 
-    private String extractUserSub(DecodedJWT decodedJwt) {
+    private static String extractUserSub(DecodedJWT decodedJwt) {
         return decodedJwt.getClaim("sub").asString();
     }
 

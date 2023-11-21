@@ -47,7 +47,7 @@ public class UploadFileController {
                             .onFailure(error -> {
                                 writeStream.abortUpload(error);
                                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file: " + error.getMessage());
+                                        "Failed to upload file by path " + path);
                             });
                 });
 

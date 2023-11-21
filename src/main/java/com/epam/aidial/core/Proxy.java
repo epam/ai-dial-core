@@ -44,7 +44,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
 
-    public static final int REQUEST_BODY_MAX_SIZE = 512 * 1024 * 1024;
+    public static final int REQUEST_BODY_MAX_SIZE_BYTES = 16 * 1024 * 1024;
+    public static final int FILES_REQUEST_BODY_MAX_SIZE_BYTES = 512 * 1024 * 1024;
 
     private final Vertx vertx;
     private final HttpClient client;
@@ -84,10 +85,18 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
-        if (ProxyUtil.contentLength(request, 1024) > REQUEST_BODY_MAX_SIZE) {
-            respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
-            return;
+        String contentType = request.getHeader(HttpHeaders.CONTENT_TYPE);
+        if (contentType != null && contentType.startsWith("multipart/form-data")) {
+            if (ProxyUtil.contentLength(request, 1024) > FILES_REQUEST_BODY_MAX_SIZE_BYTES) {
+                respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
+                return;
+            }
+        } else {
+            // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
+            if (ProxyUtil.contentLength(request, 1024) > REQUEST_BODY_MAX_SIZE_BYTES) {
+                respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
+                return;
+            }
         }
 
         String path = URLDecoder.decode(request.path(), StandardCharsets.UTF_8);
