@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -23,4 +25,6 @@ public class DeploymentData {
     private long createdAt = 1672534800;
     private long updatedAt = 1672534800;
     private ScaleSettingsData scaleSettings = new ScaleSettingsData();
+    private List<String> inputAttachmentTypes;
+    private Integer maxInputAttachments;
 }

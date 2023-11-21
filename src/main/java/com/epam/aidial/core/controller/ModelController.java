@@ -70,6 +70,8 @@ public class ModelController {
         }
 
         data.setLimits(createLimits(model.getLimits()));
+        data.setInputAttachmentTypes(model.getInputAttachmentTypes());
+        data.setMaxInputAttachments(model.getMaxInputAttachments());
         return data;
     }
 
