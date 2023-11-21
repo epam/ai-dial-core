@@ -5,9 +5,11 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.TokenLimits;
+import com.epam.aidial.core.config.Tokenizer;
 import com.epam.aidial.core.data.ListData;
 import com.epam.aidial.core.data.ModelData;
 import com.epam.aidial.core.data.TokenLimitsData;
+import com.epam.aidial.core.data.TokenizerData;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +72,7 @@ public class ModelController {
         }
 
         data.setLimits(createLimits(model.getLimits()));
+        data.setTokenizer(createTokenizer(model.getTokenizer()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         return data;
@@ -82,6 +85,16 @@ public class ModelController {
             data.setMaxCompletionTokens(limits.getMaxCompletionTokens());
             data.setMaxTotalTokens(limits.getMaxTotalTokens());
         }
+        return data;
+    }
+
+    private static TokenizerData createTokenizer(Tokenizer tokenizer) {
+        if (tokenizer == null) {
+            return null;
+        }
+        TokenizerData data = new TokenizerData();
+        data.setReferenceModel(tokenizer.getReferenceModel());
+        data.setEndpoint(tokenizer.getEndpoint() != null);
         return data;
     }
 }
