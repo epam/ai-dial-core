@@ -111,11 +111,6 @@ public class RateResponseController {
         log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
                 proxyResponse.headers().size());
 
-        if (proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
-            sendRequest(); // try next
-            return;
-        }
-
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024));
 
@@ -156,7 +151,7 @@ public class RateResponseController {
      */
     private void handleProxyConnectionError(Throwable error) {
         log.warn("Can't connect to origin: {}", error.getMessage());
-        sendRequest(); // try next
+        context.respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
     }
 
     /**
