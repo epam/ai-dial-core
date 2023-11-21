@@ -47,39 +47,8 @@ public class AiDial {
 
     private BlobStorage storage;
 
-    private void start() throws Exception {
-        try {
-            settings = settings();
-
-            VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
-            setupMetrics(vertxOptions);
-
-            vertx = Vertx.vertx(vertxOptions);
-            client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
-
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"));
-            LogStore logStore = new GfLogStore(vertx);
-            RateLimiter rateLimiter = new RateLimiter();
-            UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
-
-            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx);
-            Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
-            storage = new BlobStorage(storageConfig);
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider, storage);
-
-            server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
-            open(server, HttpServer::listen);
-
-            log.info("Proxy started on {}", server.actualPort());
-        } catch (Throwable e) {
-            log.warn("Proxy failed to start:", e);
-            stop();
-            throw e;
-        }
-    }
-
     @VisibleForTesting
-    void start(BlobStorage storage) throws Exception {
+    void start() throws Exception {
         try {
             settings = settings();
 
@@ -95,7 +64,10 @@ public class AiDial {
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
             IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx);
-            this.storage = storage;
+            if (storage == null) {
+                Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
+                storage = new BlobStorage(storageConfig);
+            }
             Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider, storage);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
@@ -128,6 +100,11 @@ public class AiDial {
     @VisibleForTesting
     HttpServer getServer() {
         return server;
+    }
+
+    @VisibleForTesting
+    void setStorage(BlobStorage storage) {
+        this.storage = storage;
     }
 
     private JsonObject settings(String key) {

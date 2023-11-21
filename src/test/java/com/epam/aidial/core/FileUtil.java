@@ -11,7 +11,7 @@ import java.nio.file.Paths;
 import java.util.Objects;
 
 @UtilityClass
-public class TestFiles {
+public class FileUtil {
 
     public static Path baseTestPath(Class<?> clazz) {
         return resolveRes(clazz.getSimpleName());
@@ -19,7 +19,7 @@ public class TestFiles {
 
     @SneakyThrows
     public static Path resolveRes(String resourcePath) {
-        URI resUri = Objects.requireNonNull(TestFiles.class.getClassLoader().getResource(".")).toURI();
+        URI resUri = Objects.requireNonNull(FileUtil.class.getClassLoader().getResource(".")).toURI();
         return Paths.get(resUri).getParent().toAbsolutePath().resolve(resourcePath);
     }
 

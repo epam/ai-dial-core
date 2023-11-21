@@ -57,7 +57,7 @@ public class BlobStorage implements Closeable {
     }
 
     /**
-     * Initialize s3 multipart upload
+     * Initialize multipart upload
      *
      * @param fileName    name of the file, for example: data.csv
      * @param path        absolute path according to the bucket, for example: Users/user1/files/input data

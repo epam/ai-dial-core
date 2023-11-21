@@ -42,22 +42,22 @@ public class FileApiTest {
     public static void init() throws Exception {
         // initialize server
         dial = new AiDial();
-        testDir = TestFiles.baseTestPath(FileApiTest.class);
-        BlobStorage storage = buildFsBlobStorage(testDir);
-        dial.start(storage);
+        testDir = FileUtil.baseTestPath(FileApiTest.class);
+        dial.setStorage(buildFsBlobStorage(testDir));
+        dial.start();
         serverPort = dial.getServer().actualPort();
     }
 
     @BeforeEach
     public void setUp() {
         // prepare test directory
-        TestFiles.createDir(testDir.resolve("test"));
+        FileUtil.createDir(testDir.resolve("test"));
     }
 
     @AfterEach
     public void clean() {
         // clean test directory
-        TestFiles.deleteDir(testDir);
+        FileUtil.deleteDir(testDir);
     }
 
     @AfterAll
