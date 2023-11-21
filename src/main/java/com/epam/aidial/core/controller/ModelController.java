@@ -69,7 +69,6 @@ public class ModelController {
 
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
-
         return data;
     }
 }
