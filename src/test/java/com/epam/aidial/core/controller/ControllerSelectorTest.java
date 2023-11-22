@@ -11,16 +11,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import javax.annotation.Nullable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -50,7 +49,7 @@ public class ControllerSelectorTest {
         assertNotNull(lambda);
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        assertTrue(arg1 instanceof DeploymentController);
+        assertInstanceOf(DeploymentController.class, arg1);
         assertEquals("deployment1", arg2);
     }
 
@@ -64,7 +63,7 @@ public class ControllerSelectorTest {
         assertNotNull(lambda);
         assertEquals(1, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
-        assertTrue(arg1 instanceof DeploymentController);
+        assertInstanceOf(DeploymentController.class, arg1);
         assertEquals("getDeployments", lambda.getImplMethodName());
     }
 
@@ -282,7 +281,7 @@ public class ControllerSelectorTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);
-        assertTrue(controller instanceof RouteController);
+        assertInstanceOf(RouteController.class, controller);
     }
 
     @Nullable
