@@ -14,7 +14,8 @@ public class ModelData extends DeploymentData {
 
     private String lifecycleStatus = "generally-available";
     private CapabilitiesData capabilities = new CapabilitiesData();
-    private TokenLimitsData limits = new TokenLimitsData();
+    private TokenLimitsData limits;
+    private PricingData pricing;
 
     {
         setObject("model");

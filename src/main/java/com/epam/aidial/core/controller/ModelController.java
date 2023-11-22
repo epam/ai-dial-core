@@ -4,9 +4,11 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.TokenLimits;
 import com.epam.aidial.core.data.ListData;
 import com.epam.aidial.core.data.ModelData;
+import com.epam.aidial.core.data.PricingData;
 import com.epam.aidial.core.data.TokenLimitsData;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
@@ -72,16 +74,29 @@ public class ModelController {
         data.setLimits(createLimits(model.getLimits()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
+        data.setPricing(createPricing(model.getPricing()));
         return data;
     }
 
     private static TokenLimitsData createLimits(TokenLimits limits) {
-        TokenLimitsData data = new TokenLimitsData();
-        if (limits != null) {
-            data.setMaxPromptTokens(limits.getMaxPromptTokens());
-            data.setMaxCompletionTokens(limits.getMaxCompletionTokens());
-            data.setMaxTotalTokens(limits.getMaxTotalTokens());
+        if (limits == null) {
+            return null;
         }
+        TokenLimitsData data = new TokenLimitsData();
+        data.setMaxPromptTokens(limits.getMaxPromptTokens());
+        data.setMaxCompletionTokens(limits.getMaxCompletionTokens());
+        data.setMaxTotalTokens(limits.getMaxTotalTokens());
+        return data;
+    }
+
+    private static PricingData createPricing(Pricing pricing) {
+        if (pricing == null) {
+            return null;
+        }
+        PricingData data = new PricingData();
+        data.setUnit(pricing.getUnit());
+        data.setPrompt(pricing.getPrompt());
+        data.setCompletion(pricing.getCompletion());
         return data;
     }
 }

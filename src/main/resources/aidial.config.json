@@ -54,6 +54,11 @@
       ],
       "limits": {
         "maxTotalTokens": 4096
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": 0.00005,
+        "completion": 0.0001
       }
     },
     "embedding-ada": {
@@ -64,11 +69,20 @@
       ],
       "limits": {
         "maxTotalTokens": 8192
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": 0.00005
       }
     },
     "exotic-model": {
       "type": "chat",
-      "endpoint" : "http://localhost:7001/openai/deployments/exotic-model/chat/completions"
+      "endpoint" : "http://localhost:7001/openai/deployments/exotic-model/chat/completions",
+      "pricing": {
+        "unit": "char_without_whitespace",
+        "prompt": 0.00005,
+        "completion": 0.0001
+      }
     }
   },
   "keys": {
