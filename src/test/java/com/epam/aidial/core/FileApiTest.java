@@ -5,6 +5,8 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.storage.BlobStorage;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonArray;
@@ -27,6 +29,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.nio.file.Path;
 import java.util.Properties;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @ExtendWith(VertxExtension.class)
 @Slf4j
@@ -76,8 +81,8 @@ public class FileApiTest {
                 .as(BodyCodec.jsonArray())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
-                        Assertions.assertEquals(200, response.statusCode());
-                        Assertions.assertEquals(JsonArray.of(), response.body());
+                        assertEquals(200, response.statusCode());
+                        assertEquals(JsonArray.of(), response.body());
                         context.completeNow();
                     });
                 }));
@@ -92,8 +97,8 @@ public class FileApiTest {
                 .as(BodyCodec.buffer())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
-                        Assertions.assertEquals(404, response.statusCode());
-                        Assertions.assertNull(response.body());
+                        assertEquals(404, response.statusCode());
+                        assertNull(response.body());
                         context.completeNow();
                     });
                 }));
@@ -104,50 +109,60 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        // verify no files
-        client.get(serverPort, "localhost", "/v1/files")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .addQueryParam("purpose", "metadata")
-                .as(BodyCodec.jsonArray())
-                .send(context.succeeding(response -> {
-                    context.verify(() -> {
-                        Assertions.assertEquals(200, response.statusCode());
-                        Assertions.assertEquals(JsonArray.of(), response.body());
-                        checkpoint.flag();
-                    });
-                }));
-
         FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "Users/User1/files", 17, "text/custom");
 
-        // upload test file
-        client.post(serverPort, "localhost", "/v1/files")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .as(BodyCodec.json(FileMetadata.class))
-                .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
-                        context.succeeding(response -> {
-                            context.verify(() -> {
-                                Assertions.assertEquals(200, response.statusCode());
-                                Assertions.assertEquals(expectedFileMetadata, response.body());
-                                checkpoint.flag();
-                            });
-                        })
-                );
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify no files
+            client.get(serverPort, "localhost", "/v1/files")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .addQueryParam("purpose", "metadata")
+                    .as(BodyCodec.jsonArray())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(JsonArray.of(), response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
 
-        // verify uploaded file can be listed
-        client.get(serverPort, "localhost", "/v1/files")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .addQueryParam("purpose", "metadata")
-                .as(BodyCodec.jsonArray())
-                .send(context.succeeding(response -> {
-                    context.verify(() -> {
-                        Assertions.assertEquals(200, response.statusCode());
-                        Assertions.assertIterableEquals(JsonArray.of(JsonObject.mapFrom(expectedFileMetadata)), response.body());
-                        checkpoint.flag();
-                    });
-                }));
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file
+            client.post(serverPort, "localhost", "/v1/files")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify uploaded file can be listed
+            client.get(serverPort, "localhost", "/v1/files")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .addQueryParam("purpose", "metadata")
+                    .as(BodyCodec.jsonArray())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            Assertions.assertIterableEquals(JsonArray.of(JsonObject.mapFrom(expectedFileMetadata)), response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
     }
 
     @Test
@@ -157,47 +172,57 @@ public class FileApiTest {
 
         FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "Users/User1/files/folder1", 17, "text/plain");
 
-        // upload test file
-        client.post(serverPort, "localhost", "/v1/files/folder1")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .as(BodyCodec.json(FileMetadata.class))
-                .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
-                        context.succeeding(response -> {
-                            context.verify(() -> {
-                                Assertions.assertEquals(200, response.statusCode());
-                                Assertions.assertEquals(expectedFileMetadata, response.body());
-                                checkpoint.flag();
-                            });
-                        })
-                );
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file
+            client.post(serverPort, "localhost", "/v1/files/folder1")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
 
-        // download by relative path
-        client.get(serverPort, "localhost", "/v1/files/folder1/file.txt")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .as(BodyCodec.string())
-                .send(context.succeeding(response -> {
-                    context.verify(() -> {
-                        Assertions.assertEquals(200, response.statusCode());
-                        Assertions.assertEquals(TEST_FILE_CONTENT, response.body());
-                        checkpoint.flag();
-                    });
-                }));
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // download by relative path
+            client.get(serverPort, "localhost", "/v1/files/folder1/file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(TEST_FILE_CONTENT, response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
 
-        // download by absolute path
-        client.get(serverPort, "localhost", "/v1/files/Users/User1/files/folder1/file.txt")
-                .addQueryParam("path", "absolute")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User2"))
-                .as(BodyCodec.string())
-                .send(context.succeeding(response -> {
-                    context.verify(() -> {
-                        Assertions.assertEquals(200, response.statusCode());
-                        Assertions.assertEquals(TEST_FILE_CONTENT, response.body());
-                        checkpoint.flag();
-                    });
-                }));
+            return promise.future();
+        }).andThen((result) -> {
+            // download by absolute path
+            client.get(serverPort, "localhost", "/v1/files/Users/User1/files/folder1/file.txt")
+                    .addQueryParam("path", "absolute")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User2"))
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(TEST_FILE_CONTENT, response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
     }
 
     @Test
@@ -207,44 +232,54 @@ public class FileApiTest {
 
         FileMetadata expectedFileMetadata = new FileMetadata("test_file.txt", "Users/User1/files", 17, "text/plain");
 
-        // upload test file
-        client.post(serverPort, "localhost", "/v1/files")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .as(BodyCodec.json(FileMetadata.class))
-                .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT),
-                        context.succeeding(response -> {
-                            context.verify(() -> {
-                                Assertions.assertEquals(200, response.statusCode());
-                                Assertions.assertEquals(expectedFileMetadata, response.body());
-                                checkpoint.flag();
-                            });
-                        })
-                );
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file
+            client.post(serverPort, "localhost", "/v1/files")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
 
-        // delete file
-        client.delete(serverPort, "localhost", "/v1/files/test_file.txt")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .as(BodyCodec.string())
-                .send(context.succeeding(response -> {
-                    context.verify(() -> {
-                        Assertions.assertEquals(200, response.statusCode());
-                        checkpoint.flag();
-                    });
-                }));
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // delete file
+            client.delete(serverPort, "localhost", "/v1/files/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
 
-        // try to download deleted file
-        client.get(serverPort, "localhost", "/v1/files/test_file.txt")
-                .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
-                .as(BodyCodec.string())
-                .send(context.succeeding(response -> {
-                    context.verify(() -> {
-                        Assertions.assertEquals(404, response.statusCode());
-                        checkpoint.flag();
-                    });
-                }));
+            return promise.future();
+        }).andThen((mapper) -> {
+            // try to download deleted file
+            client.get(serverPort, "localhost", "/v1/files/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .bearerTokenAuthentication(generateJwtToken("User1"))
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(404, response.statusCode());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
     }
 
     private static BlobStorage buildFsBlobStorage(Path baseDir) {
