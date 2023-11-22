@@ -57,8 +57,8 @@
       },
       "pricing": {
         "unit": "token",
-        "prompt": 0.00005,
-        "completion": 0.0001
+        "prompt": "0.00005",
+        "completion": "0.0001"
       }
     },
     "embedding-ada": {
@@ -72,7 +72,7 @@
       },
       "pricing": {
         "unit": "token",
-        "prompt": 0.00005
+        "prompt": "0.00005"
       }
     },
     "exotic-model": {
@@ -80,8 +80,8 @@
       "endpoint" : "http://localhost:7001/openai/deployments/exotic-model/chat/completions",
       "pricing": {
         "unit": "char_without_whitespace",
-        "prompt": 0.00005,
-        "completion": 0.0001
+        "prompt": "0.00005",
+        "completion": "0.0001"
       }
     }
   },
