@@ -285,6 +285,15 @@ public class ControllerSelectorTest {
         Assertions.assertEquals("app", arg2);
     }
 
+    @Test
+    public void testSelectRouteController() {
+        when(request.path()).thenReturn("/route/request");
+        when(request.method()).thenReturn(HttpMethod.POST);
+        Controller controller = ControllerSelector.select(proxy, context);
+        Assertions.assertNotNull(controller);
+        Assertions.assertTrue(controller instanceof RouteController);
+    }
+
     @Nullable
     private static SerializedLambda getSerializedLambda(Serializable lambda) {
         for (Class<?> cl = lambda.getClass(); cl != null; cl = cl.getSuperclass()) {
