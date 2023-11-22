@@ -32,6 +32,7 @@ public class ControllerSelector {
 
     private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files(.*)");
 
+    private static final Pattern PATTERN_TOKENIZE_RESPONSE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
 
     public Controller select(Proxy proxy, ProxyContext context) {
@@ -154,6 +155,13 @@ public class ControllerSelector {
         if (match != null) {
             String deploymentId = match.group(1);
             RateResponseController controller = new RateResponseController(proxy, context);
+            return () -> controller.handle(deploymentId);
+        }
+
+        match = match(PATTERN_TOKENIZE_RESPONSE, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+            TokenizeResponseController controller = new TokenizeResponseController(proxy, context);
             return () -> controller.handle(deploymentId);
         }
 
