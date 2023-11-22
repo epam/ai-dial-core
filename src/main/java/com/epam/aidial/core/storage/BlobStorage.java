@@ -108,7 +108,7 @@ public class BlobStorage {
         storeContext.close();
     }
 
-    private static ListContainerOptions buildListContainerOptions(String prefix) {
+    public static ListContainerOptions buildListContainerOptions(String prefix) {
         return new ListContainerOptions()
                 .prefix(prefix)
                 .delimiter(BlobStorageUtil.PATH_SEPARATOR);

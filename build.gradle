@@ -3,6 +3,7 @@ plugins {
     id 'checkstyle'
     id 'application'
     id 'io.freefair.lombok' version '8.0.1'
+    id "me.champeau.jmh" version "0.7.2"
 }
 
 group = 'com.epam.aidial'
@@ -22,6 +23,14 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    jmh  {
+        java {
+        }
+    }
+}
+
+
 dependencies {
     implementation 'com.google.protobuf:protobuf-java:3.19.6'
     implementation 'org.slf4j:slf4j-api:1.7.32'
@@ -40,11 +49,20 @@ dependencies {
     implementation 'com.auth0:java-jwt:4.4.0'
     implementation 'com.auth0:jwks-rsa:0.22.1'
     implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
+    implementation group: 'org.apache.jclouds.api', name: 'filesystem', version: '2.5.0'
+    implementation 'org.redisson:redisson:3.20.0'
+    //implementation 'redis.clients:jedis:4.3.1'
+    implementation 'org.apache.commons:commons-math3:3.6.1'
 
     runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.0'
     testImplementation 'org.mockito:mockito-core:5.4.0'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
+
+
+    jmhImplementation 'org.openjdk.jmh:jmh-core:1.37'
+    jmhImplementation sourceSets.main.runtimeClasspath
+    jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
 }
 
 application {
