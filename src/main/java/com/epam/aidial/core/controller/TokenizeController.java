@@ -2,7 +2,6 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
@@ -23,13 +22,13 @@ import java.util.Optional;
 
 @Slf4j
 @RequiredArgsConstructor
-public class TokenizeResponseController {
+public class TokenizeController {
 
     private final Proxy proxy;
     private final ProxyContext context;
 
     public void handle(String deploymentId) {
-        Model deployment = getDeployment(deploymentId);
+        Model deployment = context.getConfig().getModels().get(deploymentId);
 
         String endpoint = Optional.ofNullable(deployment)
                 .map(d -> d.getTokenizer())
@@ -45,11 +44,6 @@ public class TokenizeResponseController {
         context.getRequest().body()
                 .onSuccess(buffer -> this.handleRequestBody(endpoint, buffer))
                 .onFailure(this::handleRequestBodyError);
-    }
-
-    private Model getDeployment(String id) {
-        Config config = context.getConfig();
-        return config.getModels().get(id);
     }
 
     @SneakyThrows

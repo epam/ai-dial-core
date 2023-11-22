@@ -161,7 +161,7 @@ public class ControllerSelector {
         match = match(PATTERN_TOKENIZE_RESPONSE, path);
         if (match != null) {
             String deploymentId = match.group(1);
-            TokenizeResponseController controller = new TokenizeResponseController(proxy, context);
+            TokenizeController controller = new TokenizeController(proxy, context);
             return () -> controller.handle(deploymentId);
         }
 
