@@ -13,5 +13,6 @@ public class Model extends Deployment {
     private ModelType type;
     private TokenLimits limits;
     private Tokenizer tokenizer;
+    private Pricing pricing;
     private List<Upstream> upstreams = List.of();
 }
