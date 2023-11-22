@@ -12,11 +12,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import javax.annotation.Nullable;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -195,7 +195,7 @@ public class ControllerSelectorTest {
         Assertions.assertNotNull(lambda);
         Assertions.assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
-        Object arg2= lambda.getCapturedArg(1);
+        Object arg2 = lambda.getCapturedArg(1);
         Assertions.assertTrue(arg1 instanceof FileMetadataController);
         Assertions.assertTrue(arg2 instanceof String);
         Assertions.assertEquals("/folder1/file1?purpose=metadata", arg2);
@@ -213,7 +213,7 @@ public class ControllerSelectorTest {
         Assertions.assertNotNull(lambda);
         Assertions.assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
-        Object arg2= lambda.getCapturedArg(1);
+        Object arg2 = lambda.getCapturedArg(1);
         Assertions.assertTrue(arg1 instanceof DownloadFileController);
         Assertions.assertTrue(arg2 instanceof String);
         Assertions.assertEquals("/folder1/file1", arg2);
@@ -229,8 +229,8 @@ public class ControllerSelectorTest {
         Assertions.assertNotNull(lambda);
         Assertions.assertEquals(3, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
-        Object arg2= lambda.getCapturedArg(1);
-        Object arg3= lambda.getCapturedArg(2);
+        Object arg2 = lambda.getCapturedArg(1);
+        Object arg3 = lambda.getCapturedArg(2);
         Assertions.assertTrue(arg1 instanceof DeploymentPostController);
         Assertions.assertTrue(arg2 instanceof String);
         Assertions.assertTrue(arg3 instanceof String);
@@ -248,7 +248,7 @@ public class ControllerSelectorTest {
         Assertions.assertNotNull(lambda);
         Assertions.assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
-        Object arg2= lambda.getCapturedArg(1);
+        Object arg2 = lambda.getCapturedArg(1);
         Assertions.assertTrue(arg1 instanceof UploadFileController);
         Assertions.assertTrue(arg2 instanceof String);
         Assertions.assertEquals("/folder1/file1", arg2);
@@ -264,7 +264,7 @@ public class ControllerSelectorTest {
         Assertions.assertNotNull(lambda);
         Assertions.assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
-        Object arg2= lambda.getCapturedArg(1);
+        Object arg2 = lambda.getCapturedArg(1);
         Assertions.assertTrue(arg1 instanceof DeleteFileController);
         Assertions.assertTrue(arg2 instanceof String);
         Assertions.assertEquals("/folder1/file1", arg2);
