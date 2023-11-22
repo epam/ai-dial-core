@@ -52,12 +52,13 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     public BlobWriteStream(Vertx vertx,
                            BlobStorage storage,
                            String fileName,
-                           String parentPath) {
+                           String parentPath,
+                           String contentType) {
         this.vertx = vertx;
         this.storage = storage;
         this.fileName = fileName;
         this.parentPath = parentPath;
-        this.contentType = BlobStorageUtil.getContentType(fileName);
+        this.contentType = contentType != null ? contentType : BlobStorageUtil.getContentType(fileName);
     }
 
     @Override

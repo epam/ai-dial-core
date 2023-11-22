@@ -167,7 +167,7 @@ public class BlobStorage implements Closeable {
 
         return switch (metadata.getType()) {
             case BLOB ->
-                    new FileMetadata(lastElement, path, metadata.getSize(), BlobStorageUtil.getContentType(lastElement));
+                    new FileMetadata(lastElement, path, metadata.getSize(), ((BlobMetadata) metadata).getContentMetadata().getContentType());
             case FOLDER, RELATIVE_PATH ->
                     new FolderMetadata(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(lastElement),
                             BlobStorageUtil.removeTrailingPathSeparator(path));

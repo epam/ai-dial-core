@@ -33,13 +33,15 @@ public class UploadFileController {
         context.getRequest()
                 .setExpectMultipart(true)
                 .uploadHandler(upload -> {
+                    String contentType = upload.contentType();
                     String filename = upload.filename();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
                     BlobWriteStream writeStream = new BlobWriteStream(
                             proxy.getVertx(),
                             proxy.getStorage(),
                             filename,
-                            absoluteFilePath);
+                            absoluteFilePath,
+                            contentType);
                     pipe.to(writeStream, result);
 
                     result.future()

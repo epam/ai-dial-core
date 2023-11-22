@@ -118,14 +118,14 @@ public class FileApiTest {
                     });
                 }));
 
-        FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "Users/User1/files", 17, "text/plain");
+        FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "Users/User1/files", 17, "text/custom");
 
         // upload test file
         client.post(serverPort, "localhost", "/v1/files")
                 .putHeader("Api-key", "proxyKey2")
                 .bearerTokenAuthentication(generateJwtToken("User1"))
                 .as(BodyCodec.json(FileMetadata.class))
-                .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
+                .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
                         context.succeeding(response -> {
                             context.verify(() -> {
                                 Assertions.assertEquals(200, response.statusCode());
@@ -259,7 +259,11 @@ public class FileApiTest {
     }
 
     private static MultipartForm generateMultipartForm(String fileName, String content) {
-        return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), "text/plain");
+        return generateMultipartForm(fileName, content, "text/plan");
+    }
+
+    private static MultipartForm generateMultipartForm(String fileName, String content, String contentType) {
+        return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
     }
 
     private static String generateJwtToken(String user) {
