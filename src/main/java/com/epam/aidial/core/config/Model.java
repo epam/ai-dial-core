@@ -12,7 +12,7 @@ import java.util.List;
 public class Model extends Deployment {
     private ModelType type;
     private TokenLimits limits;
-    private Tokenizer tokenizer;
+    private Tokenization tokenization;
     private Pricing pricing;
     private List<Upstream> upstreams = List.of();
 }

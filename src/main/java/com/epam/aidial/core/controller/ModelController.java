@@ -6,12 +6,12 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.TokenLimits;
-import com.epam.aidial.core.config.Tokenizer;
+import com.epam.aidial.core.config.Tokenization;
 import com.epam.aidial.core.data.ListData;
 import com.epam.aidial.core.data.ModelData;
 import com.epam.aidial.core.data.PricingData;
 import com.epam.aidial.core.data.TokenLimitsData;
-import com.epam.aidial.core.data.TokenizerData;
+import com.epam.aidial.core.data.TokenizationData;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -74,7 +74,7 @@ public class ModelController {
         }
 
         data.setLimits(createLimits(model.getLimits()));
-        data.setTokenizer(createTokenizer(model.getTokenizer()));
+        data.setTokenization(createTokenization(model.getTokenization()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         data.setPricing(createPricing(model.getPricing()));
@@ -103,13 +103,13 @@ public class ModelController {
         return data;
     }
 
-    private static TokenizerData createTokenizer(Tokenizer tokenizer) {
-        if (tokenizer == null) {
+    private static TokenizationData createTokenization(Tokenization tokenization) {
+        if (tokenization == null) {
             return null;
         }
-        TokenizerData data = new TokenizerData();
-        data.setReferenceModel(tokenizer.getReferenceModel());
-        data.setEndpoint(tokenizer.getEndpoint() != null);
+        TokenizationData data = new TokenizationData();
+        data.setModel(tokenization.getModel());
+        data.setEndpoint(tokenization.getEndpoint() != null);
         return data;
     }
 }

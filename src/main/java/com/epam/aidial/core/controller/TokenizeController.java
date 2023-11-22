@@ -31,7 +31,7 @@ public class TokenizeController {
         Model deployment = context.getConfig().getModels().get(deploymentId);
 
         String endpoint = Optional.ofNullable(deployment)
-                .map(d -> d.getTokenizer())
+                .map(d -> d.getTokenization())
                 .map(t -> t.getEndpoint())
                 .orElse(null);
 
