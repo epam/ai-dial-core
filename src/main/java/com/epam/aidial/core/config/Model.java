@@ -12,5 +12,6 @@ import java.util.List;
 public class Model extends Deployment {
     private ModelType type;
     private TokenLimits limits;
+    private Pricing pricing;
     private List<Upstream> upstreams = List.of();
 }
