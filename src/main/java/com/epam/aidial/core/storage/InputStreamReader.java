@@ -50,6 +50,8 @@ public class InputStreamReader implements ReadStream<Buffer> {
             }
         });
         queue.drainHandler(v -> readDataFromStream());
+        queue.pause();
+        readDataFromStream();
     }
 
     @Override
@@ -71,13 +73,8 @@ public class InputStreamReader implements ReadStream<Buffer> {
     }
 
     @Override
-    public InputStreamReader handler(Handler<Buffer> handler) {
-        synchronized (this) {
-            this.dataHandler = handler;
-        }
-        if (handler != null) {
-            readDataFromStream();
-        }
+    public synchronized InputStreamReader handler(Handler<Buffer> handler) {
+        this.dataHandler = handler;
         return this;
     }
 

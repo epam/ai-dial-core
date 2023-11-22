@@ -30,6 +30,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.nio.file.Path;
 import java.util.Properties;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 @ExtendWith(VertxExtension.class)
 @Slf4j
 public class FileApiTest {
@@ -78,8 +81,8 @@ public class FileApiTest {
                 .as(BodyCodec.jsonArray())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
-                        Assertions.assertEquals(200, response.statusCode());
-                        Assertions.assertEquals(JsonArray.of(), response.body());
+                        assertEquals(200, response.statusCode());
+                        assertEquals(JsonArray.of(), response.body());
                         context.completeNow();
                     });
                 }));
@@ -94,8 +97,8 @@ public class FileApiTest {
                 .as(BodyCodec.buffer())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
-                        Assertions.assertEquals(404, response.statusCode());
-                        Assertions.assertNull(response.body());
+                        assertEquals(404, response.statusCode());
+                        assertNull(response.body());
                         context.completeNow();
                     });
                 }));
@@ -118,8 +121,8 @@ public class FileApiTest {
                     .as(BodyCodec.jsonArray())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            Assertions.assertEquals(200, response.statusCode());
-                            Assertions.assertEquals(JsonArray.of(), response.body());
+                            assertEquals(200, response.statusCode());
+                            assertEquals(JsonArray.of(), response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
@@ -136,8 +139,8 @@ public class FileApiTest {
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
                             context.succeeding(response -> {
                                 context.verify(() -> {
-                                    Assertions.assertEquals(200, response.statusCode());
-                                    Assertions.assertEquals(expectedFileMetadata, response.body());
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -145,8 +148,7 @@ public class FileApiTest {
                     );
 
             return promise.future();
-        }).compose((mapper) -> {
-            Promise<Void> promise = Promise.promise();
+        }).andThen((result) -> {
             // verify uploaded file can be listed
             client.get(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
@@ -155,14 +157,11 @@ public class FileApiTest {
                     .as(BodyCodec.jsonArray())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            Assertions.assertEquals(200, response.statusCode());
+                            assertEquals(200, response.statusCode());
                             Assertions.assertIterableEquals(JsonArray.of(JsonObject.mapFrom(expectedFileMetadata)), response.body());
                             checkpoint.flag();
-                            promise.complete();
                         });
                     }));
-
-            return promise.future();
         });
     }
 
@@ -183,8 +182,8 @@ public class FileApiTest {
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
                             context.succeeding(response -> {
                                 context.verify(() -> {
-                                    Assertions.assertEquals(200, response.statusCode());
-                                    Assertions.assertEquals(expectedFileMetadata, response.body());
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -201,16 +200,15 @@ public class FileApiTest {
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            Assertions.assertEquals(200, response.statusCode());
-                            Assertions.assertEquals(TEST_FILE_CONTENT, response.body());
+                            assertEquals(200, response.statusCode());
+                            assertEquals(TEST_FILE_CONTENT, response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
                     }));
 
             return promise.future();
-        }).compose((mapper) -> {
-            Promise<Void> promise = Promise.promise();
+        }).andThen((result) -> {
             // download by absolute path
             client.get(serverPort, "localhost", "/v1/files/Users/User1/files/folder1/file.txt")
                     .addQueryParam("path", "absolute")
@@ -219,14 +217,11 @@ public class FileApiTest {
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            Assertions.assertEquals(200, response.statusCode());
-                            Assertions.assertEquals(TEST_FILE_CONTENT, response.body());
+                            assertEquals(200, response.statusCode());
+                            assertEquals(TEST_FILE_CONTENT, response.body());
                             checkpoint.flag();
-                            promise.complete();
                         });
                     }));
-
-            return promise.future();
         });
     }
 
@@ -247,8 +242,8 @@ public class FileApiTest {
                     .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT),
                             context.succeeding(response -> {
                                 context.verify(() -> {
-                                    Assertions.assertEquals(200, response.statusCode());
-                                    Assertions.assertEquals(expectedFileMetadata, response.body());
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -265,15 +260,14 @@ public class FileApiTest {
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            Assertions.assertEquals(200, response.statusCode());
+                            assertEquals(200, response.statusCode());
                             checkpoint.flag();
                             promise.complete();
                         });
                     }));
 
             return promise.future();
-        }).compose((mapper) -> {
-            Promise<Void> promise = Promise.promise();
+        }).andThen((mapper) -> {
             // try to download deleted file
             client.get(serverPort, "localhost", "/v1/files/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
@@ -281,13 +275,10 @@ public class FileApiTest {
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            Assertions.assertEquals(404, response.statusCode());
+                            assertEquals(404, response.statusCode());
                             checkpoint.flag();
-                            promise.complete();
                         });
                     }));
-
-            return promise.future();
         });
     }
 
