@@ -10,5 +10,5 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class TokenizationData {
     private String model;
-    private boolean endpoint;
+    private boolean supported;
 }

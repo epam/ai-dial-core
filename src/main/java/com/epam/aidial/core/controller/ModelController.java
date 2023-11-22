@@ -109,7 +109,7 @@ public class ModelController {
         }
         TokenizationData data = new TokenizationData();
         data.setModel(tokenization.getModel());
-        data.setEndpoint(tokenization.getEndpoint() != null);
+        data.setSupported(tokenization.getEndpoint() != null);
         return data;
     }
 }
