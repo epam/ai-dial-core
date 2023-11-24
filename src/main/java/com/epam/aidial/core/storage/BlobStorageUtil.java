@@ -38,12 +38,16 @@ public class BlobStorageUtil {
         return path.charAt(path.length() - 1) == DELIMITER ? path : path + PATH_SEPARATOR;
     }
 
-    public String removeLeadingAndTrailingPathSeparators(String path) {
-        if (path == null || path.isBlank() || path.equals(PATH_SEPARATOR)) {
-            return "";
-        }
-        path = removeLeadingPathSeparator(path);
-        return removeTrailingPathSeparator(path);
+    /**
+     * Normalize parent path for file metadata by adding leading path separator and removing trailing one.
+     * For example, path Users/User1/files/folder1/  will be transformed to /Users/User1/files/folder1
+     *
+     * @return normalized path
+     */
+    public String normalizeParentPath(String path) {
+        path = removeTrailingPathSeparator(path);
+
+        return path.charAt(0) == DELIMITER ? path : PATH_SEPARATOR + path;
     }
 
     public String removeLeadingPathSeparator(String path) {
@@ -51,14 +55,6 @@ public class BlobStorageUtil {
             return null;
         }
         return path.charAt(0) == DELIMITER ? path.substring(1) : path;
-    }
-
-    public String removeTrailingPathSeparator(String path) {
-        if (path == null || path.isBlank()) {
-            return null;
-        }
-        int length = path.length();
-        return path.charAt(length - 1) == DELIMITER ? path.substring(0, length - 1) : path;
     }
 
     public String buildFilePath(String fileName, String path) {
@@ -82,5 +78,21 @@ public class BlobStorageUtil {
         } else {
             return API_KEY_ROOT_DIR_PATTERN.formatted(apiKeyId, path);
         }
+    }
+
+    String removeTrailingPathSeparator(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        int length = path.length();
+        return path.charAt(length - 1) == DELIMITER ? path.substring(0, length - 1) : path;
+    }
+
+    String removeLeadingAndTrailingPathSeparators(String path) {
+        if (path == null || path.isBlank() || path.equals(PATH_SEPARATOR)) {
+            return "";
+        }
+        path = removeLeadingPathSeparator(path);
+        return removeTrailingPathSeparator(path);
     }
 }
