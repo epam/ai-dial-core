@@ -127,10 +127,6 @@ public class IdentityProvider {
         DecodedJWT jwt = decodeJwtToken(encodedToken);
         String kid = jwt.getKeyId();
         Future<JwkResult> future = getJwk(kid);
-        JwkResult result = future.result();
-        if (result != null) {
-            return Future.succeededFuture(verifyJwt(encodedToken, result));
-        }
         return future.map(jwkResult -> verifyJwt(encodedToken, jwkResult));
     }
 
@@ -169,13 +165,17 @@ public class IdentityProvider {
     }
 
     public Future<ExtractedClaims> extractClaims(String authHeader, boolean isJwtMustBeVerified) {
-        if (authHeader == null) {
-            return Future.succeededFuture();
+        try {
+            if (authHeader == null) {
+                return Future.succeededFuture();
+            }
+            // Take the 1st authorization parameter from the header value:
+            // Authorization: <auth-scheme> <authorization-parameters>
+            String encodedToken = authHeader.split(" ")[1];
+            return extractClaimsFromEncodedToken(encodedToken, isJwtMustBeVerified);
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
         }
-        // Take the 1st authorization parameter from the header value:
-        // Authorization: <auth-scheme> <authorization-parameters>
-        String encodedToken = authHeader.split(" ")[1];
-        return extractClaimsFromEncodedToken(encodedToken, isJwtMustBeVerified);
     }
 
     public Future<ExtractedClaims> extractClaimsFromEncodedToken(String encodedToken, boolean isJwtMustBeVerified) {
