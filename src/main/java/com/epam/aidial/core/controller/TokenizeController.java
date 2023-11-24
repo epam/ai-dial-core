@@ -31,8 +31,8 @@ public class TokenizeController {
         Model deployment = context.getConfig().getModels().get(deploymentId);
 
         String endpoint = Optional.ofNullable(deployment)
-                .map(d -> d.getTokenization())
-                .map(t -> t.getEndpoint())
+                .map(d -> d.getFeatures())
+                .map(t -> t.getTokenizeEndpoint())
                 .orElse(null);
 
         if (endpoint == null || !DeploymentController.hasAccessByUserRoles(context, deployment)) {

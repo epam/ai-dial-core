@@ -8,7 +8,7 @@ import lombok.Data;
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class TokenizationData {
-    private String model;
-    private boolean supported;
+public class FeaturesData {
+    private boolean tokenize;
+    private boolean trimHistory;
 }

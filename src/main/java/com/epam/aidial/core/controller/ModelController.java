@@ -2,16 +2,16 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.TokenLimits;
-import com.epam.aidial.core.config.Tokenization;
+import com.epam.aidial.core.data.FeaturesData;
 import com.epam.aidial.core.data.ListData;
 import com.epam.aidial.core.data.ModelData;
 import com.epam.aidial.core.data.PricingData;
 import com.epam.aidial.core.data.TokenLimitsData;
-import com.epam.aidial.core.data.TokenizationData;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -74,7 +74,7 @@ public class ModelController {
         }
 
         data.setLimits(createLimits(model.getLimits()));
-        data.setTokenization(createTokenization(model.getTokenization()));
+        data.setFeatures(createFeatures(model.getFeatures()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         data.setPricing(createPricing(model.getPricing()));
@@ -103,13 +103,13 @@ public class ModelController {
         return data;
     }
 
-    private static TokenizationData createTokenization(Tokenization tokenization) {
-        if (tokenization == null) {
+    private static FeaturesData createFeatures(Features features) {
+        if (features == null) {
             return null;
         }
-        TokenizationData data = new TokenizationData();
-        data.setModel(tokenization.getModel());
-        data.setSupported(tokenization.getEndpoint() != null);
+        FeaturesData data = new FeaturesData();
+        data.setTokenize(features.getTokenizeEndpoint() != null);
+        data.setTrimHistory(features.getTrimHistoryEndpoint() != null);
         return data;
     }
 }

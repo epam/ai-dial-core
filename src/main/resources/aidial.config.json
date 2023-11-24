@@ -65,6 +65,7 @@
                     "key": "modelKey3"
                 }
             ],
+            "tokenizerModel": "gpt-3.5-turbo-0301",
             "limits": {
                 "maxTotalTokens": 4096
             },
@@ -73,9 +74,9 @@
                 "prompt": 0.00005,
                 "completion": 0.0001
             },
-            "tokenization": {
-                "model": "gpt-3.5-turbo-0301",
-                "endpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/tokenize"
+            "features": {
+                "tokenizeEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/tokenize",
+                "trimHistoryEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/trim_history"
             }
         },
         "embedding-ada": {
@@ -87,28 +88,28 @@
                     "key": "modelKey4"
                 }
             ],
+            "tokenizerModel": "text-embedding-ada-002",
             "limits": {
                 "maxTotalTokens": 8192
-            },
-            "tokenization": {
-                "model": "text-embedding-ada-002",
-                "endpoint": "http://localhost:7001/openai/deployments/ada/tokenize"
             },
             "pricing": {
                 "unit": "token",
                 "prompt": 0.00005
+            },
+            "features": {
+                "tokenizeEndpoint": "http://localhost:7001/openai/deployments/ada/tokenize"
             }
         },
         "exotic-model": {
             "type": "chat",
             "endpoint": "http://localhost:7001/openai/deployments/exotic-model/chat/completions",
-            "tokenization": {
-                "endpoint": "http://localhost:7001/v1/deployments/exotic-model/tokenize"
-            },
             "pricing": {
                 "unit": "char_without_whitespace",
                 "prompt": 0.00005,
                 "completion": 0.0001
+            },
+            "features": {
+                "tokenizeEndpoint": "http://localhost:7001/v1/deployments/exotic-model/tokenize"
             }
         }
     },

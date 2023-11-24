@@ -11,8 +11,8 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 public class Model extends Deployment {
     private ModelType type;
+    private String tokenizerModel;
     private TokenLimits limits;
-    private Tokenization tokenization;
     private Pricing pricing;
     private List<Upstream> upstreams = List.of();
 }
