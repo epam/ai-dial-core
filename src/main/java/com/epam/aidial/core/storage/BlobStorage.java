@@ -164,13 +164,14 @@ public class BlobStorage implements Closeable {
         String[] elements = absoluteFilePath.split(BlobStorageUtil.PATH_SEPARATOR);
         String lastElement = elements[elements.length - 1];
         String path = absoluteFilePath.substring(0, absoluteFilePath.length() - lastElement.length() - 1);
+        String normalizedPath = BlobStorageUtil.normalizeParentPath(path);
 
         return switch (metadata.getType()) {
             case BLOB ->
-                    new FileMetadata(lastElement, path, metadata.getSize(), ((BlobMetadata) metadata).getContentMetadata().getContentType());
+                    new FileMetadata(lastElement, normalizedPath, metadata.getSize(),
+                            ((BlobMetadata) metadata).getContentMetadata().getContentType());
             case FOLDER, RELATIVE_PATH ->
-                    new FolderMetadata(BlobStorageUtil.removeLeadingAndTrailingPathSeparators(lastElement),
-                            BlobStorageUtil.removeTrailingPathSeparator(path));
+                    new FolderMetadata(lastElement, normalizedPath);
             case CONTAINER -> throw new IllegalArgumentException("Can't list container");
         };
     }
