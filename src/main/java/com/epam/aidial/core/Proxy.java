@@ -128,18 +128,8 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         request.pause();
-        Future<ExtractedClaims> extractedClaims;
-        if (authorization != null) {
-            try {
-                final boolean isJwtMustBeValidated = key.getUserAuth() != UserAuth.DISABLED;
-                extractedClaims = identityProvider.extractClaims(authorization, isJwtMustBeValidated);
-            } catch (Throwable e) {
-                onExtractClaimsFailure(e, config, request, key);
-                return;
-            }
-        } else {
-            extractedClaims = Future.succeededFuture();
-        }
+        final boolean isJwtMustBeValidated = key.getUserAuth() != UserAuth.DISABLED;
+        Future<ExtractedClaims> extractedClaims = identityProvider.extractClaims(authorization, isJwtMustBeValidated);
 
         extractedClaims.onComplete(result -> {
             try {
