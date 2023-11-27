@@ -76,7 +76,7 @@
             },
             "features": {
                 "tokenizeEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/tokenize",
-                "trimHistoryEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/trim_history"
+                "truncatePromptEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/truncate_prompt"
             }
         },
         "embedding-ada": {

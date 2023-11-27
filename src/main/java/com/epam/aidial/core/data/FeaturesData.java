@@ -10,5 +10,5 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class FeaturesData {
     private boolean tokenize;
-    private boolean trimHistory;
+    private boolean truncatePrompt;
 }

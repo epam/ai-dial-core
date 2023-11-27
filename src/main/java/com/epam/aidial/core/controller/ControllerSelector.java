@@ -33,6 +33,8 @@ public class ControllerSelector {
     private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files(.*)");
 
     private static final Pattern PATTERN_TOKENIZE_RESPONSE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");
+    private static final Pattern PATTERN_TRUNCATE_PROMPT_RESPONSE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/truncate_prompt");
+
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
 
     public Controller select(Proxy proxy, ProxyContext context) {

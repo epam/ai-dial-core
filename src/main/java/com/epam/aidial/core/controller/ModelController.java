@@ -109,7 +109,7 @@ public class ModelController {
         }
         FeaturesData data = new FeaturesData();
         data.setTokenize(features.getTokenizeEndpoint() != null);
-        data.setTrimHistory(features.getTrimHistoryEndpoint() != null);
+        data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
         return data;
     }
 }

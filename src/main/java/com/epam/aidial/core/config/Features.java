@@ -5,5 +5,5 @@ import lombok.Data;
 @Data
 public class Features {
     private String tokenizeEndpoint;
-    private String trimHistoryEndpoint;
+    private String truncatePromptEndpoint;
 }
