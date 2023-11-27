@@ -73,6 +73,7 @@ public class ModelController {
             data.getCapabilities().setChatCompletion(true);
         }
 
+        data.setTokenizerModel(model.getTokenizerModel());
         data.setLimits(createLimits(model.getLimits()));
         data.setFeatures(createFeatures(model.getFeatures()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
