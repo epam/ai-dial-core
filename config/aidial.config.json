@@ -1,63 +1,89 @@
 {
-  "routes" : {},
-  "addons": {
-    "search": {"endpoint": "http://localhost:7010/search"},
-    "forecast": {"endpoint": "http://localhost:7010/forecast"},
-    "calculator": {"endpoint": "http://localhost:7010/calculator"}
-  },
-  "assistant": {
-    "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
-    "assistants": {
-      "search_assistant": {
-        "prompt": "Commands: sit_down, get_up, run_away",
-        "addons": ["search"]
-      }
-    }
-  },
-  "applications": {
-    "app": {
-      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions"
-    }
-  },
-  "models": {
-    "chat-gpt-35-turbo": {
-      "type": "chat",
-      "endpoint" : "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
-      "upstreams": [
-        {"endpoint": "http://localhost:7001", "key": "modelKey1"},
-        {"endpoint": "http://localhost:7002", "key": "modelKey2"},
-        {"endpoint": "http://localhost:7003", "key": "modelKey3"}
-      ]
+    "routes": {},
+    "addons": {
+        "search": {
+            "endpoint": "http://localhost:7010/search"
+        },
+        "forecast": {
+            "endpoint": "http://localhost:7010/forecast"
+        },
+        "calculator": {
+            "endpoint": "http://localhost:7010/calculator"
+        }
     },
-    "embedding-ada": {
-      "type": "embedding",
-      "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
-      "upstreams": [
-        {"endpoint": "http://localhost:7001", "key": "modelKey4"}
-      ]
-    }
-  },
-  "keys": {
-    "proxyKey1": {
-      "project": "TestProject1",
-      "role": "default"
+    "assistant": {
+        "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
+        "assistants": {
+            "search_assistant": {
+                "prompt": "Commands: sit_down, get_up, run_away",
+                "addons": [
+                    "search"
+                ]
+            }
+        }
     },
-    "proxyKey2": {
-      "project": "TestProject2",
-      "role": "default"
+    "applications": {
+        "app": {
+            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions"
+        }
+    },
+    "models": {
+        "chat-gpt-35-turbo": {
+            "type": "chat",
+            "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
+            "upstreams": [
+                {
+                    "endpoint": "http://localhost:7001",
+                    "key": "modelKey1"
+                },
+                {
+                    "endpoint": "http://localhost:7002",
+                    "key": "modelKey2"
+                },
+                {
+                    "endpoint": "http://localhost:7003",
+                    "key": "modelKey3"
+                }
+            ]
+        },
+        "embedding-ada": {
+            "type": "embedding",
+            "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+            "upstreams": [
+                {
+                    "endpoint": "http://localhost:7001",
+                    "key": "modelKey4"
+                }
+            ]
+        }
+    },
+    "keys": {
+        "proxyKey1": {
+            "project": "TestProject1",
+            "role": "default"
+        },
+        "proxyKey2": {
+            "project": "TestProject2",
+            "role": "default"
+        }
+    },
+    "roles": {
+        "default": {
+            "limits": {
+                "chat-gpt-35-turbo": {
+                    "minute": "100000",
+                    "day": "10000000"
+                },
+                "embedding-ada": {
+                    "minute": "100000",
+                    "day": "10000000"
+                },
+                "search": {},
+                "forecast": {},
+                "calculator": {},
+                "search_assistant": {},
+                "app": {}
+            }
+        }
     }
-  },
-  "roles": {
-    "default": {
-      "limits": {
-        "chat-gpt-35-turbo": {"minute": "100000", "day": "10000000"},
-        "embedding-ada": {"minute": "100000", "day": "10000000"},
-        "search": {},
-        "forecast": {},
-        "calculator": {},
-        "search_assistant": {},
-        "app": {}
-      }
-    }
-  }
 }

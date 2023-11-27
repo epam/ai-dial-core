@@ -2,11 +2,14 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Model;
 import io.vertx.core.http.HttpMethod;
 import lombok.experimental.UtilityClass;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +36,8 @@ public class ControllerSelector {
     private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files(.*)");
 
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
+    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");
+    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/truncate_prompt");
 
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = URLDecoder.decode(context.getRequest().path(), StandardCharsets.UTF_8);
@@ -155,6 +160,36 @@ public class ControllerSelector {
             String deploymentId = match.group(1);
             RateResponseController controller = new RateResponseController(proxy, context);
             return () -> controller.handle(deploymentId);
+        }
+
+        match = match(PATTERN_TOKENIZE, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+
+            Function<Model, String> endpointGetter = (model) -> {
+                return Optional.ofNullable(model)
+                    .map(d -> d.getFeatures())
+                    .map(t -> t.getTokenizeEndpoint())
+                    .orElse(null);
+            };
+
+            ModelEndpointController controller = new ModelEndpointController(proxy, context);
+            return () -> controller.handle(deploymentId, endpointGetter);
+        }
+
+        match = match(PATTERN_TRUNCATE_PROMPT, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+
+            Function<Model, String> endpointGetter = (model) -> {
+                return Optional.ofNullable(model)
+                    .map(d -> d.getFeatures())
+                    .map(t -> t.getTruncatePromptEndpoint())
+                    .orElse(null);
+            };
+
+            ModelEndpointController controller = new ModelEndpointController(proxy, context);
+            return () -> controller.handle(deploymentId, endpointGetter);
         }
 
         return null;

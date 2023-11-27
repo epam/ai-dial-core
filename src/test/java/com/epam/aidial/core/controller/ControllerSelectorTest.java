@@ -276,6 +276,34 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testSelectTokenizeController() {
+        when(request.path()).thenReturn("/v1/deployments/app/tokenize");
+        when(request.method()).thenReturn(HttpMethod.POST);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(ModelEndpointController.class, arg1);
+        assertEquals("app", arg2);
+    }
+
+    @Test
+    public void testSelectTruncatePromptController() {
+        when(request.path()).thenReturn("/v1/deployments/app/truncate_prompt");
+        when(request.method()).thenReturn(HttpMethod.POST);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(ModelEndpointController.class, arg1);
+        assertEquals("app", arg2);
+    }
+
+    @Test
     public void testSelectRouteController() {
         when(request.path()).thenReturn("/route/request");
         when(request.method()).thenReturn(HttpMethod.POST);
