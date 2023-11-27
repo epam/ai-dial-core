@@ -1,14 +1,18 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.config.Storage;
+import com.epam.aidial.core.storage.BlobStorage;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.io.file.PathUtils;
+import org.jclouds.filesystem.reference.FilesystemConstants;
 
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
+import java.util.Properties;
 
 @UtilityClass
 public class FileUtil {
@@ -33,5 +37,16 @@ public class FileUtil {
         if (Files.exists(dir)) {
             PathUtils.deleteDirectory(dir);
         }
+    }
+
+    public static BlobStorage buildFsBlobStorage(Path baseDir) {
+        Properties properties = new Properties();
+        properties.setProperty(FilesystemConstants.PROPERTY_BASEDIR, baseDir.toAbsolutePath().toString());
+        Storage storageConfig = new Storage();
+        storageConfig.setBucket("test");
+        storageConfig.setProvider("filesystem");
+        storageConfig.setIdentity("access-key");
+        storageConfig.setCredential("secret-key");
+        return new BlobStorage(storageConfig, properties);
     }
 }
