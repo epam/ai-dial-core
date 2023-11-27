@@ -18,22 +18,19 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URL;
-import java.util.Optional;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
-public class TokenizeController {
+public class ModelEndpointController {
 
     private final Proxy proxy;
     private final ProxyContext context;
 
-    public void handle(String deploymentId) {
+    public void handle(String deploymentId, Function<Model, String> endpointGetter) {
         Model deployment = context.getConfig().getModels().get(deploymentId);
 
-        String endpoint = Optional.ofNullable(deployment)
-                .map(d -> d.getFeatures())
-                .map(t -> t.getTokenizeEndpoint())
-                .orElse(null);
+        String endpoint = endpointGetter.apply(deployment);
 
         if (endpoint == null || !DeploymentController.hasAccessByUserRoles(context, deployment)) {
             context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
