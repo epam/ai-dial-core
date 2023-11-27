@@ -101,8 +101,11 @@ public class FeaturesApiTest {
                         req.response().setStatusCode(500).end("ERROR");
                     }
                 })
-                .listen();
+                .listen().onSuccess(server ->
+                    checkResponse(vertx, context, inboundPath, okResponse));
+    }
 
+    void checkResponse(Vertx vertx, VertxTestContext context, String inboundPath, String expectedResponse) {
         WebClient client = WebClient.create(vertx);
         client.post(serverPort, "localhost", inboundPath)
                 .putHeader("Api-key", "proxyKey2")
@@ -111,7 +114,7 @@ public class FeaturesApiTest {
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
                         assertEquals(200, response.statusCode());
-                        assertEquals(okResponse, response.body());
+                        assertEquals(expectedResponse, response.body());
                         context.completeNow();
                     });
                 }));
