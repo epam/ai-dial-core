@@ -4,7 +4,6 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Addon;
 import com.epam.aidial.core.config.Assistant;
-import com.epam.aidial.core.config.Assistants;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
@@ -52,7 +51,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DeploymentPostController {
 
-    public static final String ASSISTANT = "assistant";
     private static final Set<Integer> RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
@@ -66,10 +64,14 @@ public class DeploymentPostController {
             return context.respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
 
-        Deployment deployment = select(deploymentId, deploymentApi);
+        Deployment deployment = context.getConfig().selectDeployment(deploymentId);
+        if (!isValidDeploymentApi(deployment, deploymentApi)) {
+            deployment = null;
+        }
+
         context.setDeployment(deployment);
 
-        if (deployment == null || (!isAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
+        if (deployment == null || (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
         RateLimitResult rateLimitResult;
@@ -298,8 +300,7 @@ public class DeploymentPostController {
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
     }
 
-    private Deployment select(String deploymentId, String deploymentApi) {
-        Config config = context.getConfig();
+    private static boolean isValidDeploymentApi(Deployment deployment, String deploymentApi) {
         ModelType type = switch (deploymentApi) {
             case "completions" -> ModelType.COMPLETION;
             case "chat/completions" -> ModelType.CHAT;
@@ -308,33 +309,16 @@ public class DeploymentPostController {
         };
 
         if (type == null) {
-            return null;
+            return false;
         }
 
-        Model model = config.getModels().get(deploymentId);
-        if (model != null) {
-            return (type == model.getType()) ? model : null;
+        // Models support all APIs
+        if (deployment instanceof Model model) {
+            return type == model.getType();
         }
 
-        if (type != ModelType.CHAT) {
-            return null;
-        }
-
-        Assistants assistants = config.getAssistant();
-
-        if (assistants.getEndpoint() != null && ASSISTANT.equals(deploymentId)) {
-            Assistant assistant = new Assistant();
-            assistant.setName(ASSISTANT);
-            assistant.setEndpoint(assistants.getEndpoint());
-            return assistant;
-        }
-
-        Assistant assistant = assistants.getAssistants().get(deploymentId);
-        if (assistant != null) {
-            return assistant;
-        }
-
-        return config.getApplications().get(deploymentId);
+        // Assistants and application only support chat API
+        return type == ModelType.CHAT;
     }
 
     private static String buildUri(ProxyContext context) {
@@ -426,7 +410,7 @@ public class DeploymentPostController {
         }
     }
 
-    private static boolean isAssistant(Deployment deployment) {
-        return deployment.getName().equals(ASSISTANT);
+    private static boolean isBaseAssistant(Deployment deployment) {
+        return deployment.getName().equals(Config.ASSISTANT);
     }
 }

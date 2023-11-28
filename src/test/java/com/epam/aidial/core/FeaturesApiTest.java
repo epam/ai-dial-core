@@ -65,7 +65,7 @@ public class FeaturesApiTest {
     @Test
     void testRateEndpoint(Vertx vertx, VertxTestContext context) {
         String inboundPath = "/v1/chat-gpt-35-turbo/rate";
-        String upstream = "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/rate";
+        String upstream = "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/rate_response";
         testUpstreamEndpoint(vertx, context, inboundPath, upstream);
     }
 

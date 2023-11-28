@@ -23,7 +23,6 @@ public abstract class Deployment {
      * API key is forwarded by default.
      */
     private boolean forwardApiKey = true;
-    private String rateEndpoint;
     private Features features;
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;

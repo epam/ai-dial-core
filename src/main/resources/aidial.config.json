@@ -109,6 +109,7 @@
                 "completion": 0.0001
             },
             "features": {
+                "rateEndpoint": "http://localhost:7001/v1/deployments/exotic-model/rate_reponse",
                 "tokenizeEndpoint": "http://localhost:7001/v1/deployments/exotic-model/tokenize"
             }
         }

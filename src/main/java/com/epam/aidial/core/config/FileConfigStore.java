@@ -57,14 +57,17 @@ public final class FileConfigStore implements ConfigStore {
                 addon.setName(name);
             }
 
-            for (Map.Entry<String, Assistant> entry : config.getAssistant().getAssistants().entrySet()) {
+            Assistants assistants = config.getAssistant();
+            for (Map.Entry<String, Assistant> entry : assistants.getAssistants().entrySet()) {
                 String name = entry.getKey();
                 Assistant assistant = entry.getValue();
                 assistant.setName(name);
 
                 if (assistant.getEndpoint() == null) {
-                    assistant.setEndpoint(config.getAssistant().getEndpoint());
+                    assistant.setEndpoint(assistants.getEndpoint());
                 }
+
+                setMissingFeatures(assistant, assistants.getFeatures());
             }
 
             for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
@@ -116,6 +119,28 @@ public final class FileConfigStore implements ConfigStore {
             return new BufferedInputStream(new FileInputStream(path));
         } catch (FileNotFoundException e) {
             return ConfigStore.class.getClassLoader().getResourceAsStream(path);
+        }
+    }
+
+    private static void setMissingFeatures(Deployment model, Features features) {
+        if (features == null) {
+            return;
+        }
+
+        Features modelFeatures = model.getFeatures();
+        if (modelFeatures == null) {
+            model.setFeatures(features);
+            return;
+        }
+
+        if (modelFeatures.getRateEndpoint() == null) {
+            modelFeatures.setRateEndpoint(features.getRateEndpoint());
+        }
+        if (modelFeatures.getTokenizeEndpoint() == null) {
+            modelFeatures.setTokenizeEndpoint(features.getTokenizeEndpoint());
+        }
+        if (modelFeatures.getTruncatePromptEndpoint() == null) {
+            modelFeatures.setTruncatePromptEndpoint(features.getTruncatePromptEndpoint());
         }
     }
 }

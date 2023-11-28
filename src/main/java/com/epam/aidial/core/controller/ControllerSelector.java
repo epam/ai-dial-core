@@ -2,7 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Deployment;
 import io.vertx.core.http.HttpMethod;
 import lombok.experimental.UtilityClass;
 
@@ -158,38 +158,46 @@ public class ControllerSelector {
         match = match(PATTERN_RATE_RESPONSE, path);
         if (match != null) {
             String deploymentId = match.group(1);
-            RateResponseController controller = new RateResponseController(proxy, context);
-            return () -> controller.handle(deploymentId);
+
+            Function<Deployment, String> getter = (model) -> {
+                return Optional.ofNullable(model)
+                    .map(d -> d.getFeatures())
+                    .map(t -> t.getRateEndpoint())
+                    .orElse(null);
+            };
+
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, false);
         }
 
         match = match(PATTERN_TOKENIZE, path);
         if (match != null) {
             String deploymentId = match.group(1);
 
-            Function<Model, String> endpointGetter = (model) -> {
+            Function<Deployment, String> getter = (model) -> {
                 return Optional.ofNullable(model)
                     .map(d -> d.getFeatures())
                     .map(t -> t.getTokenizeEndpoint())
                     .orElse(null);
             };
 
-            ModelEndpointController controller = new ModelEndpointController(proxy, context);
-            return () -> controller.handle(deploymentId, endpointGetter);
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, true);
         }
 
         match = match(PATTERN_TRUNCATE_PROMPT, path);
         if (match != null) {
             String deploymentId = match.group(1);
 
-            Function<Model, String> endpointGetter = (model) -> {
+            Function<Deployment, String> getter = (model) -> {
                 return Optional.ofNullable(model)
                     .map(d -> d.getFeatures())
                     .map(t -> t.getTruncatePromptEndpoint())
                     .orElse(null);
             };
 
-            ModelEndpointController controller = new ModelEndpointController(proxy, context);
-            return () -> controller.handle(deploymentId, endpointGetter);
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, true);
         }
 
         return null;

@@ -109,6 +109,7 @@ public class ModelController {
             return null;
         }
         FeaturesData data = new FeaturesData();
+        data.setRate(features.getRateEndpoint() != null);
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
         return data;
