@@ -22,7 +22,7 @@ import java.io.IOException;
 public class DownloadFileController {
 
     private static final String PATH_TYPE_QUERY_PARAMETER = "path";
-    private static final String ABSOLUTE_PATH_TYPE = "absolute";
+    private static final String RELATIVE_PATH_TYPE = "relative";
 
     static final String PURPOSE_FILE_QUERY_PARAMETER = "purpose";
 
@@ -41,7 +41,7 @@ public class DownloadFileController {
     public Future<?> download(String path) {
         String pathType = context.getRequest().params().get(PATH_TYPE_QUERY_PARAMETER);
         String absoluteFilePath;
-        if (!ABSOLUTE_PATH_TYPE.equals(pathType)) {
+        if (RELATIVE_PATH_TYPE.equals(pathType)) {
             absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
         } else {
             absoluteFilePath = path;
