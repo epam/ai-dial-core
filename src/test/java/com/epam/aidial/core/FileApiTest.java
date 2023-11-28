@@ -2,10 +2,8 @@ package com.epam.aidial.core;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.FolderMetadata;
-import com.epam.aidial.core.storage.BlobStorage;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -19,7 +17,6 @@ import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
-import org.jclouds.filesystem.reference.FilesystemConstants;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -28,7 +25,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.nio.file.Path;
-import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
@@ -49,7 +45,7 @@ public class FileApiTest {
         // initialize server
         dial = new AiDial();
         testDir = FileUtil.baseTestPath(FileApiTest.class);
-        dial.setStorage(buildFsBlobStorage(testDir));
+        dial.setStorage(FileUtil.buildFsBlobStorage(testDir));
         dial.start();
         serverPort = dial.getServer().actualPort();
     }
@@ -368,16 +364,6 @@ public class FileApiTest {
         });
     }
 
-    private static BlobStorage buildFsBlobStorage(Path baseDir) {
-        Properties properties = new Properties();
-        properties.setProperty(FilesystemConstants.PROPERTY_BASEDIR, baseDir.toAbsolutePath().toString());
-        Storage storageConfig = new Storage();
-        storageConfig.setBucket("test");
-        storageConfig.setProvider("filesystem");
-        storageConfig.setIdentity("access-key");
-        storageConfig.setCredential("secret-key");
-        return new BlobStorage(storageConfig, properties);
-    }
 
     private static MultipartForm generateMultipartForm(String fileName, String content) {
         return generateMultipartForm(fileName, content, "text/plan");
