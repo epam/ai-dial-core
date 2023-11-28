@@ -24,6 +24,7 @@ public abstract class Deployment {
      */
     private boolean forwardApiKey = true;
     private String rateEndpoint;
+    private Features features;
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
 }

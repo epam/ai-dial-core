@@ -50,6 +50,7 @@ public class InputStreamReader implements ReadStream<Buffer> {
             }
         });
         queue.drainHandler(v -> readDataFromStream());
+        queue.pause();
         readDataFromStream();
     }
 

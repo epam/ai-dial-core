@@ -25,6 +25,7 @@ public class DeploymentData {
     private long createdAt = 1672534800;
     private long updatedAt = 1672534800;
     private ScaleSettingsData scaleSettings = new ScaleSettingsData();
+    private FeaturesData features;
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
 }

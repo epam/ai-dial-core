@@ -52,12 +52,13 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     public BlobWriteStream(Vertx vertx,
                            BlobStorage storage,
                            String fileName,
-                           String parentPath) {
+                           String parentPath,
+                           String contentType) {
         this.vertx = vertx;
         this.storage = storage;
         this.fileName = fileName;
         this.parentPath = parentPath;
-        this.contentType = BlobStorageUtil.getContentType(fileName);
+        this.contentType = contentType != null ? contentType : BlobStorageUtil.getContentType(fileName);
     }
 
     @Override
@@ -102,7 +103,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
 
                 Buffer lastChunk = chunkBuffer.slice(0, position);
-                metadata = new FileMetadata(fileName, BlobStorageUtil.removeTrailingPathSeparator(parentPath),
+                metadata = new FileMetadata(fileName, BlobStorageUtil.normalizeParentPath(parentPath),
                         bytesHandled, contentType);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");

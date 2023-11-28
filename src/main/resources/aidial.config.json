@@ -1,112 +1,146 @@
 {
-  "routes" : {},
-  "addons": {
-    "search": {
-      "endpoint": "http://localhost:7010/search",
-      "displayName": "Search",
-      "iconUrl": "http://localhost:7001/search_addon.png",
-      "description": "Some description of the addon for testing",
-      "forwardApiKey": false
+    "routes": {},
+    "addons": {
+        "search": {
+            "endpoint": "http://localhost:7010/search",
+            "displayName": "Search",
+            "iconUrl": "http://localhost:7001/search_addon.png",
+            "description": "Some description of the addon for testing",
+            "forwardApiKey": false
+        },
+        "forecast": {
+            "endpoint": "http://localhost:7010/forecast",
+            "forwardAuthToken": false
+        },
+        "calculator": {
+            "endpoint": "http://localhost:7010/calculator",
+            "forwardApiKey": false,
+            "forwardAuthToken": false
+        }
     },
-    "forecast": {
-      "endpoint": "http://localhost:7010/forecast",
-      "forwardAuthToken": false
+    "assistant": {
+        "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
+        "assistants": {
+            "search_assistant": {
+                "prompt": "Commands: sit_down, get_up, run_away",
+                "addons": [
+                    "search"
+                ],
+                "displayName": "Search Assistant",
+                "iconUrl": "http://localhost:7001/search_app.png",
+                "description": "Some description of the assistant for testing"
+            }
+        }
     },
-    "calculator": {
-      "endpoint": "http://localhost:7010/calculator",
-      "forwardApiKey": false,
-      "forwardAuthToken": false
-    }
-  },
-  "assistant": {
-    "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
-    "assistants": {
-      "search_assistant": {
-        "prompt": "Commands: sit_down, get_up, run_away",
-        "addons": ["search"],
-        "displayName": "Search Assistant",
-        "iconUrl": "http://localhost:7001/search_app.png",
-        "description": "Some description of the assistant for testing"
-      }
-    }
-  },
-  "applications": {
-    "app": {
-      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
-      "displayName": "10k",
-      "iconUrl": "http://localhost:7001/logo10k.png",
-      "description": "Some description of the application for testing",
-      "inputAttachmentTypes": ["*/*"],
-      "maxInputAttachments": 1
-    }
-  },
-  "models": {
-    "chat-gpt-35-turbo": {
-      "type": "chat",
-      "displayName": "GPT 3.5",
-      "iconUrl": "http://localhost:7001/logo.png",
-      "description": "Some description of the model for testing",
-      "endpoint" : "http://localhost:7001/v1/openai/deployments/gpt-35-turbo/chat/completions",
-      "upstreams": [
-        {"endpoint": "http://localhost:7001", "key": "modelKey1"},
-        {"endpoint": "http://localhost:7002", "key": "modelKey2"},
-        {"endpoint": "http://localhost:7003", "key": "modelKey3"}
-      ],
-      "limits": {
-        "maxTotalTokens": 4096
-      },
-      "pricing": {
-        "unit": "token",
-        "prompt": "0.00005",
-        "completion": "0.0001"
-      }
+    "applications": {
+        "app": {
+            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+            "displayName": "10k",
+            "iconUrl": "http://localhost:7001/logo10k.png",
+            "description": "Some description of the application for testing",
+            "inputAttachmentTypes": [
+                "*/*"
+            ],
+            "maxInputAttachments": 1
+        }
     },
-    "embedding-ada": {
-      "type": "embedding",
-      "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
-      "upstreams": [
-        {"endpoint": "http://localhost:7001", "key": "modelKey4"}
-      ],
-      "limits": {
-        "maxTotalTokens": 8192
-      },
-      "pricing": {
-        "unit": "token",
-        "prompt": "0.00005"
-      }
+    "models": {
+        "chat-gpt-35-turbo": {
+            "type": "chat",
+            "displayName": "GPT 3.5",
+            "iconUrl": "http://localhost:7001/logo.png",
+            "description": "Some description of the model for testing",
+            "endpoint": "http://localhost:7001/v1/openai/deployments/gpt-35-turbo/chat/completions",
+            "upstreams": [
+                {
+                    "endpoint": "http://localhost:7001",
+                    "key": "modelKey1"
+                },
+                {
+                    "endpoint": "http://localhost:7002",
+                    "key": "modelKey2"
+                },
+                {
+                    "endpoint": "http://localhost:7003",
+                    "key": "modelKey3"
+                }
+            ],
+            "tokenizerModel": "gpt-3.5-turbo-0301",
+            "limits": {
+                "maxTotalTokens": 4096
+            },
+            "pricing": {
+                "unit": "token",
+                "prompt": "0.00005",
+                "completion": "0.0001"
+            },
+            "features": {
+                "tokenizeEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/tokenize",
+                "truncatePromptEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/truncate_prompt"
+            }
+        },
+        "embedding-ada": {
+            "type": "embedding",
+            "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+            "upstreams": [
+                {
+                    "endpoint": "http://localhost:7001",
+                    "key": "modelKey4"
+                }
+            ],
+            "tokenizerModel": "text-embedding-ada-002",
+            "limits": {
+                "maxTotalTokens": 8192
+            },
+            "pricing": {
+                "unit": "token",
+                "prompt": "0.00005"
+            },
+            "features": {
+                "tokenizeEndpoint": "http://localhost:7001/openai/deployments/ada/tokenize"
+            }
+        },
+        "exotic-model": {
+            "type": "chat",
+            "endpoint": "http://localhost:7001/openai/deployments/exotic-model/chat/completions",
+            "pricing": {
+                "unit": "char_without_whitespace",
+                "prompt": "0.00005",
+                "completion": "0.0001"
+            },
+            "features": {
+                "tokenizeEndpoint": "http://localhost:7001/v1/deployments/exotic-model/tokenize"
+            }
+        }
     },
-    "exotic-model": {
-      "type": "chat",
-      "endpoint" : "http://localhost:7001/openai/deployments/exotic-model/chat/completions",
-      "pricing": {
-        "unit": "char_without_whitespace",
-        "prompt": "0.00005",
-        "completion": "0.0001"
-      }
-    }
-  },
-  "keys": {
-    "proxyKey1": {
-      "project": "EPM-RTC-GPT",
-      "role": "default"
+    "keys": {
+        "proxyKey1": {
+            "project": "EPM-RTC-GPT",
+            "role": "default"
+        },
+        "proxyKey2": {
+            "project": "EPM-RTC-RAIL",
+            "role": "default"
+        }
     },
-    "proxyKey2": {
-      "project": "EPM-RTC-RAIL",
-      "role": "default"
+    "roles": {
+        "default": {
+            "limits": {
+                "chat-gpt-35-turbo": {
+                    "minute": "100000",
+                    "day": "10000000"
+                },
+                "embedding-ada": {
+                    "minute": "100000",
+                    "day": "10000000"
+                },
+                "exotic-model": {},
+                "search": {},
+                "forecast": {},
+                "calculator": {},
+                "search_assistant": {},
+                "app": {}
+            }
+        }
     }
-  },
-  "roles": {
-    "default": {
-      "limits": {
-        "chat-gpt-35-turbo": {"minute": "100000", "day": "10000000"},
-        "embedding-ada": {"minute": "100000", "day": "10000000"},
-        "exotic-model": {},
-        "search": {},
-        "forecast": {},
-        "calculator": {},
-        "search_assistant": {},
-        "app": {}
-      }
-    }
-  }
 }

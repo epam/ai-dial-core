@@ -2,10 +2,12 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.TokenLimits;
+import com.epam.aidial.core.data.FeaturesData;
 import com.epam.aidial.core.data.ListData;
 import com.epam.aidial.core.data.ModelData;
 import com.epam.aidial.core.data.PricingData;
@@ -71,7 +73,9 @@ public class ModelController {
             data.getCapabilities().setChatCompletion(true);
         }
 
+        data.setTokenizerModel(model.getTokenizerModel());
         data.setLimits(createLimits(model.getLimits()));
+        data.setFeatures(createFeatures(model.getFeatures()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         data.setPricing(createPricing(model.getPricing()));
@@ -97,6 +101,16 @@ public class ModelController {
         data.setUnit(pricing.getUnit());
         data.setPrompt(pricing.getPrompt());
         data.setCompletion(pricing.getCompletion());
+        return data;
+    }
+
+    private static FeaturesData createFeatures(Features features) {
+        if (features == null) {
+            return null;
+        }
+        FeaturesData data = new FeaturesData();
+        data.setTokenize(features.getTokenizeEndpoint() != null);
+        data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
         return data;
     }
 }
