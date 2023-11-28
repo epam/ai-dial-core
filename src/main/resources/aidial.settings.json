@@ -40,7 +40,7 @@
   },
   "identityProvider": {
     "jwksUrl": "http://fakeJwksUrl:8080",
-    "appName": "dial"
+    "rolePath": "roles"
   },
   "storage": {
     "provider" : "s3",
