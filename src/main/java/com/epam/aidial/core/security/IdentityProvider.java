@@ -3,18 +3,14 @@ package com.epam.aidial.core.security;
 import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
-import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -26,7 +22,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.function.Supplier;
+
+import static java.util.Collections.EMPTY_LIST;
 
 @Slf4j
 public class IdentityProvider {
@@ -97,11 +94,10 @@ public class IdentityProvider {
             return token.getClaim(rolePath[0]).asList(String.class);
         }
         Map<String, Object> claim = token.getClaim(rolePath[0]).asMap();
-        List<String> defaultResult = Collections.emptyList();
         for (int i = 1; i < rolePath.length; i++) {
             Object next = claim.get(rolePath[i]);
             if (next == null) {
-                return defaultResult;
+                return EMPTY_LIST;
             }
             if (i == rolePath.length - 1) {
                 if (next instanceof List) {
@@ -111,11 +107,11 @@ public class IdentityProvider {
                 if (next instanceof Map) {
                     claim = (Map<String, Object>) next;
                 } else {
-                    return defaultResult;
+                    return EMPTY_LIST;
                 }
             }
         }
-        return defaultResult;
+        return EMPTY_LIST;
     }
 
     private DecodedJWT decodeJwtToken(String encodedToken) {
