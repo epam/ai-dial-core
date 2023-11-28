@@ -36,6 +36,16 @@ public class DeploymentFeatureController {
         }
 
         String endpoint = endpointGetter.apply(deployment);
+        context.setDeployment(deployment);
+        context.getRequest().body()
+                .onSuccess(requestBody -> this.handleRequestBody(endpoint, requireEndpoint, requestBody))
+                .onFailure(this::handleRequestBodyError);
+    }
+
+    @SneakyThrows
+    private void handleRequestBody(String endpoint, boolean requireEndpoint, Buffer requestBody) {
+        context.setRequestBody(requestBody);
+
         if (endpoint == null) {
             if (requireEndpoint) {
                 context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
@@ -46,15 +56,6 @@ public class DeploymentFeatureController {
             return;
         }
 
-        context.setDeployment(deployment);
-        context.getRequest().body()
-                .onSuccess(buffer -> this.handleRequestBody(endpoint, buffer))
-                .onFailure(this::handleRequestBodyError);
-    }
-
-    @SneakyThrows
-    private void handleRequestBody(String endpoint, Buffer requestBody) {
-        context.setRequestBody(requestBody);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
                 .setMethod(context.getRequest().method());
