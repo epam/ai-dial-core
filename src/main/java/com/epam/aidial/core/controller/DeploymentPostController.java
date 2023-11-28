@@ -317,7 +317,7 @@ public class DeploymentPostController {
             return type == model.getType();
         }
 
-        // Assistants and application only support chat API
+        // Assistants and applications only support chat API
         return type == ModelType.CHAT;
     }
 
