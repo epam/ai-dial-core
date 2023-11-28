@@ -66,8 +66,8 @@ public class IdentityProviderTest {
         Future<ExtractedClaims> result = identityProvider.extractClaims(null, true);
         assertNotNull(result);
         result.onComplete(res -> {
-            assertTrue(res.succeeded());
-            assertNull(res.result());
+            assertTrue(res.failed());
+            assertNotNull(res.cause());
         });
     }
 
@@ -205,6 +205,17 @@ public class IdentityProviderTest {
             assertTrue(res.failed());
             ExtractedClaims claims = res.result();
             assertNull(claims);
+        });
+    }
+
+    @Test
+    public void testExtractClaims_09() {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(null, false);
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            assertNull(res.result());
         });
     }
 

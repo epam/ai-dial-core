@@ -180,7 +180,7 @@ public class IdentityProvider {
     public Future<ExtractedClaims> extractClaims(String authHeader, boolean isJwtMustBeVerified) {
         try {
             if (authHeader == null) {
-                return Future.succeededFuture();
+                return isJwtMustBeVerified ? Future.failedFuture(new IllegalArgumentException("Token is missed")) : Future.succeededFuture();
             }
             // Take the 1st authorization parameter from the header value:
             // Authorization: <auth-scheme> <authorization-parameters>
