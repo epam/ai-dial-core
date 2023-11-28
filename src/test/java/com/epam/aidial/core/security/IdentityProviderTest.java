@@ -219,6 +219,29 @@ public class IdentityProviderTest {
         });
     }
 
+    @Test
+    public void testExtractClaims_10() throws JwkException, NoSuchAlgorithmException {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+        KeyPair wrongKeyPair = generateRsa256Pair();
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) wrongKeyPair.getPublic(), (RSAPrivateKey) wrongKeyPair.getPrivate());
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
+            Handler<Promise<?>> h = invocation.getArgument(0);
+            Promise<?> p = Promise.promise();
+            h.handle(p);
+            return p.future();
+        });
+        String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), true);
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.failed());
+            assertNotNull(res.cause());
+        });
+    }
+
     private static String getBearerToken(String token) {
         return String.format("Bearer %s", token);
     }
