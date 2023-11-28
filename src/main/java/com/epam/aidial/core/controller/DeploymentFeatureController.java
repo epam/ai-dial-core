@@ -39,7 +39,6 @@ public class DeploymentFeatureController {
         if (endpoint == null) {
             if (requireEndpoint) {
                 context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
-                return;
             } else {
                 context.respond(HttpStatus.OK);
                 proxy.getLogStore().save(context);

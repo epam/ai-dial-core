@@ -69,11 +69,12 @@ public class DeploymentPostController {
             deployment = null;
         }
 
-        context.setDeployment(deployment);
-
         if (deployment == null || (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
+
+        context.setDeployment(deployment);
+
         RateLimitResult rateLimitResult;
         if (deployment instanceof Model && (rateLimitResult = proxy.getRateLimiter().limit(context)).status() != HttpStatus.OK) {
             // Returning an error similar to the Azure format.
