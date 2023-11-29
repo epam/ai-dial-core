@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.auth0.jwk.UrlJwkProvider;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.FileConfigStore;
 import com.epam.aidial.core.config.Storage;
@@ -30,6 +31,8 @@ import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
@@ -63,7 +66,13 @@ public class AiDial {
             RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
-            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx);
+            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx, jwksUrl -> {
+                try {
+                    return new UrlJwkProvider(new URL(jwksUrl));
+                } catch (MalformedURLException e) {
+                    throw new IllegalArgumentException(e);
+                }
+            });
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
