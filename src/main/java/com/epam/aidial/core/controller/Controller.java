@@ -1,8 +1,14 @@
 package com.epam.aidial.core.controller;
 
-import io.vertx.core.Future;
+import java.io.Serializable;
 
-public interface Controller {
+/**
+ *  Common interface for HTTP controllers.
+ *  <p>
+ *      Note. The interface must extends {@link Serializable} for exposing internal lambda fields in Unit tests.
+ *  </p>
+ */
+public interface Controller extends Serializable {
 
-    Future<?> handle() throws Exception;
+    void handle() throws Exception;
 }

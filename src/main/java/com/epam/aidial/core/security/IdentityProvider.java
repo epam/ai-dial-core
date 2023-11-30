@@ -2,7 +2,7 @@ package com.epam.aidial.core.security;
 
 import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkException;
-import com.auth0.jwk.UrlJwkProvider;
+import com.auth0.jwk.JwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -11,8 +11,6 @@ import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -23,15 +21,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
+import static java.util.Collections.EMPTY_LIST;
 
 @Slf4j
 public class IdentityProvider {
 
-    public static final ExtractedClaims CLAIMS_WITH_EMPTY_ROLES = new ExtractedClaims(Collections.emptyList(), null);
+    public static final ExtractedClaims CLAIMS_WITH_EMPTY_ROLES = new ExtractedClaims(null, Collections.emptyList(), null);
 
-    private final String appName;
+    private final String[] rolePath;
 
-    private final UrlJwkProvider jwkProvider;
+    private final JwkProvider jwkProvider;
 
     private final ConcurrentHashMap<String, Future<JwkResult>> cache = new ConcurrentHashMap<>();
 
@@ -48,7 +49,7 @@ public class IdentityProvider {
 
     private final long negativeCacheExpirationMs;
 
-    public IdentityProvider(JsonObject settings, Vertx vertx) {
+    public IdentityProvider(JsonObject settings, Vertx vertx, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
         }
@@ -56,7 +57,7 @@ public class IdentityProvider {
         positiveCacheExpirationMs = settings.getLong("positiveCacheExpirationMs", TimeUnit.MINUTES.toMillis(10));
         negativeCacheExpirationMs = settings.getLong("negativeCacheExpirationMs", TimeUnit.SECONDS.toMillis(10));
         String jwksUrl = Objects.requireNonNull(settings.getString("jwksUrl"), "jwksUrl is missed");
-        appName = Objects.requireNonNull(settings.getString("appName"), "appName is missed");
+        rolePath = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed").split("\\.");
 
         loggingKey = settings.getString("loggingKey");
         if (loggingKey != null) {
@@ -65,11 +66,7 @@ public class IdentityProvider {
             loggingSalt = null;
         }
 
-        try {
-            jwkProvider = new UrlJwkProvider(new URL(jwksUrl));
-        } catch (MalformedURLException e) {
-            throw new IllegalArgumentException(e);
-        }
+        jwkProvider = jwkProviderSupplier.apply(jwksUrl);
 
         try {
             sha256Digest = MessageDigest.getInstance("SHA-256");
@@ -93,16 +90,28 @@ public class IdentityProvider {
 
     @SuppressWarnings("unchecked")
     private List<String> extractUserRoles(DecodedJWT token) {
-        Map<String, Object> resourceAccess = token.getClaim("resource_access").asMap();
-        if (resourceAccess == null) {
-            return Collections.emptyList();
+        if (rolePath.length == 1) {
+            return token.getClaim(rolePath[0]).asList(String.class);
         }
-        Map<String, Object> app = (Map<String, Object>) resourceAccess.get(appName);
-        if (app == null) {
-            return Collections.emptyList();
+        Map<String, Object> claim = token.getClaim(rolePath[0]).asMap();
+        for (int i = 1; i < rolePath.length; i++) {
+            Object next = claim.get(rolePath[i]);
+            if (next == null) {
+                return EMPTY_LIST;
+            }
+            if (i == rolePath.length - 1) {
+                if (next instanceof List) {
+                    return (List<String>) next;
+                }
+            } else {
+                if (next instanceof Map) {
+                    claim = (Map<String, Object>) next;
+                } else {
+                    return EMPTY_LIST;
+                }
+            }
         }
-        List<String> roles = (List<String>) app.get("roles");
-        return roles == null ? Collections.emptyList() : roles;
+        return EMPTY_LIST;
     }
 
     private DecodedJWT decodeJwtToken(String encodedToken) {
@@ -127,10 +136,6 @@ public class IdentityProvider {
         DecodedJWT jwt = decodeJwtToken(encodedToken);
         String kid = jwt.getKeyId();
         Future<JwkResult> future = getJwk(kid);
-        JwkResult result = future.result();
-        if (result != null) {
-            return Future.succeededFuture(verifyJwt(encodedToken, result));
-        }
         return future.map(jwkResult -> verifyJwt(encodedToken, jwkResult));
     }
 
@@ -145,6 +150,10 @@ public class IdentityProvider {
         } catch (JwkException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static String extractUserSub(DecodedJWT decodedJwt) {
+        return decodedJwt.getClaim("sub").asString();
     }
 
     private String extractUserHash(DecodedJWT decodedJwt) {
@@ -165,13 +174,17 @@ public class IdentityProvider {
     }
 
     public Future<ExtractedClaims> extractClaims(String authHeader, boolean isJwtMustBeVerified) {
-        if (authHeader == null) {
-            return Future.succeededFuture();
+        try {
+            if (authHeader == null) {
+                return isJwtMustBeVerified ? Future.failedFuture(new IllegalArgumentException("Token is missed")) : Future.succeededFuture();
+            }
+            // Take the 1st authorization parameter from the header value:
+            // Authorization: <auth-scheme> <authorization-parameters>
+            String encodedToken = authHeader.split(" ")[1];
+            return extractClaimsFromEncodedToken(encodedToken, isJwtMustBeVerified);
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
         }
-        // Take the 1st authorization parameter from the header value:
-        // Authorization: <auth-scheme> <authorization-parameters>
-        String encodedToken = authHeader.split(" ")[1];
-        return extractClaimsFromEncodedToken(encodedToken, isJwtMustBeVerified);
     }
 
     public Future<ExtractedClaims> extractClaimsFromEncodedToken(String encodedToken, boolean isJwtMustBeVerified) {
@@ -180,7 +193,8 @@ public class IdentityProvider {
         }
         Future<DecodedJWT> decodedJwt = isJwtMustBeVerified ? decodeAndVerifyJwtToken(encodedToken)
                 : Future.succeededFuture(decodeJwtToken(encodedToken));
-        return decodedJwt.map(jwt -> new ExtractedClaims(extractUserRoles(jwt), extractUserHash(jwt)));
+        return decodedJwt.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
+                extractUserHash(jwt)));
     }
 
     private record JwkResult(Jwk jwk, Exception error, long expirationTime) {

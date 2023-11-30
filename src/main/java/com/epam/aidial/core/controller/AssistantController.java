@@ -58,6 +58,8 @@ public class AssistantController {
         data.setIconUrl(assistant.getIconUrl());
         data.setDescription(assistant.getDescription());
         data.setAddons(assistant.getAddons());
+        data.setInputAttachmentTypes(assistant.getInputAttachmentTypes());
+        data.setMaxInputAttachments(assistant.getMaxInputAttachments());
         return data;
     }
 }

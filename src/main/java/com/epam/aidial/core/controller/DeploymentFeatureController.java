@@ -2,21 +2,14 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.Upstream;
-import com.epam.aidial.core.upstream.RouteEndpointProvider;
-import com.epam.aidial.core.upstream.UpstreamProvider;
-import com.epam.aidial.core.upstream.UpstreamRoute;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
-import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
-import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
@@ -25,74 +18,51 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URL;
-import java.util.List;
-import java.util.Set;
-import java.util.regex.Pattern;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
-public class RouteController implements Controller {
+public class DeploymentFeatureController {
 
     private final Proxy proxy;
     private final ProxyContext context;
 
-    @Override
-    public void handle() {
-        Route route = selectRoute();
-        if (route == null) {
-            context.respond(HttpStatus.BAD_GATEWAY, "No route");
+    public void handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
+        Deployment deployment = context.getConfig().selectDeployment(deploymentId);
+
+        if (deployment == null || !DeploymentController.hasAccessByUserRoles(context, deployment)) {
+            context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
             return;
         }
 
-        Route.Response response = route.getResponse();
-        if (response == null) {
-            UpstreamProvider upstreamProvider = new RouteEndpointProvider(route);
-            UpstreamRoute upstreamRoute = proxy.getUpstreamBalancer().balance(upstreamProvider);
-
-            if (!upstreamRoute.hasNext()) {
-                context.respond(HttpStatus.BAD_GATEWAY, "No route");
-                return;
-            }
-
-            context.setUpstreamRoute(upstreamRoute);
-        } else {
-            context.getResponse().setStatusCode(response.getStatus());
-            context.setResponseBody(Buffer.buffer(response.getBody()));
-        }
-
+        String endpoint = endpointGetter.apply(deployment);
+        context.setDeployment(deployment);
         context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
+                .onSuccess(requestBody -> this.handleRequestBody(endpoint, requireEndpoint, requestBody))
                 .onFailure(this::handleRequestBodyError);
     }
 
     @SneakyThrows
-    private Future<?> sendRequest() {
-        UpstreamRoute route = context.getUpstreamRoute();
-        HttpServerRequest request = context.getRequest();
-
-        if (!route.hasNext()) {
-            return context.respond(HttpStatus.BAD_GATEWAY, "No route");
-        }
-
-        Upstream upstream = route.next();
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(new URL(upstream.getEndpoint()))
-                .setMethod(request.method());
-
-        return proxy.getClient().request(options)
-                .onSuccess(this::handleProxyRequest)
-                .onFailure(this::handleProxyConnectionError);
-    }
-
-    private void handleRequestBody(Buffer requestBody) {
+    private void handleRequestBody(String endpoint, boolean requireEndpoint, Buffer requestBody) {
         context.setRequestBody(requestBody);
 
-        if (context.getResponseBody() == null) {
-            sendRequest();
-        } else {
-            context.getResponse().send(context.getResponseBody());
-            proxy.getLogStore().save(context);
+        if (endpoint == null) {
+            if (requireEndpoint) {
+                context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
+            } else {
+                context.respond(HttpStatus.OK);
+                proxy.getLogStore().save(context);
+            }
+            return;
         }
+
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(new URL(endpoint))
+                .setMethod(context.getRequest().method());
+
+        proxy.getClient().request(options)
+                .onSuccess(this::handleProxyRequest)
+                .onFailure(this::handleProxyConnectionError);
     }
 
     /**
@@ -104,9 +74,7 @@ public class RouteController implements Controller {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
 
-        Upstream upstream = context.getUpstreamRoute().get();
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
-        proxyRequest.putHeader(Proxy.HEADER_API_KEY, upstream.getKey());
 
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
@@ -122,11 +90,6 @@ public class RouteController implements Controller {
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
                 proxyResponse.headers().size());
-
-        if (proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
-            sendRequest(); // try next
-            return;
-        }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024));
@@ -168,7 +131,7 @@ public class RouteController implements Controller {
      */
     private void handleProxyConnectionError(Throwable error) {
         log.warn("Can't connect to origin: {}", error.getMessage());
-        sendRequest(); // try next
+        context.respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
     }
 
     /**
@@ -176,7 +139,7 @@ public class RouteController implements Controller {
      */
     private void handleProxyRequestError(Throwable error) {
         log.warn("Can't send request to origin: {}", error.getMessage());
-        sendRequest(); // try next
+        context.respond(HttpStatus.BAD_GATEWAY, "deployment responded with error");
     }
 
     /**
@@ -186,32 +149,5 @@ public class RouteController implements Controller {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-    }
-
-    private Route selectRoute() {
-        Config config = context.getConfig();
-        HttpServerRequest request = context.getRequest();
-        String uri = request.uri();
-
-        for (Route route : config.getRoutes().values()) {
-            List<Pattern> paths = route.getPaths();
-            Set<HttpMethod> methods = route.getMethods();
-
-            if (!methods.isEmpty() && !methods.contains(request.method())) {
-                continue;
-            }
-
-            if (paths.isEmpty()) {
-                return route;
-            }
-
-            for (Pattern path : route.getPaths()) {
-                if (path.matcher(uri).matches()) {
-                    return route;
-                }
-            }
-        }
-
-        return null;
     }
 }

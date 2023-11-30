@@ -2,6 +2,7 @@ package com.epam.aidial.core.config;
 
 import lombok.Data;
 
+import java.util.List;
 import java.util.Set;
 
 @Data
@@ -22,4 +23,7 @@ public abstract class Deployment {
      * API key is forwarded by default.
      */
     private boolean forwardApiKey = true;
+    private Features features;
+    private List<String> inputAttachmentTypes;
+    private Integer maxInputAttachments;
 }

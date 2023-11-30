@@ -1,0 +1,99 @@
+{
+  "routes" : {
+    "route-rate" : {
+      "paths": ["/+v1/rate"],
+      "methods": ["POST"],
+      "response" : {
+        "status": 200
+      }
+    }
+  },
+  "addons": {
+    "search": {
+      "endpoint": "http://localhost:7010/search",
+      "displayName": "Search",
+      "iconUrl": "http://localhost:7001/search_addon.png",
+      "description": "Some description of the addon for testing",
+      "forwardApiKey": false
+    },
+    "forecast": {
+      "endpoint": "http://localhost:7010/forecast",
+      "forwardAuthToken": false
+    },
+    "calculator": {
+      "endpoint": "http://localhost:7010/calculator",
+      "forwardApiKey": false,
+      "forwardAuthToken": false
+    }
+  },
+  "assistant": {
+    "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
+
+    "assistants": {
+      "ass": {
+        "prompt": "Commands: sit_down, get_up, run_away",
+        "addons": ["search"],
+        "displayName": "Search Assistant",
+        "iconUrl": "http://localhost:7001/search_app.png",
+        "description": "Some description of the assistant for testing"
+      }
+    }
+  },
+  "applications": {
+    "app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "10k",
+      "iconUrl": "http://localhost:7001/logo10k.png",
+      "description": "Some description of the application for testing"
+    }
+  },
+  "models": {
+    "chat-gpt-35-turbo": {
+      "type": "chat",
+      "displayName": "GPT 3.5",
+      "iconUrl": "http://localhost:7001/logo.png",
+      "description": "Some description of the model for testing",
+      "endpoint" : "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
+      "upstreams": [
+        {"endpoint": "http://localhost:7001", "key": "modelKey1"},
+        {"endpoint": "http://localhost:7002", "key": "modelKey2"},
+        {"endpoint": "http://localhost:7003", "key": "modelKey3"}
+      ],
+      "features": {
+        "rateEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/rate_response",
+        "tokenizeEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/tokenizer",
+        "truncatePromptEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/trim_history"
+      }
+    },
+    "embedding-ada": {
+      "type": "embedding",
+      "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
+      "upstreams": [
+        {"endpoint": "http://localhost:7001", "key": "modelKey4"}
+      ]
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    },
+    "proxyKey2": {
+      "project": "EPM-RTC-RAIL",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {
+        "chat-gpt-35-turbo": {"minute": "100000", "day": "10000000"},
+        "embedding-ada": {"minute": "100000", "day": "10000000"},
+        "search": {},
+        "forecast": {},
+        "calculator": {},
+        "ass": {},
+        "app": {}
+      }
+    }
+  }
+}

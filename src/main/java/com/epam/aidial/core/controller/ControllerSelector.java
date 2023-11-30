@@ -2,11 +2,14 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Deployment;
 import io.vertx.core.http.HttpMethod;
 import lombok.experimental.UtilityClass;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,21 +32,30 @@ public class ControllerSelector {
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("/+openai/applications/([-.@a-zA-Z0-9]+)");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("/+openai/applications");
 
+
+    private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files(.*)");
+
+    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
+    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");
+    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/truncate_prompt");
+
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = URLDecoder.decode(context.getRequest().path(), StandardCharsets.UTF_8);
         HttpMethod method = context.getRequest().method();
         Controller controller = null;
 
         if (method == HttpMethod.GET) {
-            controller = selectGet(context, path);
+            controller = selectGet(proxy, context, path);
         } else if (method == HttpMethod.POST) {
             controller = selectPost(proxy, context, path);
+        } else if (method == HttpMethod.DELETE) {
+            controller = selectDelete(proxy, context, path);
         }
 
         return (controller == null) ? new RouteController(proxy, context) : controller;
     }
 
-    private static Controller selectGet(ProxyContext context, String path) {
+    private static Controller selectGet(Proxy proxy, ProxyContext context, String path) {
         Matcher match;
 
         match = match(PATTERN_DEPLOYMENT, path);
@@ -111,6 +123,19 @@ public class ControllerSelector {
             return controller::getApplications;
         }
 
+        match = match(PATTERN_FILES, path);
+        if (match != null) {
+            String filePath = match.group(1);
+            String purpose = context.getRequest().params().get(DownloadFileController.PURPOSE_FILE_QUERY_PARAMETER);
+            if (DownloadFileController.QUERY_METADATA_QUERY_PARAMETER_VALUE.equals(purpose)) {
+                FileMetadataController controller = new FileMetadataController(proxy, context);
+                return () -> controller.list(filePath);
+            } else {
+                DownloadFileController controller = new DownloadFileController(proxy, context);
+                return () -> controller.download(filePath);
+            }
+        }
+
         return null;
     }
 
@@ -121,6 +146,69 @@ public class ControllerSelector {
             String deploymentApi = match.group(2);
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId, deploymentApi);
+        }
+
+        match = match(PATTERN_FILES, path);
+        if (match != null) {
+            String relativeFilePath = match.group(1);
+            UploadFileController controller = new UploadFileController(proxy, context);
+            return () -> controller.upload(relativeFilePath);
+        }
+
+        match = match(PATTERN_RATE_RESPONSE, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+
+            Function<Deployment, String> getter = (model) -> {
+                return Optional.ofNullable(model)
+                    .map(d -> d.getFeatures())
+                    .map(t -> t.getRateEndpoint())
+                    .orElse(null);
+            };
+
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, false);
+        }
+
+        match = match(PATTERN_TOKENIZE, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+
+            Function<Deployment, String> getter = (model) -> {
+                return Optional.ofNullable(model)
+                    .map(d -> d.getFeatures())
+                    .map(t -> t.getTokenizeEndpoint())
+                    .orElse(null);
+            };
+
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, true);
+        }
+
+        match = match(PATTERN_TRUNCATE_PROMPT, path);
+        if (match != null) {
+            String deploymentId = match.group(1);
+
+            Function<Deployment, String> getter = (model) -> {
+                return Optional.ofNullable(model)
+                    .map(d -> d.getFeatures())
+                    .map(t -> t.getTruncatePromptEndpoint())
+                    .orElse(null);
+            };
+
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, true);
+        }
+
+        return null;
+    }
+
+    private static Controller selectDelete(Proxy proxy, ProxyContext context, String path) {
+        Matcher match = match(PATTERN_FILES, path);
+        if (match != null) {
+            String relativeFilePath = match.group(1);
+            DeleteFileController controller = new DeleteFileController(proxy, context);
+            return () -> controller.delete(relativeFilePath);
         }
 
         return null;
