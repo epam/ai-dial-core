@@ -10,6 +10,6 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PricingData {
     private String unit;
-    private Double prompt;
-    private Double completion;
+    private String prompt;
+    private String completion;
 }

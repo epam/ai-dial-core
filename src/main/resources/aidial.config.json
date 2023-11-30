@@ -71,8 +71,8 @@
             },
             "pricing": {
                 "unit": "token",
-                "prompt": 0.00005,
-                "completion": 0.0001
+                "prompt": "0.00005",
+                "completion": "0.0001"
             },
             "features": {
                 "tokenizeEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/tokenize",
@@ -94,7 +94,7 @@
             },
             "pricing": {
                 "unit": "token",
-                "prompt": 0.00005
+                "prompt": "0.00005"
             },
             "features": {
                 "tokenizeEndpoint": "http://localhost:7001/openai/deployments/ada/tokenize"
@@ -105,8 +105,8 @@
             "endpoint": "http://localhost:7001/openai/deployments/exotic-model/chat/completions",
             "pricing": {
                 "unit": "char_without_whitespace",
-                "prompt": 0.00005,
-                "completion": 0.0001
+                "prompt": "0.00005",
+                "completion": "0.0001"
             },
             "features": {
                 "rateEndpoint": "http://localhost:7001/v1/deployments/exotic-model/rate_reponse",
