@@ -2,8 +2,6 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.config.Assistant;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
@@ -20,69 +18,51 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URL;
-
-import static com.epam.aidial.core.controller.DeploymentPostController.ASSISTANT;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
-public class RateResponseController {
+public class DeploymentFeatureController {
 
     private final Proxy proxy;
     private final ProxyContext context;
 
-    public void handle(String deploymentId) {
-        Deployment deployment = getDeployment(deploymentId);
+    public void handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
+        Deployment deployment = context.getConfig().selectDeployment(deploymentId);
 
         if (deployment == null || !DeploymentController.hasAccessByUserRoles(context, deployment)) {
             context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
             return;
         }
 
+        String endpoint = endpointGetter.apply(deployment);
         context.setDeployment(deployment);
         context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
+                .onSuccess(requestBody -> this.handleRequestBody(endpoint, requireEndpoint, requestBody))
                 .onFailure(this::handleRequestBodyError);
     }
 
-    private Deployment getDeployment(String id) {
-        Config config = context.getConfig();
-        Deployment deployment = config.getApplications().get(id);
-        if (deployment != null) {
-            return deployment;
-        }
-        deployment = config.getModels().get(id);
-        if (deployment != null) {
-            return deployment;
-        }
-        if (ASSISTANT.equals(id)) {
-            Assistant assistant = new Assistant();
-            assistant.setName(ASSISTANT);
-            assistant.setRateEndpoint(config.getAssistant().getRateEndpoint());
-            return assistant;
-        }
-        return null;
-    }
-
     @SneakyThrows
-    private void sendRequest() {
+    private void handleRequestBody(String endpoint, boolean requireEndpoint, Buffer requestBody) {
+        context.setRequestBody(requestBody);
+
+        if (endpoint == null) {
+            if (requireEndpoint) {
+                context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
+            } else {
+                context.respond(HttpStatus.OK);
+                proxy.getLogStore().save(context);
+            }
+            return;
+        }
+
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(new URL(context.getDeployment().getRateEndpoint()))
+                .setAbsoluteURI(new URL(endpoint))
                 .setMethod(context.getRequest().method());
 
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
-    }
-
-    private void handleRequestBody(Buffer requestBody) {
-        context.setRequestBody(requestBody);
-        Deployment deployment = context.getDeployment();
-        if (deployment.getRateEndpoint() == null) {
-            context.respond(HttpStatus.OK);
-            proxy.getLogStore().save(context);
-        } else {
-            sendRequest();
-        }
     }
 
     /**

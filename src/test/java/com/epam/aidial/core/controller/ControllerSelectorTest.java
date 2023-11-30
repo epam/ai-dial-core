@@ -271,7 +271,7 @@ public class ControllerSelectorTest {
         assertNotNull(lambda);
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        assertInstanceOf(RateResponseController.class, arg1);
+        assertInstanceOf(DeploymentFeatureController.class, arg1);
         assertEquals("app", arg2);
     }
 
@@ -285,7 +285,7 @@ public class ControllerSelectorTest {
         assertNotNull(lambda);
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        assertInstanceOf(ModelEndpointController.class, arg1);
+        assertInstanceOf(DeploymentFeatureController.class, arg1);
         assertEquals("app", arg2);
     }
 
@@ -299,7 +299,7 @@ public class ControllerSelectorTest {
         assertNotNull(lambda);
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        assertInstanceOf(ModelEndpointController.class, arg1);
+        assertInstanceOf(DeploymentFeatureController.class, arg1);
         assertEquals("app", arg2);
     }
 

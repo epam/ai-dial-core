@@ -9,6 +9,7 @@ import lombok.Data;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class FeaturesData {
+    private boolean rate;
     private boolean tokenize;
     private boolean truncatePrompt;
 }

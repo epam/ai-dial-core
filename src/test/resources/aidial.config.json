@@ -59,8 +59,8 @@
         {"endpoint": "http://localhost:7002", "key": "modelKey2"},
         {"endpoint": "http://localhost:7003", "key": "modelKey3"}
       ],
-      "rateEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/rate",
       "features": {
+        "rateEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/rate_response",
         "tokenizeEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/tokenizer",
         "truncatePromptEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/trim_history"
       }
