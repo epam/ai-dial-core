@@ -58,6 +58,7 @@ public class AssistantController {
         data.setIconUrl(assistant.getIconUrl());
         data.setDescription(assistant.getDescription());
         data.setAddons(assistant.getAddons());
+        data.setFeatures(DeploymentController.createFeatures(assistant.getFeatures()));
         data.setInputAttachmentTypes(assistant.getInputAttachmentTypes());
         data.setMaxInputAttachments(assistant.getMaxInputAttachments());
         return data;

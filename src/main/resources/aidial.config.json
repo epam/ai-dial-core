@@ -38,6 +38,9 @@
             "displayName": "10k",
             "iconUrl": "http://localhost:7001/logo10k.png",
             "description": "Some description of the application for testing",
+            "features": {
+                "rateEndpoint": "http://localhost:7001/v1/deployments/gpt-35-turbo/rate"
+            },
             "inputAttachmentTypes": [
                 "*/*"
             ],

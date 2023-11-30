@@ -3,12 +3,14 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.UserAuth;
 import com.epam.aidial.core.data.DeploymentData;
+import com.epam.aidial.core.data.FeaturesData;
 import com.epam.aidial.core.data.ListData;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
@@ -96,5 +98,16 @@ public class DeploymentController {
         deployment.setId(model.getName());
         deployment.setModel(model.getName());
         return deployment;
+    }
+
+    static FeaturesData createFeatures(Features features) {
+        if (features == null) {
+            return null;
+        }
+        FeaturesData data = new FeaturesData();
+        data.setRate(features.getRateEndpoint() != null);
+        data.setTokenize(features.getTokenizeEndpoint() != null);
+        data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
+        return data;
     }
 }
