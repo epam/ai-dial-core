@@ -63,10 +63,31 @@ public class FeaturesApiTest {
     }
 
     @Test
-    void testRateEndpoint(Vertx vertx, VertxTestContext context) {
+    void testRateEndpointModel(Vertx vertx, VertxTestContext context) {
         String inboundPath = "/v1/chat-gpt-35-turbo/rate";
         String upstream = "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/rate_response";
         testUpstreamEndpoint(vertx, context, inboundPath, upstream);
+    }
+
+    @Test
+    void testRateEndpointApplication(Vertx vertx, VertxTestContext context) {
+        String inboundPath = "/v1/app/rate";
+        String upstream = "http://localhost:7001/openai/deployments/10k/rate_response";
+        testUpstreamEndpoint(vertx, context, inboundPath, upstream);
+    }
+
+    @Test
+    void testRateEndpointAssistant(Vertx vertx, VertxTestContext context) {
+        String inboundPath = "/v1/search-assistant/rate";
+        String upstream = "http://localhost:7001/openai/deployments/search_assistant/rate_response";
+        testUpstreamEndpoint(vertx, context, inboundPath, upstream);
+    }
+
+    @Test
+    void testRateEndpointAssistantDefaultResponse(Vertx vertx, VertxTestContext context) {
+        // The rate endpoint is unset. Checking the default empty response.
+        String inboundPath = "/v1/assistant/rate";
+        checkResponse(vertx, context, inboundPath, null);
     }
 
     @Test
@@ -87,7 +108,7 @@ public class FeaturesApiTest {
     void testUpstreamEndpoint(Vertx vertx, VertxTestContext context, String inboundPath, String upstream) {
         URI upstreamUri = new URI(upstream);
 
-        String okResponse = "OK";
+        String response = "PONG";
 
         HttpServerOptions options = new HttpServerOptions()
                 .setHost(upstreamUri.getHost())
@@ -96,18 +117,18 @@ public class FeaturesApiTest {
         vertx.createHttpServer(options)
                 .requestHandler(req -> {
                     if (req.path().equals(upstreamUri.getPath())) {
-                        req.response().end(okResponse);
+                        req.response().end(response);
                     } else {
                         req.response().setStatusCode(500).end("ERROR");
                     }
                 })
                 .listen().onSuccess(server ->
-                    checkResponse(vertx, context, inboundPath, okResponse));
+                    checkResponse(vertx, context, inboundPath, response));
     }
 
-    void checkResponse(Vertx vertx, VertxTestContext context, String inboundPath, String expectedResponse) {
+    void checkResponse(Vertx vertx, VertxTestContext context, String uri, String expectedResponse) {
         WebClient client = WebClient.create(vertx);
-        client.post(serverPort, "localhost", inboundPath)
+        client.post(serverPort, "localhost", uri)
                 .putHeader("Api-key", "proxyKey2")
                 .bearerTokenAuthentication(generateJwtToken("User1"))
                 .as(BodyCodec.string())

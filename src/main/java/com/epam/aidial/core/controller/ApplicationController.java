@@ -57,6 +57,7 @@ public class ApplicationController {
         data.setDisplayName(application.getDisplayName());
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
+        data.setFeatures(DeploymentController.createFeatures(application.getFeatures()));
         data.setInputAttachmentTypes(application.getInputAttachmentTypes());
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         return data;
