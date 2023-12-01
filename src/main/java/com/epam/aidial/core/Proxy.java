@@ -106,37 +106,37 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        String apiKey = request.headers().get(HEADER_API_KEY);
-        if (apiKey == null) {
-            respond(request, HttpStatus.UNAUTHORIZED, "Missing API-KEY header");
-            return;
-        }
-
         Config config = configStore.load();
-        Key key = config.getKeys().get(apiKey);
-
-        if (key == null) {
-            respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
-            return;
-        }
-
+        String apiKey = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.debug("Authorization header: {}", authorization);
-        if (authorization == null && key.getUserAuth() == UserAuth.ENABLED) {
-            respond(request, HttpStatus.UNAUTHORIZED, "Missing Authorization header");
+        Key key;
+        if (apiKey == null && authorization == null) {
+            respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
             return;
+        } else if (apiKey != null && authorization != null) {
+            respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
+            return;
+        } else if (apiKey != null) {
+            key = config.getKeys().get(apiKey);
+
+            if (key == null) {
+                respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
+                return;
+            }
+        } else {
+            key = null;
         }
 
         request.pause();
-        final boolean isJwtMustBeValidated = key.getUserAuth() != UserAuth.DISABLED;
-        Future<ExtractedClaims> extractedClaims = identityProvider.extractClaims(authorization, isJwtMustBeValidated);
+        Future<ExtractedClaims> extractedClaims = identityProvider.extractClaims(authorization);
 
         extractedClaims.onComplete(result -> {
             try {
                 if (result.succeeded()) {
                     onExtractClaimsSuccess(result.result(), config, request, key);
                 } else {
-                    onExtractClaimsFailure(result.cause(), config, request, key);
+                    onExtractClaimsFailure(result.cause(), config, request);
                 }
             } catch (Throwable e) {
                 handleError(e, request);
@@ -146,16 +146,9 @@ public class Proxy implements Handler<HttpServerRequest> {
         });
     }
 
-    private void onExtractClaimsFailure(Throwable error, Config config, HttpServerRequest request, Key key)
-            throws Exception {
-        if (key.getUserAuth() == UserAuth.ENABLED) {
-            log.error("Can't extract claims from authorization header", error);
-            respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
-        } else {
-            log.info("Can't extract claims from authorization header");
-            // if token is invalid set user roles to empty list
-            onExtractClaimsSuccess(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, config, request, key);
-        }
+    private void onExtractClaimsFailure(Throwable error, Config config, HttpServerRequest request) {
+        log.error("Can't extract claims from authorization header", error);
+        respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
     }
 
     private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,

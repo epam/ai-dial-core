@@ -68,7 +68,7 @@ public class BlobStorageUtil {
     }
 
     public String buildAbsoluteFilePath(ProxyContext context, String path) {
-        return buildAbsoluteFilePath(context.getUserSub(), context.getKey().getProject(), path);
+        return buildAbsoluteFilePath(context.getUserSub(), context.getProject(), path);
     }
 
     private String buildAbsoluteFilePath(String userSub, String apiKeyId, String path) {

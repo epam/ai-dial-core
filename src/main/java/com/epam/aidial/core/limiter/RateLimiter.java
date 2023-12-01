@@ -20,6 +20,9 @@ public class RateLimiter {
 
     public void increase(ProxyContext context) {
         Key key = context.getKey();
+        if (key == null) {
+            return;
+        }
         Deployment deployment = context.getDeployment();
         TokenUsage usage = context.getTokenUsage();
 
@@ -36,6 +39,9 @@ public class RateLimiter {
 
     public RateLimitResult limit(ProxyContext context) {
         Key key = context.getKey();
+        if (key == null) {
+            return RateLimitResult.SUCCESS;
+        }
         Role role = context.getConfig().getRoles().get(key.getRole());
 
         if (role == null) {

@@ -84,7 +84,7 @@ public class DeploymentPostController {
             return context.respond(rateLimitResult.status(), rateLimitError);
         }
 
-        log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getKey().getProject(),
+        log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getProject(),
                 context.getDeployment().getName(), context.getRequest().headers().size());
 
         UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
@@ -123,7 +123,7 @@ public class DeploymentPostController {
     }
 
     private void handleRequestBody(Buffer requestBody) {
-        log.info("Received body from client. Key: {}. Deployment: {}. Length: {}", context.getKey().getProject(),
+        log.info("Received body from client. Key: {}. Deployment: {}. Length: {}", context.getProject(),
                 context.getDeployment().getName(), requestBody.length());
 
         context.setRequestBody(requestBody);
@@ -152,7 +152,7 @@ public class DeploymentPostController {
      * Called when proxy connected to the origin.
      */
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getKey().getProject(),
+        log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
@@ -164,7 +164,7 @@ public class DeploymentPostController {
         if (!deployment.isForwardApiKey()) {
             excludeHeaders.add(Proxy.HEADER_API_KEY);
         }
-        if (!deployment.isForwardAuthToken() || context.getKey().getUserAuth() == UserAuth.DISABLED) {
+        if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION);
         }
 
@@ -190,7 +190,7 @@ public class DeploymentPostController {
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         log.info("Received header from origin. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
-                context.getKey().getProject(), context.getDeployment().getName(),
+                context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
@@ -237,7 +237,7 @@ public class DeploymentPostController {
 
             if (tokenUsage == null) {
                 log.warn("Can't find token usage. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
-                        context.getKey().getProject(), context.getDeployment().getName(),
+                        context.getProject(), context.getDeployment().getName(),
                         context.getDeployment().getEndpoint(),
                         context.getUpstreamRoute().get().getEndpoint(),
                         context.getResponse().getStatusCode(),
@@ -247,7 +247,7 @@ public class DeploymentPostController {
 
         log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
-                context.getKey().getProject(), context.getDeployment().getName(),
+                context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(),
                 context.getUpstreamRoute().get().getEndpoint(),
                 context.getResponse().getStatusCode(),
@@ -272,7 +272,7 @@ public class DeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        String projectName = context.getKey().getProject();
+        String projectName = context.getProject();
         String deploymentName = context.getDeployment().getName();
         String uri = buildUri(context);
         log.warn("Can't connect to origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
@@ -284,7 +284,7 @@ public class DeploymentPostController {
      * Called when proxy received failed response the origin.
      */
     private void handleProxyResponseError(Throwable error) {
-        String projectName = context.getKey().getProject();
+        String projectName = context.getProject();
         String deploymentName = context.getDeployment().getName();
         SocketAddress proxyAddress = context.getProxyRequest().connection().remoteAddress();
         log.warn("Proxy received response error from origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
