@@ -173,26 +173,25 @@ public class IdentityProvider {
         return keyClaim;
     }
 
-    public Future<ExtractedClaims> extractClaims(String authHeader, boolean isJwtMustBeVerified) {
+    public Future<ExtractedClaims> extractClaims(String authHeader) {
         try {
             if (authHeader == null) {
-                return isJwtMustBeVerified ? Future.failedFuture(new IllegalArgumentException("Token is missed")) : Future.succeededFuture();
+                return Future.succeededFuture(CLAIMS_WITH_EMPTY_ROLES);
             }
             // Take the 1st authorization parameter from the header value:
             // Authorization: <auth-scheme> <authorization-parameters>
             String encodedToken = authHeader.split(" ")[1];
-            return extractClaimsFromEncodedToken(encodedToken, isJwtMustBeVerified);
+            return extractClaimsFromEncodedToken(encodedToken);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
     }
 
-    public Future<ExtractedClaims> extractClaimsFromEncodedToken(String encodedToken, boolean isJwtMustBeVerified) {
+    public Future<ExtractedClaims> extractClaimsFromEncodedToken(String encodedToken) {
         if (encodedToken == null) {
             return Future.succeededFuture();
         }
-        Future<DecodedJWT> decodedJwt = isJwtMustBeVerified ? decodeAndVerifyJwtToken(encodedToken)
-                : Future.succeededFuture(decodeJwtToken(encodedToken));
+        Future<DecodedJWT> decodedJwt = decodeAndVerifyJwtToken(encodedToken);
         return decodedJwt.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
                 extractUserHash(jwt)));
     }

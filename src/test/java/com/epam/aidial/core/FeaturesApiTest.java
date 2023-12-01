@@ -109,7 +109,6 @@ public class FeaturesApiTest {
         WebClient client = WebClient.create(vertx);
         client.post(serverPort, "localhost", inboundPath)
                 .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
                 .as(BodyCodec.string())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {

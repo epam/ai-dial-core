@@ -73,7 +73,6 @@ public class FileApiTest {
         WebClient client = WebClient.create(vertx);
         client.get(serverPort, "localhost", "/v1/files")
                 .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
                 .addQueryParam("purpose", "metadata")
                 .as(BodyCodec.jsonArray())
                 .send(context.succeeding(response -> {
@@ -90,7 +89,6 @@ public class FileApiTest {
         WebClient client = WebClient.create(vertx);
         client.get(serverPort, "localhost", "/v1/files/test_file.txt")
                 .putHeader("Api-key", "proxyKey2")
-                .bearerTokenAuthentication(generateJwtToken("User1"))
                 .as(BodyCodec.buffer())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
@@ -106,14 +104,13 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "/Users/User1/files", 17, "text/custom");
+        FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "/Keys/EPM-RTC-RAIL/files", 17, "text/custom");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
             client.get(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .addQueryParam("purpose", "metadata")
                     .as(BodyCodec.jsonArray())
                     .send(context.succeeding(response -> {
@@ -131,7 +128,6 @@ public class FileApiTest {
             // upload test file
             client.post(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
                             context.succeeding(response -> {
@@ -149,7 +145,6 @@ public class FileApiTest {
             // verify uploaded file can be listed
             client.get(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .addQueryParam("purpose", "metadata")
                     .as(BodyCodec.jsonArray())
                     .send(context.succeeding(response -> {
@@ -167,14 +162,13 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "/Users/User1/files/folder1", 17, "text/plain");
+        FileMetadata expectedFileMetadata = new FileMetadata("file.txt", "/Keys/EPM-RTC-RAIL/files/folder1", 17, "text/plain");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file
             client.post(serverPort, "localhost", "/v1/files/folder1")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
                             context.succeeding(response -> {
@@ -194,7 +188,6 @@ public class FileApiTest {
             client.get(serverPort, "localhost", "/v1/files/folder1/file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .addQueryParam("path", "relative")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
@@ -208,9 +201,8 @@ public class FileApiTest {
             return promise.future();
         }).andThen((result) -> {
             // download by absolute path
-            client.get(serverPort, "localhost", "/v1/files/Users/User1/files/folder1/file.txt")
+            client.get(serverPort, "localhost", "/v1/files/Keys/EPM-RTC-RAIL/files/folder1/file.txt")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User2"))
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
@@ -227,16 +219,15 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
-        FileMetadata expectedFileMetadata1 = new FileMetadata("file.txt", "/Users/User1/files", 17, "text/custom");
-        FileMetadata expectedFileMetadata2 = new FileMetadata("file.txt", "/Users/User1/files/folder1", 17, "text/custom");
-        FolderMetadata expectedFolderMetadata = new FolderMetadata("folder1", "/Users/User1/files");
+        FileMetadata expectedFileMetadata1 = new FileMetadata("file.txt", "/Keys/EPM-RTC-RAIL/files", 17, "text/custom");
+        FileMetadata expectedFileMetadata2 = new FileMetadata("file.txt", "/Keys/EPM-RTC-RAIL/files/folder1", 17, "text/custom");
+        FolderMetadata expectedFolderMetadata = new FolderMetadata("folder1", "/Keys/EPM-RTC-RAIL/files");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
             client.get(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .addQueryParam("purpose", "metadata")
                     .as(BodyCodec.jsonArray())
                     .send(context.succeeding(response -> {
@@ -254,7 +245,6 @@ public class FileApiTest {
             // upload test file1
             client.post(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
                             context.succeeding(response -> {
@@ -273,7 +263,6 @@ public class FileApiTest {
             // upload test file2
             client.post(serverPort, "localhost", "/v1/files/folder1")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
                             context.succeeding(response -> {
@@ -291,7 +280,6 @@ public class FileApiTest {
             // verify uploaded files can be listed
             client.get(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .addQueryParam("purpose", "metadata")
                     .as(BodyCodec.jsonArray())
                     .send(context.succeeding(response -> {
@@ -312,14 +300,13 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        FileMetadata expectedFileMetadata = new FileMetadata("test_file.txt", "/Users/User1/files", 17, "text/plain");
+        FileMetadata expectedFileMetadata = new FileMetadata("test_file.txt", "/Keys/EPM-RTC-RAIL/files", 17, "text/plain");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file
             client.post(serverPort, "localhost", "/v1/files")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT),
                             context.succeeding(response -> {
@@ -338,7 +325,6 @@ public class FileApiTest {
             // delete file
             client.delete(serverPort, "localhost", "/v1/files/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
@@ -353,7 +339,6 @@ public class FileApiTest {
             // try to download deleted file
             client.get(serverPort, "localhost", "/v1/files/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
-                    .bearerTokenAuthentication(generateJwtToken("User1"))
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
