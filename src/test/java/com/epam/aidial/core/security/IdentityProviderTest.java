@@ -5,6 +5,7 @@ import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -58,6 +60,7 @@ public class IdentityProviderTest {
         settings = new JsonObject();
         settings.put("jwksUrl", "http://host/jwks");
         settings.put("rolePath", "roles");
+        settings.put("issuerPattern", "issuer");
     }
 
     @Test
@@ -72,34 +75,12 @@ public class IdentityProviderTest {
     }
 
     @Test
-    public void testExtractClaims_01() {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
-        Future<ExtractedClaims> result = identityProvider.extractClaims("bad-token", true);
-        assertNotNull(result);
-        result.onComplete(res -> {
-            assertTrue(res.failed());
-            assertNotNull(res.cause());
-        });
-    }
-
-    @Test
-    public void testExtractClaims_02() {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
-        Future<ExtractedClaims> result = identityProvider.extractClaims("bad-token", true);
-        assertNotNull(result);
-        result.onComplete(res -> {
-            assertTrue(res.failed());
-            assertNotNull(res.cause());
-        });
-    }
-
-    @Test
     public void testExtractClaims_03() {
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 
         String token = JWT.create().withClaim("roles", List.of("manager")).sign(algorithm);
-        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), false);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), false);
         assertNotNull(result);
         result.onComplete(res -> {
             assertTrue(res.succeeded());
@@ -117,7 +98,7 @@ public class IdentityProviderTest {
 
         Map<String, Object> claim = Map.of("some", "val", "k1", 12, "p1", Map.of("p2", Map.of("p3", List.of("r1", "r2"))));
         String token = JWT.create().withClaim("p0", claim).sign(algorithm);
-        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), false);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), false);
         assertNotNull(result);
         result.onComplete(res -> {
             assertTrue(res.succeeded());
@@ -135,7 +116,7 @@ public class IdentityProviderTest {
 
         Map<String, Object> claim = Map.of("some", "val", "k1", 12, "p1", List.of("r1", "r2"));
         String token = JWT.create().withClaim("p0", claim).sign(algorithm);
-        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), false);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), false);
         assertNotNull(result);
         result.onComplete(res -> {
             assertTrue(res.succeeded());
@@ -153,7 +134,7 @@ public class IdentityProviderTest {
 
         Map<String, Object> claim = Map.of("some", "val", "k1", 12, "p1", Map.of("p2", List.of("p3", List.of("r1", "r2"))));
         String token = JWT.create().withClaim("p0", claim).sign(algorithm);
-        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), false);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), false);
         assertNotNull(result);
         result.onComplete(res -> {
             assertTrue(res.succeeded());
@@ -177,7 +158,7 @@ public class IdentityProviderTest {
             return p.future();
         });
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
-        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), true);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), true);
         assertNotNull(result);
         result.onComplete(res -> {
             assertTrue(res.succeeded());
@@ -199,7 +180,7 @@ public class IdentityProviderTest {
             return p.future();
         });
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
-        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), true);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), true);
         assertNotNull(result);
         result.onComplete(res -> {
             assertTrue(res.failed());
@@ -234,7 +215,7 @@ public class IdentityProviderTest {
             return p.future();
         });
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
-        Future<ExtractedClaims> result = identityProvider.extractClaims(getBearerToken(token), true);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), true);
         assertNotNull(result);
         result.onComplete(res -> {
             assertTrue(res.failed());
@@ -242,8 +223,22 @@ public class IdentityProviderTest {
         });
     }
 
-    private static String getBearerToken(String token) {
-        return String.format("Bearer %s", token);
+    @Test
+    public void testMatch_Failure() {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        String token = JWT.create().withClaim("iss", "bad-iss").sign(algorithm);
+        DecodedJWT jwt = JWT.decode(token);
+        assertFalse(identityProvider.match(jwt));
+    }
+
+    @Test
+    public void testMatch_Success() {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        String token = JWT.create().withClaim("iss", "issuer").sign(algorithm);
+        DecodedJWT jwt = JWT.decode(token);
+        assertTrue(identityProvider.match(jwt));
     }
 
     private static KeyPair generateRsa256Pair() throws NoSuchAlgorithmException {

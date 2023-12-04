@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 import static java.util.Collections.EMPTY_LIST;
 
@@ -49,6 +50,8 @@ public class IdentityProvider {
 
     private final long negativeCacheExpirationMs;
 
+    private final Pattern issuerPattern;
+
     public IdentityProvider(JsonObject settings, Vertx vertx, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
@@ -74,6 +77,9 @@ public class IdentityProvider {
             throw new IllegalArgumentException(e);
         }
         obfuscateUserEmail = settings.getBoolean("obfuscateUserEmail", true);
+
+        issuerPattern = Pattern.compile(Objects.requireNonNull(settings.getString("issuerPattern"), "issuerPattern is missed"));
+
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
     }
@@ -114,7 +120,7 @@ public class IdentityProvider {
         return EMPTY_LIST;
     }
 
-    private DecodedJWT decodeJwtToken(String encodedToken) {
+    public static DecodedJWT decodeJwtToken(String encodedToken) {
         return JWT.decode(encodedToken);
     }
 
@@ -132,21 +138,20 @@ public class IdentityProvider {
         }));
     }
 
-    private Future<DecodedJWT> decodeAndVerifyJwtToken(String encodedToken) {
-        DecodedJWT jwt = decodeJwtToken(encodedToken);
+    private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {
         String kid = jwt.getKeyId();
         Future<JwkResult> future = getJwk(kid);
-        return future.map(jwkResult -> verifyJwt(encodedToken, jwkResult));
+        return future.map(jwkResult -> verifyJwt(jwt, jwkResult));
     }
 
-    private DecodedJWT verifyJwt(String encodedToken, JwkResult jwkResult) {
+    private DecodedJWT verifyJwt(DecodedJWT jwt, JwkResult jwkResult) {
         Exception error = jwkResult.error();
         if (error != null) {
             throw new RuntimeException(error);
         }
         Jwk jwk = jwkResult.jwk();
         try {
-            return JWT.require(Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null)).build().verify(encodedToken);
+            return JWT.require(Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null)).build().verify(jwt);
         } catch (JwkException e) {
             throw new RuntimeException(e);
         }
@@ -173,28 +178,19 @@ public class IdentityProvider {
         return keyClaim;
     }
 
-    public Future<ExtractedClaims> extractClaims(String authHeader, boolean isJwtMustBeVerified) {
-        try {
-            if (authHeader == null) {
-                return isJwtMustBeVerified ? Future.failedFuture(new IllegalArgumentException("Token is missed")) : Future.succeededFuture();
-            }
-            // Take the 1st authorization parameter from the header value:
-            // Authorization: <auth-scheme> <authorization-parameters>
-            String encodedToken = authHeader.split(" ")[1];
-            return extractClaimsFromEncodedToken(encodedToken, isJwtMustBeVerified);
-        } catch (Throwable e) {
-            return Future.failedFuture(e);
+    Future<ExtractedClaims> extractClaims(DecodedJWT decodedJwt, boolean isJwtMustBeVerified) {
+        if (decodedJwt == null) {
+            return isJwtMustBeVerified ? Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null")) : Future.succeededFuture();
         }
+        Future<DecodedJWT> decodedJwtFuture = isJwtMustBeVerified ? verifyJwt(decodedJwt)
+                : Future.succeededFuture(decodedJwt);
+        return decodedJwtFuture.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
+                extractUserHash(jwt)));
     }
 
-    public Future<ExtractedClaims> extractClaimsFromEncodedToken(String encodedToken, boolean isJwtMustBeVerified) {
-        if (encodedToken == null) {
-            return Future.succeededFuture();
-        }
-        Future<DecodedJWT> decodedJwt = isJwtMustBeVerified ? decodeAndVerifyJwtToken(encodedToken)
-                : Future.succeededFuture(decodeJwtToken(encodedToken));
-        return decodedJwt.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
-                extractUserHash(jwt)));
+    boolean match(DecodedJWT jwt) {
+        String issuer = jwt.getIssuer();
+        return issuerPattern.matcher(issuer).matches();
     }
 
     private record JwkResult(Jwk jwk, Exception error, long expirationTime) {

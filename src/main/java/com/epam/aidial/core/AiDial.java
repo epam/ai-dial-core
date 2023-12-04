@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
+import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.IdentityProvider;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
@@ -22,6 +23,7 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -65,19 +67,12 @@ public class AiDial {
             LogStore logStore = new GfLogStore(vertx);
             RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
-
-            IdentityProvider identityProvider = new IdentityProvider(settings("identityProvider"), vertx, jwksUrl -> {
-                try {
-                    return new UrlJwkProvider(new URL(jwksUrl));
-                } catch (MalformedURLException e) {
-                    throw new IllegalArgumentException(e);
-                }
-            });
+            AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings.getJsonArray("identityProviders", new JsonArray()), vertx);
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, identityProvider, storage);
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

@@ -38,8 +38,11 @@
     "files": ["aidial.config.json"],
     "reload": 60000
   },
-  "identityProvider": {
-    "jwksUrl": "http://fakeJwksUrl:8080",
-    "rolePath": "roles"
-  }
+  "identityProviders": [
+    {
+      "jwksUrl": "http://fakeJwksUrl:8080",
+      "rolePath": "roles",
+      "issuerPattern": "issuer"
+    }
+  ]
 }
