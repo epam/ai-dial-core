@@ -39,6 +39,7 @@ Static settings are used on startup and cannot be changed while application is r
 | identityProviders[*].cacheSize           | 10                 |How many JWT tokens to cache.
 | identityProviders[*].cacheExpiration     | 10                 |How long to retain JWT token in cache.
 | identityProviders[*].cacheExpirationUnit | MINUTES            |Unit of cache expiration.
+| identityProviders[*].issuerPattern       | -                  |Regexp to match the claim "iss" to identity provider
 | vertx.*                                  | -                  |Vertx settings.
 | server.*                                 | -                  |Vertx HTTP server settings for incoming requests.
 | client.*                                 | -                  |Vertx HTTP client settings for outbound requests.
