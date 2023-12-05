@@ -21,6 +21,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -128,7 +129,11 @@ public class AccessTokenValidatorTest {
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.succeeded());
-            assertNotNull(res.result());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals("sub", claims.sub());
+            assertEquals(Collections.emptyList(), claims.userRoles());
+            assertEquals("hash", claims.userHash());
         });
     }
 
@@ -146,7 +151,11 @@ public class AccessTokenValidatorTest {
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.succeeded());
-            assertNotNull(res.result());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals("sub", claims.sub());
+            assertEquals(Collections.emptyList(), claims.userRoles());
+            assertEquals("hash", claims.userHash());
             verify(provider, never()).match(any(DecodedJWT.class));
         });
     }
