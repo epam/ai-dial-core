@@ -50,7 +50,7 @@ public class IdentityProvider {
 
     private final long negativeCacheExpirationMs;
 
-    private Pattern issuerPattern;
+    private final Pattern issuerPattern;
 
     public IdentityProvider(JsonObject settings, Vertx vertx, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
@@ -81,6 +81,8 @@ public class IdentityProvider {
         String issuerPatternStr = settings.getString("issuerPattern");
         if (issuerPatternStr != null) {
             issuerPattern = Pattern.compile(issuerPatternStr);
+        } else {
+            issuerPattern = null;
         }
 
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
