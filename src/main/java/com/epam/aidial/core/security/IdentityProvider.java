@@ -50,7 +50,7 @@ public class IdentityProvider {
 
     private final long negativeCacheExpirationMs;
 
-    private final Pattern issuerPattern;
+    private Pattern issuerPattern;
 
     public IdentityProvider(JsonObject settings, Vertx vertx, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
@@ -78,7 +78,10 @@ public class IdentityProvider {
         }
         obfuscateUserEmail = settings.getBoolean("obfuscateUserEmail", true);
 
-        issuerPattern = Pattern.compile(Objects.requireNonNull(settings.getString("issuerPattern"), "issuerPattern is missed"));
+        String issuerPatternStr = settings.getString("issuerPattern");
+        if (issuerPatternStr != null) {
+            issuerPattern = Pattern.compile(issuerPatternStr);
+        }
 
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
@@ -189,6 +192,9 @@ public class IdentityProvider {
     }
 
     boolean match(DecodedJWT jwt) {
+        if (issuerPattern == null) {
+            return false;
+        }
         String issuer = jwt.getIssuer();
         return issuerPattern.matcher(issuer).matches();
     }

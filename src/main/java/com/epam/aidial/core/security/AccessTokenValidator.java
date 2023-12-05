@@ -39,6 +39,9 @@ public class AccessTokenValidator {
             }
             String encodedToken = authHeader.split(" ")[1];
             DecodedJWT jwt = IdentityProvider.decodeJwtToken(encodedToken);
+            if (providers.size() == 1) {
+                return providers.get(0).extractClaims(jwt, isJwtMustBeValidated);
+            }
             for (IdentityProvider idp : providers) {
                 if (idp.match(jwt)) {
                     return idp.extractClaims(jwt, isJwtMustBeValidated);

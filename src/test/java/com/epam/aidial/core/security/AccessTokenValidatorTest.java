@@ -27,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -127,6 +129,25 @@ public class AccessTokenValidatorTest {
         future.onComplete(res -> {
             assertTrue(res.succeeded());
             assertNotNull(res.result());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_06() throws NoSuchAlgorithmException {
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
+        IdentityProvider provider = mock(IdentityProvider.class);
+        when(provider.extractClaims(any(DecodedJWT.class), eq(true))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
+        List<IdentityProvider> providerList = List.of(provider);
+        validator.setProviders(providerList);
+        KeyPair keyPair = generateRsa256Pair();
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        String token = JWT.create().withClaim("iss", "issuer").sign(algorithm);
+        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(token), true);
+        assertNotNull(future);
+        future.onComplete(res -> {
+            assertTrue(res.succeeded());
+            assertNotNull(res.result());
+            verify(provider, never()).match(any(DecodedJWT.class));
         });
     }
 
