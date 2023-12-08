@@ -105,7 +105,7 @@ public class IdentityProvider {
             return token.getClaim(rolePath[0]).asList(String.class);
         }
         Map<String, Object> claim = token.getClaim(rolePath[0]).asMap();
-        for (int i = 1; i < rolePath.length; i++) {
+        for (int i = 1; claim != null && i < rolePath.length; i++) {
             Object next = claim.get(rolePath[i]);
             if (next == null) {
                 return EMPTY_LIST;

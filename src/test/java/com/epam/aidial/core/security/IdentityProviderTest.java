@@ -224,6 +224,23 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testExtractClaims_11() {
+        settings.put("rolePath", "p0.p1.p2.p3");
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withClaim("some", "val").sign(algorithm);
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token), false);
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(Collections.emptyList(), claims.userRoles());
+        });
+    }
+
+    @Test
     public void testMatch_Failure() {
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
