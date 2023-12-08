@@ -5,7 +5,6 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,13 +37,13 @@ public class AccessTokenValidatorTest {
     @Mock
     private Vertx vertx;
 
-    private JsonArray idpConfig;
+    private JsonObject idpConfig;
 
     @BeforeEach
     public void beforeEach() {
-        idpConfig = new JsonArray();
-        idpConfig.add(JsonObject.of("jwksUrl", "http://host1/keys", "rolePath", "role1", "issuerPattern", "issue1"));
-        idpConfig.add(JsonObject.of("jwksUrl", "http://host2/keys", "rolePath", "role2", "issuerPattern", "issue2"));
+        idpConfig = new JsonObject();
+        idpConfig.put("idp1", JsonObject.of("jwksUrl", "http://host1/keys", "rolePath", "role1", "issuerPattern", "issue1"));
+        idpConfig.put("ipd2", JsonObject.of("jwksUrl", "http://host2/keys", "rolePath", "role2", "issuerPattern", "issue2"));
     }
 
     @Test

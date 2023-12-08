@@ -67,7 +67,7 @@ public class AiDial {
             LogStore logStore = new GfLogStore(vertx);
             RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
-            AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings.getJsonArray("identityProviders", new JsonArray()), vertx);
+            AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);

@@ -5,7 +5,7 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -16,13 +16,13 @@ public class AccessTokenValidator {
 
     private final List<IdentityProvider> providers = new ArrayList<>();
 
-    public AccessTokenValidator(JsonArray idpConfig, Vertx vertx) {
+    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
         }
-        for (int i = 0; i < idpConfig.size(); i++) {
-            providers.add(new IdentityProvider(idpConfig.getJsonObject(i), vertx, jwksUrl -> {
+        for (String idpKey : idpConfig.fieldNames()) {
+            providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, jwksUrl -> {
                 try {
                     return new UrlJwkProvider(new URL(jwksUrl));
                 } catch (MalformedURLException e) {
