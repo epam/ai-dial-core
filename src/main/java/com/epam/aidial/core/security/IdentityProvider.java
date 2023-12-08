@@ -102,10 +102,14 @@ public class IdentityProvider {
     @SuppressWarnings("unchecked")
     private List<String> extractUserRoles(DecodedJWT token) {
         if (rolePath.length == 1) {
-            return token.getClaim(rolePath[0]).asList(String.class);
+            List<String> roles = token.getClaim(rolePath[0]).asList(String.class);
+            return roles == null ? EMPTY_LIST : roles;
         }
         Map<String, Object> claim = token.getClaim(rolePath[0]).asMap();
-        for (int i = 1; claim != null && i < rolePath.length; i++) {
+        if (claim == null) {
+            return EMPTY_LIST;
+        }
+        for (int i = 1; i < rolePath.length; i++) {
             Object next = claim.get(rolePath[i]);
             if (next == null) {
                 return EMPTY_LIST;
