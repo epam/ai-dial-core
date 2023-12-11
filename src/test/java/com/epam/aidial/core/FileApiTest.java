@@ -375,6 +375,6 @@ public class FileApiTest {
 
     private static String generateJwtToken(String user) {
         Algorithm algorithm = Algorithm.HMAC256("secret_key");
-        return JWT.create().withClaim("sub", user).sign(algorithm);
+        return JWT.create().withClaim("iss", "issuer").withClaim("sub", user).sign(algorithm);
     }
 }
