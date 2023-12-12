@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
-import com.epam.aidial.core.config.UserAuth;
 import com.epam.aidial.core.data.DeploymentData;
 import com.epam.aidial.core.data.FeaturesData;
 import com.epam.aidial.core.data.ListData;

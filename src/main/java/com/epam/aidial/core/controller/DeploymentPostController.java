@@ -9,7 +9,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Upstream;
-import com.epam.aidial.core.config.UserAuth;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.limiter.RateLimitResult;
 import com.epam.aidial.core.token.TokenUsage;
