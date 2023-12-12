@@ -15,9 +15,9 @@ public abstract class Deployment {
     private Set<String> userRoles = Set.of();
     /**
      * Forward Http header with authorization token when request is sent to deployment.
-     * Authorization token is forwarded by default.
+     * Authorization token is NOT forwarded by default.
      */
-    private boolean forwardAuthToken = true;
+    private boolean forwardAuthToken = false;
     /**
      * Forward Http header with API key when request is sent to deployment.
      * API key is forwarded by default.

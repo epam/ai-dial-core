@@ -8,6 +8,7 @@ import com.epam.aidial.core.controller.Controller;
 import com.epam.aidial.core.controller.ControllerSelector;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
+import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.security.IdentityProvider;
 import com.epam.aidial.core.storage.BlobStorage;
@@ -53,7 +54,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final LogStore logStore;
     private final RateLimiter rateLimiter;
     private final UpstreamBalancer upstreamBalancer;
-    private final IdentityProvider identityProvider;
+    private final AccessTokenValidator tokenValidator;
     private final BlobStorage storage;
 
     @Override
@@ -129,6 +130,8 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         request.pause();
+        final boolean isJwtMustBeValidated = key.getUserAuth() != UserAuth.DISABLED;
+        Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization, isJwtMustBeValidated);
         Future<ExtractedClaims> extractedClaims = identityProvider.extractClaims(authorization);
 
         extractedClaims.onComplete(result -> {
