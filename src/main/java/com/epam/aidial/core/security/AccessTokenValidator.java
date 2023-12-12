@@ -12,6 +12,8 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.epam.aidial.core.security.IdentityProvider.CLAIMS_WITH_EMPTY_ROLES;
+
 public class AccessTokenValidator {
 
     private final List<IdentityProvider> providers = new ArrayList<>();
@@ -32,19 +34,19 @@ public class AccessTokenValidator {
         }
     }
 
-    public Future<ExtractedClaims> extractClaims(String authHeader, boolean isJwtMustBeValidated) {
+    public Future<ExtractedClaims> extractClaims(String authHeader) {
         try {
             if (authHeader == null) {
-                return isJwtMustBeValidated ? Future.failedFuture(new IllegalArgumentException("Token is missed")) : Future.succeededFuture();
+                return Future.succeededFuture(CLAIMS_WITH_EMPTY_ROLES);
             }
             String encodedToken = authHeader.split(" ")[1];
             DecodedJWT jwt = IdentityProvider.decodeJwtToken(encodedToken);
             if (providers.size() == 1) {
-                return providers.get(0).extractClaims(jwt, isJwtMustBeValidated);
+                return providers.get(0).extractClaims(jwt);
             }
             for (IdentityProvider idp : providers) {
                 if (idp.match(jwt)) {
-                    return idp.extractClaims(jwt, isJwtMustBeValidated);
+                    return idp.extractClaims(jwt);
                 }
             }
             return Future.failedFuture(new IllegalArgumentException("Unknown Identity Provider"));

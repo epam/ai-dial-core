@@ -187,33 +187,11 @@ public class IdentityProvider {
         return keyClaim;
     }
 
-    Future<ExtractedClaims> extractClaims(DecodedJWT decodedJwt, boolean isJwtMustBeVerified) {
+    Future<ExtractedClaims> extractClaims(DecodedJWT decodedJwt) {
         if (decodedJwt == null) {
-            return isJwtMustBeVerified ? Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null")) : Future.succeededFuture();
-    public Future<ExtractedClaims> extractClaims(String authHeader) {
-        try {
-            if (authHeader == null) {
-                return Future.succeededFuture(CLAIMS_WITH_EMPTY_ROLES);
-            }
-            // Take the 1st authorization parameter from the header value:
-            // Authorization: <auth-scheme> <authorization-parameters>
-            String encodedToken = authHeader.split(" ")[1];
-            return extractClaimsFromEncodedToken(encodedToken);
-        } catch (Throwable e) {
-            return Future.failedFuture(e);
+            return Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null"));
         }
-        Future<DecodedJWT> decodedJwtFuture = isJwtMustBeVerified ? verifyJwt(decodedJwt)
-                : Future.succeededFuture(decodedJwt);
-        return decodedJwtFuture.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
-    }
-
-    public Future<ExtractedClaims> extractClaimsFromEncodedToken(String encodedToken) {
-        if (encodedToken == null) {
-            return Future.succeededFuture();
-        }
-        Future<DecodedJWT> decodedJwt = decodeAndVerifyJwtToken(encodedToken);
-        return decodedJwt.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
-                extractUserHash(jwt)));
+        return verifyJwt(decodedJwt).map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(jwt)));
     }
 
     boolean match(DecodedJWT jwt) {

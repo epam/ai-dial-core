@@ -3,14 +3,12 @@ package com.epam.aidial.core;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Key;
-import com.epam.aidial.core.config.UserAuth;
 import com.epam.aidial.core.controller.Controller;
 import com.epam.aidial.core.controller.ControllerSelector;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ExtractedClaims;
-import com.epam.aidial.core.security.IdentityProvider;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.util.HttpStatus;
@@ -74,7 +72,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     /**
      * Called when proxy received the request headers from a client.
      */
-    private void handleRequest(HttpServerRequest request) throws Exception {
+    private void handleRequest(HttpServerRequest request) {
         if (request.version() != HttpVersion.HTTP_1_1) {
             respond(request, HttpStatus.HTTP_VERSION_NOT_SUPPORTED);
             return;
@@ -130,16 +128,14 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         request.pause();
-        final boolean isJwtMustBeValidated = key.getUserAuth() != UserAuth.DISABLED;
-        Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization, isJwtMustBeValidated);
-        Future<ExtractedClaims> extractedClaims = identityProvider.extractClaims(authorization);
+        Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization);
 
         extractedClaims.onComplete(result -> {
             try {
                 if (result.succeeded()) {
                     onExtractClaimsSuccess(result.result(), config, request, key);
                 } else {
-                    onExtractClaimsFailure(result.cause(), config, request);
+                    onExtractClaimsFailure(result.cause(), request);
                 }
             } catch (Throwable e) {
                 handleError(e, request);
@@ -149,7 +145,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         });
     }
 
-    private void onExtractClaimsFailure(Throwable error, Config config, HttpServerRequest request) {
+    private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
         log.error("Can't extract claims from authorization header", error);
         respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
     }

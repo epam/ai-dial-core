@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
-import com.epam.aidial.core.security.IdentityProvider;
+import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import io.vertx.core.Future;
@@ -57,7 +57,7 @@ public class ProxyTest {
     @Mock
     private UpstreamBalancer upstreamBalancer;
     @Mock
-    private IdentityProvider identityProvider;
+    private AccessTokenValidator accessTokenValidator;
     @Mock
     private BlobStorage storage;
 
@@ -194,7 +194,7 @@ public class ProxyTest {
         when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
-        when(identityProvider.extractClaims(eq("token"))).thenReturn(Future.failedFuture(new RuntimeException()));
+        when(accessTokenValidator.extractClaims(eq("token"))).thenReturn(Future.failedFuture(new RuntimeException()));
 
         proxy.handle(request);
 
