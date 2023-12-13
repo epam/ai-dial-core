@@ -52,15 +52,13 @@ public final class FileConfigStore implements ConfigStore {
                 Model model = entry.getValue();
                 model.setName(name);
                 model.setApiKey(generateKey());
-                config.getDeploymentApiKeys().add(model.getApiKey());
+                config.getDeploymentApiKeys().put(model.getApiKey(), model);
             }
 
             for (Map.Entry<String, Addon> entry : config.getAddons().entrySet()) {
                 String name = entry.getKey();
                 Addon addon = entry.getValue();
                 addon.setName(name);
-                addon.setApiKey(generateKey());
-                config.getDeploymentApiKeys().add(addon.getApiKey());
             }
 
             Assistants assistants = config.getAssistant();
@@ -69,7 +67,7 @@ public final class FileConfigStore implements ConfigStore {
                 Assistant assistant = entry.getValue();
                 assistant.setName(name);
                 assistant.setApiKey(generateKey());
-                config.getDeploymentApiKeys().add(assistant.getApiKey());
+                config.getDeploymentApiKeys().put(assistant.getApiKey(), assistant);
 
                 if (assistant.getEndpoint() == null) {
                     assistant.setEndpoint(assistants.getEndpoint());
@@ -83,7 +81,7 @@ public final class FileConfigStore implements ConfigStore {
                 Application application = entry.getValue();
                 application.setName(name);
                 application.setApiKey(generateKey());
-                config.getDeploymentApiKeys().add(application.getApiKey());
+                config.getDeploymentApiKeys().put(application.getApiKey(), application);
             }
 
             for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {

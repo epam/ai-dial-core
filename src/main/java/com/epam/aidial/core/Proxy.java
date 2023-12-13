@@ -2,6 +2,7 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ConfigStore;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.controller.Controller;
 import com.epam.aidial.core.controller.ControllerSelector;
@@ -110,6 +111,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.debug("Authorization header: {}", authorization);
         Key key;
+        Deployment originator;
         if (apiKey == null && authorization == null) {
             respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
             return;
@@ -118,13 +120,14 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         } else if (apiKey != null) {
             key = config.getKeys().get(apiKey);
-
-            if (key == null && !config.existDeploymentApiKey(apiKey)) {
+            originator = config.getDeploymentApiKeys().get(apiKey);
+            if (key == null && originator == null) {
                 respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
                 return;
             }
         } else {
             key = null;
+            originator = null;
         }
 
         request.pause();
@@ -133,7 +136,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         extractedClaims.onComplete(result -> {
             try {
                 if (result.succeeded()) {
-                    onExtractClaimsSuccess(result.result(), config, request, key);
+                    onExtractClaimsSuccess(result.result(), config, request, key, originator);
                 } else {
                     onExtractClaimsFailure(result.cause(), request);
                 }
@@ -151,8 +154,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
-                                        HttpServerRequest request, Key key) throws Exception {
-        ProxyContext context = new ProxyContext(config, request, key, extractedClaims);
+                                        HttpServerRequest request, Key key, Deployment originator) throws Exception {
+        ProxyContext context = new ProxyContext(config, request, key, extractedClaims, originator);
         Controller controller = ControllerSelector.select(this, context);
         controller.handle();
     }

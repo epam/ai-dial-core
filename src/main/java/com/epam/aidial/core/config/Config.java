@@ -3,6 +3,7 @@ package com.epam.aidial.core.config;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,7 +22,7 @@ public class Config {
     private Assistants assistant = new Assistants();
     private Map<String, Key> keys = Map.of();
     private Map<String, Role> roles = Map.of();
-    private Set<String> deploymentApiKeys = new HashSet<>();
+    private Map<String, Deployment> deploymentApiKeys = new HashMap<>();
 
 
     public Deployment selectDeployment(String deploymentId) {
@@ -52,7 +53,4 @@ public class Config {
         return null;
     }
 
-    public boolean existDeploymentApiKey(String apiKey) {
-        return deploymentApiKeys.contains(apiKey);
-    }
 }
