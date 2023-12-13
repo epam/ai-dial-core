@@ -25,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,32 +46,20 @@ public class AccessTokenValidatorTest {
     }
 
     @Test
-    public void testExtractClaims_00() {
+    public void testExtractClaims_01() {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
-        Future<ExtractedClaims> future = validator.extractClaims(null, false);
+        Future<ExtractedClaims> future = validator.extractClaims(null);
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.succeeded());
-            assertNull(res.result());
-        });
-    }
-
-
-    @Test
-    public void testExtractClaims_01() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
-        Future<ExtractedClaims> future = validator.extractClaims(null, true);
-        assertNotNull(future);
-        future.onComplete(res -> {
-            assertTrue(res.failed());
-            assertNotNull(res.cause());
+            assertEquals(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, res.result());
         });
     }
 
     @Test
     public void testExtractClaims_02() {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
-        Future<ExtractedClaims> future = validator.extractClaims("bad-auth-header", true);
+        Future<ExtractedClaims> future = validator.extractClaims("bad-auth-header");
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.failed());
@@ -83,7 +70,7 @@ public class AccessTokenValidatorTest {
     @Test
     public void testExtractClaims_03() {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
-        Future<ExtractedClaims> future = validator.extractClaims("bearer bad-token", true);
+        Future<ExtractedClaims> future = validator.extractClaims("bearer bad-token");
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.failed());
@@ -103,7 +90,7 @@ public class AccessTokenValidatorTest {
         KeyPair keyPair = generateRsa256Pair();
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         String token = JWT.create().withClaim("iss", "unknown-issuer").sign(algorithm);
-        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(token), true);
+        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(token));
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.failed());
@@ -118,13 +105,13 @@ public class AccessTokenValidatorTest {
         when(provider1.match(any(DecodedJWT.class))).thenReturn(false);
         IdentityProvider provider2 = mock(IdentityProvider.class);
         when(provider2.match(any(DecodedJWT.class))).thenReturn(true);
-        when(provider2.extractClaims(any(DecodedJWT.class), eq(true))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
+        when(provider2.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
         List<IdentityProvider> providerList = List.of(provider1, provider2);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         String token = JWT.create().withClaim("iss", "issuer2").sign(algorithm);
-        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(token), true);
+        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(token));
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.succeeded());
@@ -140,13 +127,13 @@ public class AccessTokenValidatorTest {
     public void testExtractClaims_06() throws NoSuchAlgorithmException {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
         IdentityProvider provider = mock(IdentityProvider.class);
-        when(provider.extractClaims(any(DecodedJWT.class), eq(true))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
+        when(provider.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         String token = JWT.create().withClaim("iss", "issuer").sign(algorithm);
-        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(token), true);
+        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(token));
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.succeeded());

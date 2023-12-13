@@ -7,5 +7,4 @@ public class Key {
     private String key;
     private String project;
     private String role;
-    private UserAuth userAuth = UserAuth.DISABLED;
 }

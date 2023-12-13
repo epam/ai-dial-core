@@ -79,4 +79,8 @@ public class ProxyContext {
         return response.setStatusCode(status.getCode())
                 .end(body == null ? "" : body);
     }
+
+    public String getProject() {
+        return key == null ? null : key.getProject();
+    }
 }

@@ -187,14 +187,11 @@ public class IdentityProvider {
         return keyClaim;
     }
 
-    Future<ExtractedClaims> extractClaims(DecodedJWT decodedJwt, boolean isJwtMustBeVerified) {
+    Future<ExtractedClaims> extractClaims(DecodedJWT decodedJwt) {
         if (decodedJwt == null) {
-            return isJwtMustBeVerified ? Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null")) : Future.succeededFuture();
+            return Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null"));
         }
-        Future<DecodedJWT> decodedJwtFuture = isJwtMustBeVerified ? verifyJwt(decodedJwt)
-                : Future.succeededFuture(decodedJwt);
-        return decodedJwtFuture.map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt),
-                extractUserHash(jwt)));
+        return verifyJwt(decodedJwt).map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(jwt)));
     }
 
     boolean match(DecodedJWT jwt) {
