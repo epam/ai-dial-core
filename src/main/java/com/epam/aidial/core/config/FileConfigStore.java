@@ -13,6 +13,8 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.Map;
 
+import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
+
 
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
@@ -49,12 +51,16 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Model model = entry.getValue();
                 model.setName(name);
+                model.setApiKey(generateKey());
+                config.getDeploymentApiKeys().add(model.getApiKey());
             }
 
             for (Map.Entry<String, Addon> entry : config.getAddons().entrySet()) {
                 String name = entry.getKey();
                 Addon addon = entry.getValue();
                 addon.setName(name);
+                addon.setApiKey(generateKey());
+                config.getDeploymentApiKeys().add(addon.getApiKey());
             }
 
             Assistants assistants = config.getAssistant();
@@ -62,6 +68,8 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Assistant assistant = entry.getValue();
                 assistant.setName(name);
+                assistant.setApiKey(generateKey());
+                config.getDeploymentApiKeys().add(assistant.getApiKey());
 
                 if (assistant.getEndpoint() == null) {
                     assistant.setEndpoint(assistants.getEndpoint());
@@ -74,6 +82,8 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Application application = entry.getValue();
                 application.setName(name);
+                application.setApiKey(generateKey());
+                config.getDeploymentApiKeys().add(application.getApiKey());
             }
 
             for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {

@@ -119,7 +119,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         } else if (apiKey != null) {
             key = config.getKeys().get(apiKey);
 
-            if (key == null) {
+            if (key == null && !config.existDeploymentApiKey(apiKey)) {
                 respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
                 return;
             }
