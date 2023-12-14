@@ -160,10 +160,10 @@ public class DeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         Set<CharSequence> excludeHeaders = new HashSet<>();
-        if (!deployment.isForwardApiKey()) {
-            excludeHeaders.add(Proxy.HEADER_API_KEY);
+        excludeHeaders.add(Proxy.HEADER_API_KEY);
+        if (!deployment.isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION);
         }
-        request.headers().remove(Proxy.HEADER_API_KEY);
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
