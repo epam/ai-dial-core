@@ -51,8 +51,7 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Model model = entry.getValue();
                 model.setName(name);
-                model.setApiKey(generateKey());
-                config.getDeploymentApiKeys().put(model.getApiKey(), model);
+                associateDeploymentWithApiKey(config, model);
             }
 
             for (Map.Entry<String, Addon> entry : config.getAddons().entrySet()) {
@@ -66,8 +65,7 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Assistant assistant = entry.getValue();
                 assistant.setName(name);
-                assistant.setApiKey(generateKey());
-                config.getDeploymentApiKeys().put(assistant.getApiKey(), assistant);
+                associateDeploymentWithApiKey(config, assistant);
 
                 if (assistant.getEndpoint() == null) {
                     assistant.setEndpoint(assistants.getEndpoint());
@@ -80,8 +78,7 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Application application = entry.getValue();
                 application.setName(name);
-                application.setApiKey(generateKey());
-                config.getDeploymentApiKeys().put(application.getApiKey(), application);
+                associateDeploymentWithApiKey(config, application);
             }
 
             for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
@@ -104,6 +101,16 @@ public final class FileConfigStore implements ConfigStore {
 
             log.warn("Failed to reload config: {}", e.getMessage());
         }
+    }
+
+    private void associateDeploymentWithApiKey(Config config, Deployment deployment) {
+        if (deployment.getApiKey() == null) {
+            deployment.setApiKey(generateKey());
+        }
+        Key key = new Key();
+        key.setKey(deployment.getApiKey());
+        key.setProject(deployment.getName());
+        config.getKeys().put(deployment.getApiKey(), key);
     }
 
     private Config loadConfig() throws Exception {

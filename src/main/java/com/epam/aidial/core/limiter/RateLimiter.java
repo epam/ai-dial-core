@@ -20,7 +20,7 @@ public class RateLimiter {
 
     public void increase(ProxyContext context) {
         Key key = context.getKey();
-        if (key == null) {
+        if (key == null || key.getRole() == null) {
             return;
         }
         Deployment deployment = context.getDeployment();
@@ -39,7 +39,7 @@ public class RateLimiter {
 
     public RateLimitResult limit(ProxyContext context) {
         Key key = context.getKey();
-        if (key == null) {
+        if (key == null || key.getRole() == null) {
             return RateLimitResult.SUCCESS;
         }
         Role role = context.getConfig().getRoles().get(key.getRole());

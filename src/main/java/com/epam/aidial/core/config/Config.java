@@ -22,7 +22,6 @@ public class Config {
     private Assistants assistant = new Assistants();
     private Map<String, Key> keys = Map.of();
     private Map<String, Role> roles = Map.of();
-    private Map<String, Deployment> deploymentApiKeys = new HashMap<>();
 
 
     public Deployment selectDeployment(String deploymentId) {

@@ -31,8 +31,6 @@ public class ProxyContext {
     private final Key key;
     private final HttpServerRequest request;
     private final HttpServerResponse response;
-    // Deployment which initiated request. It could be application, assistant or model
-    private final Deployment originator;
 
     private Deployment deployment;
     private String userSub;
@@ -52,11 +50,10 @@ public class ProxyContext {
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
 
-    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims, Deployment originator) {
+    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims) {
         this.config = config;
         this.key = key;
         this.request = request;
-        this.originator = originator;
         this.response = request.response();
         this.requestTimestamp = System.currentTimeMillis();
 
@@ -84,12 +81,6 @@ public class ProxyContext {
     }
 
     public String getProject() {
-        if (key != null) {
-            return key.getProject();
-        }
-        if (originator != null) {
-            return originator.getName();
-        }
-        throw new IllegalStateException("key and original can't be null");
+        return key == null ? null : key.getProject();
     }
 }
