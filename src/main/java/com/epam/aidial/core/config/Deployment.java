@@ -26,4 +26,5 @@ public abstract class Deployment {
     private Features features;
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
+    private String apiKey;
 }

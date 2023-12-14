@@ -13,6 +13,8 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.Map;
 
+import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
+
 
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
@@ -49,6 +51,7 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Model model = entry.getValue();
                 model.setName(name);
+                associateDeploymentWithApiKey(config, model);
             }
 
             for (Map.Entry<String, Addon> entry : config.getAddons().entrySet()) {
@@ -62,6 +65,7 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Assistant assistant = entry.getValue();
                 assistant.setName(name);
+                associateDeploymentWithApiKey(config, assistant);
 
                 if (assistant.getEndpoint() == null) {
                     assistant.setEndpoint(assistants.getEndpoint());
@@ -74,6 +78,7 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Application application = entry.getValue();
                 application.setName(name);
+                associateDeploymentWithApiKey(config, application);
             }
 
             for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
@@ -96,6 +101,19 @@ public final class FileConfigStore implements ConfigStore {
 
             log.warn("Failed to reload config: {}", e.getMessage());
         }
+    }
+
+    private void associateDeploymentWithApiKey(Config config, Deployment deployment) {
+        String apiKey = deployment.getApiKey() == null ? generateKey() : deployment.getApiKey();
+        while (config.getKeys().containsKey(apiKey)) {
+            log.warn("duplicate API key is found for deployment {}. Trying to generate a new one", deployment.getName());
+            apiKey = generateKey();
+        }
+        deployment.setApiKey(apiKey);
+        Key key = new Key();
+        key.setKey(apiKey);
+        key.setProject(deployment.getName());
+        config.getKeys().put(apiKey, key);
     }
 
     private Config loadConfig() throws Exception {

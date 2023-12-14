@@ -3,9 +3,11 @@ package com.epam.aidial.core;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
+import com.epam.aidial.core.security.IdentityProvider;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import io.vertx.core.Future;
@@ -24,7 +26,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import static com.epam.aidial.core.Proxy.FILES_REQUEST_BODY_MAX_SIZE_BYTES;
 import static com.epam.aidial.core.Proxy.HEADER_API_KEY;
@@ -35,6 +41,7 @@ import static com.epam.aidial.core.util.HttpStatus.METHOD_NOT_ALLOWED;
 import static com.epam.aidial.core.util.HttpStatus.OK;
 import static com.epam.aidial.core.util.HttpStatus.REQUEST_ENTITY_TOO_LARGE;
 import static com.epam.aidial.core.util.HttpStatus.UNAUTHORIZED;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -182,6 +189,37 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(UNAUTHORIZED.getCode());
+    }
+
+    @Test
+    public void testHandle_SuccessApiKey() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+        when(request.uri()).thenReturn("/foo");
+
+        Config config = new Config();
+        config.setKeys(Map.of("key1", new Key()));
+        Route route = new Route();
+        route.setMethods(Set.of(HttpMethod.GET));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+
+        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
     }
 
     @Test

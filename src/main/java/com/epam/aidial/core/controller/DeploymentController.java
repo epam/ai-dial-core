@@ -63,7 +63,7 @@ public class DeploymentController {
 
     public static boolean hasAssessByLimits(ProxyContext context, Deployment deployment) {
         Key key = context.getKey();
-        if (key == null) {
+        if (key == null || key.getRole() == null) {
             return true;
         }
         Role keyRole = context.getConfig().getRoles().get(key.getRole());

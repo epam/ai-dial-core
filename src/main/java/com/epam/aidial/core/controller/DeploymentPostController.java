@@ -160,14 +160,16 @@ public class DeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         Set<CharSequence> excludeHeaders = new HashSet<>();
-        if (!deployment.isForwardApiKey()) {
-            excludeHeaders.add(Proxy.HEADER_API_KEY);
-        }
+        excludeHeaders.add(Proxy.HEADER_API_KEY);
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION);
         }
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+
+        if (deployment.isForwardApiKey()) {
+            proxyRequest.headers().add(Proxy.HEADER_API_KEY, deployment.getApiKey());
+        }
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = context.getUpstreamRoute().get();
