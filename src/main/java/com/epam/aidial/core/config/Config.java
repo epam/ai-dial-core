@@ -3,11 +3,8 @@ package com.epam.aidial.core.config;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
