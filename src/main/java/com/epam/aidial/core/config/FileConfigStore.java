@@ -2,6 +2,7 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -11,8 +12,10 @@ import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.util.HashMap;
 import java.util.Map;
 
+import static com.epam.aidial.core.config.Config.ASSISTANT;
 import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
 
 
@@ -21,6 +24,7 @@ public final class FileConfigStore implements ConfigStore {
 
     private final String[] paths;
     private volatile Config config;
+    private final Map<String, String> deploymentKeys = new HashMap<>();
 
     public FileConfigStore(Vertx vertx, JsonObject settings) {
         this.paths = settings.getJsonArray("files")
@@ -61,6 +65,12 @@ public final class FileConfigStore implements ConfigStore {
             }
 
             Assistants assistants = config.getAssistant();
+            // base assistant
+            if (assistants.getEndpoint() != null) {
+                Assistant baseAssistant = new Assistant();
+                baseAssistant.setName(ASSISTANT);
+                associateDeploymentWithApiKey(config, baseAssistant);
+            }
             for (Map.Entry<String, Assistant> entry : assistants.getAssistants().entrySet()) {
                 String name = entry.getKey();
                 Assistant assistant = entry.getValue();
@@ -103,9 +113,17 @@ public final class FileConfigStore implements ConfigStore {
         }
     }
 
-    private void associateDeploymentWithApiKey(Config config, Deployment deployment) {
-        String apiKey = deployment.getApiKey() == null ? generateKey() : deployment.getApiKey();
-        while (config.getKeys().containsKey(apiKey)) {
+    @VisibleForTesting
+    void associateDeploymentWithApiKey(Config config, Deployment deployment) {
+        String apiKey = deployment.getApiKey();
+        String deploymentName = deployment.getName();
+        if (apiKey == null) {
+            apiKey = deploymentKeys.computeIfAbsent(deploymentName, k -> generateKey());
+        } else {
+            deploymentKeys.put(deploymentName, apiKey);
+        }
+        Map<String, Key> keys = config.getKeys();
+        while (keys.containsKey(apiKey) && !deploymentName.equals(keys.get(apiKey).getProject())) {
             log.warn("duplicate API key is found for deployment {}. Trying to generate a new one", deployment.getName());
             apiKey = generateKey();
         }
@@ -114,6 +132,7 @@ public final class FileConfigStore implements ConfigStore {
         key.setKey(apiKey);
         key.setProject(deployment.getName());
         config.getKeys().put(apiKey, key);
+        deploymentKeys.put(deployment.getName(), apiKey);
     }
 
     private Config loadConfig() throws Exception {
