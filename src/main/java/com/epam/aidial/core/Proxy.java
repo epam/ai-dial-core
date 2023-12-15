@@ -8,6 +8,7 @@ import com.epam.aidial.core.controller.ControllerSelector;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
@@ -27,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 
 @Slf4j
 @Getter
@@ -46,6 +48,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final int REQUEST_BODY_MAX_SIZE_BYTES = 16 * 1024 * 1024;
     public static final int FILES_REQUEST_BODY_MAX_SIZE_BYTES = 512 * 1024 * 1024;
 
+    private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE);
+
     private final Vertx vertx;
     private final HttpClient client;
     private final ConfigStore configStore;
@@ -54,6 +58,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final UpstreamBalancer upstreamBalancer;
     private final AccessTokenValidator tokenValidator;
     private final BlobStorage storage;
+    private final EncryptionService encryptionService;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -79,7 +84,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         HttpMethod requestMethod = request.method();
-        if (requestMethod != HttpMethod.GET && requestMethod != HttpMethod.POST && requestMethod != HttpMethod.DELETE) {
+        if (!ALLOWED_HTTP_METHODS.contains(requestMethod)) {
             respond(request, HttpStatus.METHOD_NOT_ALLOWED);
             return;
         }

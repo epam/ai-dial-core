@@ -4,6 +4,8 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.BlobWriteStream;
+import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -22,25 +24,34 @@ public class UploadFileController {
 
     /**
      * Uploads file to the storage.
-     * Current API implementation requires a relative path, absolute path will be calculated based on authentication context.
-     * File name defined in multipart/form-data context
+     * Current API implementation requires bucket and relative file path
      *
-     * @param path relative path, for example: /inputs
+     * @param bucket bucket to write
+     * @param filePath relative path according to the bucket, for example: folder1/file.txt
      */
-    public Future<?> upload(String path) {
-        String absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
+    public Future<?> upload(String bucket, String filePath) {
+        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
+        String decryptedBucket = proxy.getEncryptionService().decrypt(bucket);
+
+        if (filePath.isEmpty() || BlobStorageUtil.isFolder(filePath)) {
+            return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");
+        }
+
+        if (!expectedUserBucket.equals(decryptedBucket)) {
+            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
+        }
+
+        ResourceDescription resource = ResourceDescription.from(ResourceType.FILES, bucket, decryptedBucket, filePath);
         Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
                 .uploadHandler(upload -> {
                     String contentType = upload.contentType();
-                    String filename = upload.filename();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
                     BlobWriteStream writeStream = new BlobWriteStream(
                             proxy.getVertx(),
                             proxy.getStorage(),
-                            filename,
-                            absoluteFilePath,
+                            resource,
                             contentType);
                     pipe.to(writeStream, result);
 
@@ -49,7 +60,7 @@ public class UploadFileController {
                             .onFailure(error -> {
                                 writeStream.abortUpload(error);
                                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file by path " + path);
+                                        "Failed to upload file by path %s/%s".formatted(bucket, filePath));
                             });
                 });
 

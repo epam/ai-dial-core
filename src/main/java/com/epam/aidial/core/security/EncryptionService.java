@@ -1,0 +1,62 @@
+package com.epam.aidial.core.security;
+
+import com.epam.aidial.core.config.Encryption;
+import lombok.extern.slf4j.Slf4j;
+
+import java.security.spec.KeySpec;
+import java.util.Base64;
+import java.util.Objects;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
+
+@Slf4j
+public class EncryptionService {
+
+    private static final String TRANSFORMATION = "AES/CBC/PKCS5Padding";
+
+    private final SecretKey key;
+    private final IvParameterSpec iv = new IvParameterSpec(
+            new byte[]{25, -13, -25, -119, -42, 117, -118, -128, -101, 20, -103, -81, -48, -23, -54, -113});
+
+    public EncryptionService(Encryption config) {
+        this(config.getPassword(), config.getSalt());
+    }
+
+    EncryptionService(String password, String salt) {
+        try {
+            SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            KeySpec spec = new PBEKeySpec(Objects.requireNonNull(password).toCharArray(), Objects.requireNonNull(salt).getBytes(), 3000, 256);
+            key = new SecretKeySpec(secretKeyFactory.generateSecret(spec).getEncoded(), "AES");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String encrypt(String value) {
+        try {
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, key, iv);
+            return Base64.getEncoder()
+                    .encodeToString(cipher.doFinal(value.getBytes()));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String decrypt(String value) {
+        try {
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, key, iv);
+            return new String(cipher.doFinal(Base64.getDecoder()
+                    .decode(value)));
+        } catch (Exception e) {
+            log.error("Failed to decrypt value " + value, e);
+
+            return null;
+        }
+    }
+}
