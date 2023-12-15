@@ -222,6 +222,7 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(OK.getCode());
+        verify(accessTokenValidator).extractClaims(null);
     }
 
     @Test

@@ -115,22 +115,15 @@ public class Proxy implements Handler<HttpServerRequest> {
         if (apiKey == null && authorization == null) {
             respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
             return;
-        } else if (apiKey != null && authorization != null) {
-            // Special case handling. OpenAI client sends both API key and Auth headers even if a caller sets just API Key only
-            // Auth header is set to the same value as API Key header
-            if (apiKey.equals(extractTokenFromHeader(authorization))) {
-                key = config.getKeys().get(apiKey);
-                if (key == null) {
-                    respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
-                    return;
-                }
-            } else {
-                respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
-                return;
-            }
+        } else if (apiKey != null && authorization != null && !apiKey.equals(extractTokenFromHeader(authorization))) {
+            respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
+            return;
         } else if (apiKey != null) {
             key = config.getKeys().get(apiKey);
-
+            // Special case handling. OpenAI client sends both API key and Auth headers even if a caller sets just API Key only
+            // Auth header is set to the same value as API Key header
+            // ignore auth header in this case
+            authorization = null;
             if (key == null) {
                 respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
                 return;
