@@ -192,6 +192,61 @@ public class ProxyTest {
     }
 
     @Test
+    public void testHandle_OpenAiRequestSuccess() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.path()).thenReturn("/foo");
+        when(request.uri()).thenReturn("/foo");
+
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("key1");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+        Config config = new Config();
+        config.setKeys(Map.of("key1", new Key()));
+        Route route = new Route();
+        route.setMethods(Set.of(HttpMethod.GET));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+
+        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
+        verify(accessTokenValidator).extractClaims(null);
+    }
+
+    @Test
+    public void testHandle_OpenAiRequestWrongApiKey() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("wrong-key");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer wrong-key");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+        Config config = new Config();
+        config.setKeys(Map.of("key1", new Key()));
+        when(configStore.load()).thenReturn(config);
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+    }
+
+    @Test
     public void testHandle_SuccessApiKey() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
