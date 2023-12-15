@@ -3,10 +3,14 @@ package com.epam.aidial.core.storage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.epam.aidial.core.storage.BlobStorage.buildListContainerOptions;
 
+import io.vertx.core.net.HostAndPort;
+import io.vertx.core.net.impl.HostAndPortImpl;
 import org.jclouds.ContextBuilder;
 import org.jclouds.blobstore.BlobStore;
 import org.jclouds.blobstore.BlobStoreContext;
@@ -22,6 +26,10 @@ public class ConversationStorage {
 
     private static final String STORE_QUEUE_KEY = "store-queue";
     private static final int SECONDS_TO_EXPIRE = 60*60;
+//    public static final String CONTAINER = "stagingdialtest";
+//    public static final String ACCESS_KEY = "";
+    public static final String CONTAINER = "dialtestlarge";
+    public static final String ACCESS_KEY = "";
     BlobStore blobStore;
     RedissonClient redisson;
     String bucketName;
@@ -74,6 +82,7 @@ public class ConversationStorage {
         }
     }
 
+
     public String getConversation(String path) {
         RBucket<String> cached =  redisson.getBucket(path);
         String cachedValue = cached.get();
@@ -113,14 +122,9 @@ public class ConversationStorage {
         return result;
     }
 
+
+
     public static void main(String[] args) throws InterruptedException {
-        ContextBuilder builder = ContextBuilder.newBuilder("azureblob");
-        builder.credentials("stagingdialtest",
-                "");
-//        builder.credentials("dialtestlarge",
-//                "");
-        var storeContext = builder.buildView(BlobStoreContext.class);
-        var blobStore = storeContext.getBlobStore();
 
         Config config = new Config();
 //        config.useClusterServers()
@@ -138,6 +142,11 @@ public class ConversationStorage {
                 .setAddress("redis://localhost:6379");
         RedissonClient client = Redisson.create(config);
 
+        ContextBuilder builder = ContextBuilder.newBuilder("azureblob");
+        builder.credentials(ConversationStorage.CONTAINER, ConversationStorage.ACCESS_KEY);
+        var storeContext = builder.buildView(BlobStoreContext.class);
+        var blobStore = storeContext.getBlobStore();
+
         var conversationStorage = new ConversationStorage(blobStore, client, "rail");
         var storageThread = new Thread(conversationStorage::storeQueueProcessing);
         storageThread.start();
@@ -154,5 +163,7 @@ public class ConversationStorage {
 //        }
         storageThread.interrupt();
     }
+
+
 }
 
