@@ -65,12 +65,6 @@ public final class FileConfigStore implements ConfigStore {
             }
 
             Assistants assistants = config.getAssistant();
-            // base assistant
-            if (assistants.getEndpoint() != null) {
-                Assistant baseAssistant = new Assistant();
-                baseAssistant.setName(ASSISTANT);
-                associateDeploymentWithApiKey(config, baseAssistant);
-            }
             for (Map.Entry<String, Assistant> entry : assistants.getAssistants().entrySet()) {
                 String name = entry.getKey();
                 Assistant assistant = entry.getValue();
@@ -82,6 +76,15 @@ public final class FileConfigStore implements ConfigStore {
                 }
 
                 setMissingFeatures(assistant, assistants.getFeatures());
+            }
+            // base assistant
+            if (assistants.getEndpoint() != null) {
+                Assistant baseAssistant = new Assistant();
+                baseAssistant.setName(ASSISTANT);
+                baseAssistant.setEndpoint(assistants.getEndpoint());
+                baseAssistant.setFeatures(assistants.getFeatures());
+                associateDeploymentWithApiKey(config, baseAssistant);
+                assistants.getAssistants().put(ASSISTANT, baseAssistant);
             }
 
             for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
