@@ -3,21 +3,18 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +31,9 @@ import static com.epam.aidial.core.util.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.util.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -108,8 +108,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testPropagateDeploymentApiHeader() {
-        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+    public void testHandleProxyRequest_PropagateDeploymentApiHeader() {
 
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -118,41 +117,55 @@ public class DeploymentPostControllerTest {
         application.setEndpoint("http://app1/chat");
         application.setApiKey("k2");
         config.getApplications().put("app1", application);
-        when(context.getConfig()).thenReturn(config);
-
-        UpstreamBalancer balancer = mock(UpstreamBalancer.class);
-        when(proxy.getUpstreamBalancer()).thenReturn(balancer);
-        UpstreamRoute endpointRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(balancer.balance(any(UpstreamProvider.class))).thenReturn(endpointRoute);
-        Upstream upstream = new Upstream();
-        when(endpointRoute.next()).thenReturn(upstream);
-        when(endpointRoute.hasNext()).thenReturn(true);
-        when(context.getUpstreamRoute()).thenReturn(endpointRoute);
 
         MultiMap headers = new HeadersMultiMap();
         headers.add(HEADER_API_KEY, "k1");
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
 
-        Buffer requestBody = Buffer.buffer();
-        when(request.body()).thenReturn(Future.succeededFuture(requestBody));
-        HttpClient httpClient = mock(HttpClient.class);
-        when(proxy.getClient()).thenReturn(httpClient);
-
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
+        Buffer requestBody = Buffer.buffer();
         when(context.getRequestBody()).thenReturn(requestBody);
-        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        when(proxyRequest.send(eq(requestBody))).thenReturn(Future.succeededFuture(proxyResponse));
-        HttpServerResponse response = mock(HttpServerResponse.class);
-        when(context.getResponse()).thenReturn(response);
 
-        controller.handle("app1", "chat/completions");
+        controller.handleProxyRequest(proxyRequest);
 
         assertEquals("k2", proxyHeaders.get(HEADER_API_KEY));
+    }
+
+    @Test
+    public void testHandleProxyRequest_PropagateBaseAssistantApiHeader() {
+
+        Config config = new Config();
+        Assistant assistant = new Assistant();
+        assistant.setName(Config.ASSISTANT);
+        assistant.setEndpoint("http://app1/chat");
+        when(context.getConfig()).thenReturn(config);
+
+        MultiMap headers = new HeadersMultiMap();
+        headers.add(HEADER_API_KEY, "k1");
+        when(request.headers()).thenReturn(headers);
+        when(context.getDeployment()).thenReturn(assistant);
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getProxyRequest()).thenReturn(proxyRequest);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        Buffer requestBody = Buffer.buffer();
+        when(context.getRequestBody()).thenReturn(requestBody);
+        Future<HttpClientResponse> future = Future.failedFuture(new RuntimeException());
+        when(proxyRequest.send(requestBody)).thenReturn(future);
+
+        controller.handleProxyRequest(proxyRequest);
+
+        assertNotNull(proxyHeaders.get(HEADER_API_KEY));
+        assertNotEquals("k1", proxyHeaders.get(HEADER_API_KEY));
+        // make sure that assistant api is removed
+        assertTrue(config.getKeys().isEmpty());
+
     }
 
 

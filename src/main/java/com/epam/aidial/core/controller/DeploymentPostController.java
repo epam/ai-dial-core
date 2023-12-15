@@ -23,6 +23,7 @@ import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -45,6 +46,8 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+
+import static com.epam.aidial.core.config.FileConfigStore.associateDeploymentWithApiKey;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -150,7 +153,8 @@ public class DeploymentPostController {
     /**
      * Called when proxy connected to the origin.
      */
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+    @VisibleForTesting
+    void handleProxyRequest(HttpClientRequest proxyRequest) {
         log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
@@ -168,6 +172,10 @@ public class DeploymentPostController {
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
         if (deployment.isForwardApiKey()) {
+            if (isBaseAssistant(deployment)) {
+                // base assistant is created in runtime and doesn't have assigned api key
+                associateDeploymentWithApiKey(context.getConfig(), deployment);
+            }
             proxyRequest.headers().add(Proxy.HEADER_API_KEY, deployment.getApiKey());
         }
 
@@ -182,8 +190,21 @@ public class DeploymentPostController {
         context.getRequestHeaders().forEach(proxyRequest::putHeader);
 
         proxyRequest.send(requestBody)
-                .onSuccess(this::handleProxyResponse)
-                .onFailure(this::handleProxyResponseError);
+                .onComplete(result -> {
+                    try {
+                        if (result.succeeded()) {
+                            handleProxyResponse(result.result());
+                        } else {
+                            handleProxyResponseError(result.cause());
+                        }
+                    } finally {
+                        // revoke api key assigned to base assistant
+                        if (isBaseAssistant(deployment)) {
+                            context.getConfig().getKeys().remove(deployment.getApiKey());
+                        }
+                    }
+
+                });
     }
 
     /**

@@ -103,7 +103,7 @@ public final class FileConfigStore implements ConfigStore {
         }
     }
 
-    private void associateDeploymentWithApiKey(Config config, Deployment deployment) {
+    public static void associateDeploymentWithApiKey(Config config, Deployment deployment) {
         String apiKey = deployment.getApiKey() == null ? generateKey() : deployment.getApiKey();
         while (config.getKeys().containsKey(apiKey)) {
             log.warn("duplicate API key is found for deployment {}. Trying to generate a new one", deployment.getName());
