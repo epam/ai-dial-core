@@ -11,6 +11,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static com.epam.aidial.core.security.IdentityProvider.CLAIMS_WITH_EMPTY_ROLES;
 
@@ -39,7 +40,7 @@ public class AccessTokenValidator {
             if (authHeader == null) {
                 return Future.succeededFuture(CLAIMS_WITH_EMPTY_ROLES);
             }
-            String encodedToken = authHeader.split(" ")[1];
+            String encodedToken = Objects.requireNonNull(extractTokenFromHeader(authHeader), "Can't extract access token from header");
             DecodedJWT jwt = IdentityProvider.decodeJwtToken(encodedToken);
             if (providers.size() == 1) {
                 return providers.get(0).extractClaims(jwt);
@@ -53,6 +54,17 @@ public class AccessTokenValidator {
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
+    }
+
+    public static String extractTokenFromHeader(String authHeader) {
+        if (authHeader == null) {
+            return null;
+        }
+        String[] parts = authHeader.split(" ");
+        if (parts.length < 2) {
+            return null;
+        }
+        return parts[1];
     }
 
     @VisibleForTesting
