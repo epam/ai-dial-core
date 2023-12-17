@@ -3,34 +3,22 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.BlobStorage;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@AllArgsConstructor
-public class DeleteFileController {
-    private final Proxy proxy;
-    private final ProxyContext context;
+public class DeleteFileController extends AccessControlBaseController {
 
-    /**
-     * Deletes file from storage.
-     *
-     * @param filePath relative path, for example: inputs/data.csv
-     */
-    public Future<?> delete(String bucket, String filePath) {
-        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
-        String decryptedBucket = proxy.getEncryptionService().decrypt(bucket);
+    public DeleteFileController(Proxy proxy, ProxyContext context) {
+        super(proxy, context);
+    }
 
-        if (!expectedUserBucket.equals(decryptedBucket)) {
-            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
-        }
-
-        ResourceDescription resource = ResourceDescription.from(ResourceType.FILES, bucket, decryptedBucket, filePath);
+    @Override
+    protected Future<?> handle(String bucketName, String bucketLocation, String filePath) {
+        ResourceDescription resource = ResourceDescription.from(ResourceType.FILE, bucketName, bucketLocation, filePath);
         String absoluteFilePath = resource.getAbsoluteFilePath();
 
         BlobStorage storage = proxy.getStorage();

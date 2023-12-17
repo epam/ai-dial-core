@@ -12,36 +12,22 @@ import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.impl.PipeImpl;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@RequiredArgsConstructor
-public class UploadFileController {
+public class UploadFileController extends AccessControlBaseController {
 
-    private final Proxy proxy;
-    private final ProxyContext context;
+    public UploadFileController(Proxy proxy, ProxyContext context) {
+        super(proxy, context);
+    }
 
-    /**
-     * Uploads file to the storage.
-     * Current API implementation requires bucket and relative file path
-     *
-     * @param bucket bucket to write
-     * @param filePath relative path according to the bucket, for example: folder1/file.txt
-     */
-    public Future<?> upload(String bucket, String filePath) {
-        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
-        String decryptedBucket = proxy.getEncryptionService().decrypt(bucket);
-
+    @Override
+    protected Future<?> handle(String bucketName, String bucketLocation, String filePath) {
         if (filePath.isEmpty() || BlobStorageUtil.isFolder(filePath)) {
             return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");
         }
 
-        if (!expectedUserBucket.equals(decryptedBucket)) {
-            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
-        }
-
-        ResourceDescription resource = ResourceDescription.from(ResourceType.FILES, bucket, decryptedBucket, filePath);
+        ResourceDescription resource = ResourceDescription.from(ResourceType.FILE, bucketName, bucketLocation, filePath);
         Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
@@ -60,7 +46,7 @@ public class UploadFileController {
                             .onFailure(error -> {
                                 writeStream.abortUpload(error);
                                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file by path %s/%s".formatted(bucket, filePath));
+                                        "Failed to upload file by path %s/%s".formatted(bucketName, filePath));
                             });
                 });
 

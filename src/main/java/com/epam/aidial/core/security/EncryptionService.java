@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.security.spec.KeySpec;
 import java.util.Base64;
 import java.util.Objects;
+import javax.annotation.Nullable;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
@@ -27,9 +28,11 @@ public class EncryptionService {
     }
 
     EncryptionService(String password, String salt) {
+        Objects.requireNonNull(password, "Encryption password is not set");
+        Objects.requireNonNull(salt, "Encryption salt is not set");
         try {
             SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-            KeySpec spec = new PBEKeySpec(Objects.requireNonNull(password).toCharArray(), Objects.requireNonNull(salt).getBytes(), 3000, 256);
+            KeySpec spec = new PBEKeySpec(password.toCharArray(), salt.getBytes(), 3000, 256);
             key = new SecretKeySpec(secretKeyFactory.generateSecret(spec).getEncoded(), "AES");
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -47,6 +50,7 @@ public class EncryptionService {
         }
     }
 
+    @Nullable
     public String decrypt(String value) {
         try {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
@@ -55,7 +59,6 @@ public class EncryptionService {
                     .decode(value)));
         } catch (Exception e) {
             log.error("Failed to decrypt value " + value, e);
-
             return null;
         }
     }

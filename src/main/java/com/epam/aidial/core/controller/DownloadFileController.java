@@ -2,7 +2,6 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.InputStreamReader;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.storage.ResourceType;
@@ -11,7 +10,6 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.io.MutableContentMetadata;
@@ -20,28 +18,15 @@ import org.jclouds.io.Payload;
 import java.io.IOException;
 
 @Slf4j
-@AllArgsConstructor
-public class DownloadFileController {
+public class DownloadFileController extends AccessControlBaseController {
 
-    private final Proxy proxy;
-    private final ProxyContext context;
+    public DownloadFileController(Proxy proxy, ProxyContext context) {
+        super(proxy, context);
+    }
 
-    /**
-     * Downloads file content from provided path.
-     * Path can be either absolute or relative.
-     * Path type determined by "path" query parameter which can be "absolute" or "relative"(default value)
-     *
-     * @param filePath file path; absolute or relative
-     */
-    public Future<?> download(String bucket, String filePath) {
-        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
-        String decryptedBucket = proxy.getEncryptionService().decrypt(bucket);
-
-        if (!expectedUserBucket.equals(decryptedBucket)) {
-            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
-        }
-
-        ResourceDescription resource = ResourceDescription.from(ResourceType.FILES, bucket, decryptedBucket, filePath);
+    @Override
+    protected Future<?> handle(String bucketName, String bucketLocation, String filePath) {
+        ResourceDescription resource = ResourceDescription.from(ResourceType.FILE, bucketName, bucketLocation, filePath);
 
         Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() ->
                 proxy.getStorage().load(resource.getAbsoluteFilePath()));
@@ -75,7 +60,7 @@ public class DownloadFileController {
                 result.fail(e);
             }
         }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to fetch file with path %s/%s".formatted(bucket, filePath)));
+                "Failed to fetch file with path %s/%s".formatted(bucketName, filePath)));
 
         return result.future();
     }

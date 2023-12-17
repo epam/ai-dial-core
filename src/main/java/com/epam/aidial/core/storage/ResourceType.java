@@ -1,15 +1,15 @@
 package com.epam.aidial.core.storage;
 
 public enum ResourceType {
-    FILES("files");
+    FILE("files");
 
-    private final String name;
+    private final String folder;
 
-    ResourceType(String name) {
-        this.name = name;
+    ResourceType(String folder) {
+        this.folder = folder;
     }
 
-    public String getName() {
-        return name;
+    public String getFolder() {
+        return folder;
     }
 }

@@ -136,14 +136,14 @@ public class FileApiTest {
     @Test
     public void testInvalidFileUploadUrl2(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
-        client.put(serverPort, "localhost", "/v1/files/bucket/")
+        client.put(serverPort, "localhost", "/v1/files/test-bucket/")
                 .putHeader("Api-key", "proxyKey2")
                 .as(BodyCodec.string())
                 .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
                         context.succeeding(response -> {
                             context.verify(() -> {
-                                assertEquals(400, response.statusCode());
-                                assertEquals("File name is missing", response.body());
+                                assertEquals(403, response.statusCode());
+                                assertEquals("You don't have an access to the bucket test-bucket", response.body());
                                 context.completeNow();
                             });
                         })

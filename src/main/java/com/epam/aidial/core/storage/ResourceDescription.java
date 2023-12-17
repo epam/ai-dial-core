@@ -1,8 +1,9 @@
 package com.epam.aidial.core.storage;
 
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -10,8 +11,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
     ResourceType type;
     String name;
@@ -31,7 +31,7 @@ public class ResourceDescription {
             builder.append(parentPath)
                     .append(BlobStorageUtil.PATH_SEPARATOR);
         }
-        if (name != null && !name.equals(BlobStorageUtil.PATH_SEPARATOR)) {
+        if (name != null && !isHomeFolder(name)) {
             builder.append(encodeToUrl(name));
 
             if (isFolder) {
@@ -45,10 +45,11 @@ public class ResourceDescription {
     public String getAbsoluteFilePath() {
         StringBuilder builder = new StringBuilder();
         if (parentFolders != null) {
-            builder.append(getParentPath());
+            builder.append(getParentPath())
+                    .append(BlobStorageUtil.PATH_SEPARATOR);
         }
-        if (name != null && !name.equals(BlobStorageUtil.PATH_SEPARATOR)) {
-            builder.append(BlobStorageUtil.PATH_SEPARATOR).append(name);
+        if (name != null && !isHomeFolder(name)) {
+            builder.append(name);
 
             if (isFolder) {
                 builder.append(BlobStorageUtil.PATH_SEPARATOR);
@@ -63,6 +64,9 @@ public class ResourceDescription {
     }
 
     public static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation, String relativeFilePath) {
+        verify(bucketLocation.endsWith(BlobStorageUtil.PATH_SEPARATOR), "Bucket location must end with /");
+        verify(!StringUtils.isBlank(relativeFilePath), "Invalid relative path: " + relativeFilePath);
+
         String[] elements = relativeFilePath.split(BlobStorageUtil.PATH_SEPARATOR);
         List<String> parentFolders = null;
         String name = "/";
@@ -81,5 +85,15 @@ public class ResourceDescription {
 
     private static String encodeToUrl(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static boolean isHomeFolder(String path) {
+        return path.equals(BlobStorageUtil.PATH_SEPARATOR);
+    }
+
+    private static void verify(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalArgumentException(message);
+        }
     }
 }

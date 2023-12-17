@@ -134,7 +134,7 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             FileMetadataController controller = new FileMetadataController(proxy, context);
-            return () -> controller.list(bucket, filePath);
+            return () -> controller.handle(bucket, filePath);
         }
 
         match = match(PATTERN_FILES, path);
@@ -142,7 +142,7 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             DownloadFileController controller = new DownloadFileController(proxy, context);
-            return () -> controller.download(bucket, filePath);
+            return () -> controller.handle(bucket, filePath);
         }
 
         match = match(PATTERN_BUCKET, path);
@@ -217,7 +217,7 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             DeleteFileController controller = new DeleteFileController(proxy, context);
-            return () -> controller.delete(bucket, filePath);
+            return () -> controller.handle(bucket, filePath);
         }
 
         return null;
@@ -229,7 +229,7 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             UploadFileController controller = new UploadFileController(proxy, context);
-            return () -> controller.upload(bucket, filePath);
+            return () -> controller.handle(bucket, filePath);
         }
 
         return null;

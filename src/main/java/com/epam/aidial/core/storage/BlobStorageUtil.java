@@ -34,7 +34,7 @@ public class BlobStorageUtil {
     }
 
     public String buildAbsoluteFilePath(ResourceType resource, String bucket, String path) {
-        return bucket + resource.getName() + PATH_SEPARATOR + path;
+        return bucket + resource.getFolder() + PATH_SEPARATOR + path;
     }
 
     public boolean isFolder(String path) {
