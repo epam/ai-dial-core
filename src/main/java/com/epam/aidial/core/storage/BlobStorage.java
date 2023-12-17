@@ -179,7 +179,7 @@ public class BlobStorage implements Closeable {
     }
 
     private static ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
-        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getFolder().length());
+        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getFolder().length() + 1);
         return ResourceDescription.from(resourceType, bucketName, bucketLocation, relativeFilePath);
     }
 

@@ -44,92 +44,93 @@ public class ControllerSelector {
     private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/truncate_prompt");
 
     public Controller select(Proxy proxy, ProxyContext context) {
-        String path = URLDecoder.decode(context.getRequest().path(), StandardCharsets.UTF_8);
+        String providedPath = context.getRequest().path();
+        String decodedPath = URLDecoder.decode(context.getRequest().path(), StandardCharsets.UTF_8);
         HttpMethod method = context.getRequest().method();
         Controller controller = null;
 
         if (method == HttpMethod.GET) {
-            controller = selectGet(proxy, context, path);
+            controller = selectGet(proxy, context, providedPath, decodedPath);
         } else if (method == HttpMethod.POST) {
-            controller = selectPost(proxy, context, path);
+            controller = selectPost(proxy, context, providedPath, decodedPath);
         } else if (method == HttpMethod.DELETE) {
-            controller = selectDelete(proxy, context, path);
+            controller = selectDelete(proxy, context, providedPath, decodedPath);
         } else if (method == HttpMethod.PUT) {
-            controller = selectPut(proxy, context, path);
+            controller = selectPut(proxy, context, providedPath, decodedPath);
         }
 
         return (controller == null) ? new RouteController(proxy, context) : controller;
     }
 
-    private static Controller selectGet(Proxy proxy, ProxyContext context, String path) {
+    private static Controller selectGet(Proxy proxy, ProxyContext context, String providedPath, String decodedPath) {
         Matcher match;
 
-        match = match(PATTERN_DEPLOYMENT, path);
+        match = match(PATTERN_DEPLOYMENT, decodedPath);
         if (match != null) {
             DeploymentController controller = new DeploymentController(context);
             String deploymentId = match.group(1);
             return () -> controller.getDeployment(deploymentId);
         }
 
-        match = match(PATTERN_DEPLOYMENTS, path);
+        match = match(PATTERN_DEPLOYMENTS, decodedPath);
         if (match != null) {
             DeploymentController controller = new DeploymentController(context);
             return controller::getDeployments;
         }
 
-        match = match(PATTERN_MODEL, path);
+        match = match(PATTERN_MODEL, decodedPath);
         if (match != null) {
             ModelController controller = new ModelController(context);
             String modelId = match.group(1);
             return () -> controller.getModel(modelId);
         }
 
-        match = match(PATTERN_MODELS, path);
+        match = match(PATTERN_MODELS, decodedPath);
         if (match != null) {
             ModelController controller = new ModelController(context);
             return controller::getModels;
         }
 
-        match = match(PATTERN_ADDON, path);
+        match = match(PATTERN_ADDON, decodedPath);
         if (match != null) {
             AddonController controller = new AddonController(context);
             String addonId = match.group(1);
             return () -> controller.getAddon(addonId);
         }
 
-        match = match(PATTERN_ADDONS, path);
+        match = match(PATTERN_ADDONS, decodedPath);
         if (match != null) {
             AddonController controller = new AddonController(context);
             return controller::getAddons;
         }
 
-        match = match(PATTERN_ASSISTANT, path);
+        match = match(PATTERN_ASSISTANT, decodedPath);
         if (match != null) {
             AssistantController controller = new AssistantController(context);
             String assistantId = match.group(1);
             return () -> controller.getAssistant(assistantId);
         }
 
-        match = match(PATTERN_ASSISTANTS, path);
+        match = match(PATTERN_ASSISTANTS, decodedPath);
         if (match != null) {
             AssistantController controller = new AssistantController(context);
             return controller::getAssistants;
         }
 
-        match = match(PATTERN_APPLICATION, path);
+        match = match(PATTERN_APPLICATION, decodedPath);
         if (match != null) {
             ApplicationController controller = new ApplicationController(context);
             String application = match.group(1);
             return () -> controller.getApplication(application);
         }
 
-        match = match(PATTERN_APPLICATIONS, path);
+        match = match(PATTERN_APPLICATIONS, decodedPath);
         if (match != null) {
             ApplicationController controller = new ApplicationController(context);
             return controller::getApplications;
         }
 
-        match = match(PATTERN_FILES_METADATA, path);
+        match = match(PATTERN_FILES_METADATA, providedPath);
         if (match != null) {
             String bucket = match.group(1);
             String filePath = match.group(2);
@@ -137,7 +138,7 @@ public class ControllerSelector {
             return () -> controller.handle(bucket, filePath);
         }
 
-        match = match(PATTERN_FILES, path);
+        match = match(PATTERN_FILES, providedPath);
         if (match != null) {
             String bucket = match.group(1);
             String filePath = match.group(2);
@@ -145,7 +146,7 @@ public class ControllerSelector {
             return () -> controller.handle(bucket, filePath);
         }
 
-        match = match(PATTERN_BUCKET, path);
+        match = match(PATTERN_BUCKET, decodedPath);
         if (match != null) {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;
@@ -154,8 +155,8 @@ public class ControllerSelector {
         return null;
     }
 
-    private static Controller selectPost(Proxy proxy, ProxyContext context, String path) {
-        Matcher match = match(PATTERN_POST_DEPLOYMENT, path);
+    private static Controller selectPost(Proxy proxy, ProxyContext context, String providedPath, String decodedPath) {
+        Matcher match = match(PATTERN_POST_DEPLOYMENT, decodedPath);
         if (match != null) {
             String deploymentId = match.group(1);
             String deploymentApi = match.group(2);
@@ -163,7 +164,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, deploymentApi);
         }
 
-        match = match(PATTERN_RATE_RESPONSE, path);
+        match = match(PATTERN_RATE_RESPONSE, decodedPath);
         if (match != null) {
             String deploymentId = match.group(1);
 
@@ -178,7 +179,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         }
 
-        match = match(PATTERN_TOKENIZE, path);
+        match = match(PATTERN_TOKENIZE, decodedPath);
         if (match != null) {
             String deploymentId = match.group(1);
 
@@ -193,7 +194,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, true);
         }
 
-        match = match(PATTERN_TRUNCATE_PROMPT, path);
+        match = match(PATTERN_TRUNCATE_PROMPT, decodedPath);
         if (match != null) {
             String deploymentId = match.group(1);
 
@@ -211,8 +212,8 @@ public class ControllerSelector {
         return null;
     }
 
-    private static Controller selectDelete(Proxy proxy, ProxyContext context, String path) {
-        Matcher match = match(PATTERN_FILES, path);
+    private static Controller selectDelete(Proxy proxy, ProxyContext context, String providedPath, String decodedPath) {
+        Matcher match = match(PATTERN_FILES, providedPath);
         if (match != null) {
             String bucket = match.group(1);
             String filePath = match.group(2);
@@ -223,8 +224,8 @@ public class ControllerSelector {
         return null;
     }
 
-    private static Controller selectPut(Proxy proxy, ProxyContext context, String path) {
-        Matcher match = match(PATTERN_FILES, path);
+    private static Controller selectPut(Proxy proxy, ProxyContext context, String providedPath, String decodedPath) {
+        Matcher match = match(PATTERN_FILES, providedPath);
         if (match != null) {
             String bucket = match.group(1);
             String filePath = match.group(2);
