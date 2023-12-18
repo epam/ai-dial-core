@@ -3,26 +3,26 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.BlobStorage;
-import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@AllArgsConstructor
-public class DeleteFileController {
-    private final Proxy proxy;
-    private final ProxyContext context;
+public class DeleteFileController extends AccessControlBaseController {
 
-    /**
-     * Deletes file from storage.
-     * Current API implementation requires a relative path, absolute path will be calculated based on authentication context
-     *
-     * @param path relative path, for example: /inputs/data.csv
-     */
-    public Future<?> delete(String path) {
-        String absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
+    public DeleteFileController(Proxy proxy, ProxyContext context) {
+        super(proxy, context);
+    }
+
+    @Override
+    protected Future<?> handle(ResourceDescription resource) {
+        if (resource.isFolder()) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Can't delete a folder");
+        }
+
+        String absoluteFilePath = resource.getAbsoluteFilePath();
+
         BlobStorage storage = proxy.getStorage();
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             try {
