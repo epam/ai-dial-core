@@ -77,7 +77,7 @@ public class FileApiTest {
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
                         assertEquals(200, response.statusCode());
-                        assertEquals(new Bucket("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM="), response.body());
+                        assertEquals(new Bucket("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt"), response.body());
                         context.completeNow();
                     });
                 }));
@@ -87,9 +87,9 @@ public class FileApiTest {
     public void testEmptyFilesList(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
-        FolderMetadata emptyBucketResponse = new FolderMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "/", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/", List.of());
-        client.get(serverPort, "localhost", "/v1/files/metadata/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=/")
+        FolderMetadata emptyBucketResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "/", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2F", List.of());
+        client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                 .putHeader("Api-key", "proxyKey2")
                 .as(BodyCodec.json(FolderMetadata.class))
                 .send(context.succeeding(response -> {
@@ -104,7 +104,7 @@ public class FileApiTest {
     @Test
     public void testFileNotFound(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
-        client.get(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt")
+        client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt")
                 .putHeader("Api-key", "proxyKey2")
                 .as(BodyCodec.buffer())
                 .send(context.succeeding(response -> {
@@ -119,7 +119,7 @@ public class FileApiTest {
     @Test
     public void testInvalidFileUploadUrl(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
-        client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/")
+        client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                 .putHeader("Api-key", "proxyKey2")
                 .as(BodyCodec.string())
                 .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
@@ -155,12 +155,12 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(2);
         WebClient client = WebClient.create(vertx);
 
-        FileMetadata expectedFileMetadata = new FileMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "file.txt", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt", 17, "text/custom");
+        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffile.txt", 17, "text/custom");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
-            client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt")
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffile.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
@@ -175,7 +175,7 @@ public class FileApiTest {
                     );
             return promise.future();
         }).andThen((mapper) -> {
-            client.get(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt")
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt")
                     .putHeader("Api-key", "proxyKey1")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -190,7 +190,7 @@ public class FileApiTest {
     @Test
     public void testFileUploadIntoAnotherBucket(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
-        client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt")
+        client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt")
                 .putHeader("Api-key", "proxyKey1")
                 .as(BodyCodec.string())
                 .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
@@ -208,17 +208,17 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        FolderMetadata emptyFolderResponse = new FolderMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "/", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/", List.of());
-        FileMetadata expectedFileMetadata = new FileMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "file.txt", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt", 17, "text/custom");
-        FolderMetadata expectedFolderMetadata = new FolderMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "/", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/", List.of(expectedFileMetadata));
+        FolderMetadata emptyFolderResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "/", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2F", List.of());
+        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffile.txt", 17, "text/custom");
+        FolderMetadata expectedFolderMetadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "/", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2F", List.of(expectedFileMetadata));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
-            client.get(serverPort, "localhost", "/v1/files/metadata/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/")
+            client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FolderMetadata.class))
                     .send(context.succeeding(response -> {
@@ -234,7 +234,7 @@ public class FileApiTest {
         }).compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file
-            client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt")
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffile.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
@@ -251,7 +251,7 @@ public class FileApiTest {
             return promise.future();
         }).andThen((result) -> {
             // verify uploaded file can be listed
-            client.get(serverPort, "localhost", "/v1/files/metadata/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/")
+            client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -269,13 +269,13 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(2);
         WebClient client = WebClient.create(vertx);
 
-        FileMetadata expectedFileMetadata = new FileMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "file.txt", "folder1", "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/folder1/file.txt", 17, "text/plain");
+        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", "folder1", "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffolder1%2Ffile.txt", 17, "text/plain");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file
-            client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/folder1/file.txt")
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffolder1%2Ffile.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
@@ -291,7 +291,7 @@ public class FileApiTest {
 
             return promise.future();
         }).andThen((result) -> {
-            client.get(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/folder1/file.txt")
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -309,23 +309,23 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
-        FolderMetadata emptyFolderResponse = new FolderMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "/", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/", List.of());
+        FolderMetadata emptyFolderResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "/", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2F", List.of());
 
-        FileMetadata expectedFileMetadata1 = new FileMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "file.txt", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt", 17, "text/custom");
-        FileMetadata expectedFileMetadata2 = new FileMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "file.txt", "folder1", "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/folder1/file.txt", 17, "text/custom");
-        FolderMetadata expectedFolder1Metadata = new FolderMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "folder1", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/folder1/");
-        FolderMetadata expectedRootFolderMetadata = new FolderMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "/", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/",
+        FileMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffile.txt", 17, "text/custom");
+        FileMetadata expectedFileMetadata2 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", "folder1", "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffolder1%2Ffile.txt", 17, "text/custom");
+        FolderMetadata expectedFolder1Metadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "folder1", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ffolder1%2F");
+        FolderMetadata expectedRootFolderMetadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "/", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2F",
                 List.of(expectedFileMetadata1, expectedFolder1Metadata));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
-            client.get(serverPort, "localhost", "/v1/files/metadata/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/")
+            client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FolderMetadata.class))
                     .send(context.succeeding(response -> {
@@ -341,7 +341,7 @@ public class FileApiTest {
         }).compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file1
-            client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/file.txt")
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
@@ -359,7 +359,7 @@ public class FileApiTest {
         }).compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file2
-            client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/folder1/file.txt")
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
@@ -376,7 +376,7 @@ public class FileApiTest {
             return promise.future();
         }).andThen((result) -> {
             // verify uploaded files can be listed
-            client.get(serverPort, "localhost", "/v1/files/metadata/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/")
+            client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -394,13 +394,13 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        FileMetadata expectedFileMetadata = new FileMetadata("XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM=",
-                "test_file.txt", null, "XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/test_file.txt", 17, "text/plain");
+        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "test_file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt%2Ftest_file.txt", 17, "text/plain");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file
-            client.put(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/test_file.txt")
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT),
@@ -418,7 +418,7 @@ public class FileApiTest {
         }).compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // delete file
-            client.delete(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/test_file.txt")
+            client.delete(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -432,7 +432,7 @@ public class FileApiTest {
             return promise.future();
         }).andThen((mapper) -> {
             // try to download deleted file
-            client.get(serverPort, "localhost", "/v1/files/XQd0n1CwGStyHo2ZTJB4Ygb5AVeNtuKxQssR8AYqqWM%3D/test_file.txt")
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {

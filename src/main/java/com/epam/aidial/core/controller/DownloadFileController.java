@@ -4,7 +4,6 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.InputStreamReader;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -25,8 +24,10 @@ public class DownloadFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(String bucketName, String bucketLocation, String filePath) {
-        ResourceDescription resource = ResourceDescription.from(ResourceType.FILE, bucketName, bucketLocation, filePath);
+    protected Future<?> handle(ResourceDescription resource) {
+        if (resource.isFolder()) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");
+        }
 
         Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() ->
                 proxy.getStorage().load(resource.getAbsoluteFilePath()));
@@ -60,7 +61,7 @@ public class DownloadFileController extends AccessControlBaseController {
                 result.fail(e);
             }
         }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to fetch file with path %s/%s".formatted(bucketName, filePath)));
+                "Failed to fetch file with path %s/%s".formatted(resource.getBucketName(), resource.getRelativePath())));
 
         return result.future();
     }

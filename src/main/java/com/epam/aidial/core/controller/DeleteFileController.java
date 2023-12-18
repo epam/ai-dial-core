@@ -4,7 +4,6 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
@@ -17,8 +16,11 @@ public class DeleteFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(String bucketName, String bucketLocation, String filePath) {
-        ResourceDescription resource = ResourceDescription.from(ResourceType.FILE, bucketName, bucketLocation, filePath);
+    protected Future<?> handle(ResourceDescription resource) {
+        if (resource.isFolder()) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Can't delete a folder");
+        }
+
         String absoluteFilePath = resource.getAbsoluteFilePath();
 
         BlobStorage storage = proxy.getStorage();

@@ -1,10 +1,10 @@
 package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.config.Encryption;
+import com.epam.aidial.core.util.Base58;
 import lombok.extern.slf4j.Slf4j;
 
 import java.security.spec.KeySpec;
-import java.util.Base64;
 import java.util.Objects;
 import javax.annotation.Nullable;
 import javax.crypto.Cipher;
@@ -43,8 +43,7 @@ public class EncryptionService {
         try {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.ENCRYPT_MODE, key, iv);
-            return Base64.getEncoder()
-                    .encodeToString(cipher.doFinal(value.getBytes()));
+            return Base58.encode(cipher.doFinal(value.getBytes()));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -55,8 +54,7 @@ public class EncryptionService {
         try {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.DECRYPT_MODE, key, iv);
-            return new String(cipher.doFinal(Base64.getDecoder()
-                    .decode(value)));
+            return new String(cipher.doFinal(Base58.decode(value)));
         } catch (Exception e) {
             log.error("Failed to decrypt value " + value, e);
             return null;

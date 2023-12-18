@@ -2,10 +2,8 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -22,12 +20,11 @@ public class UploadFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(String bucketName, String bucketLocation, String filePath) {
-        if (filePath.isEmpty() || BlobStorageUtil.isFolder(filePath)) {
+    protected Future<?> handle(ResourceDescription resource) {
+        if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");
         }
 
-        ResourceDescription resource = ResourceDescription.from(ResourceType.FILE, bucketName, bucketLocation, filePath);
         Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
@@ -46,7 +43,7 @@ public class UploadFileController extends AccessControlBaseController {
                             .onFailure(error -> {
                                 writeStream.abortUpload(error);
                                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file by path %s/%s".formatted(bucketName, filePath));
+                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getRelativePath()));
                             });
                 });
 

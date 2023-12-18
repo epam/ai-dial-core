@@ -3,12 +3,11 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
-
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
@@ -18,18 +17,23 @@ public abstract class AccessControlBaseController {
 
 
     public Future<?> handle(String bucket, String filePath) {
-        String decodedBucket = URLDecoder.decode(bucket, StandardCharsets.UTF_8);
-        String decodedFilePath = URLDecoder.decode(filePath, StandardCharsets.UTF_8);
         String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
-        String decryptedBucket = proxy.getEncryptionService().decrypt(decodedBucket);
+        String decryptedBucket = proxy.getEncryptionService().decrypt(bucket);
 
         if (!expectedUserBucket.equals(decryptedBucket)) {
-            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + decodedBucket);
+            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
         }
 
-        return handle(decodedBucket, decryptedBucket, decodedFilePath);
+        ResourceDescription resource;
+        try {
+            resource = ResourceDescription.from(ResourceType.FILE, bucket, decryptedBucket, filePath);
+        } catch (Exception ex) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Invalid file url provided");
+        }
+
+        return handle(resource);
     }
 
-    protected abstract Future<?> handle(String bucketName, String bucketLocation, String filePath);
+    protected abstract Future<?> handle(ResourceDescription resource);
 
 }

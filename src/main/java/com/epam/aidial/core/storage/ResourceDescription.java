@@ -8,7 +8,6 @@ import org.apache.commons.lang3.StringUtils;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Data
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -16,30 +15,28 @@ public class ResourceDescription {
     ResourceType type;
     String name;
     List<String> parentFolders;
+    String relativePath;
     String bucketName;
     String bucketLocation;
     boolean isFolder;
 
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(encodeToUrl(bucketName))
+        builder.append(bucketName)
                 .append(BlobStorageUtil.PATH_SEPARATOR);
         if (parentFolders != null) {
-            String parentPath = parentFolders.stream()
-                    .map(ResourceDescription::encodeToUrl)
-                    .collect(Collectors.joining(BlobStorageUtil.PATH_SEPARATOR));
-            builder.append(parentPath)
+            builder.append(String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders))
                     .append(BlobStorageUtil.PATH_SEPARATOR);
         }
         if (name != null && !isHomeFolder(name)) {
-            builder.append(encodeToUrl(name));
+            builder.append(name);
 
             if (isFolder) {
                 builder.append(BlobStorageUtil.PATH_SEPARATOR);
             }
         }
 
-        return builder.toString();
+        return URLEncoder.encode(builder.toString(), StandardCharsets.UTF_8);
     }
 
     public String getAbsoluteFilePath() {
@@ -64,8 +61,9 @@ public class ResourceDescription {
     }
 
     public static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation, String relativeFilePath) {
+        // in case empty path - treat it as a home folder
+        relativeFilePath = StringUtils.isBlank(relativeFilePath) ? BlobStorageUtil.PATH_SEPARATOR : relativeFilePath;
         verify(bucketLocation.endsWith(BlobStorageUtil.PATH_SEPARATOR), "Bucket location must end with /");
-        verify(!StringUtils.isBlank(relativeFilePath), "Invalid relative path: " + relativeFilePath);
 
         String[] elements = relativeFilePath.split(BlobStorageUtil.PATH_SEPARATOR);
         List<String> parentFolders = null;
@@ -80,11 +78,7 @@ public class ResourceDescription {
             }
         }
 
-        return new ResourceDescription(type, name, parentFolders, bucketName, bucketLocation, BlobStorageUtil.isFolder(relativeFilePath));
-    }
-
-    private static String encodeToUrl(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+        return new ResourceDescription(type, name, parentFolders, relativeFilePath, bucketName, bucketLocation, BlobStorageUtil.isFolder(relativeFilePath));
     }
 
     private static boolean isHomeFolder(String path) {
