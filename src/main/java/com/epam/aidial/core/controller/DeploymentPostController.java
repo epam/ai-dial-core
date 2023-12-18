@@ -69,7 +69,13 @@ public class DeploymentPostController {
             deployment = null;
         }
 
-        if (deployment == null || (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
+        if (deployment == null) {
+            log.error("Deployment {} is not found", deploymentId);
+            return context.respond(HttpStatus.NOT_FOUND, "Deployment is not found");
+        }
+
+        if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
+            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
 
@@ -81,6 +87,7 @@ public class DeploymentPostController {
             ErrorData rateLimitError = new ErrorData();
             rateLimitError.getError().setCode(String.valueOf(rateLimitResult.status().getCode()));
             rateLimitError.getError().setMessage(rateLimitResult.errorMessage());
+            log.error("Rate limit error {}. Key: {}. User sub: {}", rateLimitResult.errorMessage(), context.getProject(), context.getUserSub());
             return context.respond(rateLimitResult.status(), rateLimitError);
         }
 
@@ -92,6 +99,7 @@ public class DeploymentPostController {
         context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.hasNext()) {
+            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), deploymentId, context.getUserSub());
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
@@ -106,6 +114,7 @@ public class DeploymentPostController {
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
+            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), context.getDeployment().getName(), context.getUserSub());
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
