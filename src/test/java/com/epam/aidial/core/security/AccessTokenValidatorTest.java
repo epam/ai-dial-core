@@ -146,6 +146,14 @@ public class AccessTokenValidatorTest {
         });
     }
 
+    @Test
+    public void testExtractTokenFromHeader() {
+        assertNull(AccessTokenValidator.extractTokenFromHeader(null));
+        assertNull(AccessTokenValidator.extractTokenFromHeader("wrong-token"));
+        assertEquals("token", AccessTokenValidator.extractTokenFromHeader("bearer token"));
+        assertEquals("token", AccessTokenValidator.extractTokenFromHeader("bearer token more"));
+    }
+
     private static String getBearerHeaderValue(String token) {
         return String.format("bearer %s", token);
     }

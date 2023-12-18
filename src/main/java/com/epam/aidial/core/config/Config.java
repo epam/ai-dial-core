@@ -34,19 +34,6 @@ public class Config {
         }
 
         Assistants assistants = assistant;
-        Assistant assistant = assistants.getAssistants().get(deploymentId);
-        if (assistant != null) {
-            return assistant;
-        }
-
-        if (assistants.getEndpoint() != null && ASSISTANT.equals(deploymentId)) {
-            Assistant baseAssistant = new Assistant();
-            baseAssistant.setName(ASSISTANT);
-            baseAssistant.setEndpoint(assistants.getEndpoint());
-            baseAssistant.setFeatures(assistants.getFeatures());
-            return baseAssistant;
-        }
-
-        return null;
+        return assistants.getAssistants().get(deploymentId);
     }
 }

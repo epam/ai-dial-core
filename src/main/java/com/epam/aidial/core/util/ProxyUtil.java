@@ -33,10 +33,10 @@ public class ProxyUtil {
             .add(HttpHeaders.ACCEPT_ENCODING, "whatever");
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
-        copyHeaders(from, to, Collections.emptySet());
+        copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());
     }
 
-    public static void copyHeaders(MultiMap from, MultiMap to, Set<CharSequence> excludeHeaders) {
+    public static void copyHeaders(MultiMap from, MultiMap to, MultiMap excludeHeaders) {
         for (Map.Entry<String, String> entry : from.entries()) {
             String key = entry.getKey();
             String value = entry.getValue();

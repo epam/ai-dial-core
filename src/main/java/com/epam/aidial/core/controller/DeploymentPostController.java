@@ -23,8 +23,10 @@ import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -40,7 +42,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.InputStream;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -150,7 +151,8 @@ public class DeploymentPostController {
     /**
      * Called when proxy connected to the origin.
      */
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+    @VisibleForTesting
+    void handleProxyRequest(HttpClientRequest proxyRequest) {
         log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
@@ -159,10 +161,10 @@ public class DeploymentPostController {
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
         Deployment deployment = context.getDeployment();
-        Set<CharSequence> excludeHeaders = new HashSet<>();
-        excludeHeaders.add(Proxy.HEADER_API_KEY);
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        excludeHeaders.add(Proxy.HEADER_API_KEY, "whatever");
         if (!deployment.isForwardAuthToken()) {
-            excludeHeaders.add(HttpHeaders.AUTHORIZATION);
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
