@@ -21,11 +21,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
+import java.util.Set;
 
 import static com.epam.aidial.core.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.util.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.util.HttpStatus.FORBIDDEN;
+import static com.epam.aidial.core.util.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -72,12 +74,29 @@ public class DeploymentPostControllerTest {
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
-        config.getApplications().put("app1", new Application());
+        Application app = new Application();
+        app.setName("app1");
+        app.setUserRoles(Set.of("role1"));
+        config.getApplications().put("app1", app);
         when(context.getConfig()).thenReturn(config);
 
-        controller.handle("app1", "api");
+        controller.handle("app1", "chat/completions");
 
         verify(context).respond(eq(FORBIDDEN), anyString());
+    }
+
+    @Test
+    public void testDeploymentNotFound() {
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        Config config = new Config();
+        config.setApplications(new HashMap<>());
+        Application app = new Application();
+        config.getApplications().put("app1", app);
+        when(context.getConfig()).thenReturn(config);
+
+        controller.handle("unknown-app", "chat/completions");
+
+        verify(context).respond(eq(NOT_FOUND), anyString());
     }
 
     @Test
