@@ -36,7 +36,7 @@ public class ResourceDescription {
             }
         }
 
-        return URLEncoder.encode(builder.toString(), StandardCharsets.UTF_8);
+        return builder.toString();
     }
 
     public String getAbsoluteFilePath() {
