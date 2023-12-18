@@ -59,13 +59,12 @@ public class BlobStorage implements Closeable {
     /**
      * Initialize multipart upload
      *
-     * @param fileName    name of the file, for example: data.csv
-     * @param path        absolute path according to the bucket, for example: Users/user1/files/input data
-     * @param contentType MIME type of the content, for example: text/csv
+     * @param absoluteFilePath absolute path according to the bucket, for example: Users/user1/files/input/file.txt
+     * @param contentType      MIME type of the content, for example: text/csv
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public MultipartUpload initMultipartUpload(String fileName, String path, String contentType) {
-        BlobMetadata metadata = buildBlobMetadata(fileName, path, contentType, bucketName);
+    public MultipartUpload initMultipartUpload(String absoluteFilePath, String contentType) {
+        BlobMetadata metadata = buildBlobMetadata(absoluteFilePath, contentType, bucketName);
         return blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE);
     }
 
@@ -102,14 +101,12 @@ public class BlobStorage implements Closeable {
     /**
      * Upload file in a single request
      *
-     * @param fileName    name of the file, for example: data.csv
-     * @param path        absolute path according to the bucket, for example: Users/user1/files/input data
-     * @param contentType MIME type of the content, for example: text/csv
-     * @param data        whole content data
+     * @param absoluteFilePath absolute path according to the bucket, for example: Users/user1/files/input/file.txt
+     * @param contentType      MIME type of the content, for example: text/csv
+     * @param data             whole content data
      */
-    public void store(String fileName, String path, String contentType, Buffer data) {
-        String filePath = BlobStorageUtil.buildFilePath(fileName, path);
-        Blob blob = blobStore.blobBuilder(filePath)
+    public void store(String absoluteFilePath, String contentType, Buffer data) {
+        Blob blob = blobStore.blobBuilder(absoluteFilePath)
                 .payload(new BufferPayload(data))
                 .contentLength(data.length())
                 .contentType(contentType)
@@ -138,14 +135,23 @@ public class BlobStorage implements Closeable {
     }
 
     /**
-     * List all files/folder metadata for a given path
-     *
-     * @param path absolute path for a folder, for example: Users/user1/files
+     * List all files/folder metadata for a given resource
      */
-    public List<FileMetadataBase> listMetadata(String path) {
-        ListContainerOptions options = buildListContainerOptions(BlobStorageUtil.normalizePathForQuery(path));
-        PageSet<? extends StorageMetadata> list = blobStore.list(bucketName, options);
-        return list.stream().map(BlobStorage::buildFileMetadata).toList();
+    public FileMetadataBase listMetadata(ResourceDescription resource) {
+        ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath());
+        PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
+        List<FileMetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
+
+        // listing folder
+        if (resource.isFolder()) {
+            return new FolderMetadata(resource, filesMetadata);
+        } else {
+            // listing file
+            if (filesMetadata.size() == 1) {
+                return filesMetadata.get(0);
+            }
+            return null;
+        }
     }
 
     @Override
@@ -159,27 +165,27 @@ public class BlobStorage implements Closeable {
                 .delimiter(BlobStorageUtil.PATH_SEPARATOR);
     }
 
-    private static FileMetadataBase buildFileMetadata(StorageMetadata metadata) {
-        String absoluteFilePath = metadata.getName();
-        String[] elements = absoluteFilePath.split(BlobStorageUtil.PATH_SEPARATOR);
-        String lastElement = elements[elements.length - 1];
-        String path = absoluteFilePath.substring(0, absoluteFilePath.length() - lastElement.length() - 1);
-        String normalizedPath = BlobStorageUtil.normalizeParentPath(path);
+    private static FileMetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
+        String bucketName = resource.getBucketName();
+        ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
+                resource.getBucketLocation(), metadata.getName());
 
         return switch (metadata.getType()) {
-            case BLOB ->
-                    new FileMetadata(lastElement, normalizedPath, metadata.getSize(),
-                            ((BlobMetadata) metadata).getContentMetadata().getContentType());
-            case FOLDER, RELATIVE_PATH ->
-                    new FolderMetadata(lastElement, normalizedPath);
+            case BLOB -> new FileMetadata(resultResource, metadata.getSize(),
+                    ((BlobMetadata) metadata).getContentMetadata().getContentType());
+            case FOLDER, RELATIVE_PATH -> new FolderMetadata(resultResource);
             case CONTAINER -> throw new IllegalArgumentException("Can't list container");
         };
     }
 
-    private static BlobMetadata buildBlobMetadata(String fileName, String path, String contentType, String bucketName) {
-        String filePath = BlobStorageUtil.buildFilePath(fileName, path);
+    private static ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
+        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getFolder().length() + 1);
+        return ResourceDescription.from(resourceType, bucketName, bucketLocation, relativeFilePath);
+    }
+
+    private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {
         ContentMetadata contentMetadata = buildContentMetadata(contentType);
-        return new BlobMetadataImpl(null, filePath, null, null, null, null, null, Map.of(), null, bucketName, contentMetadata, null, Tier.STANDARD);
+        return new BlobMetadataImpl(null, absoluteFilePath, null, null, null, null, null, Map.of(), null, bucketName, contentMetadata, null, Tier.STANDARD);
     }
 
     private static ContentMetadata buildContentMetadata(String contentType) {

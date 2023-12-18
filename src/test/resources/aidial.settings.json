@@ -44,5 +44,9 @@
       "rolePath": "roles",
       "issuerPattern": "issuer"
     }
+  },
+  "encryption": {
+    "password": "password",
+    "salt": "salt"
   }
 }

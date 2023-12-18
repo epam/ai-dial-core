@@ -9,6 +9,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public abstract class FileMetadataBase {
     private String name;
-    private String path;
+    private String parentPath;
+    private String bucket;
+    private String url;
     private FileType type;
 }

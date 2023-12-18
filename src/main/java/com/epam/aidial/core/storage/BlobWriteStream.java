@@ -28,8 +28,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private final Vertx vertx;
     private final BlobStorage storage;
-    private final String parentPath;
-    private final String fileName;
+    private final ResourceDescription resource;
     private final String contentType;
 
     private final Buffer chunkBuffer = Buffer.buffer();
@@ -51,14 +50,12 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     public BlobWriteStream(Vertx vertx,
                            BlobStorage storage,
-                           String fileName,
-                           String parentPath,
+                           ResourceDescription resource,
                            String contentType) {
         this.vertx = vertx;
         this.storage = storage;
-        this.fileName = fileName;
-        this.parentPath = parentPath;
-        this.contentType = contentType != null ? contentType : BlobStorageUtil.getContentType(fileName);
+        this.resource = resource;
+        this.contentType = contentType != null ? contentType : BlobStorageUtil.getContentType(resource.getName());
     }
 
     @Override
@@ -103,11 +100,10 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
 
                 Buffer lastChunk = chunkBuffer.slice(0, position);
-                metadata = new FileMetadata(fileName, BlobStorageUtil.normalizeParentPath(parentPath),
-                        bytesHandled, contentType);
+                metadata = new FileMetadata(resource, bytesHandled, contentType);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
-                    storage.store(fileName, parentPath, contentType, lastChunk);
+                    storage.store(resource.getAbsoluteFilePath(), contentType, lastChunk);
                 } else {
                     if (position != 0) {
                         MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, lastChunk);
@@ -150,7 +146,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
             synchronized (BlobWriteStream.this) {
                 try {
                     if (mpu == null) {
-                        mpu = storage.initMultipartUpload(fileName, parentPath, contentType);
+                        mpu = storage.initMultipartUpload(resource.getAbsoluteFilePath(), contentType);
                     }
                     MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkBuffer.slice(0, position));
                     parts.add(part);
