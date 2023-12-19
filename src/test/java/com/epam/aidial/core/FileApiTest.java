@@ -211,7 +211,7 @@ public class FileApiTest {
         FolderMetadata emptyFolderResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom");
+                "файл.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt", 17, "text/custom");
         FolderMetadata expectedFolderMetadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of(expectedFileMetadata));
 
@@ -234,10 +234,10 @@ public class FileApiTest {
         }).compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // upload test file
-            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt")
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
-                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                    .sendMultipartForm(generateMultipartForm("файл.txt", TEST_FILE_CONTENT, "text/custom"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());

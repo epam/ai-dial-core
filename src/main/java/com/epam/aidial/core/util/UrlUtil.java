@@ -20,6 +20,9 @@ public class UrlUtil {
     public String decodePath(String path) {
         try {
             URI uri = new URI(path);
+            if (uri.getRawFragment() != null || uri.getRawQuery() != null) {
+                throw new IllegalArgumentException("Wrong path provided " + path);
+            }
             return uri.getPath();
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
