@@ -4,11 +4,15 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
+import com.epam.aidial.core.util.ProxyUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
@@ -34,9 +38,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.assertArg;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -206,6 +212,73 @@ public class DeploymentPostControllerTest {
         controller.handleProxyRequest(proxyRequest);
 
         assertNull(proxyHeaders.get(HEADER_API_KEY));
+    }
+
+    @Test
+    public void testHandleRequestBody_OverrideModelName() {
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.hasNext()).thenReturn(true);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        model.setOverrideName("overrideName");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name"
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+        when(context.getRequestBody()).thenReturn(requestBody);
+
+        controller.handleRequestBody(requestBody);
+
+        verify(context, times(2)).setRequestBody(assertArg(buffer -> {
+            if (buffer != requestBody) {
+                byte[] content = buffer.getBytes();
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
+                assertEquals(tree.get("model").asText(), "overrideName");
+            }
+        }));
+
+    }
+
+    @Test
+    public void testHandleRequestBody_NotOverrideModelName() {
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.hasNext()).thenReturn(true);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name"
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+        when(context.getRequestBody()).thenReturn(requestBody);
+
+        controller.handleRequestBody(requestBody);
+
+        verify(context, times(2)).setRequestBody(assertArg(buffer -> {
+            if (buffer != requestBody) {
+                byte[] content = buffer.getBytes();
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
+                assertEquals(tree.get("model").asText(), "name");
+            }
+        }));
+
     }
 
 
