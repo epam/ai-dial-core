@@ -1,13 +1,14 @@
 package com.epam.aidial.core.storage;
 
+import com.epam.aidial.core.util.UrlUtil;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Data
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -15,37 +16,47 @@ public class ResourceDescription {
     ResourceType type;
     String name;
     List<String> parentFolders;
-    String relativePath;
+    String originalPath;
     String bucketName;
     String bucketLocation;
     boolean isFolder;
 
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(bucketName)
+        builder.append(UrlUtil.encodePath(bucketName))
                 .append(BlobStorageUtil.PATH_SEPARATOR);
-        if (parentFolders != null) {
-            builder.append(String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders))
+
+        if (!parentFolders.isEmpty()) {
+            String parentPath = parentFolders.stream()
+                    .map(UrlUtil::encodePath)
+                    .collect(Collectors.joining(BlobStorageUtil.PATH_SEPARATOR));
+            builder.append(parentPath)
                     .append(BlobStorageUtil.PATH_SEPARATOR);
         }
-        if (name != null && !isHomeFolder(name)) {
-            builder.append(name);
+
+        if (name != null) {
+            builder.append(UrlUtil.encodePath(name));
 
             if (isFolder) {
                 builder.append(BlobStorageUtil.PATH_SEPARATOR);
             }
         }
 
-        return URLEncoder.encode(builder.toString(), StandardCharsets.UTF_8);
+        return builder.toString();
     }
 
     public String getAbsoluteFilePath() {
         StringBuilder builder = new StringBuilder();
-        if (parentFolders != null) {
+        builder.append(bucketLocation)
+                .append(type.getFolder())
+                .append(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (!parentFolders.isEmpty()) {
             builder.append(getParentPath())
                     .append(BlobStorageUtil.PATH_SEPARATOR);
         }
-        if (name != null && !isHomeFolder(name)) {
+
+        if (name != null) {
             builder.append(name);
 
             if (isFolder) {
@@ -53,36 +64,58 @@ public class ResourceDescription {
             }
         }
 
-        return BlobStorageUtil.buildAbsoluteFilePath(type, bucketLocation, builder.toString());
+        return builder.toString();
     }
 
     public String getParentPath() {
-        return parentFolders == null ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
+        return parentFolders.isEmpty() ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
     }
 
-    public static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation, String relativeFilePath) {
+    /**
+     * @param type           resource type
+     * @param bucketName     bucket name (encrypted)
+     * @param bucketLocation bucket location on blob storage; bucket location must end with /
+     * @param path           url encoded relative path; if url path is null or empty we treat it as user home
+     */
+    public static ResourceDescription fromEncoded(ResourceType type, String bucketName, String bucketLocation, String path) {
         // in case empty path - treat it as a home folder
-        relativeFilePath = StringUtils.isBlank(relativeFilePath) ? BlobStorageUtil.PATH_SEPARATOR : relativeFilePath;
+        String urlEncodedRelativePath = StringUtils.isBlank(path) ? BlobStorageUtil.PATH_SEPARATOR : path;
         verify(bucketLocation.endsWith(BlobStorageUtil.PATH_SEPARATOR), "Bucket location must end with /");
 
-        String[] elements = relativeFilePath.split(BlobStorageUtil.PATH_SEPARATOR);
-        List<String> parentFolders = null;
-        String name = "/";
-        if (elements.length > 0) {
-            name = elements[elements.length - 1];
-        }
-        if (elements.length > 1) {
-            String parentPath = relativeFilePath.substring(0, relativeFilePath.length() - name.length() - 1);
-            if (!parentPath.isEmpty() && !parentPath.equals(BlobStorageUtil.PATH_SEPARATOR)) {
-                parentFolders = List.of(parentPath.split(BlobStorageUtil.PATH_SEPARATOR));
-            }
-        }
+        String[] encodedElements = urlEncodedRelativePath.split(BlobStorageUtil.PATH_SEPARATOR);
+        List<String> elements = Arrays.stream(encodedElements).map(UrlUtil::decodePath).toList();
+        elements.forEach(element ->
+                verify(isValidFilename(element), "Invalid path provided " + urlEncodedRelativePath)
+        );
 
-        return new ResourceDescription(type, name, parentFolders, relativeFilePath, bucketName, bucketLocation, BlobStorageUtil.isFolder(relativeFilePath));
+        return from(type, bucketName, bucketLocation, urlEncodedRelativePath, elements, BlobStorageUtil.isFolder(urlEncodedRelativePath));
     }
 
-    private static boolean isHomeFolder(String path) {
-        return path.equals(BlobStorageUtil.PATH_SEPARATOR);
+    /**
+     * @param type           resource type
+     * @param bucketName     bucket name (encrypted)
+     * @param bucketLocation bucket location on blob storage; bucket location must end with /
+     * @param path           url decoded relative path; if url path is null or empty we treat it as user home
+     */
+    public static ResourceDescription fromDecoded(ResourceType type, String bucketName, String bucketLocation, String path) {
+        // in case empty path - treat it as a home folder
+        path = StringUtils.isBlank(path) ? BlobStorageUtil.PATH_SEPARATOR : path;
+        verify(bucketLocation.endsWith(BlobStorageUtil.PATH_SEPARATOR), "Bucket location must end with /");
+
+        List<String> elements = Arrays.asList(path.split(BlobStorageUtil.PATH_SEPARATOR));
+        return from(type, bucketName, bucketLocation, path, elements, BlobStorageUtil.isFolder(path));
+    }
+
+    private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,
+                                            String originalPath, List<String> paths, boolean isFolder) {
+        boolean isEmptyElements = paths.isEmpty();
+        String name = isEmptyElements ? null : paths.get(paths.size() - 1);
+        List<String> parentFolders = isEmptyElements ? List.of() : paths.subList(0, paths.size() - 1);
+        return new ResourceDescription(type, name, parentFolders, originalPath, bucketName, bucketLocation, isFolder);
+    }
+
+    private static boolean isValidFilename(String value) {
+        return !value.contains(BlobStorageUtil.PATH_SEPARATOR);
     }
 
     private static void verify(boolean condition, String message) {

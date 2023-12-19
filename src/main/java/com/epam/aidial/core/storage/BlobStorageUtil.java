@@ -33,10 +33,6 @@ public class BlobStorageUtil {
         throw new IllegalArgumentException("Can't find user bucket. Either user sub or api-key project must be provided");
     }
 
-    public String buildAbsoluteFilePath(ResourceType resource, String bucket, String path) {
-        return bucket + resource.getFolder() + PATH_SEPARATOR + path;
-    }
-
     public boolean isFolder(String path) {
         return path.endsWith(PATH_SEPARATOR);
     }
