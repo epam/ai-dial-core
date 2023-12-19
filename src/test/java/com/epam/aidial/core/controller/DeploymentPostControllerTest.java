@@ -4,11 +4,15 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
+import com.epam.aidial.core.util.ProxyUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
@@ -20,6 +24,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Set;
 
@@ -31,12 +36,16 @@ import static com.epam.aidial.core.util.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.assertArg;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -206,6 +215,68 @@ public class DeploymentPostControllerTest {
         controller.handleProxyRequest(proxyRequest);
 
         assertNull(proxyHeaders.get(HEADER_API_KEY));
+    }
+
+    @Test
+    public void testHandleRequestBody_OverrideModelName() throws IOException {
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.hasNext()).thenReturn(true);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        model.setOverrideName("overrideName");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name"
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+        when(context.getRequestBody()).thenCallRealMethod();
+        doCallRealMethod().when(context).setRequestBody(any());
+
+        controller.handleRequestBody(requestBody);
+
+        Buffer updatedBody = context.getRequestBody();
+        assertNotNull(updatedBody);
+
+        byte[] content = updatedBody.getBytes();
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
+        assertEquals(tree.get("model").asText(), "overrideName");
+
+    }
+
+    @Test
+    public void testHandleRequestBody_NotOverrideModelName() {
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.hasNext()).thenReturn(true);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name"
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+        when(context.getRequestBody()).thenCallRealMethod();
+        doCallRealMethod().when(context).setRequestBody(any());
+
+        controller.handleRequestBody(requestBody);
+
+        assertEquals(requestBody, context.getRequestBody());
+
     }
 
 

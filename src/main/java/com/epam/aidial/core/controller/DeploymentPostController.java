@@ -131,14 +131,16 @@ public class DeploymentPostController {
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private void handleRequestBody(Buffer requestBody) {
+    @VisibleForTesting
+    void handleRequestBody(Buffer requestBody) {
+        Deployment deployment = context.getDeployment();
         log.info("Received body from client. Key: {}. Deployment: {}. Length: {}", context.getProject(),
-                context.getDeployment().getName(), requestBody.length());
+                deployment.getName(), requestBody.length());
 
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
-        if (context.getDeployment() instanceof Assistant) {
+        if (deployment instanceof Assistant) {
             try {
                 Map.Entry<Buffer, Map<String, String>> enhancedRequest = enhanceAssistantRequest(context);
                 context.setRequestBody(enhancedRequest.getKey());
@@ -151,6 +153,15 @@ public class DeploymentPostController {
                 context.respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
                 return;
+            }
+        }
+
+        if (deployment instanceof Model) {
+            try {
+                context.setRequestBody(enhanceModelRequest(context));
+            } catch (Throwable e) {
+                context.respond(HttpStatus.BAD_REQUEST);
+                log.warn("Can't enhance model request: {}", e.getMessage());
             }
         }
 
@@ -403,6 +414,25 @@ public class DeploymentPostController {
 
             Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
             return Map.entry(updatedBody, headers);
+        }
+    }
+
+    private static Buffer enhanceModelRequest(ProxyContext context) throws Exception {
+        Model model = (Model) context.getDeployment();
+        String overrideName = model.getOverrideName();
+        Buffer requestBody = context.getRequestBody();
+        if (overrideName == null) {
+            return requestBody;
+        }
+
+        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+
+            tree.remove("model");
+            tree.put("model", overrideName);
+
+            Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+            return updatedBody;
         }
     }
 
