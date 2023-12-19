@@ -69,7 +69,13 @@ public class DeploymentPostController {
             deployment = null;
         }
 
-        if (deployment == null || (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
+        if (deployment == null) {
+            log.error("Deployment {} is not found", deploymentId);
+            return context.respond(HttpStatus.NOT_FOUND, "Deployment is not found");
+        }
+
+        if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
+            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
 
@@ -81,6 +87,7 @@ public class DeploymentPostController {
             ErrorData rateLimitError = new ErrorData();
             rateLimitError.getError().setCode(String.valueOf(rateLimitResult.status().getCode()));
             rateLimitError.getError().setMessage(rateLimitResult.errorMessage());
+            log.error("Rate limit error {}. Key: {}. User sub: {}", rateLimitResult.errorMessage(), context.getProject(), context.getUserSub());
             return context.respond(rateLimitResult.status(), rateLimitError);
         }
 
@@ -92,6 +99,7 @@ public class DeploymentPostController {
         context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.hasNext()) {
+            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), deploymentId, context.getUserSub());
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
@@ -106,6 +114,7 @@ public class DeploymentPostController {
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
+            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), context.getDeployment().getName(), context.getUserSub());
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
@@ -122,14 +131,16 @@ public class DeploymentPostController {
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private void handleRequestBody(Buffer requestBody) {
+    @VisibleForTesting
+    void handleRequestBody(Buffer requestBody) {
+        Deployment deployment = context.getDeployment();
         log.info("Received body from client. Key: {}. Deployment: {}. Length: {}", context.getProject(),
-                context.getDeployment().getName(), requestBody.length());
+                deployment.getName(), requestBody.length());
 
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
-        if (context.getDeployment() instanceof Assistant) {
+        if (deployment instanceof Assistant) {
             try {
                 Map.Entry<Buffer, Map<String, String>> enhancedRequest = enhanceAssistantRequest(context);
                 context.setRequestBody(enhancedRequest.getKey());
@@ -142,6 +153,15 @@ public class DeploymentPostController {
                 context.respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
                 return;
+            }
+        }
+
+        if (deployment instanceof Model) {
+            try {
+                context.setRequestBody(enhanceModelRequest(context));
+            } catch (Throwable e) {
+                context.respond(HttpStatus.BAD_REQUEST);
+                log.warn("Can't enhance model request: {}", e.getMessage());
             }
         }
 
@@ -394,6 +414,25 @@ public class DeploymentPostController {
 
             Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
             return Map.entry(updatedBody, headers);
+        }
+    }
+
+    private static Buffer enhanceModelRequest(ProxyContext context) throws Exception {
+        Model model = (Model) context.getDeployment();
+        String overrideName = model.getOverrideName();
+        Buffer requestBody = context.getRequestBody();
+        if (overrideName == null) {
+            return requestBody;
+        }
+
+        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+
+            tree.remove("model");
+            tree.put("model", overrideName);
+
+            Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+            return updatedBody;
         }
     }
 
