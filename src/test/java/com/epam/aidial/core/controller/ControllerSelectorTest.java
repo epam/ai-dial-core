@@ -2,6 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import io.opentelemetry.api.OpenTelemetry;
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -218,7 +219,10 @@ public class ControllerSelectorTest {
     public void testSelectPostDeploymentController() {
         when(request.path()).thenReturn("/openai/deployments/app1/completions");
         when(request.method()).thenReturn(HttpMethod.POST);
+        when(proxy.getOpenTelemetry()).thenReturn(OpenTelemetry.noop());
+
         Controller controller = ControllerSelector.select(proxy, context);
+
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);

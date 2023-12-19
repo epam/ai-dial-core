@@ -13,6 +13,7 @@ import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -56,6 +57,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final UpstreamBalancer upstreamBalancer;
     private final AccessTokenValidator tokenValidator;
     private final BlobStorage storage;
+    private final OpenTelemetry openTelemetry;
 
     @Override
     public void handle(HttpServerRequest request) {

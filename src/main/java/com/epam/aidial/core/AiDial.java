@@ -1,10 +1,11 @@
 package com.epam.aidial.core;
 
-import com.auth0.jwk.UrlJwkProvider;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.FileConfigStore;
 import com.epam.aidial.core.config.Storage;
-import com.epam.aidial.core.limiter.RateLimiter;
+import com.epam.aidial.core.limiter.ApiKeyRateLimiter;
+import com.epam.aidial.core.limiter.CompositeRateLimiter;
+import com.epam.aidial.core.limiter.UserRateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
@@ -13,6 +14,10 @@ import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -48,6 +53,8 @@ public class AiDial {
 
     private BlobStorage storage;
 
+    private OpenTelemetrySdk openTelemetry;
+
     @VisibleForTesting
     void start() throws Exception {
         try {
@@ -61,14 +68,15 @@ public class AiDial {
 
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"));
             LogStore logStore = new GfLogStore(vertx);
-            RateLimiter rateLimiter = new RateLimiter();
+            CompositeRateLimiter rateLimiter = new CompositeRateLimiter(new ApiKeyRateLimiter(), new UserRateLimiter());
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
             AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage);
+            openTelemetry = setupTracing();
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage, openTelemetry);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -88,6 +96,7 @@ public class AiDial {
             close(client, HttpClient::close);
             close(vertx, Vertx::close);
             close(storage);
+            close(openTelemetry);
             log.info("Proxy stopped");
             LogConfigurator.unconfigure();
         } catch (Throwable e) {
@@ -208,5 +217,13 @@ public class AiDial {
         micrometer.setMicrometerRegistry(new OtlpMeterRegistry());
 
         options.setMetricsOptions(micrometer);
+    }
+
+    private static OpenTelemetrySdk setupTracing() {
+        SdkTracerProvider sdkTracerProvider = SdkTracerProvider.builder().build();
+        return OpenTelemetrySdk.builder()
+                .setTracerProvider(sdkTracerProvider)
+                .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
+                .build();
     }
 }

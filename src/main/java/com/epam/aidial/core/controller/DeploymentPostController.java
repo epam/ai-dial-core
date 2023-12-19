@@ -25,6 +25,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -35,7 +42,6 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.net.SocketAddress;
-import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -46,22 +52,41 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 @Slf4j
-@RequiredArgsConstructor
 public class DeploymentPostController {
 
     private static final Set<Integer> RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
 
+    private static final MultiMapTextMapGetter TEXT_MAP_GETTER = new MultiMapTextMapGetter();
+
     private final Proxy proxy;
     private final ProxyContext context;
+    private final Tracer tracer;
+
+    private final ContextPropagators propagators;
+
+    public DeploymentPostController(Proxy proxy, ProxyContext context) {
+        this.proxy = proxy;
+        this.context = context;
+        this.tracer = proxy.getOpenTelemetry().getTracer(DeploymentPostController.class.getName());
+        this.propagators = proxy.getOpenTelemetry().getPropagators();
+    }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
+        Context tracingContext = propagators.getTextMapPropagator().extract(Context.current(), context.getRequest().headers(), TEXT_MAP_GETTER);
+        Span parentSpan = Span.fromContextOrNull(tracingContext);
+        Span currentSpan = tracer.spanBuilder(deploymentId + ":" + deploymentApi).setSpanKind(SpanKind.SERVER).setParent(tracingContext).startSpan();
+        context.setParentSpan(parentSpan);
+        context.setCurrentSpan(currentSpan);
+        context.setTracingContext(tracingContext.with(currentSpan));
+
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!StringUtils.containsIgnoreCase(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
-            return context.respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
+            return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
 
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
@@ -70,10 +95,14 @@ public class DeploymentPostController {
         }
 
         if (deployment == null || (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment))) {
-            return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
+            return respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
 
         context.setDeployment(deployment);
+
+        if (!proxy.getRateLimiter().register(context)) {
+            return respond(HttpStatus.BAD_REQUEST, "Trace not found");
+        }
 
         RateLimitResult rateLimitResult;
         if (deployment instanceof Model && (rateLimitResult = proxy.getRateLimiter().limit(context)).status() != HttpStatus.OK) {
@@ -81,7 +110,7 @@ public class DeploymentPostController {
             ErrorData rateLimitError = new ErrorData();
             rateLimitError.getError().setCode(String.valueOf(rateLimitResult.status().getCode()));
             rateLimitError.getError().setMessage(rateLimitResult.errorMessage());
-            return context.respond(rateLimitResult.status(), rateLimitError);
+            return respond(rateLimitResult.status(), rateLimitError);
         }
 
         log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getProject(),
@@ -92,7 +121,7 @@ public class DeploymentPostController {
         context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.hasNext()) {
-            return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+            return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
         return context.getRequest().body()
@@ -106,7 +135,7 @@ public class DeploymentPostController {
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
-            return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+            return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
         Upstream upstream = route.next();
@@ -135,11 +164,12 @@ public class DeploymentPostController {
                 context.setRequestBody(enhancedRequest.getKey());
                 context.setRequestHeaders(enhancedRequest.getValue());
             } catch (HttpException e) {
-                context.respond(e.getStatus(), e.getMessage());
+                respond(e.getStatus(), e.getMessage());
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
                 return;
             } catch (Throwable e) {
-                context.respond(HttpStatus.BAD_REQUEST);
+                context.getCurrentSpan().recordException(e);
+                respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
                 return;
             }
@@ -178,6 +208,13 @@ public class DeploymentPostController {
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
         }
+
+        propagators.getTextMapPropagator().inject(context.getTracingContext(), proxyRequest.headers(), (carrier, key, value) -> {
+            if (carrier == null) {
+                return;
+            }
+            carrier.add(key, value);
+        });
 
         Buffer requestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
@@ -248,6 +285,8 @@ public class DeploymentPostController {
             }
         }
 
+        context.getCurrentSpan().end();
+
         log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
                 context.getProject(), context.getDeployment().getName(),
@@ -268,7 +307,8 @@ public class DeploymentPostController {
      */
     private void handleRequestBodyError(Throwable error) {
         log.warn("Failed to receive client body: {}", error.getMessage());
-        context.respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        context.getCurrentSpan().recordException(error);
+        respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
     /**
@@ -280,7 +320,8 @@ public class DeploymentPostController {
         String uri = buildUri(context);
         log.warn("Can't connect to origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
                 deploymentName, uri, error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
+        context.getCurrentSpan().recordException(error);
+        respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
     }
 
     /**
@@ -292,7 +333,28 @@ public class DeploymentPostController {
         SocketAddress proxyAddress = context.getProxyRequest().connection().remoteAddress();
         log.warn("Proxy received response error from origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
                 deploymentName, proxyAddress, error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
+        context.getCurrentSpan().recordException(error);
+        respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
+    }
+
+    private Future<Void> respond(HttpStatus status, String errorMessage) {
+        finalizeSpan();
+        return context.respond(status, errorMessage);
+    }
+
+    private Future<Void> respond(HttpStatus status) {
+        finalizeSpan();
+        return context.respond(status);
+    }
+
+    private Future<Void> respond(HttpStatus status, Object result) {
+        finalizeSpan();
+        return context.respond(status, result);
+    }
+
+    private void finalizeSpan() {
+        context.getCurrentSpan().end();
+        proxy.getRateLimiter().unregister(context);
     }
 
     /**
@@ -302,6 +364,8 @@ public class DeploymentPostController {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        context.getCurrentSpan().recordException(error);
+        context.getCurrentSpan().end();
     }
 
     private static boolean isValidDeploymentApi(Deployment deployment, String deploymentApi) {
@@ -416,5 +480,21 @@ public class DeploymentPostController {
 
     private static boolean isBaseAssistant(Deployment deployment) {
         return deployment.getName().equals(Config.ASSISTANT);
+    }
+
+    private static class MultiMapTextMapGetter implements TextMapGetter<MultiMap> {
+        @Override
+        public Iterable<String> keys(MultiMap carrier) {
+            return carrier.names();
+        }
+
+        @Nullable
+        @Override
+        public String get(@Nullable MultiMap carrier, String key) {
+            if (carrier == null) {
+                return null;
+            }
+            return carrier.get(key);
+        }
     }
 }

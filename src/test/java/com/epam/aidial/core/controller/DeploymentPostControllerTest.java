@@ -4,9 +4,14 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.propagation.ContextPropagators;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -16,7 +21,7 @@ import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -49,17 +54,37 @@ public class DeploymentPostControllerTest {
     @Mock
     private HttpServerRequest request;
 
-    @InjectMocks
+    @Mock
+    private Span currentSpan;
+
+    @Mock
+    private OpenTelemetry openTelemetry;
+
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    private Tracer tracer;
+
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    private ContextPropagators propagators;
+
+    @Mock
+    private RateLimiter rateLimiter;
+
     private DeploymentPostController controller;
 
     @BeforeEach
     public void beforeEach() {
         when(context.getRequest()).thenReturn(request);
+        when(proxy.getOpenTelemetry()).thenReturn(openTelemetry);
+        when(openTelemetry.getPropagators()).thenReturn(propagators);
+        when(openTelemetry.getTracer(anyString())).thenReturn(tracer);
+        controller = new DeploymentPostController(proxy, context);
     }
 
     @Test
     public void testUnsupportedContentType() {
+        when(context.getCurrentSpan()).thenReturn(currentSpan);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
 
         controller.handle("app1", "api");
 
@@ -69,6 +94,8 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testForbiddenDeployment() {
+        when(context.getCurrentSpan()).thenReturn(currentSpan);
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -82,6 +109,7 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testNoRoute() {
+        when(context.getCurrentSpan()).thenReturn(currentSpan);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -97,6 +125,9 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
+        RateLimiter rateLimiter = mock(RateLimiter.class);
+        when(rateLimiter.register(any(ProxyContext.class))).thenReturn(true);
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
 
         controller.handle("app1", "chat/completions");
 
