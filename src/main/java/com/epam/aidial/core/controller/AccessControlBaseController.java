@@ -6,11 +6,9 @@ import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
-
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
@@ -26,7 +24,7 @@ public abstract class AccessControlBaseController {
      * @param filePath url encoded file path
      */
     public Future<?> handle(String bucket, String filePath) {
-        String urlDecodedBucket = URLDecoder.decode(bucket, StandardCharsets.UTF_8);
+        String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
 
