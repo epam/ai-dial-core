@@ -36,7 +36,7 @@ public abstract class AccessControlBaseController {
 
         ResourceDescription resource;
         try {
-            resource = ResourceDescription.from(ResourceType.FILE, urlDecodedBucket, decryptedBucket, filePath);
+            resource = ResourceDescription.fromEncoded(ResourceType.FILE, urlDecodedBucket, decryptedBucket, filePath);
         } catch (Exception ex) {
             String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(filePath);
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
