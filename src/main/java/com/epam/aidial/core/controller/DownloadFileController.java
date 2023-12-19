@@ -61,7 +61,7 @@ public class DownloadFileController extends AccessControlBaseController {
                 result.fail(e);
             }
         }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to fetch file with path %s/%s".formatted(resource.getBucketName(), resource.getRelativePath())));
+                "Failed to fetch file with path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath())));
 
         return result.future();
     }

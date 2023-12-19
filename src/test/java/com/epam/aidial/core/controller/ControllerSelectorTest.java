@@ -195,6 +195,23 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testSelectListMetadataFileController2() {
+        when(request.path()).thenReturn("/v1/files/metadata/bucket/fol%2Fder%201/");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertEquals(3, lambda.getCapturedArgCount());
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        Object arg3 = lambda.getCapturedArg(2);
+        assertInstanceOf(FileMetadataController.class, arg1);
+        assertEquals("bucket", arg2);
+        assertEquals("fol%2Fder%201/", arg3);
+    }
+
+    @Test
     public void testSelectDownloadFileController() {
         when(request.path()).thenReturn("/v1/files/bucket/folder1/file1.txt");
         when(request.method()).thenReturn(HttpMethod.GET);
@@ -209,6 +226,23 @@ public class ControllerSelectorTest {
         assertInstanceOf(DownloadFileController.class, arg1);
         assertEquals("bucket", arg2);
         assertEquals("folder1/file1.txt", arg3);
+    }
+
+    @Test
+    public void testSelectDownloadFileController2() {
+        when(request.path()).thenReturn("/v1/files/bucket/fol%2Fder%201/file1%23.txt");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertEquals(3, lambda.getCapturedArgCount());
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        Object arg3 = lambda.getCapturedArg(2);
+        assertInstanceOf(DownloadFileController.class, arg1);
+        assertEquals("bucket", arg2);
+        assertEquals("fol%2Fder%201/file1%23.txt", arg3);
     }
 
     @Test
@@ -246,6 +280,23 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testSelectUploadFileController2() {
+        when(request.path()).thenReturn("/v1/files/bucket/fol%2Fder%201/file1%23.txt");
+        when(request.method()).thenReturn(HttpMethod.PUT);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertEquals(3, lambda.getCapturedArgCount());
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        Object arg3 = lambda.getCapturedArg(2);
+        assertInstanceOf(UploadFileController.class, arg1);
+        assertEquals("bucket", arg2);
+        assertEquals("fol%2Fder%201/file1%23.txt", arg3);
+    }
+
+    @Test
     public void testSelectDeleteFileController() {
         when(request.path()).thenReturn("/v1/files/bucket/folder1/file1.txt");
         when(request.method()).thenReturn(HttpMethod.DELETE);
@@ -260,6 +311,23 @@ public class ControllerSelectorTest {
         assertInstanceOf(DeleteFileController.class, arg1);
         assertEquals("bucket", arg2);
         assertEquals("folder1/file1.txt", arg3);
+    }
+
+    @Test
+    public void testSelectDeleteFileController2() {
+        when(request.path()).thenReturn("/v1/files/bucket/fol%2Fder%201/file1%23.txt");
+        when(request.method()).thenReturn(HttpMethod.DELETE);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertEquals(3, lambda.getCapturedArgCount());
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        Object arg3 = lambda.getCapturedArg(2);
+        assertInstanceOf(DeleteFileController.class, arg1);
+        assertEquals("bucket", arg2);
+        assertEquals("fol%2Fder%201/file1%23.txt", arg3);
     }
 
     @Test

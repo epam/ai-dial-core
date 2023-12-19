@@ -29,7 +29,7 @@ public class DeleteFileController extends AccessControlBaseController {
                 storage.delete(absoluteFilePath);
                 return null;
             } catch (Exception ex) {
-                log.error("Failed to delete file " + absoluteFilePath, ex);
+                log.error("Failed to delete file  %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()), ex);
                 throw new RuntimeException(ex);
             }
         });

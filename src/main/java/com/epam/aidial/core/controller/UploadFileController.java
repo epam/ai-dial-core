@@ -43,7 +43,7 @@ public class UploadFileController extends AccessControlBaseController {
                             .onFailure(error -> {
                                 writeStream.abortUpload(error);
                                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getRelativePath()));
+                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
                             });
                 });
 
