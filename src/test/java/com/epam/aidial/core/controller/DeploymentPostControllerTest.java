@@ -272,11 +272,10 @@ public class DeploymentPostControllerTest {
         controller.handleRequestBody(requestBody);
 
         verify(context, times(2)).setRequestBody(assertArg(buffer -> {
-            if (buffer != requestBody) {
-                byte[] content = buffer.getBytes();
-                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
-                assertEquals(tree.get("model").asText(), "name");
-            }
+            assertEquals(requestBody, buffer);
+            byte[] content = buffer.getBytes();
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
+            assertEquals("name", tree.get("model").asText());
         }));
 
     }
