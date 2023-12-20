@@ -14,6 +14,7 @@ import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -30,6 +31,7 @@ import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
+import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Closeable;
@@ -53,15 +55,15 @@ public class AiDial {
 
     private BlobStorage storage;
 
-    private OpenTelemetrySdk openTelemetry;
-
     @VisibleForTesting
     void start() throws Exception {
+        System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
             settings = settings();
 
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
+            setupTracing(vertxOptions);
 
             vertx = Vertx.vertx(vertxOptions);
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
@@ -75,8 +77,7 @@ public class AiDial {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
-            openTelemetry = setupTracing();
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage, openTelemetry);
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -96,7 +97,6 @@ public class AiDial {
             close(client, HttpClient::close);
             close(vertx, Vertx::close);
             close(storage);
-            close(openTelemetry);
             log.info("Proxy stopped");
             LogConfigurator.unconfigure();
         } catch (Throwable e) {
@@ -219,11 +219,13 @@ public class AiDial {
         options.setMetricsOptions(micrometer);
     }
 
-    private static OpenTelemetrySdk setupTracing() {
+    private static void setupTracing(VertxOptions vertxOptions) {
         SdkTracerProvider sdkTracerProvider = SdkTracerProvider.builder().build();
-        return OpenTelemetrySdk.builder()
+        OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
                 .setTracerProvider(sdkTracerProvider)
                 .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
                 .build();
+
+        vertxOptions.setTracingOptions(new OpenTelemetryOptions(openTelemetry));
     }
 }

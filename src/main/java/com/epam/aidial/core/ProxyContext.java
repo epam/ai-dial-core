@@ -9,8 +9,6 @@ import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.context.Context;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -51,9 +49,6 @@ public class ProxyContext {
     private long proxyConnectTimestamp;
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
-    private Span parentSpan;
-    private Span currentSpan;
-    private Context tracingContext;
 
     public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims) {
         this.config = config;
