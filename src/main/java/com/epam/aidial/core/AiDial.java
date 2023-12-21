@@ -3,9 +3,7 @@ package com.epam.aidial.core;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.FileConfigStore;
 import com.epam.aidial.core.config.Storage;
-import com.epam.aidial.core.limiter.ApiKeyRateLimiter;
-import com.epam.aidial.core.limiter.CompositeRateLimiter;
-import com.epam.aidial.core.limiter.UserRateLimiter;
+import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
@@ -70,7 +68,7 @@ public class AiDial {
 
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"));
             LogStore logStore = new GfLogStore(vertx);
-            CompositeRateLimiter rateLimiter = new CompositeRateLimiter(new ApiKeyRateLimiter(), new UserRateLimiter());
+            RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
             AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
             if (storage == null) {

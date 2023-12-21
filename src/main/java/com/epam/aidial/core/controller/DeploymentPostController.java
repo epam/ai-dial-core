@@ -74,7 +74,7 @@ public class DeploymentPostController {
         }
 
         if (!proxy.getRateLimiter().register(context)) {
-            log.warn("Trace is not found by id");
+            log.warn("Trace is not found by id for request: method={}, uri={}", context.getRequest().method(), context.getRequest().uri());
             return respond(HttpStatus.BAD_REQUEST, "Trace is not found");
         }
 
@@ -253,7 +253,7 @@ public class DeploymentPostController {
             }
         }
 
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
 
         log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
@@ -307,7 +307,7 @@ public class DeploymentPostController {
      */
     private void handleResponseError(Throwable error) {
         log.warn("Can't send response to client: {}", error.getMessage());
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
     }
@@ -427,17 +427,17 @@ public class DeploymentPostController {
     }
 
     private Future<Void> respond(HttpStatus status, String errorMessage) {
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
         return context.respond(status, errorMessage);
     }
 
     private Future<Void> respond(HttpStatus status) {
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
         return context.respond(status);
     }
 
     private Future<Void> respond(HttpStatus status, Object result) {
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
         return context.respond(status, result);
     }
 }
