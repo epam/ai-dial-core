@@ -77,7 +77,7 @@ public class RateLimiter {
 
     public boolean register(ProxyContext context) {
         ReadableSpan span = (ReadableSpan) Span.current();
-        if (span.getSpanContext().isValid()) {
+        if (!span.getSpanContext().isValid()) {
             log.warn("Span {} has invalid context for request: method={}, uri={}", span, context.getRequest().method(), context.getRequest().uri());
             return false;
         }
@@ -118,7 +118,7 @@ public class RateLimiter {
 
     protected Entity getEntityFromTracingContext(ProxyContext context) {
         Span span = Span.current();
-        if (span.getSpanContext().isValid()) {
+        if (!span.getSpanContext().isValid()) {
             log.warn("Span {} has invalid context for request: method={}, uri={}", span, context.getRequest().method(), context.getRequest().uri());
             return null;
         }

@@ -226,7 +226,8 @@ public class DeploymentPostController {
                 .endOnFailure(false)
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
-                .onFailure(this::handleResponseError);
+                .onFailure(this::handleResponseError)
+                .onComplete(ignore -> proxy.getRateLimiter().unregister());
     }
 
     /**
@@ -252,8 +253,6 @@ public class DeploymentPostController {
                         context.getResponseBody().length());
             }
         }
-
-        proxy.getRateLimiter().unregister();
 
         log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
@@ -307,7 +306,6 @@ public class DeploymentPostController {
      */
     private void handleResponseError(Throwable error) {
         log.warn("Can't send response to client: {}", error.getMessage());
-        proxy.getRateLimiter().unregister();
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
     }
