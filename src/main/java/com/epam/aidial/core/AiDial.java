@@ -1,12 +1,14 @@
 package com.epam.aidial.core;
 
 import com.epam.aidial.core.config.ConfigStore;
+import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.config.FileConfigStore;
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
@@ -75,7 +77,8 @@ public class AiDial {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage);
+            EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage, encryptionService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

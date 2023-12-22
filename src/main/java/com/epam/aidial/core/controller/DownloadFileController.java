@@ -2,14 +2,13 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.InputStreamReader;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.io.MutableContentMetadata;
@@ -18,36 +17,20 @@ import org.jclouds.io.Payload;
 import java.io.IOException;
 
 @Slf4j
-@AllArgsConstructor
-public class DownloadFileController {
+public class DownloadFileController extends AccessControlBaseController {
 
-    private static final String PATH_TYPE_QUERY_PARAMETER = "path";
-    private static final String RELATIVE_PATH_TYPE = "relative";
+    public DownloadFileController(Proxy proxy, ProxyContext context) {
+        super(proxy, context);
+    }
 
-    static final String PURPOSE_FILE_QUERY_PARAMETER = "purpose";
-
-    static final String QUERY_METADATA_QUERY_PARAMETER_VALUE = "metadata";
-
-    private final Proxy proxy;
-    private final ProxyContext context;
-
-    /**
-     * Downloads file content from provided path.
-     * Path can be either absolute or relative.
-     * Path type determined by "path" query parameter which can be "absolute" or "relative"(default value)
-     *
-     * @param path file path; absolute or relative
-     */
-    public Future<?> download(String path) {
-        String pathType = context.getRequest().params().get(PATH_TYPE_QUERY_PARAMETER);
-        String absoluteFilePath;
-        if (RELATIVE_PATH_TYPE.equals(pathType)) {
-            absoluteFilePath = BlobStorageUtil.buildAbsoluteFilePath(context, path);
-        } else {
-            absoluteFilePath = path;
+    @Override
+    protected Future<?> handle(ResourceDescription resource) {
+        if (resource.isFolder()) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");
         }
+
         Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() ->
-                proxy.getStorage().load(BlobStorageUtil.removeLeadingPathSeparator(absoluteFilePath)));
+                proxy.getStorage().load(resource.getAbsoluteFilePath()));
 
         Promise<Void> result = Promise.promise();
         blobFuture.onSuccess(blob -> {
@@ -78,7 +61,7 @@ public class DownloadFileController {
                 result.fail(e);
             }
         }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to fetch file with path " + path));
+                "Failed to fetch file with path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath())));
 
         return result.future();
     }

@@ -49,7 +49,8 @@ Static settings are used on startup and cannot be changed while application is r
 | storage.credential                      | -                  |Blob storage secret key
 | storage.bucket                          | -                  |Blob storage bucket
 | storage.createBucket                    | false              |Indicates whether bucket should be created on start-up
-
+| encryption.password                     | -                  |Password used for AES encryption
+| encryption.salt                         | -                  |Salt used for AES encryption
 ### Dynamic settings
 Dynamic settings are stored in JSON files, specified via "config.files" static setting, and reloaded at interval, specified via "config.reload" static setting.
 Dynamic settings include:
