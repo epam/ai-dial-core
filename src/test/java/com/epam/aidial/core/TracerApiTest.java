@@ -64,19 +64,4 @@ public class TracerApiTest {
                 }));
     }
 
-    @Test
-    public void testInvalidTrace(Vertx vertx, VertxTestContext context) {
-        WebClient client = WebClient.create(vertx);
-        client.post(serverPort, "localhost", "/openai/deployments/app/chat/completions")
-                .putHeader("Api-key", "proxyKey2")
-                .putHeader("content-type", "application/json")
-                .putHeader("traceparent", "00-123-123")
-                .send(context.succeeding(response -> {
-                    context.verify(() -> {
-                        assertEquals(400, response.statusCode());
-                        context.completeNow();
-                    });
-                }));
-    }
-
 }

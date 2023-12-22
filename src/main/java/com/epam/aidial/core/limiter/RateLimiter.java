@@ -20,7 +20,7 @@ public class RateLimiter {
     private final ConcurrentHashMap<Id, RateLimit> rates = new ConcurrentHashMap<>();
 
     public void increase(ProxyContext context) {
-        Entity entity = getEntityFromTracingContext(context);
+        Entity entity = getEntityFromTracingContext();
         if (entity == null || entity.user()) {
             return;
         }
@@ -39,7 +39,7 @@ public class RateLimiter {
     }
 
     public RateLimitResult limit(ProxyContext context) {
-        Entity entity = getEntityFromTracingContext(context);
+        Entity entity = getEntityFromTracingContext();
         if (entity == null) {
             Span span = Span.current();
             log.warn("Entity is not found by traceId={}", span.getSpanContext().getTraceId());
@@ -77,10 +77,6 @@ public class RateLimiter {
 
     public boolean register(ProxyContext context) {
         ReadableSpan span = (ReadableSpan) Span.current();
-        if (!span.getParentSpanContext().isValid()) {
-            log.warn("Span has invalid parent context {} for request: method={}, uri={}", span.getParentSpanContext(), context.getRequest().method(), context.getRequest().uri());
-            return false;
-        }
         String traceId = span.getSpanContext().getTraceId();
         if (span.getParentSpanContext().isRemote()) {
             return traceIdToEntity.containsKey(traceId);
@@ -95,11 +91,8 @@ public class RateLimiter {
         }
     }
 
-    public void unregister(ProxyContext context) {
+    public void unregister() {
         ReadableSpan span = (ReadableSpan) Span.current();
-        if (!span.getParentSpanContext().isValid()) {
-            log.warn("Span has invalid parent context {} for request: method={}, uri={}", span.getParentSpanContext(), context.getRequest().method(), context.getRequest().uri());
-        }
         if (!span.getParentSpanContext().isRemote()) {
             String traceId = span.getSpanContext().getTraceId();
             traceIdToEntity.remove(traceId);
@@ -119,12 +112,8 @@ public class RateLimiter {
         return role.getLimits().get(deployment.getName());
     }
 
-    protected Entity getEntityFromTracingContext(ProxyContext context) {
+    protected Entity getEntityFromTracingContext() {
         ReadableSpan span = (ReadableSpan) Span.current();
-        if (!span.getParentSpanContext().isValid()) {
-            log.warn("Span has invalid parent context {} for request: method={}, uri={}", span.getParentSpanContext(), context.getRequest().method(), context.getRequest().uri());
-            return null;
-        }
         String traceId = span.getSpanContext().getTraceId();
         return traceIdToEntity.get(traceId);
     }

@@ -51,18 +51,6 @@ public class RateLimiterTest {
     @BeforeEach
     public void beforeEach() {
         rateLimiter = new RateLimiter();
-        when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
-    }
-
-    @Test
-    public void testRegister_InvalidParentContext() {
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, new Key(), IdentityProvider.CLAIMS_WITH_EMPTY_ROLES);
-        try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
-            mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(false);
-
-            assertFalse(rateLimiter.register(proxyContext));
-        }
     }
 
     @Test
@@ -73,7 +61,7 @@ public class RateLimiterTest {
         ProxyContext proxyContext = new ProxyContext(new Config(), request, new Key(), IdentityProvider.CLAIMS_WITH_EMPTY_ROLES);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(true);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
             when(parentSpanContext.isRemote()).thenReturn(true);
             when(spanContext.getTraceId()).thenReturn("unknown-trace-id");
@@ -90,13 +78,13 @@ public class RateLimiterTest {
         ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(true);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
             assertTrue(rateLimiter.register(proxyContext));
 
-            rateLimiter.unregister(proxyContext);
+            rateLimiter.unregister();
 
             // try to register again
             assertTrue(rateLimiter.register(proxyContext));
@@ -111,7 +99,7 @@ public class RateLimiterTest {
         ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(true);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
@@ -129,16 +117,10 @@ public class RateLimiterTest {
         ProxyContext proxyContext = new ProxyContext(new Config(), request, new Key(), IdentityProvider.CLAIMS_WITH_EMPTY_ROLES);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(false);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
-            RateLimitResult result = rateLimiter.limit(proxyContext);
-            assertNotNull(result);
-            assertEquals(HttpStatus.FORBIDDEN, result.status());
-            Mockito.reset(parentSpanContext);
-            when(parentSpanContext.isValid()).thenReturn(true);
             when(spanContext.getTraceId()).thenReturn("unknown-trace-id");
 
-            result = rateLimiter.limit(proxyContext);
+            RateLimitResult result = rateLimiter.limit(proxyContext);
 
             assertNotNull(result);
             assertEquals(HttpStatus.FORBIDDEN, result.status());
@@ -150,7 +132,7 @@ public class RateLimiterTest {
         ProxyContext proxyContext = new ProxyContext(new Config(), request, null, new ExtractedClaims("sub", Collections.emptyList(), "hash"));
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(true);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
@@ -172,7 +154,7 @@ public class RateLimiterTest {
         proxyContext.setDeployment(new Model());
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(true);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
@@ -202,7 +184,7 @@ public class RateLimiterTest {
         proxyContext.setDeployment(model);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(true);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
@@ -231,8 +213,9 @@ public class RateLimiterTest {
         proxyContext.setDeployment(model);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
-            when(parentSpanContext.isValid()).thenReturn(true);
             when(currentSpan.getSpanContext()).thenReturn(spanContext);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
+            when(currentSpan.getParentSpanContext()).thenReturn(parentSpanContext);
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
             assertTrue(rateLimiter.register(proxyContext));

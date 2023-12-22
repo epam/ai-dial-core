@@ -247,7 +247,7 @@ public class DeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
                 .onFailure(this::handleResponseError)
-                .onComplete(ignore -> proxy.getRateLimiter().unregister(context));
+                .onComplete(ignore -> proxy.getRateLimiter().unregister());
     }
 
     /**
@@ -463,17 +463,17 @@ public class DeploymentPostController {
     }
 
     private Future<Void> respond(HttpStatus status, String errorMessage) {
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
         return context.respond(status, errorMessage);
     }
 
     private Future<Void> respond(HttpStatus status) {
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
         return context.respond(status);
     }
 
     private Future<Void> respond(HttpStatus status, Object result) {
-        proxy.getRateLimiter().unregister(context);
+        proxy.getRateLimiter().unregister();
         return context.respond(status, result);
     }
 }
