@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.sdk.trace.ReadableSpan;
 import lombok.extern.slf4j.Slf4j;
 
@@ -78,8 +77,8 @@ public class RateLimiter {
 
     public boolean register(ProxyContext context) {
         ReadableSpan span = (ReadableSpan) Span.current();
-        if (!span.getSpanContext().isValid()) {
-            log.warn("Span {} has invalid context for request: method={}, uri={}", span, context.getRequest().method(), context.getRequest().uri());
+        if (!span.getParentSpanContext().isValid()) {
+            log.warn("Span has invalid parent context {} for request: method={}, uri={}", span.getParentSpanContext(), context.getRequest().method(), context.getRequest().uri());
             return false;
         }
         String traceId = span.getSpanContext().getTraceId();
@@ -98,8 +97,8 @@ public class RateLimiter {
 
     public void unregister(ProxyContext context) {
         ReadableSpan span = (ReadableSpan) Span.current();
-        if (!span.getSpanContext().isValid()) {
-            log.warn("Span {} has invalid context for request: method={}, uri={}", span, context.getRequest().method(), context.getRequest().uri());
+        if (!span.getParentSpanContext().isValid()) {
+            log.warn("Span has invalid parent context {} for request: method={}, uri={}", span.getParentSpanContext(), context.getRequest().method(), context.getRequest().uri());
         }
         if (!span.getParentSpanContext().isRemote()) {
             String traceId = span.getSpanContext().getTraceId();
@@ -121,9 +120,9 @@ public class RateLimiter {
     }
 
     protected Entity getEntityFromTracingContext(ProxyContext context) {
-        Span span = Span.current();
-        if (!span.getSpanContext().isValid()) {
-            log.warn("Span {} has invalid context for request: method={}, uri={}", span, context.getRequest().method(), context.getRequest().uri());
+        ReadableSpan span = (ReadableSpan) Span.current();
+        if (!span.getParentSpanContext().isValid()) {
+            log.warn("Span has invalid parent context {} for request: method={}, uri={}", span.getParentSpanContext(), context.getRequest().method(), context.getRequest().uri());
             return null;
         }
         String traceId = span.getSpanContext().getTraceId();

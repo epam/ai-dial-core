@@ -26,6 +26,7 @@ import java.util.HashMap;
 import static com.epam.aidial.core.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.util.HttpStatus.BAD_GATEWAY;
+import static com.epam.aidial.core.util.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.util.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
@@ -84,6 +85,23 @@ public class DeploymentPostControllerTest {
         controller.handle("app1", "api");
 
         verify(context).respond(eq(FORBIDDEN), anyString());
+    }
+
+    @Test
+    public void testTraceNotFound() {
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.register(any(ProxyContext.class))).thenReturn(false);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        Config config = new Config();
+        config.setApplications(new HashMap<>());
+        Application application = new Application();
+        application.setName("app1");
+        config.getApplications().put("app1", application);
+        when(context.getConfig()).thenReturn(config);
+
+        controller.handle("app1", "chat/completions");
+
+        verify(context).respond(eq(BAD_REQUEST), anyString());
     }
 
     @Test
