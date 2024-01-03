@@ -39,16 +39,6 @@
     "reload": 60000
   },
   "identityProviders": {
-    "idp1": {
-      "jwksUrl": "http://fakeJwksUrl:8080",
-      "rolePath": "roles1",
-      "issuerPattern": "issuer1"
-    },
-    "idp2": {
-      "jwksUrl": "http://fakeJwksUrl:8081",
-      "rolePath": "roles2",
-      "issuerPattern": "issuer1"
-    }
   },
   "storage": {
     "provider" : "s3",
