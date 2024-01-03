@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.epam.aidial.core.config.Config.ASSISTANT;
+
 @RequiredArgsConstructor
 public class AssistantController {
 
@@ -21,7 +23,7 @@ public class AssistantController {
         Config config = context.getConfig();
         Assistant assistant = config.getAssistant().getAssistants().get(assistantId);
 
-        if (assistant == null) {
+        if (assistant == null || ASSISTANT.equals(assistant.getName())) {
             return context.respond(HttpStatus.NOT_FOUND);
         }
 
@@ -38,7 +40,7 @@ public class AssistantController {
         List<AssistantData> assistants = new ArrayList<>();
 
         for (Assistant assistant : config.getAssistant().getAssistants().values()) {
-            if (DeploymentController.hasAccess(context, assistant)) {
+            if (!ASSISTANT.equals(assistant.getName()) && DeploymentController.hasAccess(context, assistant)) {
                 AssistantData data = createAssistant(assistant);
                 assistants.add(data);
             }
