@@ -79,13 +79,21 @@ public class RateLimiter {
         ReadableSpan span = (ReadableSpan) Span.current();
         String traceId = span.getSpanContext().getTraceId();
         if (span.getParentSpanContext().isRemote()) {
-            return traceIdToEntity.containsKey(traceId);
+            Entity entity = traceIdToEntity.get(traceId);
+            if (entity != null) {
+                if (entity.user()) {
+                    context.setUserHash(entity.name());
+                } else {
+                    context.setOriginalProject(entity.name());
+                }
+            }
+            return entity != null;
         } else {
             if (context.getKey() != null) {
                 Key key = context.getKey();
-                traceIdToEntity.put(traceId, new Entity(key.getKey(), List.of(key.getRole()), false));
+                traceIdToEntity.put(traceId, new Entity(key.getKey(), List.of(key.getRole()), key.getProject(), false));
             } else {
-                traceIdToEntity.put(traceId, new Entity(context.getUserSub(), context.getUserRoles(), true));
+                traceIdToEntity.put(traceId, new Entity(context.getUserSub(), context.getUserRoles(), context.getUserHash(), true));
             }
             return true;
         }
@@ -125,7 +133,7 @@ public class RateLimiter {
         }
     }
 
-    private record Entity(String id, List<String> roles, boolean user) {
+    private record Entity(String id, List<String> roles, String name, boolean user) {
         @Override
         public String toString() {
             return String.format("Entity: %s, resource: %s, user: %b", id, roles, user);
