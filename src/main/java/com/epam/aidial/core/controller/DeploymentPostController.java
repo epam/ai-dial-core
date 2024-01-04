@@ -61,7 +61,7 @@ public class DeploymentPostController {
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!StringUtils.containsIgnoreCase(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
-            return context.respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
+            return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
 
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
@@ -79,6 +79,11 @@ public class DeploymentPostController {
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
 
+        if (!proxy.getRateLimiter().register(context)) {
+            log.warn("Trace is not found by id for request: method={}, uri={}", context.getRequest().method(), context.getRequest().uri());
+            return respond(HttpStatus.BAD_REQUEST, "Trace is not found");
+        }
+
         context.setDeployment(deployment);
 
         RateLimitResult rateLimitResult;
@@ -88,7 +93,7 @@ public class DeploymentPostController {
             rateLimitError.getError().setCode(String.valueOf(rateLimitResult.status().getCode()));
             rateLimitError.getError().setMessage(rateLimitResult.errorMessage());
             log.error("Rate limit error {}. Key: {}. User sub: {}", rateLimitResult.errorMessage(), context.getProject(), context.getUserSub());
-            return context.respond(rateLimitResult.status(), rateLimitError);
+            return respond(rateLimitResult.status(), rateLimitError);
         }
 
         log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getProject(),
@@ -100,7 +105,7 @@ public class DeploymentPostController {
 
         if (!endpointRoute.hasNext()) {
             log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), deploymentId, context.getUserSub());
-            return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+            return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
         return context.getRequest().body()
@@ -115,7 +120,7 @@ public class DeploymentPostController {
 
         if (!route.hasNext()) {
             log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), context.getDeployment().getName(), context.getUserSub());
-            return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+            return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
         Upstream upstream = route.next();
@@ -146,11 +151,11 @@ public class DeploymentPostController {
                 context.setRequestBody(enhancedRequest.getKey());
                 context.setRequestHeaders(enhancedRequest.getValue());
             } catch (HttpException e) {
-                context.respond(e.getStatus(), e.getMessage());
+                respond(e.getStatus(), e.getMessage());
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
                 return;
             } catch (Throwable e) {
-                context.respond(HttpStatus.BAD_REQUEST);
+                respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't enhance assistant request: {}", e.getMessage());
                 return;
             }
@@ -241,7 +246,8 @@ public class DeploymentPostController {
                 .endOnFailure(false)
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
-                .onFailure(this::handleResponseError);
+                .onFailure(this::handleResponseError)
+                .onComplete(ignore -> proxy.getRateLimiter().unregister());
     }
 
     /**
@@ -288,7 +294,7 @@ public class DeploymentPostController {
      */
     private void handleRequestBodyError(Throwable error) {
         log.warn("Failed to receive client body: {}", error.getMessage());
-        context.respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
     /**
@@ -300,7 +306,7 @@ public class DeploymentPostController {
         String uri = buildUri(context);
         log.warn("Can't connect to origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
                 deploymentName, uri, error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
+        respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
     }
 
     /**
@@ -312,7 +318,7 @@ public class DeploymentPostController {
         SocketAddress proxyAddress = context.getProxyRequest().connection().remoteAddress();
         log.warn("Proxy received response error from origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
                 deploymentName, proxyAddress, error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
+        respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
     }
 
     /**
@@ -431,8 +437,7 @@ public class DeploymentPostController {
             tree.remove("model");
             tree.put("model", overrideName);
 
-            Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
-            return updatedBody;
+            return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
         }
     }
 
@@ -455,5 +460,20 @@ public class DeploymentPostController {
 
     private static boolean isBaseAssistant(Deployment deployment) {
         return deployment.getName().equals(Config.ASSISTANT);
+    }
+
+    private Future<Void> respond(HttpStatus status, String errorMessage) {
+        proxy.getRateLimiter().unregister();
+        return context.respond(status, errorMessage);
+    }
+
+    private Future<Void> respond(HttpStatus status) {
+        proxy.getRateLimiter().unregister();
+        return context.respond(status);
+    }
+
+    private Future<Void> respond(HttpStatus status, Object result) {
+        proxy.getRateLimiter().unregister();
+        return context.respond(status, result);
     }
 }

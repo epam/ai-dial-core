@@ -14,6 +14,11 @@ import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -26,6 +31,7 @@ import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
+import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Closeable;
@@ -51,11 +57,13 @@ public class AiDial {
 
     @VisibleForTesting
     void start() throws Exception {
+        System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
             settings = settings();
 
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
+            setupTracing(vertxOptions);
 
             vertx = Vertx.vertx(vertxOptions);
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
@@ -210,5 +218,15 @@ public class AiDial {
         micrometer.setMicrometerRegistry(new OtlpMeterRegistry());
 
         options.setMetricsOptions(micrometer);
+    }
+
+    private static void setupTracing(VertxOptions vertxOptions) {
+        SdkTracerProvider sdkTracerProvider = SdkTracerProvider.builder().build();
+        OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
+                .setTracerProvider(sdkTracerProvider)
+                .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
+                .build();
+
+        vertxOptions.setTracingOptions(new OpenTelemetryOptions(openTelemetry));
     }
 }

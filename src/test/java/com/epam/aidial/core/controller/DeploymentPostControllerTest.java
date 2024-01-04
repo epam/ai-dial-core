@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
@@ -31,6 +32,7 @@ import java.util.Set;
 import static com.epam.aidial.core.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.util.HttpStatus.BAD_GATEWAY;
+import static com.epam.aidial.core.util.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.util.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.util.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
@@ -58,6 +60,9 @@ public class DeploymentPostControllerTest {
     @Mock
     private HttpServerRequest request;
 
+    @Mock
+    private RateLimiter rateLimiter;
+
     @InjectMocks
     private DeploymentPostController controller;
 
@@ -69,6 +74,7 @@ public class DeploymentPostControllerTest {
     @Test
     public void testUnsupportedContentType() {
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
 
         controller.handle("app1", "api");
 
@@ -107,7 +113,26 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    public void testTraceNotFound() {
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.register(any(ProxyContext.class))).thenReturn(false);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        Config config = new Config();
+        config.setApplications(new HashMap<>());
+        Application application = new Application();
+        application.setName("app1");
+        config.getApplications().put("app1", application);
+        when(context.getConfig()).thenReturn(config);
+
+        controller.handle("app1", "chat/completions");
+
+        verify(context).respond(eq(BAD_REQUEST), anyString());
+    }
+
+    @Test
     public void testNoRoute() {
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(rateLimiter.register(any(ProxyContext.class))).thenReturn(true);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
