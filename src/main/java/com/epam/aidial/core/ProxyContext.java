@@ -49,10 +49,15 @@ public class ProxyContext {
     private long proxyConnectTimestamp;
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
+    // the project belongs to API key which initiated request
+    private String originalProject;
 
     public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims) {
         this.config = config;
         this.key = key;
+        if (key != null) {
+            originalProject = key.getProject();
+        }
         this.request = request;
         this.response = request.response();
         this.requestTimestamp = System.currentTimeMillis();

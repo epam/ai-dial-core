@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
@@ -27,6 +26,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -67,6 +67,7 @@ public class RateLimiterTest {
             when(spanContext.getTraceId()).thenReturn("unknown-trace-id");
 
             assertFalse(rateLimiter.register(proxyContext));
+            assertNull(proxyContext.getOriginalProject());
         }
     }
 
@@ -75,6 +76,7 @@ public class RateLimiterTest {
         Key key = new Key();
         key.setRole("role");
         key.setKey("key");
+        key.setProject("project");
         ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
@@ -83,11 +85,13 @@ public class RateLimiterTest {
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
             assertTrue(rateLimiter.register(proxyContext));
+            assertEquals("project", proxyContext.getOriginalProject());
 
             rateLimiter.unregister();
 
             // try to register again
             assertTrue(rateLimiter.register(proxyContext));
+            assertEquals("project", proxyContext.getOriginalProject());
         }
     }
 
@@ -96,6 +100,7 @@ public class RateLimiterTest {
         Key key = new Key();
         key.setRole("role");
         key.setKey("key");
+        key.setProject("project");
         ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES);
         try (MockedStatic<Span> mockedSpan = mockStatic(Span.class)) {
             mockedSpan.when(Span::current).thenReturn(currentSpan);
@@ -104,11 +109,13 @@ public class RateLimiterTest {
             when(spanContext.getTraceId()).thenReturn("trace-id");
 
             assertTrue(rateLimiter.register(proxyContext));
+            assertEquals("project", proxyContext.getOriginalProject());
 
             // make a call with parent context
             when(parentSpanContext.isRemote()).thenReturn(true);
 
             assertTrue(rateLimiter.register(proxyContext));
+            assertEquals("project", proxyContext.getOriginalProject());
         }
     }
 
