@@ -401,6 +401,7 @@ public class DeploymentPostController {
 
                 String url = addon.getEndpoint();
                 addons.addObject().put("url", url);
+                addons.addObject().put("name", name);
                 if (addon.getToken() != null && !addon.getToken().isBlank()) {
                     headers.put("x-addon-token-" + addonIndex, addon.getToken());
                 }
