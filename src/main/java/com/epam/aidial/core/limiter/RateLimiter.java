@@ -19,7 +19,7 @@ public class RateLimiter {
     private final ConcurrentHashMap<Id, RateLimit> rates = new ConcurrentHashMap<>();
 
     public void increase(ProxyContext context) {
-        Entity entity = getEntityFromTracingContext();
+        Entity entity = getEntityFromTracingContext(context);
         if (entity == null || entity.user()) {
             return;
         }
@@ -38,7 +38,7 @@ public class RateLimiter {
     }
 
     public RateLimitResult limit(ProxyContext context) {
-        Entity entity = getEntityFromTracingContext();
+        Entity entity = getEntityFromTracingContext(context);
         if (entity == null) {
             Span span = Span.current();
             log.warn("Entity is not found by traceId={}", span.getSpanContext().getTraceId());
@@ -78,7 +78,7 @@ public class RateLimiter {
      * Returns <code>true</code> if the trace is already registered otherwise <code>false</code>.
      */
     public boolean register(ProxyContext context) {
-        String traceId = getTraceId();
+        String traceId = context.getTraceId();
         Entity entity = traceIdToEntity.get(traceId);
         if (entity != null) {
             // update context with the original requester
@@ -98,8 +98,8 @@ public class RateLimiter {
         return entity != null;
     }
 
-    public void unregister() {
-        String traceId = getTraceId();
+    public void unregister(ProxyContext context) {
+        String traceId = context.getTraceId();
         traceIdToEntity.remove(traceId);
     }
 
@@ -116,14 +116,9 @@ public class RateLimiter {
         return role.getLimits().get(deployment.getName());
     }
 
-    private Entity getEntityFromTracingContext() {
-        String traceId = getTraceId();
+    private Entity getEntityFromTracingContext(ProxyContext context) {
+        String traceId = context.getTraceId();
         return traceIdToEntity.get(traceId);
-    }
-
-    private static String getTraceId() {
-        Span span = Span.current();
-        return span.getSpanContext().getTraceId();
     }
 
     private record Id(String key, String resource, boolean user) {

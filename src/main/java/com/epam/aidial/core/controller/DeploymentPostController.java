@@ -477,7 +477,7 @@ public class DeploymentPostController {
 
     private void unregister() {
         if (unregisterTrace) {
-            proxy.getRateLimiter().unregister();
+            proxy.getRateLimiter().unregister(context);
         }
     }
 }
