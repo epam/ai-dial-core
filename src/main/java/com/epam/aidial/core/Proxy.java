@@ -73,7 +73,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void handleError(Throwable error, HttpServerRequest request) {
-        log.warn("Can't handle request: {}", error.getMessage());
+        log.error("Can't handle request", error);
         respond(request, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
