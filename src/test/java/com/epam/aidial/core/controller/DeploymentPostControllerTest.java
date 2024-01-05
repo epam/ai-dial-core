@@ -74,7 +74,6 @@ public class DeploymentPostControllerTest {
     @Test
     public void testUnsupportedContentType() {
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
-        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
 
         controller.handle("app1", "api");
 
@@ -110,23 +109,6 @@ public class DeploymentPostControllerTest {
         controller.handle("unknown-app", "chat/completions");
 
         verify(context).respond(eq(NOT_FOUND), anyString());
-    }
-
-    @Test
-    public void testTraceNotFound() {
-        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.register(any(ProxyContext.class))).thenReturn(false);
-        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
-        Config config = new Config();
-        config.setApplications(new HashMap<>());
-        Application application = new Application();
-        application.setName("app1");
-        config.getApplications().put("app1", application);
-        when(context.getConfig()).thenReturn(config);
-
-        controller.handle("app1", "chat/completions");
-
-        verify(context).respond(eq(BAD_REQUEST), anyString());
     }
 
     @Test

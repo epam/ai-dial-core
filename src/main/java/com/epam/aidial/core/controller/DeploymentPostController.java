@@ -57,6 +57,7 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
+    private boolean unregisterTrace;
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -79,10 +80,7 @@ public class DeploymentPostController {
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
 
-        if (!proxy.getRateLimiter().register(context)) {
-            log.warn("Trace is not found by id for request: method={}, uri={}", context.getRequest().method(), context.getRequest().uri());
-            return respond(HttpStatus.BAD_REQUEST, "Trace is not found");
-        }
+        unregisterTrace = !proxy.getRateLimiter().register(context);
 
         context.setDeployment(deployment);
 
@@ -247,7 +245,7 @@ public class DeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
                 .onFailure(this::handleResponseError)
-                .onComplete(ignore -> proxy.getRateLimiter().unregister());
+                .onComplete(ignore -> unregister());
     }
 
     /**
@@ -463,17 +461,23 @@ public class DeploymentPostController {
     }
 
     private Future<Void> respond(HttpStatus status, String errorMessage) {
-        proxy.getRateLimiter().unregister();
+        unregister();
         return context.respond(status, errorMessage);
     }
 
     private Future<Void> respond(HttpStatus status) {
-        proxy.getRateLimiter().unregister();
+        unregister();
         return context.respond(status);
     }
 
     private Future<Void> respond(HttpStatus status, Object result) {
-        proxy.getRateLimiter().unregister();
+        unregister();
         return context.respond(status, result);
+    }
+
+    private void unregister() {
+        if (unregisterTrace) {
+            proxy.getRateLimiter().unregister();
+        }
     }
 }

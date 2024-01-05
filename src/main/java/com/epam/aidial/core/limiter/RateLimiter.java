@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.sdk.trace.ReadableSpan;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -75,19 +74,19 @@ public class RateLimiter {
         return rate.update(timestamp, limit);
     }
 
+    /**
+     * Returns <code>true</code> if the trace is already registered otherwise <code>false</code>.
+     */
     public boolean register(ProxyContext context) {
-        ReadableSpan span = (ReadableSpan) Span.current();
-        String traceId = span.getSpanContext().getTraceId();
-        if (span.getParentSpanContext().isRemote()) {
-            Entity entity = traceIdToEntity.get(traceId);
-            if (entity != null) {
-                if (entity.user()) {
-                    context.setUserHash(entity.name());
-                } else {
-                    context.setOriginalProject(entity.name());
-                }
+        String traceId = getTraceId();
+        Entity entity = traceIdToEntity.get(traceId);
+        if (entity != null) {
+            // update context with the original requester
+            if (entity.user()) {
+                context.setUserHash(entity.name());
+            } else {
+                context.setOriginalProject(entity.name());
             }
-            return entity != null;
         } else {
             if (context.getKey() != null) {
                 Key key = context.getKey();
@@ -95,16 +94,13 @@ public class RateLimiter {
             } else {
                 traceIdToEntity.put(traceId, new Entity(context.getUserSub(), context.getUserRoles(), context.getUserHash(), true));
             }
-            return true;
         }
+        return entity != null;
     }
 
     public void unregister() {
-        ReadableSpan span = (ReadableSpan) Span.current();
-        if (!span.getParentSpanContext().isRemote()) {
-            String traceId = span.getSpanContext().getTraceId();
-            traceIdToEntity.remove(traceId);
-        }
+        String traceId = getTraceId();
+        traceIdToEntity.remove(traceId);
     }
 
     private Limit getLimitByApiKey(ProxyContext context, Entity entity) {
@@ -120,10 +116,14 @@ public class RateLimiter {
         return role.getLimits().get(deployment.getName());
     }
 
-    protected Entity getEntityFromTracingContext() {
-        ReadableSpan span = (ReadableSpan) Span.current();
-        String traceId = span.getSpanContext().getTraceId();
+    private Entity getEntityFromTracingContext() {
+        String traceId = getTraceId();
         return traceIdToEntity.get(traceId);
+    }
+
+    private static String getTraceId() {
+        Span span = Span.current();
+        return span.getSpanContext().getTraceId();
     }
 
     private record Id(String key, String resource, boolean user) {
