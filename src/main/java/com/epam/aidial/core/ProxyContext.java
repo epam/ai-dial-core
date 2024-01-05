@@ -31,6 +31,7 @@ public class ProxyContext {
     private final Key key;
     private final HttpServerRequest request;
     private final HttpServerResponse response;
+    private final String traceId;
 
     private Deployment deployment;
     private String userSub;
@@ -49,10 +50,15 @@ public class ProxyContext {
     private long proxyConnectTimestamp;
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
+    // the project belongs to API key which initiated request
+    private String originalProject;
 
-    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims) {
+    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims, String traceId) {
         this.config = config;
         this.key = key;
+        if (key != null) {
+            originalProject = key.getProject();
+        }
         this.request = request;
         this.response = request.response();
         this.requestTimestamp = System.currentTimeMillis();
@@ -62,6 +68,7 @@ public class ProxyContext {
             this.userHash = extractedClaims.userHash();
             this.userSub = extractedClaims.sub();
         }
+        this.traceId = traceId;
     }
 
     public Future<Void> respond(HttpStatus status) {
