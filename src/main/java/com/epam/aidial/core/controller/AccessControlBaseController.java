@@ -13,17 +13,16 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
 
-    private static final String DEFAULT_RESOURCE_ERROR_MESSAGE = "Invalid file url provided %s";
+    private static final String DEFAULT_RESOURCE_ERROR_MESSAGE = "Invalid resource url provided %s";
 
     final Proxy proxy;
     final ProxyContext context;
 
-
     /**
      * @param bucket url encoded bucket name
-     * @param filePath url encoded file path
+     * @param path url encoded resource path
      */
-    public Future<?> handle(String bucket, String filePath) {
+    public Future<?> handle(String folder, String bucket, String path) {
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
@@ -34,9 +33,10 @@ public abstract class AccessControlBaseController {
 
         ResourceDescription resource;
         try {
-            resource = ResourceDescription.fromEncoded(ResourceType.FILE, urlDecodedBucket, decryptedBucket, filePath);
+            ResourceType type = ResourceType.fromFolder(folder);
+            resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
         } catch (Exception ex) {
-            String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(filePath);
+            String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 

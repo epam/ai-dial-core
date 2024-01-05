@@ -2,6 +2,7 @@ package com.epam.aidial.core.config;
 
 import lombok.Data;
 
+import java.util.Properties;
 import javax.annotation.Nullable;
 
 @Data
@@ -32,4 +33,6 @@ public class Storage {
      * Indicates whether bucket should be created on start up
      */
     boolean createBucket;
+
+    Properties overrides;
 }

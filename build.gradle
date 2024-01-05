@@ -22,6 +22,13 @@ repositories {
     mavenCentral()
 }
 
+configurations.all {
+    resolutionStrategy {
+        force 'org.slf4j:slf4j-api:1.7.32'
+        force 'com.google.code.gson:gson:2.8.9'
+    }
+}
+
 dependencies {
     implementation 'com.google.protobuf:protobuf-java:3.19.6'
     implementation 'org.slf4j:slf4j-api:1.7.32'
@@ -40,6 +47,7 @@ dependencies {
     implementation 'com.auth0:java-jwt:4.4.0'
     implementation 'com.auth0:jwks-rsa:0.22.1'
     implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
+    implementation 'org.redisson:redisson:3.25.1'
 
     runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.0'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
@@ -49,6 +57,7 @@ dependencies {
     testImplementation 'org.apache.jclouds.api:filesystem:2.5.0'
     testImplementation 'org.mockito:mockito-core:5.7.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
+    testImplementation 'com.github.lansheng228:embedded-redis:7.0.9'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
 }
 

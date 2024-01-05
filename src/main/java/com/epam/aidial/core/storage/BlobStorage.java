@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.FileMetadataBase;
 import com.epam.aidial.core.data.FolderMetadata;
-import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
@@ -27,7 +26,6 @@ import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 
 @Slf4j
 public class BlobStorage implements Closeable {
@@ -37,17 +35,12 @@ public class BlobStorage implements Closeable {
     private final String bucketName;
 
     public BlobStorage(Storage config) {
-        this(config, null);
-    }
-
-    @VisibleForTesting
-    public BlobStorage(Storage config, Properties overrides) {
         ContextBuilder builder = ContextBuilder.newBuilder(config.getProvider());
         if (config.getEndpoint() != null) {
             builder.endpoint(config.getEndpoint());
         }
-        if (overrides != null) {
-            builder.overrides(overrides);
+        if (config.getOverrides() != null) {
+            builder.overrides(config.getOverrides());
         }
         builder.credentials(config.getIdentity(), config.getCredential());
         this.storeContext = builder.buildView(BlobStoreContext.class);
@@ -116,6 +109,30 @@ public class BlobStorage implements Closeable {
     }
 
     /**
+     * Upload file in a single request
+     *
+     * @param absoluteFilePath absolute path according to the bucket, for example: Users/user1/files/input/file.txt
+     * @param contentType      MIME type of the content, for example: text/csv
+     * @param contentEncoding  content encoding, e.g. gzip/brotli/deflate
+     * @param data             whole content data
+     */
+    public void store(String absoluteFilePath,
+                      String contentType,
+                      String contentEncoding,
+                      Map<String, String> metadata,
+                      byte[] data) {
+        Blob blob = blobStore.blobBuilder(absoluteFilePath)
+                .payload(data)
+                .contentLength(data.length)
+                .contentType(contentType)
+                .contentEncoding(contentEncoding)
+                .userMetadata(metadata)
+                .build();
+
+        blobStore.putBlob(bucketName, blob);
+    }
+
+    /**
      * Load file content from blob store
      *
      * @param filePath absolute file path, for example: Users/user1/files/inputs/data.csv
@@ -152,6 +169,19 @@ public class BlobStorage implements Closeable {
             }
             return null;
         }
+    }
+
+    public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults) {
+        ListContainerOptions options = new ListContainerOptions()
+                .prefix(absoluteFilePath)
+                .maxResults(maxResults)
+                .delimiter(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (afterMarker != null) {
+            options.afterMarker(afterMarker);
+        }
+
+        return blobStore.list(bucketName, options);
     }
 
     @Override

@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Features;
 import io.vertx.core.http.HttpMethod;
 import lombok.experimental.UtilityClass;
 
@@ -36,8 +37,9 @@ public class ControllerSelector {
     private static final Pattern PATTERN_BUCKET = Pattern.compile("/v1/bucket");
 
     private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files/([a-zA-Z0-9]+)/(.*)");
-
     private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("/v1/files/metadata/([a-zA-Z0-9]+)/(.*)");
+
+    private static final Pattern PATTERN_RESOURCE = Pattern.compile("/v1/(conversations|prompts)/([a-zA-Z0-9]+)/(.*)");
 
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");
@@ -135,7 +137,7 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             FileMetadataController controller = new FileMetadataController(proxy, context);
-            return () -> controller.handle(bucket, filePath);
+            return () -> controller.handle("files", bucket, filePath);
         }
 
         match = match(PATTERN_FILES, path);
@@ -143,7 +145,16 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             DownloadFileController controller = new DownloadFileController(proxy, context);
-            return () -> controller.handle(bucket, filePath);
+            return () -> controller.handle("files", bucket, filePath);
+        }
+
+        match = match(PATTERN_RESOURCE, path);
+        if (match != null) {
+            String folder = match.group(1);
+            String bucket = match.group(2);
+            String relativePath = match.group(3);
+            ResourceController controller = new ResourceController(proxy, context);
+            return () -> controller.handle(folder, bucket, relativePath);
         }
 
         match = match(PATTERN_BUCKET, decodedPath);
@@ -200,8 +211,8 @@ public class ControllerSelector {
 
             Function<Deployment, String> getter = (model) -> {
                 return Optional.ofNullable(model)
-                        .map(d -> d.getFeatures())
-                        .map(t -> t.getTruncatePromptEndpoint())
+                        .map(Deployment::getFeatures)
+                        .map(Features::getTruncatePromptEndpoint)
                         .orElse(null);
             };
 
@@ -218,7 +229,16 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             DeleteFileController controller = new DeleteFileController(proxy, context);
-            return () -> controller.handle(bucket, filePath);
+            return () -> controller.handle("files", bucket, filePath);
+        }
+
+        match = match(PATTERN_RESOURCE, path);
+        if (match != null) {
+            String folder = match.group(1);
+            String bucket = match.group(2);
+            String relativePath = match.group(3);
+            ResourceController controller = new ResourceController(proxy, context);
+            return () -> controller.handle(folder, bucket, relativePath);
         }
 
         return null;
@@ -230,7 +250,16 @@ public class ControllerSelector {
             String bucket = match.group(1);
             String filePath = match.group(2);
             UploadFileController controller = new UploadFileController(proxy, context);
-            return () -> controller.handle(bucket, filePath);
+            return () -> controller.handle("files", bucket, filePath);
+        }
+
+        match = match(PATTERN_RESOURCE, path);
+        if (match != null) {
+            String folder = match.group(1);
+            String bucket = match.group(2);
+            String relativePath = match.group(3);
+            ResourceController controller = new ResourceController(proxy, context);
+            return () -> controller.handle(folder, bucket, relativePath);
         }
 
         return null;
