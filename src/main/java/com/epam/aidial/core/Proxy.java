@@ -14,6 +14,7 @@ import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import io.opentelemetry.api.trace.Span;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -115,6 +116,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         Config config = configStore.load();
         String apiKey = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        String traceId = Span.current().getSpanContext().getTraceId();
         log.debug("Authorization header: {}", authorization);
         Key key;
         if (apiKey == null && authorization == null) {
@@ -143,7 +145,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         extractedClaims.onComplete(result -> {
             try {
                 if (result.succeeded()) {
-                    onExtractClaimsSuccess(result.result(), config, request, key);
+                    onExtractClaimsSuccess(result.result(), config, request, key, traceId);
                 } else {
                     onExtractClaimsFailure(result.cause(), request);
                 }
@@ -161,8 +163,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
-                                        HttpServerRequest request, Key key) throws Exception {
-        ProxyContext context = new ProxyContext(config, request, key, extractedClaims);
+                                        HttpServerRequest request, Key key, String traceId) throws Exception {
+        ProxyContext context = new ProxyContext(config, request, key, extractedClaims, traceId);
         Controller controller = ControllerSelector.select(this, context);
         controller.handle();
     }
