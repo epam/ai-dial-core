@@ -19,7 +19,7 @@ public class Config {
     private Map<String, Application> applications = Map.of();
     private Assistants assistant = new Assistants();
     private Map<String, Key> keys = new HashMap<>();
-    private Map<String, Role> roles = Map.of();
+    private Map<String, Role> roles = new HashMap<>();
 
 
     public Deployment selectDeployment(String deploymentId) {

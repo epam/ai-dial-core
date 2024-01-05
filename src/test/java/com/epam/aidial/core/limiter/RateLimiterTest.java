@@ -56,6 +56,23 @@ public class RateLimiterTest {
     }
 
     @Test
+    public void testRegister_SuccessWithNullRole() {
+        Key key = new Key();
+        key.setKey("key");
+        key.setProject("project");
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+
+        assertFalse(rateLimiter.register(proxyContext));
+        assertEquals("project", proxyContext.getOriginalProject());
+
+        rateLimiter.unregister(proxyContext);
+
+        // try to register again
+        assertFalse(rateLimiter.register(proxyContext));
+        assertEquals("project", proxyContext.getOriginalProject());
+    }
+
+    @Test
     public void testRegister_SuccessParentSpanExists() {
         Key key = new Key();
         key.setRole("role");
@@ -97,6 +114,25 @@ public class RateLimiterTest {
         Key key = new Key();
         key.setRole("role");
         key.setKey("key");
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        proxyContext.setDeployment(new Model());
+
+
+        assertFalse(rateLimiter.register(proxyContext));
+
+        RateLimitResult result = rateLimiter.limit(proxyContext);
+
+        assertNotNull(result);
+        assertEquals(HttpStatus.FORBIDDEN, result.status());
+
+    }
+
+
+    @Test
+    public void testLimit_ApiKeyLimitNotFoundWithNullRole() {
+        Key key = new Key();
+        key.setKey("key");
+        key.setProject("project");
         ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
         proxyContext.setDeployment(new Model());
 
