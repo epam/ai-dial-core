@@ -215,7 +215,7 @@ class ResourceApiTest {
     @SneakyThrows
     private Response send(HttpMethod method, String uri, String body) {
         CompletableFuture<Response> result = new CompletableFuture<>();
-        dial.getClient().request(method, dial.getServer().actualPort(), "localhost", uri)
+        dial.getClient().request(method, dial.getServer().actualPort(), "127.0.0.1", uri)
                 .compose(request -> {
                     request.headers().add("api-key", "proxyKey1");
                     return request.send(body);
