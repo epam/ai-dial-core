@@ -1,0 +1,15 @@
+name: E2E tests trigger
+
+on:
+  registry_package:
+
+jobs:
+  e2e-tests:
+    if: ${{ github.event.registry_package.package_version.container_metadata.tag.name == 'development' }}
+    uses: epam/ai-dial-ci/.github/workflows/e2e-test.yml@1.1.0
+    with:
+      gitlab-project-id: "1843"
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_ACCESS_TOKEN: ${{ secrets.DEPLOY_ACCESS_TOKEN }}
+      DEPLOY_TRIGGER_TOKEN: ${{ secrets.DEPLOY_TRIGGER_TOKEN }}
