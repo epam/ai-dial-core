@@ -9,6 +9,8 @@ import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -31,7 +33,7 @@ public class ProxyContext {
     private final Key key;
     private final HttpServerRequest request;
     private final HttpServerResponse response;
-    private final String traceId;
+    private final Span span;
 
     private Deployment deployment;
     private String userSub;
@@ -53,7 +55,7 @@ public class ProxyContext {
     // the project belongs to API key which initiated request
     private String originalProject;
 
-    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims, String traceId) {
+    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims, Span span) {
         this.config = config;
         this.key = key;
         if (key != null) {
@@ -68,7 +70,7 @@ public class ProxyContext {
             this.userHash = extractedClaims.userHash();
             this.userSub = extractedClaims.sub();
         }
-        this.traceId = traceId;
+        this.span = span;
     }
 
     public Future<Void> respond(HttpStatus status) {
@@ -89,5 +91,17 @@ public class ProxyContext {
 
     public String getProject() {
         return key == null ? null : key.getProject();
+    }
+
+    public String getTraceId() {
+        return span.getSpanContext().getTraceId();
+    }
+
+    public String getCurrentSpanId() {
+        return span.getSpanContext().getSpanId();
+    }
+
+    public String getParentSpanId() {
+        return ((ReadableSpan) span).getParentSpanContext().getSpanId();
     }
 }

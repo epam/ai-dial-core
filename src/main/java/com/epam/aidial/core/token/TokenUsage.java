@@ -8,6 +8,15 @@ public class TokenUsage {
     private long promptTokens;
     private long totalTokens;
 
+    public void increase(TokenUsage usage) {
+        if (usage == null) {
+            return;
+        }
+        completionTokens += usage.completionTokens;
+        promptTokens += usage.promptTokens;
+        totalTokens += usage.totalTokens;
+    }
+
     @Override
     public String toString() {
         return "completion=" + completionTokens

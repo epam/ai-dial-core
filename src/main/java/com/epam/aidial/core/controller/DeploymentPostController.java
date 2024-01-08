@@ -255,7 +255,6 @@ public class DeploymentPostController {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        proxy.getLogStore().save(context);
 
         if (context.getDeployment() instanceof Model && context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
             TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
@@ -271,6 +270,9 @@ public class DeploymentPostController {
                         context.getResponseBody().length());
             }
         }
+
+        proxy.getRateLimiter().calculateTokenUsage(context);
+        proxy.getLogStore().save(context);
 
         log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
