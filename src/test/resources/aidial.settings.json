@@ -1,5 +1,6 @@
 {
   "vertx": {
+    "workerPoolSize": 32,
     "metricsOptions": {
       "enabled": false,
       "jvmMetricsEnabled": false,
@@ -48,5 +49,13 @@
   "encryption": {
     "password": "password",
     "salt": "salt"
+  },
+  "resources": {
+    "maxSize" : 1048576,
+    "syncPeriod": 60000,
+    "syncDelay": 120000,
+    "syncBatch": 4096,
+    "cacheExpiration": 300000,
+    "compressionMinSize": 256
   }
 }

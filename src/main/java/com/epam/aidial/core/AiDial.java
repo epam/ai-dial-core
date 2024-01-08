@@ -9,6 +9,7 @@ import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
@@ -32,9 +33,14 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
 import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.Redisson;
+import org.redisson.api.RedissonClient;
+import org.redisson.config.Config;
+import org.redisson.config.ConfigSupport;
 
-import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -46,21 +52,26 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
+@Setter
+@Getter
 public class AiDial {
 
     private JsonObject settings;
+    private JsonObject extraSettings = new JsonObject();
     private Vertx vertx;
     private HttpServer server;
     private HttpClient client;
 
+    private RedissonClient redisCache;
+    private RedissonClient redisStore;
     private BlobStorage storage;
+    private ResourceService resourceService;
 
     @VisibleForTesting
     void start() throws Exception {
         System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
-            settings = settings();
-
+            settings = settings(extraSettings);
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
             setupTracing(vertxOptions);
@@ -78,7 +89,12 @@ public class AiDial {
                 storage = new BlobStorage(storageConfig);
             }
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage, encryptionService);
+            openRedis();
+
+            resourceService = new ResourceService(vertx, redisCache, redisStore, storage, settings("resources"));
+            Proxy proxy = new Proxy(vertx, client, configStore, logStore,
+                    rateLimiter, upstreamBalancer, accessTokenValidator,
+                    storage, encryptionService, resourceService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -91,13 +107,51 @@ public class AiDial {
         }
     }
 
+    private void openRedis() throws IOException {
+        if (redisStore == null) {
+            redisStore = createRedis("store");
+        }
+
+        if (redisCache == null) {
+            redisCache = createRedis("cache");
+        }
+
+        if (redisStore == null) {
+            redisStore = redisCache;
+        }
+
+        if (redisCache == null) {
+            redisCache = redisStore;
+        }
+    }
+
+    private RedissonClient createRedis(String key) throws IOException {
+        JsonObject conf = settings("redis");
+        if (conf.isEmpty()) {
+            return null;
+        }
+
+        conf = conf.getJsonObject(key, new JsonObject());
+        if (conf.isEmpty()) {
+            return null;
+        }
+
+        ConfigSupport support = new ConfigSupport();
+        Config config = support.fromJSON(conf.toString(), Config.class);
+
+        return Redisson.create(config);
+    }
+
     @VisibleForTesting
     void stop() {
         try {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
+            close(resourceService);
             close(vertx, Vertx::close);
             close(storage);
+            close(redisCache);
+            close(redisStore);
             log.info("Proxy stopped");
             LogConfigurator.unconfigure();
         } catch (Throwable e) {
@@ -107,24 +161,15 @@ public class AiDial {
         }
     }
 
-    @VisibleForTesting
-    HttpServer getServer() {
-        return server;
-    }
-
-    @VisibleForTesting
-    void setStorage(BlobStorage storage) {
-        this.storage = storage;
-    }
-
     private JsonObject settings(String key) {
         return settings.getJsonObject(key, new JsonObject());
     }
 
-    private static JsonObject settings() throws Exception {
+    private static JsonObject settings(JsonObject extraSettings) throws Exception {
         return defaultSettings()
                 .mergeIn(fileSettings(), true)
-                .mergeIn(envSettings(), true);
+                .mergeIn(envSettings(), true)
+                .mergeIn(extraSettings, true);
     }
 
     private static JsonObject defaultSettings() throws IOException {
@@ -183,9 +228,15 @@ public class AiDial {
         }
     }
 
-    private static void close(Closeable resource) throws IOException {
+    private static void close(AutoCloseable resource) throws Exception {
         if (resource != null) {
             resource.close();
+        }
+    }
+
+    private static void close(RedissonClient resource) {
+        if (resource != null) {
+            resource.shutdown();
         }
     }
 

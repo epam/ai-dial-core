@@ -67,6 +67,30 @@ public class ResourceDescription {
         return builder.toString();
     }
 
+    /**
+     * Same as url but not url encoded.
+     */
+    public String getEncryptedPath() {
+        StringBuilder builder = new StringBuilder();
+        builder.append(bucketName)
+                .append(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (!parentFolders.isEmpty()) {
+            builder.append(getParentPath())
+                    .append(BlobStorageUtil.PATH_SEPARATOR);
+        }
+
+        if (name != null) {
+            builder.append(name);
+
+            if (isFolder) {
+                builder.append(BlobStorageUtil.PATH_SEPARATOR);
+            }
+        }
+
+        return builder.toString();
+    }
+
     public String getParentPath() {
         return parentFolders.isEmpty() ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
     }

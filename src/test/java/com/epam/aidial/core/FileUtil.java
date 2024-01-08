@@ -40,13 +40,14 @@ public class FileUtil {
     }
 
     public static BlobStorage buildFsBlobStorage(Path baseDir) {
-        Properties properties = new Properties();
-        properties.setProperty(FilesystemConstants.PROPERTY_BASEDIR, baseDir.toAbsolutePath().toString());
+        Properties overrides = new Properties();
+        overrides.setProperty(FilesystemConstants.PROPERTY_BASEDIR, baseDir.toAbsolutePath().toString());
         Storage storageConfig = new Storage();
         storageConfig.setBucket("test");
         storageConfig.setProvider("filesystem");
         storageConfig.setIdentity("access-key");
         storageConfig.setCredential("secret-key");
-        return new BlobStorage(storageConfig, properties);
+        storageConfig.setOverrides(overrides);
+        return new BlobStorage(storageConfig);
     }
 }
