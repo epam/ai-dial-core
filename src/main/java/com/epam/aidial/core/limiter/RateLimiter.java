@@ -10,6 +10,7 @@ import com.epam.aidial.core.util.HttpStatus;
 import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -90,7 +91,7 @@ public class RateLimiter {
         } else {
             if (context.getKey() != null) {
                 Key key = context.getKey();
-                traceIdToEntity.put(traceId, new Entity(key.getKey(), List.of(key.getRole()), key.getProject(), false));
+                traceIdToEntity.put(traceId, new Entity(key.getKey(), Collections.singletonList(key.getRole()), key.getProject(), false));
             } else {
                 traceIdToEntity.put(traceId, new Entity(context.getUserSub(), context.getUserRoles(), context.getUserHash(), true));
             }
