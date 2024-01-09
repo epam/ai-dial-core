@@ -1,0 +1,15 @@
+---
+excludes:
+  scopes:
+  - pattern: "annotationProcessor"
+    reason: "BUILD_DEPENDENCY_OF"
+    comment: "Packages to process code annotations only."
+  - pattern: "checkstyle"
+    reason: "DEV_DEPENDENCY_OF"
+    comment: "Packages for static code analysis only."
+  - pattern: "lombok"
+    reason: "DEV_DEPENDENCY_OF"
+    comment: "Packages from Project Lombok only."
+  - pattern: "test.*"
+    reason: "TEST_DEPENDENCY_OF"
+    comment: "Packages for testing only."
