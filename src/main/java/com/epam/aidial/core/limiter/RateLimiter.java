@@ -7,11 +7,14 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
-import io.opentelemetry.api.trace.Span;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -21,7 +24,7 @@ public class RateLimiter {
 
     public void increase(ProxyContext context) {
         Entity entity = getEntityFromTracingContext(context);
-        if (entity == null || entity.user()) {
+        if (entity == null || entity.isUser()) {
             return;
         }
         Deployment deployment = context.getDeployment();
@@ -31,7 +34,9 @@ public class RateLimiter {
             return;
         }
 
-        Id id = new Id(entity.id(), deployment.getName(), entity.user());
+        entity.setTokeUsage(context.getCurrentSpanId(), usage);
+
+        Id id = new Id(entity.getId(), deployment.getName(), entity.isUser());
         RateLimit rate = rates.computeIfAbsent(id, k -> new RateLimit());
 
         long timestamp = System.currentTimeMillis();
@@ -41,12 +46,11 @@ public class RateLimiter {
     public RateLimitResult limit(ProxyContext context) {
         Entity entity = getEntityFromTracingContext(context);
         if (entity == null) {
-            Span span = Span.current();
-            log.warn("Entity is not found by traceId={}", span.getSpanContext().getTraceId());
+            log.warn("Entity is not found by traceId={}", context.getTraceId());
             return new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied");
         }
         Limit limit;
-        if (entity.user()) {
+        if (entity.isUser()) {
             // don't support user limits yet
             return RateLimitResult.SUCCESS;
         } else {
@@ -64,7 +68,7 @@ public class RateLimiter {
             return new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied");
         }
 
-        Id id = new Id(entity.id(), deployment.getName(), entity.user());
+        Id id = new Id(entity.getId(), deployment.getName(), entity.isUser());
         RateLimit rate = rates.get(id);
 
         if (rate == null) {
@@ -81,22 +85,36 @@ public class RateLimiter {
     public boolean register(ProxyContext context) {
         String traceId = context.getTraceId();
         Entity entity = traceIdToEntity.get(traceId);
-        if (entity != null) {
+        boolean result = entity != null;
+        if (result) {
+            entity.link(context.getParentSpanId(), context.getCurrentSpanId());
             // update context with the original requester
-            if (entity.user()) {
-                context.setUserHash(entity.name());
+            if (entity.isUser()) {
+                context.setUserHash(entity.getName());
             } else {
-                context.setOriginalProject(entity.name());
+                context.setOriginalProject(entity.getName());
             }
         } else {
             if (context.getKey() != null) {
                 Key key = context.getKey();
-                traceIdToEntity.put(traceId, new Entity(key.getKey(), Collections.singletonList(key.getRole()), key.getProject(), false));
+                entity = new Entity(key.getKey(), Collections.singletonList(key.getRole()), key.getProject(), false);
+                traceIdToEntity.put(traceId, entity);
             } else {
-                traceIdToEntity.put(traceId, new Entity(context.getUserSub(), context.getUserRoles(), context.getUserHash(), true));
+                entity = new Entity(context.getUserSub(), context.getUserRoles(), context.getUserHash(), true);
+                traceIdToEntity.put(traceId, entity);
             }
         }
-        return entity != null;
+        entity.addCall(context.getCurrentSpanId());
+        return result;
+    }
+
+    public void calculateTokenUsage(ProxyContext context) {
+        Entity entity = getEntityFromTracingContext(context);
+        if (entity == null) {
+            log.warn("Entity is not found by traceId={}", context.getTraceId());
+            return;
+        }
+        context.setTokenUsage(entity.calculate(context.getCurrentSpanId()));
     }
 
     public void unregister(ProxyContext context) {
@@ -129,11 +147,72 @@ public class RateLimiter {
         }
     }
 
-    private record Entity(String id, List<String> roles, String name, boolean user) {
+    @Data
+    private static class Entity {
+
+        private final String id;
+        private final List<String> roles;
+        private final String name;
+        private final boolean user;
+        private final Map<String, CallInfo> spanIdToCallInfo = new HashMap<>();
+
+        public Entity(String id, List<String> roles, String name, boolean user) {
+            this.id = id;
+            this.roles = roles;
+            this.name = name;
+            this.user = user;
+        }
+
+        public synchronized void addCall(String spanId) {
+            spanIdToCallInfo.put(spanId, new CallInfo());
+        }
+
+        public synchronized void link(String parentSpanId, String childSpanId) {
+            CallInfo callInfo = spanIdToCallInfo.get(parentSpanId);
+            if (callInfo == null) {
+                log.warn("Parent span is not found by id: {}", parentSpanId);
+                return;
+            }
+            callInfo.childSpanIds.add(childSpanId);
+        }
+
+        public synchronized void setTokeUsage(String spanId, TokenUsage tokenUsage) {
+            CallInfo callInfo = spanIdToCallInfo.get(spanId);
+            if (callInfo == null) {
+                log.warn("Span is not found by id: {}", spanId);
+                return;
+            }
+            callInfo.setTokenUsage(tokenUsage);
+        }
+
+        public synchronized TokenUsage calculate(String spanId) {
+            CallInfo callInfo = spanIdToCallInfo.get(spanId);
+            if (callInfo == null) {
+                log.warn("Span is not found by id: {}", spanId);
+                return null;
+            }
+            TokenUsage tokenUsage = callInfo.tokenUsage;
+            for (String childSpanId : callInfo.childSpanIds) {
+                CallInfo childCall = spanIdToCallInfo.get(childSpanId);
+                if (childCall == null) {
+                    log.warn("Child span is not found by id: {}", childSpanId);
+                    continue;
+                }
+                tokenUsage.increase(childCall.tokenUsage);
+            }
+            return tokenUsage;
+        }
+
         @Override
         public String toString() {
             return String.format("Entity: %s, resource: %s, user: %b", id, roles, user);
         }
+    }
+
+    @Data
+    private static class CallInfo {
+        TokenUsage tokenUsage = new TokenUsage();
+        List<String> childSpanIds = new ArrayList<>();
     }
 
 }

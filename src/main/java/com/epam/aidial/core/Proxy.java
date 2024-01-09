@@ -116,7 +116,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         Config config = configStore.load();
         String apiKey = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        String traceId = Span.current().getSpanContext().getTraceId();
+        Span currentSpan = Span.current();
         log.debug("Authorization header: {}", authorization);
         Key key;
         if (apiKey == null && authorization == null) {
@@ -145,7 +145,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         extractedClaims.onComplete(result -> {
             try {
                 if (result.succeeded()) {
-                    onExtractClaimsSuccess(result.result(), config, request, key, traceId);
+                    onExtractClaimsSuccess(result.result(), config, request, key, currentSpan);
                 } else {
                     onExtractClaimsFailure(result.cause(), request);
                 }
@@ -163,8 +163,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
-                                        HttpServerRequest request, Key key, String traceId) throws Exception {
-        ProxyContext context = new ProxyContext(config, request, key, extractedClaims, traceId);
+                                        HttpServerRequest request, Key key, Span span) throws Exception {
+        ProxyContext context = new ProxyContext(config, request, key, extractedClaims, span);
         Controller controller = ControllerSelector.select(this, context);
         controller.handle();
     }
