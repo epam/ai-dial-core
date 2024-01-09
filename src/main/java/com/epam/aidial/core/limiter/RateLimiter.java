@@ -109,7 +109,7 @@ public class RateLimiter {
         Role role = context.getConfig().getRoles().get(entity.roles.get(0));
 
         if (role == null) {
-            log.warn("Role is not found for key: {}", context.getKey().getKey());
+            log.warn("Role is not found for key: {}", context.getKey().getProject());
             return null;
         }
 
