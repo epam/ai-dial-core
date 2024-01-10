@@ -115,22 +115,16 @@ public final class FileConfigStore implements ConfigStore {
             }
 
             synchronized (keys) {
-                Map<String, String> keysToBeReplaced = new HashMap<>();
                 for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
                     String key = entry.getKey();
                     Key value = entry.getValue();
                     if (keys.containsKey(key)) {
                         key = generateApiKey();
-                        keysToBeReplaced.put(entry.getKey(), key);
                     }
                     value.setKey(key);
                     ApiKeyData apiKeyData = new ApiKeyData();
                     apiKeyData.setOriginalKey(value);
                     keys.put(key, apiKeyData);
-                }
-                for (Map.Entry<String, String> entry : keysToBeReplaced.entrySet()) {
-                    config.getKeys().remove(entry.getKey());
-                    config.getKeys().put(entry.getValue(), keys.get(entry.getValue()).getOriginalKey());
                 }
             }
 
