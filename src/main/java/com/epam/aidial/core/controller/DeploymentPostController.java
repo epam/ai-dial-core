@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Addon;
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -26,7 +27,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
-import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -179,22 +179,29 @@ public class DeploymentPostController {
         log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
+        ApiKeyData parentApiKeyData = context.getApiKeyData();
+        ApiKeyData apiKeyData;
+
+        if (!parentApiKeyData.isPerRequestKey()) {
+            apiKeyData = new ApiKeyData();
+            apiKeyData.setPerRequestKey(true);
+            apiKeyData.setOriginalKey(context.getKey());
+            apiKeyData.setExtractedClaims(context.getExtractedClaims());
+            apiKeyData.setTraceId(context.getTraceId());
+        } else {
+            apiKeyData = ApiKeyData.from(parentApiKeyData);
+        }
+        apiKeyData.setSpanId(context.getSpanId());
+
+        proxy.getConfigStore().assignApiKey(apiKeyData);
+
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        Deployment deployment = context.getDeployment();
-        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
-        excludeHeaders.add(Proxy.HEADER_API_KEY, "whatever");
-        if (!deployment.isForwardAuthToken()) {
-            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
-        }
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
-
-        if (deployment.isForwardApiKey()) {
-            proxyRequest.headers().add(Proxy.HEADER_API_KEY, deployment.getApiKey());
-        }
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, apiKeyData.getApiKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = context.getUpstreamRoute().get();
@@ -245,7 +252,7 @@ public class DeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
                 .onFailure(this::handleResponseError)
-                .onComplete(ignore -> unregister());
+                .onComplete(ignore -> finalizeRequest());
     }
 
     /**
@@ -461,21 +468,22 @@ public class DeploymentPostController {
     }
 
     private Future<Void> respond(HttpStatus status, String errorMessage) {
-        unregister();
+        finalizeRequest();
         return context.respond(status, errorMessage);
     }
 
     private Future<Void> respond(HttpStatus status) {
-        unregister();
+        finalizeRequest();
         return context.respond(status);
     }
 
     private Future<Void> respond(HttpStatus status, Object result) {
-        unregister();
+        finalizeRequest();
         return context.respond(status, result);
     }
 
-    private void unregister() {
+    private void finalizeRequest() {
+        proxy.getConfigStore().invalidateApiKey(context.getApiKeyData());
         if (unregisterTrace) {
             proxy.getRateLimiter().unregister(context);
         }

@@ -9,4 +9,19 @@ public interface ConfigStore {
      */
     Config load();
 
+    /**
+     * Gets data associated with the API key.
+     */
+    ApiKeyData getApiKeyData(String key);
+
+    /**
+     * Assigns a new API key to the data.
+     */
+    void assignApiKey(ApiKeyData data);
+
+    /**
+     * Invalidates the API key associated with the given data.
+     */
+    void invalidateApiKey(ApiKeyData apiKeyData);
+
 }

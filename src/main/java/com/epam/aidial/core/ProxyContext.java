@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
@@ -19,6 +20,7 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import org.apache.commons.lang3.AnnotationUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,9 @@ public class ProxyContext {
     private final HttpServerRequest request;
     private final HttpServerResponse response;
     private final String traceId;
+    private final ApiKeyData apiKeyData;
+    private final String spanId;
+    private final String parentSpanId;
 
     private Deployment deployment;
     private String userSub;
@@ -52,23 +57,37 @@ public class ProxyContext {
     private long responseBodyTimestamp;
     // the project belongs to API key which initiated request
     private String originalProject;
+    private ExtractedClaims extractedClaims;
 
-    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims, String traceId) {
+    public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.config = config;
-        this.key = key;
-        if (key != null) {
-            originalProject = key.getProject();
-        }
+        this.apiKeyData = apiKeyData;
         this.request = request;
         this.response = request.response();
         this.requestTimestamp = System.currentTimeMillis();
+        this.key = apiKeyData.getOriginalKey();
+        if (this.key != null) {
+            originalProject = this.key.getProject();
+        }
+        if (apiKeyData.isPerRequestKey()) {
+            initExtractedClaims(apiKeyData.getExtractedClaims());
+            this.traceId = apiKeyData.getTraceId();
+            this.parentSpanId = apiKeyData.getSpanId();
+        } else {
+            initExtractedClaims(extractedClaims);
+            this.traceId = traceId;
+            this.parentSpanId = null;
+        }
+        this.spanId = spanId;
+    }
 
+    private void initExtractedClaims(ExtractedClaims extractedClaims) {
+        this.extractedClaims = extractedClaims;
         if (extractedClaims != null) {
             this.userRoles = extractedClaims.userRoles();
             this.userHash = extractedClaims.userHash();
             this.userSub = extractedClaims.sub();
         }
-        this.traceId = traceId;
     }
 
     public Future<Void> respond(HttpStatus status) {

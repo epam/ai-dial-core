@@ -5,17 +5,13 @@
             "endpoint": "http://localhost:7010/search",
             "displayName": "Search",
             "iconUrl": "http://localhost:7001/search_addon.png",
-            "description": "Some description of the addon for testing",
-            "forwardApiKey": false
+            "description": "Some description of the addon for testing"
         },
         "forecast": {
-            "endpoint": "http://localhost:7010/forecast",
-            "forwardAuthToken": false
+            "endpoint": "http://localhost:7010/forecast"
         },
         "calculator": {
-            "endpoint": "http://localhost:7010/calculator",
-            "forwardApiKey": false,
-            "forwardAuthToken": false
+            "endpoint": "http://localhost:7010/calculator"
         }
     },
     "assistant": {

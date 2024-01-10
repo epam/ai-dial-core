@@ -2,7 +2,6 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -24,7 +23,7 @@ public final class FileConfigStore implements ConfigStore {
 
     private final String[] paths;
     private volatile Config config;
-    private final Map<String, String> deploymentKeys = new HashMap<>();
+    private final Map<String, ApiKeyData> keys = new HashMap<>();
 
     public FileConfigStore(Vertx vertx, JsonObject settings) {
         this.paths = settings.getJsonArray("files")
@@ -33,6 +32,31 @@ public final class FileConfigStore implements ConfigStore {
         long period = settings.getLong("reload");
         load(true);
         vertx.setPeriodic(period, period, event -> load(false));
+    }
+
+    @Override
+    public void assignApiKey(ApiKeyData data) {
+        synchronized (keys) {
+            String apiKey = generateApiKey();
+            keys.put(apiKey, data);
+            data.setApiKey(apiKey);
+        }
+    }
+
+    @Override
+    public ApiKeyData getApiKeyData(String key) {
+        synchronized (keys) {
+            return keys.get(key);
+        }
+    }
+
+    @Override
+    public void invalidateApiKey(ApiKeyData apiKeyData) {
+        synchronized (keys) {
+            if (apiKeyData.isPerRequestKey()) {
+                keys.remove(apiKeyData.getApiKey());
+            }
+        }
     }
 
     @Override
@@ -55,7 +79,6 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Model model = entry.getValue();
                 model.setName(name);
-                associateDeploymentWithApiKey(config, model);
             }
 
             for (Map.Entry<String, Addon> entry : config.getAddons().entrySet()) {
@@ -69,7 +92,6 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Assistant assistant = entry.getValue();
                 assistant.setName(name);
-                associateDeploymentWithApiKey(config, assistant);
 
                 if (assistant.getEndpoint() == null) {
                     assistant.setEndpoint(assistants.getEndpoint());
@@ -83,7 +105,6 @@ public final class FileConfigStore implements ConfigStore {
                 baseAssistant.setName(ASSISTANT);
                 baseAssistant.setEndpoint(assistants.getEndpoint());
                 baseAssistant.setFeatures(assistants.getFeatures());
-                associateDeploymentWithApiKey(config, baseAssistant);
                 assistants.getAssistants().put(ASSISTANT, baseAssistant);
             }
 
@@ -91,13 +112,26 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Application application = entry.getValue();
                 application.setName(name);
-                associateDeploymentWithApiKey(config, application);
             }
 
-            for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
-                String key = entry.getKey();
-                Key value = entry.getValue();
-                value.setKey(key);
+            synchronized (keys) {
+                Map<String, String> keysToBeReplaced = new HashMap<>();
+                for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
+                    String key = entry.getKey();
+                    Key value = entry.getValue();
+                    if (keys.containsKey(key)) {
+                        key = generateApiKey();
+                        keysToBeReplaced.put(entry.getKey(), key);
+                    }
+                    value.setKey(key);
+                    ApiKeyData apiKeyData = new ApiKeyData();
+                    apiKeyData.setOriginalKey(value);
+                    keys.put(key, apiKeyData);
+                }
+                for (Map.Entry<String, String> entry : keysToBeReplaced.entrySet()) {
+                    config.getKeys().remove(entry.getKey());
+                    config.getKeys().put(entry.getValue(), keys.get(entry.getValue()).getOriginalKey());
+                }
             }
 
             for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
@@ -116,26 +150,13 @@ public final class FileConfigStore implements ConfigStore {
         }
     }
 
-    @VisibleForTesting
-    void associateDeploymentWithApiKey(Config config, Deployment deployment) {
-        String apiKey = deployment.getApiKey();
-        String deploymentName = deployment.getName();
-        if (apiKey == null) {
-            apiKey = deploymentKeys.computeIfAbsent(deploymentName, k -> generateKey());
-        } else {
-            deploymentKeys.put(deploymentName, apiKey);
-        }
-        Map<String, Key> keys = config.getKeys();
-        while (keys.containsKey(apiKey) && !deploymentName.equals(keys.get(apiKey).getProject())) {
-            log.warn("duplicate API key is found for deployment {}. Trying to generate a new one", deployment.getName());
+    private String generateApiKey() {
+        String apiKey = generateKey();
+        while (keys.containsKey(apiKey)) {
+            log.warn("duplicate API key is found. Trying to generate a new one");
             apiKey = generateKey();
         }
-        deployment.setApiKey(apiKey);
-        Key key = new Key();
-        key.setKey(apiKey);
-        key.setProject(deployment.getName());
-        config.getKeys().put(apiKey, key);
-        deploymentKeys.put(deployment.getName(), apiKey);
+        return apiKey;
     }
 
     private Config loadConfig() throws Exception {

@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Key;
@@ -206,7 +207,6 @@ public class ProxyTest {
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
         Config config = new Config();
-        config.setKeys(Map.of("key1", new Key()));
         Route route = new Route();
         route.setMethods(Set.of(HttpMethod.GET));
         route.setName("route");
@@ -216,6 +216,7 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
+        when(configStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
 
         when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
 
@@ -259,7 +260,6 @@ public class ProxyTest {
         when(request.uri()).thenReturn("/foo");
 
         Config config = new Config();
-        config.setKeys(Map.of("key1", new Key()));
         Route route = new Route();
         route.setMethods(Set.of(HttpMethod.GET));
         route.setName("route");
@@ -269,6 +269,7 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
+        when(configStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
 
         when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
 

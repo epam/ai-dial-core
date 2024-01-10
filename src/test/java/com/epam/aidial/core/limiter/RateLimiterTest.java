@@ -1,6 +1,7 @@
 package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
@@ -43,7 +44,9 @@ public class RateLimiterTest {
         key.setRole("role");
         key.setKey("key");
         key.setProject("project");
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
 
         assertFalse(rateLimiter.register(proxyContext));
         assertEquals("project", proxyContext.getOriginalProject());
@@ -60,7 +63,9 @@ public class RateLimiterTest {
         Key key = new Key();
         key.setKey("key");
         key.setProject("project");
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
 
         assertFalse(rateLimiter.register(proxyContext));
         assertEquals("project", proxyContext.getOriginalProject());
@@ -78,7 +83,9 @@ public class RateLimiterTest {
         key.setRole("role");
         key.setKey("key");
         key.setProject("project");
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
 
         assertFalse(rateLimiter.register(proxyContext));
         assertEquals("project", proxyContext.getOriginalProject());
@@ -89,7 +96,9 @@ public class RateLimiterTest {
 
     @Test
     public void testLimit_EntityNotFound() {
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, new Key(), IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "unknown-trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "unknown-trace-id", "span-id");
 
         RateLimitResult result = rateLimiter.limit(proxyContext);
 
@@ -99,7 +108,7 @@ public class RateLimiterTest {
 
     @Test
     public void testLimit_SuccessUser() {
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, null, new ExtractedClaims("sub", Collections.emptyList(), "hash"), "trace-id");
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, new ApiKeyData(), new ExtractedClaims("sub", Collections.emptyList(), "hash"), "trace-id", "span-id");
 
         assertFalse(rateLimiter.register(proxyContext));
 
@@ -113,8 +122,9 @@ public class RateLimiterTest {
     public void testLimit_ApiKeyLimitNotFound() {
         Key key = new Key();
         key.setRole("role");
-        key.setKey("key");
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
         proxyContext.setDeployment(new Model());
 
 
@@ -133,7 +143,9 @@ public class RateLimiterTest {
         Key key = new Key();
         key.setKey("key");
         key.setProject("project");
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
         proxyContext.setDeployment(new Model());
 
 
@@ -157,7 +169,9 @@ public class RateLimiterTest {
         limit.setDay(-1);
         role.setLimits(Map.of("model", limit));
         config.setRoles(Map.of("role", role));
-        ProxyContext proxyContext = new ProxyContext(config, request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -182,7 +196,9 @@ public class RateLimiterTest {
         Limit limit = new Limit();
         role.setLimits(Map.of("model", limit));
         config.setRoles(Map.of("role", role));
-        ProxyContext proxyContext = new ProxyContext(config, request, key, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);

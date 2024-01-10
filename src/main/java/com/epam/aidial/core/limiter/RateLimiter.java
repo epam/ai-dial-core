@@ -41,8 +41,7 @@ public class RateLimiter {
     public RateLimitResult limit(ProxyContext context) {
         Entity entity = getEntityFromTracingContext(context);
         if (entity == null) {
-            Span span = Span.current();
-            log.warn("Entity is not found by traceId={}", span.getSpanContext().getTraceId());
+            log.warn("Entity is not found by traceId={}", context.getTraceId());
             return new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied");
         }
         Limit limit;
