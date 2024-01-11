@@ -23,6 +23,7 @@ import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.io.ContentMetadata;
 import org.jclouds.io.ContentMetadataBuilder;
 import org.jclouds.io.payloads.BaseMutableContentMetadata;
+import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
 import java.util.List;
@@ -31,6 +32,11 @@ import java.util.Properties;
 
 @Slf4j
 public class BlobStorage implements Closeable {
+
+    // S3 implementation do not return a blob content type without additional head request.
+    // To avoid additional request for each blob in the listing we try to recognize blob content type by its extension.
+    // Default value is binary/octet-stream, see org.jclouds.s3.domain.ObjectMetadataBuilder
+    private static final String DEFAULT_CONTENT_TYPE = ObjectMetadataBuilder.create().build().getContentMetadata().getContentType();
 
     private final BlobStoreContext storeContext;
     private final BlobStore blobStore;
@@ -171,8 +177,14 @@ public class BlobStorage implements Closeable {
                 resource.getBucketLocation(), metadata.getName());
 
         return switch (metadata.getType()) {
-            case BLOB -> new FileMetadata(resultResource, metadata.getSize(),
-                    ((BlobMetadata) metadata).getContentMetadata().getContentType());
+            case BLOB -> {
+                String blobContentType = ((BlobMetadata) metadata).getContentMetadata().getContentType();
+                if (blobContentType != null && blobContentType.equals(DEFAULT_CONTENT_TYPE)) {
+                    blobContentType = BlobStorageUtil.getContentType(metadata.getName());
+                }
+
+                yield new FileMetadata(resultResource, metadata.getSize(), blobContentType);
+            }
             case FOLDER, RELATIVE_PATH -> new FolderMetadata(resultResource);
             case CONTAINER -> throw new IllegalArgumentException("Can't list container");
         };
