@@ -57,6 +57,7 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
+    private ApiKeyData proxyApiKeyData;
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -176,20 +177,19 @@ public class DeploymentPostController {
         log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
-        ApiKeyData parentApiKeyData = context.getApiKeyData();
-        ApiKeyData apiKeyData;
+        ApiKeyData apiKeyData = context.getApiKeyData();
 
-        if (parentApiKeyData.getPerRequestKey() == null) {
-            apiKeyData = new ApiKeyData();
-            apiKeyData.setOriginalKey(context.getKey());
-            apiKeyData.setExtractedClaims(context.getExtractedClaims());
-            apiKeyData.setTraceId(context.getTraceId());
+        if (apiKeyData.getPerRequestKey() == null) {
+            proxyApiKeyData = new ApiKeyData();
+            proxyApiKeyData.setOriginalKey(context.getKey());
+            proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
+            proxyApiKeyData.setTraceId(context.getTraceId());
         } else {
-            apiKeyData = ApiKeyData.from(parentApiKeyData);
+            proxyApiKeyData = ApiKeyData.from(apiKeyData);
         }
-        apiKeyData.setSpanId(context.getSpanId());
+        proxyApiKeyData.setSpanId(context.getSpanId());
 
-        proxy.getApiKeyStore().assignApiKey(apiKeyData);
+        proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -197,7 +197,7 @@ public class DeploymentPostController {
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
 
-        proxyRequest.headers().add(Proxy.HEADER_API_KEY, apiKeyData.getPerRequestKey());
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = context.getUpstreamRoute().get();
@@ -479,6 +479,6 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
-        proxy.getApiKeyStore().invalidateApiKey(context.getApiKeyData());
+        proxy.getApiKeyStore().invalidateApiKey(proxyApiKeyData);
     }
 }

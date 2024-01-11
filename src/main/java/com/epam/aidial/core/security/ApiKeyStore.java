@@ -36,7 +36,6 @@ public class ApiKeyStore {
         for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
             String key = entry.getKey();
             Key value = entry.getValue();
-            value.setKey(key);
             if (keys.containsKey(key)) {
                 key = generateApiKey();
             }
