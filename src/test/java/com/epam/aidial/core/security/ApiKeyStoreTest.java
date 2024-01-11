@@ -47,10 +47,14 @@ public class ApiKeyStoreTest {
 
         store.addProjectKeys(projectKeys2);
 
+        // old key must be removed
         assertNull(store.getApiKeyData("key1"));
+        // new key must be accessed
         ApiKeyData res1 = store.getApiKeyData("key2");
         assertNotNull(res1);
         assertEquals(key2, res1.getOriginalKey());
+        // existing per request key must be accessed
+        assertNotNull(store.getApiKeyData(apiKeyData.getPerRequestKey()));
 
     }
 
