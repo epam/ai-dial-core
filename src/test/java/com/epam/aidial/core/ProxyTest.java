@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.IdentityProvider;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
@@ -58,6 +59,8 @@ public class ProxyTest {
     private HttpClient client;
     @Mock
     private ConfigStore configStore;
+    @Mock
+    private ApiKeyStore apiKeyStore;
     @Mock
     private LogStore logStore;
     @Mock
@@ -216,7 +219,7 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        when(configStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
+        when(apiKeyStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
 
         when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
 
@@ -269,7 +272,7 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        when(configStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
+        when(apiKeyStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
 
         when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
 

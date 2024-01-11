@@ -1,5 +1,6 @@
 package com.epam.aidial.core.config;
 
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Vertx;
@@ -11,11 +12,9 @@ import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
-import java.util.HashMap;
 import java.util.Map;
 
 import static com.epam.aidial.core.config.Config.ASSISTANT;
-import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
 
 
 @Slf4j
@@ -23,40 +22,16 @@ public final class FileConfigStore implements ConfigStore {
 
     private final String[] paths;
     private volatile Config config;
-    private final Map<String, ApiKeyData> keys = new HashMap<>();
+    private final ApiKeyStore apiKeyStore;
 
-    public FileConfigStore(Vertx vertx, JsonObject settings) {
+    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore) {
+        this.apiKeyStore = apiKeyStore;
         this.paths = settings.getJsonArray("files")
                 .stream().map(path -> (String) path).toArray(String[]::new);
 
         long period = settings.getLong("reload");
         load(true);
         vertx.setPeriodic(period, period, event -> load(false));
-    }
-
-    @Override
-    public void assignApiKey(ApiKeyData data) {
-        synchronized (keys) {
-            String apiKey = generateApiKey();
-            keys.put(apiKey, data);
-            data.setPerRequestKey(apiKey);
-        }
-    }
-
-    @Override
-    public ApiKeyData getApiKeyData(String key) {
-        synchronized (keys) {
-            return keys.get(key);
-        }
-    }
-
-    @Override
-    public void invalidateApiKey(ApiKeyData apiKeyData) {
-        synchronized (keys) {
-            if (apiKeyData.getPerRequestKey() != null) {
-                keys.remove(apiKeyData.getPerRequestKey());
-            }
-        }
     }
 
     @Override
@@ -114,18 +89,11 @@ public final class FileConfigStore implements ConfigStore {
                 application.setName(name);
             }
 
-            synchronized (keys) {
-                for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
-                    String key = entry.getKey();
-                    Key value = entry.getValue();
-                    if (keys.containsKey(key)) {
-                        key = generateApiKey();
-                    }
-                    value.setKey(key);
-                    ApiKeyData apiKeyData = new ApiKeyData();
-                    apiKeyData.setOriginalKey(value);
-                    keys.put(key, apiKeyData);
-                }
+            for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
+                String key = entry.getKey();
+                Key value = entry.getValue();
+                value.setKey(key);
+                apiKeyStore.addProjectKey(value);
             }
 
             for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
@@ -142,15 +110,6 @@ public final class FileConfigStore implements ConfigStore {
 
             log.warn("Failed to reload config: {}", e.getMessage());
         }
-    }
-
-    private String generateApiKey() {
-        String apiKey = generateKey();
-        while (keys.containsKey(apiKey)) {
-            log.warn("duplicate API key is found. Trying to generate a new one");
-            apiKey = generateKey();
-        }
-        return apiKey;
     }
 
     private Config loadConfig() throws Exception {

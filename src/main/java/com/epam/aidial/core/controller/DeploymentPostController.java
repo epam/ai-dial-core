@@ -189,7 +189,7 @@ public class DeploymentPostController {
         }
         apiKeyData.setSpanId(context.getSpanId());
 
-        proxy.getConfigStore().assignApiKey(apiKeyData);
+        proxy.getApiKeyStore().assignApiKey(apiKeyData);
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -479,6 +479,6 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
-        proxy.getConfigStore().invalidateApiKey(context.getApiKeyData());
+        proxy.getApiKeyStore().invalidateApiKey(context.getApiKeyData());
     }
 }

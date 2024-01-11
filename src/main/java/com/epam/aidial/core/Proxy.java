@@ -8,6 +8,7 @@ import com.epam.aidial.core.controller.ControllerSelector;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.storage.BlobStorage;
@@ -63,6 +64,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AccessTokenValidator tokenValidator;
     private final BlobStorage storage;
     private final EncryptionService encryptionService;
+    private final ApiKeyStore apiKeyStore;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -129,7 +131,7 @@ public class Proxy implements Handler<HttpServerRequest> {
             respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
             return;
         } else if (apiKey != null) {
-            apiKeyData = configStore.getApiKeyData(apiKey);
+            apiKeyData = apiKeyStore.getApiKeyData(apiKey);
             // Special case handling. OpenAI client sends both API key and Auth headers even if a caller sets just API Key only
             // Auth header is set to the same value as API Key header
             // ignore auth header in this case

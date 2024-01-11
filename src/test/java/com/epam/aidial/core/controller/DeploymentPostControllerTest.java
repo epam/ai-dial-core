@@ -5,9 +5,9 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.limiter.RateLimiter;
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
@@ -74,7 +74,7 @@ public class DeploymentPostControllerTest {
     @Test
     public void testUnsupportedContentType() {
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
-        when(proxy.getConfigStore()).thenReturn(mock(ConfigStore.class));
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
 
         controller.handle("app1", "api");
 
@@ -129,7 +129,7 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getConfigStore()).thenReturn(mock(ConfigStore.class));
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
 
         controller.handle("app1", "chat/completions");
 
@@ -213,13 +213,13 @@ public class DeploymentPostControllerTest {
         headers.add(HEADER_API_KEY, "k1");
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        ConfigStore configStore = mock(ConfigStore.class);
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         Mockito.doAnswer(invocation -> {
             ApiKeyData arg = invocation.getArgument(0);
             arg.setPerRequestKey("key1");
             return null;
-        }).when(configStore).assignApiKey(any(ApiKeyData.class));
-        when(proxy.getConfigStore()).thenReturn(configStore);
+        }).when(apiKeyStore).assignApiKey(any(ApiKeyData.class));
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
 
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
@@ -232,7 +232,7 @@ public class DeploymentPostControllerTest {
 
         assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
 
-        verify(proxy.getConfigStore()).assignApiKey(any(ApiKeyData.class));
+        verify(proxy.getApiKeyStore()).assignApiKey(any(ApiKeyData.class));
     }
 
 
