@@ -39,7 +39,7 @@ public final class FileConfigStore implements ConfigStore {
         synchronized (keys) {
             String apiKey = generateApiKey();
             keys.put(apiKey, data);
-            data.setApiKey(apiKey);
+            data.setPerRequestKey(apiKey);
         }
     }
 
@@ -53,8 +53,8 @@ public final class FileConfigStore implements ConfigStore {
     @Override
     public void invalidateApiKey(ApiKeyData apiKeyData) {
         synchronized (keys) {
-            if (apiKeyData.isPerRequestKey()) {
-                keys.remove(apiKeyData.getApiKey());
+            if (apiKeyData.getPerRequestKey() != null) {
+                keys.remove(apiKeyData.getPerRequestKey());
             }
         }
     }

@@ -57,7 +57,6 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private boolean unregisterTrace;
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -79,8 +78,6 @@ public class DeploymentPostController {
             log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
-
-        unregisterTrace = !proxy.getRateLimiter().register(context);
 
         context.setDeployment(deployment);
 
@@ -182,9 +179,8 @@ public class DeploymentPostController {
         ApiKeyData parentApiKeyData = context.getApiKeyData();
         ApiKeyData apiKeyData;
 
-        if (!parentApiKeyData.isPerRequestKey()) {
+        if (parentApiKeyData.getPerRequestKey() == null) {
             apiKeyData = new ApiKeyData();
-            apiKeyData.setPerRequestKey(true);
             apiKeyData.setOriginalKey(context.getKey());
             apiKeyData.setExtractedClaims(context.getExtractedClaims());
             apiKeyData.setTraceId(context.getTraceId());
@@ -201,7 +197,7 @@ public class DeploymentPostController {
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
 
-        proxyRequest.headers().add(Proxy.HEADER_API_KEY, apiKeyData.getApiKey());
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, apiKeyData.getPerRequestKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = context.getUpstreamRoute().get();
@@ -484,8 +480,5 @@ public class DeploymentPostController {
 
     private void finalizeRequest() {
         proxy.getConfigStore().invalidateApiKey(context.getApiKeyData());
-        if (unregisterTrace) {
-            proxy.getRateLimiter().unregister(context);
-        }
     }
 }

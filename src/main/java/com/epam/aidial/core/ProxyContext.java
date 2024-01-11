@@ -69,7 +69,7 @@ public class ProxyContext {
         if (this.key != null) {
             originalProject = this.key.getProject();
         }
-        if (apiKeyData.isPerRequestKey()) {
+        if (apiKeyData.getPerRequestKey() != null) {
             initExtractedClaims(apiKeyData.getExtractedClaims());
             this.traceId = apiKeyData.getTraceId();
             this.parentSpanId = apiKeyData.getSpanId();

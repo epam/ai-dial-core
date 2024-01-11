@@ -115,8 +115,6 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testNoRoute() {
-        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.register(any(ProxyContext.class))).thenReturn(true);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
