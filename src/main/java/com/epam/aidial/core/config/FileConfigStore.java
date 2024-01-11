@@ -89,12 +89,7 @@ public final class FileConfigStore implements ConfigStore {
                 application.setName(name);
             }
 
-            for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
-                String key = entry.getKey();
-                Key value = entry.getValue();
-                value.setKey(key);
-                apiKeyStore.addProjectKey(value);
-            }
+            apiKeyStore.addProjectKeys(config.getKeys());
 
             for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
                 String name = entry.getKey();

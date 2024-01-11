@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
@@ -30,15 +31,20 @@ public class ApiKeyStore {
         }
     }
 
-    public synchronized void addProjectKey(Key key) {
-        String apiKey = key.getKey();
-        if (keys.containsKey(apiKey)) {
-            apiKey = generateApiKey();
+    public synchronized void addProjectKeys(Map<String, Key> projectKeys) {
+        keys.values().removeIf(apiKeyData -> apiKeyData.getPerRequestKey() == null);
+        for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
+            String key = entry.getKey();
+            Key value = entry.getValue();
+            value.setKey(key);
+            if (keys.containsKey(key)) {
+                key = generateApiKey();
+            }
+            value.setKey(key);
+            ApiKeyData apiKeyData = new ApiKeyData();
+            apiKeyData.setOriginalKey(value);
+            keys.put(key, apiKeyData);
         }
-        key.setKey(apiKey);
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setOriginalKey(key);
-        keys.put(apiKey, apiKeyData);
     }
 
     private String generateApiKey() {
