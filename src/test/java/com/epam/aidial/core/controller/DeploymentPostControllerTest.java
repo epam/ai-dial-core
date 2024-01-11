@@ -2,6 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ConfigStore;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
@@ -33,14 +35,11 @@ import java.util.Set;
 import static com.epam.aidial.core.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.util.HttpStatus.BAD_GATEWAY;
-import static com.epam.aidial.core.util.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.util.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.util.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
-import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -197,6 +196,43 @@ public class DeploymentPostControllerTest {
 
         assertEquals(requestBody, context.getRequestBody());
 
+    }
+
+    @Test
+    public void testHandleProxyRequest() {
+        Application application = new Application();
+        application.setName("app1");
+        application.setEndpoint("http://app1/chat");
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        when(context.getDeployment()).thenReturn(application);
+
+        MultiMap headers = new HeadersMultiMap();
+        headers.add(HEADER_API_KEY, "k1");
+        when(request.headers()).thenReturn(headers);
+        when(context.getDeployment()).thenReturn(application);
+        ConfigStore configStore = mock(ConfigStore.class);
+        Mockito.doAnswer(invocation -> {
+            ApiKeyData arg = invocation.getArgument(0);
+            arg.setPerRequestKey("key1");
+            return null;
+        }).when(configStore).assignApiKey(any(ApiKeyData.class));
+        when(proxy.getConfigStore()).thenReturn(configStore);
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        Buffer requestBody = Buffer.buffer();
+        when(context.getRequestBody()).thenReturn(requestBody);
+
+        controller.handleProxyRequest(proxyRequest);
+
+        assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
+
+        verify(proxy.getConfigStore()).assignApiKey(any(ApiKeyData.class));
     }
 
 

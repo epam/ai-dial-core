@@ -20,7 +20,6 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
-import org.apache.commons.lang3.AnnotationUtils;
 
 import java.util.List;
 import java.util.Map;

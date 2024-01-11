@@ -12,6 +12,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 
 public class FileConfigStoreTest {
@@ -37,16 +40,38 @@ public class FileConfigStoreTest {
 
     @Test
     public void testAssignApiKey() {
-        //TODO
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignApiKey(apiKeyData);
+        assertNotNull(apiKeyData.getPerRequestKey());
     }
 
     @Test
     public void testGetApiKeyData() {
-        //TODO
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignApiKey(apiKeyData);
+
+        assertNotNull(apiKeyData.getPerRequestKey());
+
+        ApiKeyData res1  = store.getApiKeyData(apiKeyData.getPerRequestKey());
+        assertEquals(apiKeyData, res1);
+
+        ApiKeyData res2  = store.getApiKeyData("proxyKey1");
+        assertNotNull(res2);
+        assertNotNull(res2.getOriginalKey());
+        assertEquals("EPM-RTC-GPT", res2.getOriginalKey().getProject());
+
+        assertNull(store.getApiKeyData("unknown-key"));
     }
 
     @Test
     public void testInvalidateApiKey() {
-        //TODO
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignApiKey(apiKeyData);
+
+        assertNotNull(apiKeyData.getPerRequestKey());
+
+        store.invalidateApiKey(apiKeyData);
+
+        assertNull(store.getApiKeyData(apiKeyData.getPerRequestKey()));
     }
 }
