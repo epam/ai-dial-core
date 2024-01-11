@@ -54,8 +54,6 @@ public class ProxyContext {
     private long proxyConnectTimestamp;
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
-    // the project belongs to API key which initiated request
-    private String originalProject;
     private ExtractedClaims extractedClaims;
 
     public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
@@ -65,9 +63,6 @@ public class ProxyContext {
         this.response = request.response();
         this.requestTimestamp = System.currentTimeMillis();
         this.key = apiKeyData.getOriginalKey();
-        if (this.key != null) {
-            originalProject = this.key.getProject();
-        }
         if (apiKeyData.getPerRequestKey() != null) {
             initExtractedClaims(apiKeyData.getExtractedClaims());
             this.traceId = apiKeyData.getTraceId();

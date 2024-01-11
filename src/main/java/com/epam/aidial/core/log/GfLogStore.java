@@ -61,7 +61,7 @@ public class GfLogStore implements LogStore {
         append(entry, request.getHeader(Proxy.HEADER_CONVERSATION_ID), true);
 
         append(entry, "\"},\"project\":{\"id\":\"", false);
-        append(entry, context.getOriginalProject(), true);
+        append(entry, context.getProject(), true);
 
         append(entry, "\"},\"user\":{\"id\":\"", false);
         append(entry, context.getUserHash(), true);
