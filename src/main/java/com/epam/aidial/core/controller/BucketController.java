@@ -25,7 +25,7 @@ public class BucketController {
         if (appDataBucket == null) {
             appDataLocation = null;
         } else {
-            String encryptedAppDataBucket = encryptionService.encrypt(bucketLocation);
+            String encryptedAppDataBucket = encryptionService.encrypt(appDataBucket);
             String encodedSourceDeployment = UrlUtil.encodePath(context.getSourceDeployment());
             appDataLocation = encryptedAppDataBucket + BlobStorageUtil.PATH_SEPARATOR + BlobStorageUtil.APPDATA_PATTERN.formatted(encodedSourceDeployment);
         }
