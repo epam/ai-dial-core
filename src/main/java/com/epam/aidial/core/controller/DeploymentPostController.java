@@ -151,6 +151,7 @@ public class DeploymentPostController {
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't collect attached files: {}", e.getMessage());
+                return;
             }
 
             if (deployment instanceof Assistant) {
@@ -174,6 +175,7 @@ public class DeploymentPostController {
                 } catch (Throwable e) {
                     context.respond(HttpStatus.BAD_REQUEST);
                     log.warn("Can't enhance model request: {}", e.getMessage());
+                    return;
                 }
             }
         } catch (IOException e) {
