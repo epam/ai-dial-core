@@ -3,7 +3,6 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.util.HttpStatus;
@@ -18,7 +17,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.refEq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -92,9 +90,8 @@ public class BucketControllerTest {
 
         controller.getBucket();
 
-        verify(encryptionService, times(2)).encrypt(argThat(argument -> {
-            return "Keys/app/".equals(argument) || "Keys/prj/".equals(argument);
-        }));
+        verify(encryptionService, times(2))
+                .encrypt(argThat(argument -> "Keys/app/".equals(argument) || "Keys/prj/".equals(argument)));
         verify(context).respond(eq(HttpStatus.OK), argThat((ArgumentMatcher<Object>) arg -> {
             Bucket bucket = (Bucket) arg;
             return "enc-app".equals(bucket.bucket()) && "enc-prj/appdata/app".equals(bucket.appdata());
@@ -119,9 +116,8 @@ public class BucketControllerTest {
 
         controller.getBucket();
 
-        verify(encryptionService, times(2)).encrypt(argThat(argument -> {
-            return "Keys/app/".equals(argument) || "Users/sub/".equals(argument);
-        }));
+        verify(encryptionService, times(2))
+                .encrypt(argThat(argument -> "Keys/app/".equals(argument) || "Users/sub/".equals(argument)));
         verify(context).respond(eq(HttpStatus.OK), argThat((ArgumentMatcher<Object>) arg -> {
             Bucket bucket = (Bucket) arg;
             return "enc-app".equals(bucket.bucket()) && "enc-sub/appdata/app".equals(bucket.appdata());
