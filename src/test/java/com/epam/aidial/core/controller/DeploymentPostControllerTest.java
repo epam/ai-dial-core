@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
@@ -192,7 +191,8 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(model);
         String body = """
                 {
-                    "model": "name"
+                    "model": "name",
+                    "messages": []
                 }
                 """;
         Buffer requestBody = Buffer.buffer(body);
@@ -225,7 +225,8 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(model);
         String body = """
                 {
-                    "model": "name"
+                    "model": "name",
+                    "messages": []
                 }
                 """;
         Buffer requestBody = Buffer.buffer(body);

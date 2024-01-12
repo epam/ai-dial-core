@@ -35,7 +35,6 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
-import io.vertx.core.net.SocketAddress;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -94,15 +93,20 @@ public class DeploymentPostController {
             return respond(rateLimitResult.status(), rateLimitError);
         }
 
-        log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getProject(),
-                context.getDeployment().getName(), context.getRequest().headers().size());
+        log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                context.getRequest().headers().size());
 
         UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
         UpstreamRoute endpointRoute = proxy.getUpstreamBalancer().balance(endpointProvider);
         context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.hasNext()) {
-            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), deploymentId, context.getUserSub());
+            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), deploymentId, context.getUserSub());
+
             return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
@@ -117,7 +121,10 @@ public class DeploymentPostController {
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
-            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), context.getDeployment().getName(), context.getUserSub());
+            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), context.getDeployment().getName(), context.getUserSub());
+
             return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
@@ -137,8 +144,9 @@ public class DeploymentPostController {
     @VisibleForTesting
     void handleRequestBody(Buffer requestBody) {
         Deployment deployment = context.getDeployment();
-        log.info("Received body from client. Key: {}. Deployment: {}. Length: {}", context.getProject(),
-                deployment.getName(), requestBody.length());
+        log.info("Received body from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Length: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), deployment.getName(), requestBody.length());
 
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
@@ -150,7 +158,9 @@ public class DeploymentPostController {
                 ProxyUtil.collectAttachedFiles(tree, proxyApiKeyData);
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
-                log.warn("Can't collect attached files: {}", e.getMessage());
+                log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
+                        context.getTraceId(), context.getSpanId(), e.getMessage());
+                return;
             }
 
             if (deployment instanceof Assistant) {
@@ -160,11 +170,13 @@ public class DeploymentPostController {
                     context.setRequestHeaders(enhancedRequest.getValue());
                 } catch (HttpException e) {
                     respond(e.getStatus(), e.getMessage());
-                    log.warn("Can't enhance assistant request: {}", e.getMessage());
+                    log.warn("Can't enhance assistant request. Trace: {}. Span: {}. Error: {}",
+                            context.getTraceId(), context.getSpanId(), e.getMessage());
                     return;
                 } catch (Throwable e) {
                     respond(HttpStatus.BAD_REQUEST);
-                    log.warn("Can't enhance assistant request: {}", e.getMessage());
+                    log.warn("Can't enhance assistant request. Trace: {}. Span: {}. Error: {}",
+                            context.getTraceId(), context.getSpanId(), e.getMessage());
                     return;
                 }
             }
@@ -173,12 +185,15 @@ public class DeploymentPostController {
                     context.setRequestBody(enhanceModelRequest(context, tree));
                 } catch (Throwable e) {
                     context.respond(HttpStatus.BAD_REQUEST);
-                    log.warn("Can't enhance model request: {}", e.getMessage());
+                    log.warn("Can't enhance model request. Trace: {}. Span: {}. Error: {}",
+                            context.getTraceId(), context.getSpanId(), e.getMessage());
+                    return;
                 }
             }
         } catch (IOException e) {
             respond(HttpStatus.BAD_REQUEST);
-            log.warn("Can't parse JSON request body", e);
+            log.warn("Can't parse JSON request body. Trace: {}. Span: {}. Error:",
+                    context.getTraceId(), context.getSpanId(), e);
             return;
         }
 
@@ -190,8 +205,10 @@ public class DeploymentPostController {
      */
     @VisibleForTesting
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
-                context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
+        log.info("Connected to origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                proxyRequest.connection().remoteAddress());
 
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
@@ -230,7 +247,8 @@ public class DeploymentPostController {
      * Called when proxy received the response headers from the origin.
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received header from origin. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
+        log.info("Received header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
+                context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
@@ -278,7 +296,8 @@ public class DeploymentPostController {
             proxy.getRateLimiter().increase(context);
 
             if (tokenUsage == null) {
-                log.warn("Can't find token usage. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                        context.getTraceId(), context.getSpanId(),
                         context.getProject(), context.getDeployment().getName(),
                         context.getDeployment().getEndpoint(),
                         context.getUpstreamRoute().get().getEndpoint(),
@@ -287,8 +306,9 @@ public class DeploymentPostController {
             }
         }
 
-        log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
+        log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+                context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(),
                 context.getUpstreamRoute().get().getEndpoint(),
@@ -306,7 +326,9 @@ public class DeploymentPostController {
      * Called when proxy failed to receive request body from the client.
      */
     private void handleRequestBodyError(Throwable error) {
-        log.warn("Failed to receive client body: {}", error.getMessage());
+        log.warn("Failed to receive client body. Trace: {}. Span: {}. Error: {}",
+                context.getTraceId(), context.getSpanId(), error.getMessage());
+
         respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
@@ -314,11 +336,11 @@ public class DeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        String projectName = context.getProject();
-        String deploymentName = context.getDeployment().getName();
-        String uri = buildUri(context);
-        log.warn("Can't connect to origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
-                deploymentName, uri, error.getMessage());
+        log.warn("Can't connect to origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                buildUri(context), error.getMessage());
+
         respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
     }
 
@@ -326,11 +348,12 @@ public class DeploymentPostController {
      * Called when proxy received failed response the origin.
      */
     private void handleProxyResponseError(Throwable error) {
-        String projectName = context.getProject();
-        String deploymentName = context.getDeployment().getName();
-        SocketAddress proxyAddress = context.getProxyRequest().connection().remoteAddress();
-        log.warn("Proxy received response error from origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
-                deploymentName, proxyAddress, error.getMessage());
+        log.warn("Proxy received response error from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                context.getProxyRequest().connection().remoteAddress(),
+                error.getMessage());
+
         respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
     }
 
@@ -338,7 +361,9 @@ public class DeploymentPostController {
      * Called when proxy failed to send response to the client.
      */
     private void handleResponseError(Throwable error) {
-        log.warn("Can't send response to client: {}", error.getMessage());
+        log.warn("Can't send response to client. Trace: {}. Span: {}. Error: {}",
+                context.getTraceId(), context.getSpanId(), error.getMessage());
+
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
     }
