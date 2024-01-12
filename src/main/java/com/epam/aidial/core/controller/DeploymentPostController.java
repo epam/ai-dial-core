@@ -41,6 +41,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -58,7 +59,7 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private ApiKeyData proxyApiKeyData;
+    private final ApiKeyData proxyApiKeyData = new ApiKeyData();
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -142,29 +143,43 @@ public class DeploymentPostController {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
-        if (deployment instanceof Assistant) {
-            try {
-                Map.Entry<Buffer, Map<String, String>> enhancedRequest = enhanceAssistantRequest(context);
-                context.setRequestBody(enhancedRequest.getKey());
-                context.setRequestHeaders(enhancedRequest.getValue());
-            } catch (HttpException e) {
-                respond(e.getStatus(), e.getMessage());
-                log.warn("Can't enhance assistant request: {}", e.getMessage());
-                return;
-            } catch (Throwable e) {
-                respond(HttpStatus.BAD_REQUEST);
-                log.warn("Can't enhance assistant request: {}", e.getMessage());
-                return;
-            }
-        }
+        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
-        if (deployment instanceof Model) {
             try {
-                context.setRequestBody(enhanceModelRequest(context));
+                ProxyUtil.collectAttachedFiles(tree, proxyApiKeyData);
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
-                log.warn("Can't enhance model request: {}", e.getMessage());
+                log.warn("Can't collect attached files: {}", e.getMessage());
             }
+
+            if (deployment instanceof Assistant) {
+                try {
+                    Map.Entry<Buffer, Map<String, String>> enhancedRequest = enhanceAssistantRequest(context, tree);
+                    context.setRequestBody(enhancedRequest.getKey());
+                    context.setRequestHeaders(enhancedRequest.getValue());
+                } catch (HttpException e) {
+                    respond(e.getStatus(), e.getMessage());
+                    log.warn("Can't enhance assistant request: {}", e.getMessage());
+                    return;
+                } catch (Throwable e) {
+                    respond(HttpStatus.BAD_REQUEST);
+                    log.warn("Can't enhance assistant request: {}", e.getMessage());
+                    return;
+                }
+            }
+            if (deployment instanceof Model) {
+                try {
+                    context.setRequestBody(enhanceModelRequest(context, tree));
+                } catch (Throwable e) {
+                    context.respond(HttpStatus.BAD_REQUEST);
+                    log.warn("Can't enhance model request: {}", e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            respond(HttpStatus.BAD_REQUEST);
+            log.warn("Can't parse JSON request body", e);
+            return;
         }
 
         sendRequest();
@@ -178,18 +193,7 @@ public class DeploymentPostController {
         log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
-        ApiKeyData apiKeyData = context.getApiKeyData();
-
-        if (apiKeyData.getPerRequestKey() == null) {
-            proxyApiKeyData = new ApiKeyData();
-            proxyApiKeyData.setOriginalKey(context.getKey());
-            proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
-            proxyApiKeyData.setTraceId(context.getTraceId());
-        } else {
-            proxyApiKeyData = ApiKeyData.from(apiKeyData);
-        }
-        proxyApiKeyData.setSpanId(context.getSpanId());
-        proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
 
         proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
 
@@ -368,86 +372,79 @@ public class DeploymentPostController {
         return endpoint + (query == null ? "" : "?" + query);
     }
 
-    private static Map.Entry<Buffer, Map<String, String>> enhanceAssistantRequest(ProxyContext context)
+    private static Map.Entry<Buffer, Map<String, String>> enhanceAssistantRequest(ProxyContext context, ObjectNode tree)
             throws Exception {
         Config config = context.getConfig();
         Assistant assistant = (Assistant) context.getDeployment();
-        Buffer requestBody = context.getRequestBody();
 
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
-            ArrayNode messages = (ArrayNode) tree.get("messages");
-            if (assistant.getPrompt() != null) {
-                deletePrompt(messages);
-                insertPrompt(messages, assistant.getPrompt());
-            }
-
-            Set<String> names = new LinkedHashSet<>(assistant.getAddons());
-            ArrayNode addons = (ArrayNode) tree.get("addons");
-
-            if (addons == null) {
-                addons = tree.putArray("addons");
-            }
-
-            for (JsonNode addon : addons) {
-                String name = addon.get("name").asText("");
-                names.add(name);
-            }
-
-            addons.removeAll();
-            Map<String, String> headers = new HashMap<>();
-            int addonIndex = 0;
-            for (String name : names) {
-                Addon addon = config.getAddons().get(name);
-                if (addon == null) {
-                    throw new HttpException(HttpStatus.NOT_FOUND, "No addon: " + name);
-                }
-
-                if (!DeploymentController.hasAccess(context, addon)) {
-                    throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden addon: " + name);
-                }
-
-                String url = addon.getEndpoint();
-                addons.addObject().put("url", url).put("name", name);
-                if (addon.getToken() != null && !addon.getToken().isBlank()) {
-                    headers.put("x-addon-token-" + addonIndex, addon.getToken());
-                }
-                ++addonIndex;
-            }
-
-            String name = tree.get("model").asText(null);
-            Model model = config.getModels().get(name);
-
-            if (model == null) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "No model: " + name);
-            }
-
-            if (!DeploymentController.hasAccess(context, model)) {
-                throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden model: " + name);
-            }
-
-            Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
-            return Map.entry(updatedBody, headers);
+        ArrayNode messages = (ArrayNode) tree.get("messages");
+        if (assistant.getPrompt() != null) {
+            deletePrompt(messages);
+            insertPrompt(messages, assistant.getPrompt());
         }
+
+        Set<String> names = new LinkedHashSet<>(assistant.getAddons());
+        ArrayNode addons = (ArrayNode) tree.get("addons");
+
+        if (addons == null) {
+            addons = tree.putArray("addons");
+        }
+
+        for (JsonNode addon : addons) {
+            String name = addon.get("name").asText("");
+            names.add(name);
+        }
+
+        addons.removeAll();
+        Map<String, String> headers = new HashMap<>();
+        int addonIndex = 0;
+        for (String name : names) {
+            Addon addon = config.getAddons().get(name);
+            if (addon == null) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "No addon: " + name);
+            }
+
+            if (!DeploymentController.hasAccess(context, addon)) {
+                throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden addon: " + name);
+            }
+
+            String url = addon.getEndpoint();
+            addons.addObject().put("url", url).put("name", name);
+            if (addon.getToken() != null && !addon.getToken().isBlank()) {
+                headers.put("x-addon-token-" + addonIndex, addon.getToken());
+            }
+            ++addonIndex;
+        }
+
+        String name = tree.get("model").asText(null);
+        Model model = config.getModels().get(name);
+
+        if (model == null) {
+            throw new HttpException(HttpStatus.NOT_FOUND, "No model: " + name);
+        }
+
+        if (!DeploymentController.hasAccess(context, model)) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden model: " + name);
+        }
+
+        Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+        return Map.entry(updatedBody, headers);
     }
 
-    private static Buffer enhanceModelRequest(ProxyContext context) throws Exception {
+    private static Buffer enhanceModelRequest(ProxyContext context, ObjectNode tree) throws Exception {
         Model model = (Model) context.getDeployment();
         String overrideName = model.getOverrideName();
         Buffer requestBody = context.getRequestBody();
+
         if (overrideName == null) {
             return requestBody;
         }
 
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+        tree.remove("model");
+        tree.put("model", overrideName);
 
-            tree.remove("model");
-            tree.put("model", overrideName);
-
-            return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
-        }
+        return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
     }
 
     private static ObjectNode insertPrompt(ArrayNode messages, String prompt) {

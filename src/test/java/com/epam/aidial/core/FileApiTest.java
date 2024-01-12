@@ -93,7 +93,10 @@ public class FileApiTest {
     public void testPerRequestBucket(Vertx vertx, VertxTestContext context) {
         // creating per-request API key with proxyKey1 as originator
         // and proxyKey2 caller
-        ApiKeyData apiKeyData2 = ApiKeyData.from(apiKeyStore.getApiKeyData("proxyKey1"));
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1");
+        ApiKeyData apiKeyData2 = new ApiKeyData();
+        apiKeyData2.setOriginalKey(projectApiKeyData.getOriginalKey());
+
         // set deployment ID for proxyKey2
         apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
         apiKeyStore.assignApiKey(apiKeyData2);
@@ -334,7 +337,9 @@ public class FileApiTest {
     public void testFileUploadToAppdata(Vertx vertx, VertxTestContext context) {
         // creating per-request API key with proxyKey1 as originator
         // and proxyKey2 caller
-        ApiKeyData apiKeyData2 = ApiKeyData.from(apiKeyStore.getApiKeyData("proxyKey1"));
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1");
+        ApiKeyData apiKeyData2 = new ApiKeyData();
+        apiKeyData2.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey2
         apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
         apiKeyStore.assignApiKey(apiKeyData2);
@@ -423,7 +428,9 @@ public class FileApiTest {
 
         // creating per-request API key with proxyKey2 as originator
         // and proxyKey1 caller
-        ApiKeyData apiKeyData1 = ApiKeyData.from(apiKeyStore.getApiKeyData("proxyKey2"));
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2");
+        ApiKeyData apiKeyData1 = new ApiKeyData();
+        apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
         apiKeyData1.setAttachedFiles(Set.of("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt"));
@@ -586,6 +593,72 @@ public class FileApiTest {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
                                     assertEquals(expectedFileMetadata2, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify uploaded files can be listed
+            client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedRootFolderMetadata), response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
+    public void testListFileWithDefaultContentType(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        FolderMetadata emptyFolderResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
+
+        FileMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "image.png", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "binary/octet-stream");
+
+        FileMetadata expectedImageMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "image.png", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "image/png");
+        FolderMetadata expectedRootFolderMetadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                List.of(expectedImageMetadata));
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify no files
+            client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FolderMetadata.class))
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(emptyFolderResponse, response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file1
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("filename", TEST_FILE_CONTENT, "binary/octet-stream"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata1, response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
