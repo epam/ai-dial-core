@@ -30,15 +30,18 @@ public class ProxyUtil {
             .add(HttpHeaders.UPGRADE, "whatever")
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
             .add(HttpHeaders.ACCEPT_ENCODING, "whatever")
-            .add(HttpHeaders.AUTHORIZATION, "whatever")
             .add(Proxy.HEADER_API_KEY, "whatever");
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
+        copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());
+    }
+
+    public static void copyHeaders(MultiMap from, MultiMap to, MultiMap excludeHeaders) {
         for (Map.Entry<String, String> entry : from.entries()) {
             String key = entry.getKey();
             String value = entry.getValue();
 
-            if (!HOP_BY_HOP_HEADERS.contains(key)) {
+            if (!HOP_BY_HOP_HEADERS.contains(key) && !excludeHeaders.contains(key)) {
                 to.add(key, value);
             }
         }

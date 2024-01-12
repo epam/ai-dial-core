@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -195,7 +196,13 @@ public class DeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        Deployment deployment = context.getDeployment();
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        if (!deployment.isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
+
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 

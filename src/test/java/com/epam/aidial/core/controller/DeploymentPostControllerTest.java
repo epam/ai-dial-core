@@ -38,8 +38,10 @@ import static com.epam.aidial.core.util.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.util.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.util.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -61,7 +63,7 @@ public class DeploymentPostControllerTest {
     private HttpServerRequest request;
 
     @Mock
-    private RateLimiter rateLimiter;
+    private ApiKeyStore apiKeyStore;
 
     @InjectMocks
     private DeploymentPostController controller;
@@ -137,6 +139,44 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    public void testHandleProxyRequest_NotPropagateAuthHeader() {
+
+        Config config = new Config();
+        config.setApplications(new HashMap<>());
+        Application application = new Application();
+        application.setName("app1");
+        application.setForwardAuthToken(false);
+        application.setEndpoint("http://app1/chat");
+        config.getApplications().put("app1", application);
+
+        MultiMap headers = new HeadersMultiMap();
+        headers.add(AUTHORIZATION, "token");
+        when(request.headers()).thenReturn(headers);
+        when(context.getDeployment()).thenReturn(application);
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+
+        Mockito.doAnswer(invocation -> {
+            ApiKeyData arg = invocation.getArgument(0);
+            arg.setPerRequestKey("key1");
+            return null;
+        }).when(apiKeyStore).assignApiKey(any(ApiKeyData.class));
+
+        Buffer requestBody = Buffer.buffer();
+        when(context.getRequestBody()).thenReturn(requestBody);
+
+        controller.handleProxyRequest(proxyRequest);
+
+        assertNull(proxyHeaders.get(AUTHORIZATION));
+    }
+
+    @Test
     public void testHandleRequestBody_OverrideModelName() throws IOException {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(upstreamRoute.hasNext()).thenReturn(true);
@@ -199,10 +239,11 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleProxyRequest() {
+    public void testHandleProxyRequest_PropagateAuthHeader() {
         Application application = new Application();
         application.setName("app1");
         application.setEndpoint("http://app1/chat");
+        application.setForwardAuthToken(true);
 
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getApiKeyData()).thenReturn(apiKeyData);
@@ -211,9 +252,9 @@ public class DeploymentPostControllerTest {
 
         MultiMap headers = new HeadersMultiMap();
         headers.add(HEADER_API_KEY, "k1");
+        headers.add(AUTHORIZATION, "token");
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         Mockito.doAnswer(invocation -> {
             ApiKeyData arg = invocation.getArgument(0);
             arg.setPerRequestKey("key1");
@@ -231,6 +272,7 @@ public class DeploymentPostControllerTest {
         controller.handleProxyRequest(proxyRequest);
 
         assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
+        assertEquals("token", proxyHeaders.get(AUTHORIZATION));
 
         verify(proxy.getApiKeyStore()).assignApiKey(any(ApiKeyData.class));
     }

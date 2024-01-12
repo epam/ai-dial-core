@@ -13,6 +13,11 @@ public abstract class Deployment {
     private String iconUrl;
     private String description;
     private Set<String> userRoles = Set.of();
+    /**
+     * Forward Http header with authorization token when request is sent to deployment.
+     * Authorization token is NOT forwarded by default.
+     */
+    private boolean forwardAuthToken = false;
     private Features features;
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
