@@ -90,6 +90,9 @@ public class ProxyUtil {
                 continue;
             }
             ArrayNode attachments = (ArrayNode) customContent.get("attachments");
+            if (attachments == null) {
+                continue;
+            }
             for (int j = 0; j < attachments.size(); j++) {
                 JsonNode attachment = attachments.get(j);
                 JsonNode url = attachment.get("url");

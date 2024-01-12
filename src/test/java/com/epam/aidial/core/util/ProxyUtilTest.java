@@ -19,7 +19,9 @@ public class ProxyUtilTest {
                   "messages": [
                     {
                       "content": "test",
-                      "role": "user"
+                      "role": "user",
+                      "custom_content": {
+                      }
                     },
                     {
                       "content": "I'm sorry, but your message is unclear. Could you please provide more details or context?",
