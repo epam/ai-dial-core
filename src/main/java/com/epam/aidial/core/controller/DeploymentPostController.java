@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Addon;
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -57,7 +58,7 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private boolean unregisterTrace;
+    private ApiKeyData proxyApiKeyData;
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -79,8 +80,6 @@ public class DeploymentPostController {
             log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
-
-        unregisterTrace = !proxy.getRateLimiter().register(context);
 
         context.setDeployment(deployment);
 
@@ -179,22 +178,33 @@ public class DeploymentPostController {
         log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
+        ApiKeyData apiKeyData = context.getApiKeyData();
+
+        if (apiKeyData.getPerRequestKey() == null) {
+            proxyApiKeyData = new ApiKeyData();
+            proxyApiKeyData.setOriginalKey(context.getKey());
+            proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
+            proxyApiKeyData.setTraceId(context.getTraceId());
+        } else {
+            proxyApiKeyData = ApiKeyData.from(apiKeyData);
+        }
+        proxyApiKeyData.setSpanId(context.getSpanId());
+
+        proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
+
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
         Deployment deployment = context.getDeployment();
         MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
-        excludeHeaders.add(Proxy.HEADER_API_KEY, "whatever");
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
-        if (deployment.isForwardApiKey()) {
-            proxyRequest.headers().add(Proxy.HEADER_API_KEY, deployment.getApiKey());
-        }
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = context.getUpstreamRoute().get();
@@ -245,7 +255,7 @@ public class DeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
                 .onFailure(this::handleResponseError)
-                .onComplete(ignore -> unregister());
+                .onComplete(ignore -> finalizeRequest());
     }
 
     /**
@@ -461,23 +471,21 @@ public class DeploymentPostController {
     }
 
     private Future<Void> respond(HttpStatus status, String errorMessage) {
-        unregister();
+        finalizeRequest();
         return context.respond(status, errorMessage);
     }
 
     private Future<Void> respond(HttpStatus status) {
-        unregister();
+        finalizeRequest();
         return context.respond(status);
     }
 
     private Future<Void> respond(HttpStatus status, Object result) {
-        unregister();
+        finalizeRequest();
         return context.respond(status, result);
     }
 
-    private void unregister() {
-        if (unregisterTrace) {
-            proxy.getRateLimiter().unregister(context);
-        }
+    private void finalizeRequest() {
+        proxy.getApiKeyStore().invalidateApiKey(proxyApiKeyData);
     }
 }

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.util;
 
+import com.epam.aidial.core.Proxy;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.vertx.core.MultiMap;
@@ -8,9 +9,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
 
-import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
 
 @UtilityClass
 public class ProxyUtil {
@@ -30,7 +29,8 @@ public class ProxyUtil {
             .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
             .add(HttpHeaders.UPGRADE, "whatever")
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
-            .add(HttpHeaders.ACCEPT_ENCODING, "whatever");
+            .add(HttpHeaders.ACCEPT_ENCODING, "whatever")
+            .add(Proxy.HEADER_API_KEY, "whatever");
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
         copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());
