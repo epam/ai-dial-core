@@ -2,9 +2,11 @@ package com.epam.aidial.core;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.FolderMetadata;
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -40,6 +43,8 @@ public class FileApiTest {
     private static int serverPort;
     private static Path testDir;
 
+    private static ApiKeyStore apiKeyStore;
+
     @BeforeAll
     public static void init() throws Exception {
         // initialize server
@@ -48,6 +53,7 @@ public class FileApiTest {
         dial.setStorage(FileUtil.buildFsBlobStorage(testDir));
         dial.start();
         serverPort = dial.getServer().actualPort();
+        apiKeyStore = dial.getProxy().getApiKeyStore();
     }
 
     @BeforeEach
@@ -81,6 +87,66 @@ public class FileApiTest {
                         context.completeNow();
                     });
                 }));
+    }
+
+    @Test
+    public void testPerRequestBucket(Vertx vertx, VertxTestContext context) {
+        // creating per-request API key with proxyKey1 as originator
+        // and proxyKey2 caller
+        ApiKeyData apiKeyData2 = ApiKeyData.from(apiKeyStore.getApiKeyData("proxyKey1"));
+        // set deployment ID for proxyKey2
+        apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
+        apiKeyStore.assignApiKey(apiKeyData2);
+
+        String apiKey2 = apiKeyData2.getPerRequestKey();
+
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify proxyKey1 bucket
+            client.get(serverPort, "localhost", "/v1/bucket")
+                    .putHeader("Api-key", "proxyKey1")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals("{\"bucket\":\"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST\"}", response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify proxyKey2 bucket
+            client.get(serverPort, "localhost", "/v1/bucket")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals("{\"bucket\":\"7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt\"}", response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+            return promise.future();
+        }).andThen((result) -> {
+            // verify per-request key bucket and app-data
+            client.get(serverPort, "localhost", "/v1/bucket")
+                    .putHeader("Api-key", apiKey2)
+                    .as(BodyCodec.json(Bucket.class))
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(new Bucket("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                    "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL"), response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
     }
 
     @Test
@@ -258,6 +324,159 @@ public class FileApiTest {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
                             assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedFolderMetadata), response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
+    public void testFileUploadToAppdata(Vertx vertx, VertxTestContext context) {
+        // creating per-request API key with proxyKey1 as originator
+        // and proxyKey2 caller
+        ApiKeyData apiKeyData2 = ApiKeyData.from(apiKeyStore.getApiKeyData("proxyKey1"));
+        // set deployment ID for proxyKey2
+        apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
+        apiKeyStore.assignApiKey(apiKeyData2);
+
+        String apiKey2 = apiKeyData2.getPerRequestKey();
+
+        Checkpoint checkpoint = context.checkpoint(4);
+        WebClient client = WebClient.create(vertx);
+
+        FileMetadata expectedFileMetadata = new FileMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                "file.txt", "appdata/EPM-RTC-RAIL", "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt", 17, "text/custom");
+        FolderMetadata expectedFolderMetadata = new FolderMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                "EPM-RTC-RAIL", "appdata", "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/", List.of(expectedFileMetadata));
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify per-request key bucket and app-data
+            client.get(serverPort, "localhost", "/v1/bucket")
+                    .putHeader("Api-key", apiKey2)
+                    .as(BodyCodec.json(Bucket.class))
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(new Bucket("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                    "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL"), response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload file to the app data folder with pre-request api key
+            client.put(serverPort, "localhost", "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt")
+                    .putHeader("Api-key", apiKey2)
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify that proxyKey2 can't upload files to the app data with own api-key
+            client.put(serverPort, "localhost", "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(403, response.statusCode());
+                                    assertEquals("You don't have an access to the bucket 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST", response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify uploaded file can be listed by bucket owner
+            client.get(serverPort, "localhost", "/v1/files/metadata/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/")
+                    .putHeader("Api-key", "proxyKey1")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedFolderMetadata), response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
+    public void testDownloadSharedFile(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        // creating per-request API key with proxyKey2 as originator
+        // and proxyKey1 caller
+        ApiKeyData apiKeyData1 = ApiKeyData.from(apiKeyStore.getApiKeyData("proxyKey2"));
+        // set deployment ID for proxyKey1
+        apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
+        apiKeyData1.setAttachedFiles(Set.of("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt"));
+        apiKeyStore.assignApiKey(apiKeyData1);
+
+        String apiKey1 = apiKeyData1.getPerRequestKey();
+
+        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", "folder1", "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain");
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // proxyKey2 uploads file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify caller can't download shared file with own api-key
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", "proxyKey1")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(403, response.statusCode());
+                            assertEquals("You don't have an access to the bucket 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt", response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify pre-request api key can download shared file
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", apiKey1)
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(TEST_FILE_CONTENT, response.body());
                             checkpoint.flag();
                         });
                     }));
