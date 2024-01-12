@@ -2,10 +2,12 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.limiter.RateLimiter;
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
@@ -32,7 +35,6 @@ import java.util.Set;
 import static com.epam.aidial.core.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.util.HttpStatus.BAD_GATEWAY;
-import static com.epam.aidial.core.util.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.util.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.util.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.util.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
@@ -61,7 +63,7 @@ public class DeploymentPostControllerTest {
     private HttpServerRequest request;
 
     @Mock
-    private RateLimiter rateLimiter;
+    private ApiKeyStore apiKeyStore;
 
     @InjectMocks
     private DeploymentPostController controller;
@@ -74,6 +76,7 @@ public class DeploymentPostControllerTest {
     @Test
     public void testUnsupportedContentType() {
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
 
         controller.handle("app1", "api");
 
@@ -113,8 +116,6 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testNoRoute() {
-        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
-        when(rateLimiter.register(any(ProxyContext.class))).thenReturn(true);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -130,6 +131,7 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
 
         controller.handle("app1", "chat/completions");
 
@@ -137,35 +139,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleProxyRequest_PropagateDeploymentApiHeader() {
-
-        Config config = new Config();
-        config.setApplications(new HashMap<>());
-        Application application = new Application();
-        application.setName("app1");
-        application.setEndpoint("http://app1/chat");
-        application.setApiKey("k2");
-        config.getApplications().put("app1", application);
-
-        MultiMap headers = new HeadersMultiMap();
-        headers.add(HEADER_API_KEY, "k1");
-        when(request.headers()).thenReturn(headers);
-        when(context.getDeployment()).thenReturn(application);
-
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
-        MultiMap proxyHeaders = new HeadersMultiMap();
-        when(proxyRequest.headers()).thenReturn(proxyHeaders);
-
-        Buffer requestBody = Buffer.buffer();
-        when(context.getRequestBody()).thenReturn(requestBody);
-
-        controller.handleProxyRequest(proxyRequest);
-
-        assertEquals("k2", proxyHeaders.get(HEADER_API_KEY));
-    }
-
-    @Test
-    public void testHandleProxyRequest_PropagateAuthHeader() {
+    public void testHandleProxyRequest_NotPropagateAuthHeader() {
 
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -173,17 +147,26 @@ public class DeploymentPostControllerTest {
         application.setName("app1");
         application.setForwardAuthToken(false);
         application.setEndpoint("http://app1/chat");
-        application.setApiKey("k2");
         config.getApplications().put("app1", application);
 
         MultiMap headers = new HeadersMultiMap();
-        headers.add(AUTHORIZATION, "k1");
+        headers.add(AUTHORIZATION, "token");
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
 
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+
+        Mockito.doAnswer(invocation -> {
+            ApiKeyData arg = invocation.getArgument(0);
+            arg.setPerRequestKey("key1");
+            return null;
+        }).when(apiKeyStore).assignApiKey(any(ApiKeyData.class));
 
         Buffer requestBody = Buffer.buffer();
         when(context.getRequestBody()).thenReturn(requestBody);
@@ -191,35 +174,6 @@ public class DeploymentPostControllerTest {
         controller.handleProxyRequest(proxyRequest);
 
         assertNull(proxyHeaders.get(AUTHORIZATION));
-    }
-
-    @Test
-    public void testHandleProxyRequest_PropagateApiHeader() {
-
-        Config config = new Config();
-        config.setApplications(new HashMap<>());
-        Application application = new Application();
-        application.setName("app1");
-        application.setForwardApiKey(false);
-        application.setEndpoint("http://app1/chat");
-        application.setApiKey("k2");
-        config.getApplications().put("app1", application);
-
-        MultiMap headers = new HeadersMultiMap();
-        headers.add(HEADER_API_KEY, "k1");
-        when(request.headers()).thenReturn(headers);
-        when(context.getDeployment()).thenReturn(application);
-
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
-        MultiMap proxyHeaders = new HeadersMultiMap();
-        when(proxyRequest.headers()).thenReturn(proxyHeaders);
-
-        Buffer requestBody = Buffer.buffer();
-        when(context.getRequestBody()).thenReturn(requestBody);
-
-        controller.handleProxyRequest(proxyRequest);
-
-        assertNull(proxyHeaders.get(HEADER_API_KEY));
     }
 
     @Test
@@ -282,6 +236,45 @@ public class DeploymentPostControllerTest {
 
         assertEquals(requestBody, context.getRequestBody());
 
+    }
+
+    @Test
+    public void testHandleProxyRequest_PropagateAuthHeader() {
+        Application application = new Application();
+        application.setName("app1");
+        application.setEndpoint("http://app1/chat");
+        application.setForwardAuthToken(true);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        when(context.getDeployment()).thenReturn(application);
+
+        MultiMap headers = new HeadersMultiMap();
+        headers.add(HEADER_API_KEY, "k1");
+        headers.add(AUTHORIZATION, "token");
+        when(request.headers()).thenReturn(headers);
+        when(context.getDeployment()).thenReturn(application);
+        Mockito.doAnswer(invocation -> {
+            ApiKeyData arg = invocation.getArgument(0);
+            arg.setPerRequestKey("key1");
+            return null;
+        }).when(apiKeyStore).assignApiKey(any(ApiKeyData.class));
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        Buffer requestBody = Buffer.buffer();
+        when(context.getRequestBody()).thenReturn(requestBody);
+
+        controller.handleProxyRequest(proxyRequest);
+
+        assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
+        assertEquals("token", proxyHeaders.get(AUTHORIZATION));
+
+        verify(proxy.getApiKeyStore()).assignApiKey(any(ApiKeyData.class));
     }
 
 
