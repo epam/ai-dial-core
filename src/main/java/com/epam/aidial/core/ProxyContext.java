@@ -29,13 +29,19 @@ import java.util.Map;
 public class ProxyContext {
 
     private final Config config;
+    // API key of root requester
     private final Key key;
     private final HttpServerRequest request;
     private final HttpServerResponse response;
+    // OpenTelemetry trace ID
     private final String traceId;
+    // API key data associated with the current request
     private final ApiKeyData apiKeyData;
+    // OpenTelemetry span ID created by the Core
     private final String spanId;
+    // OpenTelemetry parent span ID created by the Core
     private final String parentSpanId;
+    // deployment name of the source(application/assistant/model) associated with the current request
     private final String sourceDeployment;
 
     private Deployment deployment;

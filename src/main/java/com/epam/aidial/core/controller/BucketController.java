@@ -6,6 +6,7 @@ import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
 
@@ -25,7 +26,8 @@ public class BucketController {
             appDataLocation = null;
         } else {
             String encryptedAppDataBucket = encryptionService.encrypt(bucketLocation);
-            appDataLocation = encryptedAppDataBucket + String.format(BlobStorageUtil.APPDATA_PATTERN.formatted(context.getSourceDeployment()));
+            String encodedSourceDeployment = UrlUtil.encodePath(context.getSourceDeployment());
+            appDataLocation = encryptedAppDataBucket + BlobStorageUtil.PATH_SEPARATOR + BlobStorageUtil.APPDATA_PATTERN.formatted(encodedSourceDeployment);
         }
         return context.respond(HttpStatus.OK, new Bucket(encryptedBucket, appDataLocation));
     }

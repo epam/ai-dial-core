@@ -27,7 +27,7 @@ public abstract class AccessControlBaseController {
     public Future<?> handle(String bucket, String filePath) {
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
-        boolean hasReadAccess = hasReadAccess(bucket, filePath);
+        boolean hasReadAccess = isSharedWithMe(bucket, filePath);
         boolean hasWriteAccess = hasWriteAccess(filePath, decryptedBucket);
         boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
@@ -48,7 +48,7 @@ public abstract class AccessControlBaseController {
 
     protected abstract Future<?> handle(ResourceDescription resource);
 
-    protected boolean hasReadAccess(String bucket, String filePath) {
+    protected boolean isSharedWithMe(String bucket, String filePath) {
         String url = bucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
         return context.getApiKeyData().getAttachedFiles().contains(url);
     }
@@ -60,7 +60,7 @@ public abstract class AccessControlBaseController {
         }
         String expectedAppDataBucket = BlobStorageUtil.buildAppDataBucket(context);
         if (expectedAppDataBucket != null && expectedAppDataBucket.equals(decryptedBucket)) {
-            return filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(context.getSourceDeployment()));
+            return filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(context.getSourceDeployment())));
         }
         return false;
     }
