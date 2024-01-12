@@ -4,8 +4,12 @@ import com.epam.aidial.core.ProxyContext;
 import io.vertx.core.http.impl.MimeMapping;
 import lombok.experimental.UtilityClass;
 
+import javax.annotation.Nullable;
+
 @UtilityClass
 public class BlobStorageUtil {
+
+    public static final String APPDATA_PATTERN = "appdata/%s";
 
     private static final String USER_BUCKET_PATTERN = "Users/%s/";
 
@@ -19,6 +23,23 @@ public class BlobStorageUtil {
     }
 
     public String buildUserBucket(ProxyContext context) {
+        if (context.getApiKeyData().getPerRequestKey() == null) {
+            return buildInitiatorBucket(context);
+        } else {
+            return API_KEY_BUCKET_PATTERN.formatted(context.getSourceDeployment());
+        }
+    }
+
+    @Nullable
+    public String buildAppDataBucket(ProxyContext context) {
+        if (context.getApiKeyData().getPerRequestKey() == null) {
+            return null;
+        } else {
+            return buildInitiatorBucket(context);
+        }
+    }
+
+    public static String buildInitiatorBucket(ProxyContext context) {
         String userSub = context.getUserSub();
         String apiKeyId = context.getProject();
 

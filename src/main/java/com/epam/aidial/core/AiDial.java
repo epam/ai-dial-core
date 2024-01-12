@@ -51,6 +51,8 @@ public class AiDial {
     private HttpServer server;
     private HttpClient client;
 
+    private Proxy proxy;
+
     private BlobStorage storage;
 
     @VisibleForTesting
@@ -77,7 +79,7 @@ public class AiDial {
                 storage = new BlobStorage(storageConfig);
             }
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage, encryptionService, apiKeyStore);
+            proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator, storage, encryptionService, apiKeyStore);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -109,6 +111,11 @@ public class AiDial {
     @VisibleForTesting
     HttpServer getServer() {
         return server;
+    }
+
+    @VisibleForTesting
+    Proxy getProxy() {
+        return proxy;
     }
 
     @VisibleForTesting
