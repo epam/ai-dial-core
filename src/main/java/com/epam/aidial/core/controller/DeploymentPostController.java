@@ -58,7 +58,7 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private ApiKeyData proxyApiKeyData;
+    private final ApiKeyData proxyApiKeyData = new ApiKeyData();
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -210,17 +210,7 @@ public class DeploymentPostController {
                 context.getProject(), context.getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
 
-        ApiKeyData apiKeyData = context.getApiKeyData();
-
-        if (apiKeyData.getPerRequestKey() == null) {
-            proxyApiKeyData = new ApiKeyData();
-            proxyApiKeyData.setOriginalKey(context.getKey());
-            proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
-            proxyApiKeyData.setTraceId(context.getTraceId());
-        } else {
-            proxyApiKeyData = ApiKeyData.from(apiKeyData);
-        }
-        proxyApiKeyData.setSpanId(context.getSpanId());
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
 
         proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
 
