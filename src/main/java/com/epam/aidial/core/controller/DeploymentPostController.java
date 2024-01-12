@@ -189,6 +189,7 @@ public class DeploymentPostController {
             proxyApiKeyData = ApiKeyData.from(apiKeyData);
         }
         proxyApiKeyData.setSpanId(context.getSpanId());
+        proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
 
         proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
 
