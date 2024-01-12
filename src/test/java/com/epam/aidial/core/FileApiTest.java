@@ -77,7 +77,7 @@ public class FileApiTest {
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
                         assertEquals(200, response.statusCode());
-                        assertEquals(new Bucket("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt"), response.body());
+                        assertEquals(new Bucket("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt", null), response.body());
                         context.completeNow();
                     });
                 }));

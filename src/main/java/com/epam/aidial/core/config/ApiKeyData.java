@@ -14,6 +14,7 @@ public class ApiKeyData {
     private String traceId;
     private String spanId;
     private Set<String> attachedFiles = new HashSet<>();
+    private String sourceDeployment;
 
     public ApiKeyData() {
     }

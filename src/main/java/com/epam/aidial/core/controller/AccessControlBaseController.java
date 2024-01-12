@@ -17,6 +17,7 @@ public abstract class AccessControlBaseController {
 
     final Proxy proxy;
     final ProxyContext context;
+    final boolean checkFullAccess;
 
 
     /**
@@ -25,10 +26,12 @@ public abstract class AccessControlBaseController {
      */
     public Future<?> handle(String bucket, String filePath) {
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
-        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
+        boolean hasReadAccess = hasReadAccess(bucket, filePath);
+        boolean hasWriteAccess = hasWriteAccess(filePath, decryptedBucket);
+        boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
-        if (!expectedUserBucket.equals(decryptedBucket)) {
+        if (!hasAccess) {
             return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
         }
 
@@ -44,5 +47,22 @@ public abstract class AccessControlBaseController {
     }
 
     protected abstract Future<?> handle(ResourceDescription resource);
+
+    protected boolean hasReadAccess(String bucket, String filePath) {
+        String url = bucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
+        return context.getApiKeyData().getAttachedFiles().contains(url);
+    }
+
+    protected boolean hasWriteAccess(String filePath, String decryptedBucket) {
+        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
+        if (expectedUserBucket.equals(decryptedBucket)) {
+            return true;
+        }
+        String expectedAppDataBucket = BlobStorageUtil.buildAppDataBucket(context);
+        if (expectedAppDataBucket != null && expectedAppDataBucket.equals(decryptedBucket)) {
+            return filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(context.getSourceDeployment()));
+        }
+        return false;
+    }
 
 }

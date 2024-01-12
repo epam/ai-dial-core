@@ -36,6 +36,7 @@ public class ProxyContext {
     private final ApiKeyData apiKeyData;
     private final String spanId;
     private final String parentSpanId;
+    private final String sourceDeployment;
 
     private Deployment deployment;
     private String userSub;
@@ -67,10 +68,12 @@ public class ProxyContext {
             initExtractedClaims(apiKeyData.getExtractedClaims());
             this.traceId = apiKeyData.getTraceId();
             this.parentSpanId = apiKeyData.getSpanId();
+            this.sourceDeployment = apiKeyData.getSourceDeployment();
         } else {
             initExtractedClaims(extractedClaims);
             this.traceId = traceId;
             this.parentSpanId = null;
+            this.sourceDeployment = null;
         }
         this.spanId = spanId;
     }

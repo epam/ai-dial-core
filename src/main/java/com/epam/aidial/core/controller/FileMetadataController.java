@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 public class FileMetadataController extends AccessControlBaseController {
 
     public FileMetadataController(Proxy proxy, ProxyContext context) {
-        super(proxy, context);
+        super(proxy, context, false);
     }
 
     @Override

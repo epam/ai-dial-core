@@ -19,7 +19,14 @@ public class BucketController {
         EncryptionService encryptionService = proxy.getEncryptionService();
         String bucketLocation = BlobStorageUtil.buildUserBucket(context);
         String encryptedBucket = encryptionService.encrypt(bucketLocation);
-
-        return context.respond(HttpStatus.OK, new Bucket(encryptedBucket));
+        String appDataBucket = BlobStorageUtil.buildAppDataBucket(context);
+        String appDataLocation;
+        if (appDataBucket == null) {
+            appDataLocation = null;
+        } else {
+            String encryptedAppDataBucket = encryptionService.encrypt(bucketLocation);
+            appDataLocation = encryptedAppDataBucket + String.format(BlobStorageUtil.APPDATA_PATTERN.formatted(context.getSourceDeployment()));
+        }
+        return context.respond(HttpStatus.OK, new Bucket(encryptedBucket, appDataLocation));
     }
 }
