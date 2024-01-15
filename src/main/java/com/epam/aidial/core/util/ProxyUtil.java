@@ -83,6 +83,9 @@ public class ProxyUtil {
 
     public static void collectAttachedFiles(ObjectNode tree, ApiKeyData apiKeyData) {
         ArrayNode messages = (ArrayNode) tree.get("messages");
+        if (messages == null) {
+            return;
+        }
         for (int i = 0; i < messages.size(); i++) {
             JsonNode message = messages.get(i);
             JsonNode customContent = message.get("custom_content");
