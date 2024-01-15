@@ -348,11 +348,11 @@ public class DeploymentPostController {
      * Called when proxy received failed response the origin.
      */
     private void handleProxyResponseError(Throwable error) {
-        log.warn("Proxy received response error from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error: {}",
+        log.warn("Proxy received response error from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error:",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getProxyRequest().connection().remoteAddress(),
-                error.getMessage());
+                error);
 
         respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
     }
@@ -361,8 +361,8 @@ public class DeploymentPostController {
      * Called when proxy failed to send response to the client.
      */
     private void handleResponseError(Throwable error) {
-        log.warn("Can't send response to client. Trace: {}. Span: {}. Error: {}",
-                context.getTraceId(), context.getSpanId(), error.getMessage());
+        log.warn("Can't send response to client. Trace: {}. Span: {}. Error:",
+                context.getTraceId(), context.getSpanId(), error);
 
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
