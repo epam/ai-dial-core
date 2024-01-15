@@ -8,11 +8,12 @@ import java.io.IOException;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ProxyUtilTest {
 
     @Test
-    public void testCollectAttachedFiles() throws IOException {
+    public void testCollectAttachedFiles_ChatRequest() throws IOException {
         String content = """
                 {
                   "modelId": "model",
@@ -96,5 +97,20 @@ public class ProxyUtilTest {
         ProxyUtil.collectAttachedFiles(tree, apiKeyData);
 
         assertEquals(Set.of("b1/Dockerfile", "b1/LICENSE"), apiKeyData.getAttachedFiles());
+    }
+
+    @Test
+    public void testCollectAttachedFiles_EmbeddingRequest() throws IOException {
+        String content = """
+                {
+                  "input": "some input",
+                  "user": "user_id"
+                }
+                """;
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
+        ApiKeyData apiKeyData = new ApiKeyData();
+        ProxyUtil.collectAttachedFiles(tree, apiKeyData);
+
+        assertTrue(apiKeyData.getAttachedFiles().isEmpty());
     }
 }
