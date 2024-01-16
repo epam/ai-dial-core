@@ -2,6 +2,7 @@ package com.epam.aidial.core.token;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
@@ -37,6 +38,11 @@ public class TokenStatsTracker {
                 traceContext.endSpan(context);
             }
         }
+    }
+
+    @VisibleForTesting
+    Map<String, TraceContext> getTraces() {
+        return traceIdToContext;
     }
 
     private static class TraceContext {

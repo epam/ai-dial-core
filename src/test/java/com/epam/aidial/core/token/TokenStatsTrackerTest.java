@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -38,6 +39,9 @@ public class TokenStatsTrackerTest {
         // chat calls app -> core starts span
         tracker.startSpan(chatBackend);
 
+        assertEquals(1, tracker.getTraces().size());
+        assertTrue(tracker.getTraces().containsKey(traceId));
+
         ProxyContext app = mock(ProxyContext.class);
         when(app.getSpanId()).thenReturn("app");
         when(app.getTraceId()).thenReturn(traceId);
@@ -48,6 +52,8 @@ public class TokenStatsTrackerTest {
 
         // app calls model -> core starts span
         tracker.startSpan(app);
+
+        assertEquals(1, tracker.getTraces().size());
 
         TokenUsage modelTokenUsage = new TokenUsage();
         modelTokenUsage.setTotalTokens(100);
@@ -61,6 +67,8 @@ public class TokenStatsTrackerTest {
         // core ends span for request to model
         tracker.endSpan(app);
 
+        assertEquals(1, tracker.getTraces().size());
+
         // core receives response from app
         Future<TokenUsage> future = tracker.getTokenStats(chatBackend);
         assertNotNull(future);
@@ -73,5 +81,6 @@ public class TokenStatsTrackerTest {
 
         // core ends span for request to app
         tracker.endSpan(chatBackend);
+        assertEquals(0, tracker.getTraces().size());
     }
 }
