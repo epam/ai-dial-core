@@ -2,9 +2,9 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.storage.ResourceType;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.Future;

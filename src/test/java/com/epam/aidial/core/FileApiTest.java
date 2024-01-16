@@ -5,7 +5,8 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
-import com.epam.aidial.core.data.FolderMetadata;
+import com.epam.aidial.core.data.ResourceMetadataCollection;
+import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
@@ -156,11 +157,11 @@ public class FileApiTest {
     public void testEmptyFilesList(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
-        FolderMetadata emptyBucketResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
+        ResourceMetadataCollection emptyBucketResponse = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
         client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                 .putHeader("Api-key", "proxyKey2")
-                .as(BodyCodec.json(FolderMetadata.class))
+                .as(BodyCodec.json(ResourceMetadataCollection.class))
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
                         assertEquals(200, response.statusCode());
@@ -225,7 +226,7 @@ public class FileApiTest {
         WebClient client = WebClient.create(vertx);
 
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom");
+                "file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -277,19 +278,19 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        FolderMetadata emptyFolderResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
+        ResourceMetadataCollection emptyFolderResponse = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "файл.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt", 17, "text/custom");
-        FolderMetadata expectedFolderMetadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of(expectedFileMetadata));
+                "файл.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt", 17, "text/custom");
+        ResourceMetadataCollection expectedFolderMetadata = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of(expectedFileMetadata));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
             client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FolderMetadata.class))
+                    .as(BodyCodec.json(ResourceMetadataCollection.class))
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
@@ -350,9 +351,9 @@ public class FileApiTest {
         WebClient client = WebClient.create(vertx);
 
         FileMetadata expectedFileMetadata = new FileMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                "file.txt", "appdata/EPM-RTC-RAIL", "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt", 17, "text/custom");
-        FolderMetadata expectedFolderMetadata = new FolderMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                "EPM-RTC-RAIL", "appdata", "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/", List.of(expectedFileMetadata));
+                "file.txt", "appdata/EPM-RTC-RAIL", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt", 17, "text/custom");
+        ResourceMetadataCollection expectedFolderMetadata = new ResourceMetadataCollection(ResourceType.FILE, "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                "EPM-RTC-RAIL", "appdata", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/", List.of(expectedFileMetadata));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -439,7 +440,7 @@ public class FileApiTest {
         String apiKey1 = apiKeyData1.getPerRequestKey();
 
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "file.txt", "folder1", "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain");
+                "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -496,7 +497,7 @@ public class FileApiTest {
         WebClient client = WebClient.create(vertx);
 
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "file.txt", "folder1", "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain");
+                "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -535,17 +536,17 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
-        FolderMetadata emptyFolderResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
+        ResourceMetadataCollection emptyFolderResponse = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
 
         FileMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom");
+                "file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom");
         FileMetadata expectedFileMetadata2 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "file.txt", "folder1", "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/custom");
-        FolderMetadata expectedFolder1Metadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "folder1", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/");
-        FolderMetadata expectedRootFolderMetadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/custom");
+        ResourceMetadataCollection expectedFolder1Metadata = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "folder1", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/");
+        ResourceMetadataCollection expectedRootFolderMetadata = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                 List.of(expectedFileMetadata1, expectedFolder1Metadata));
 
         Future.succeededFuture().compose((mapper) -> {
@@ -553,7 +554,7 @@ public class FileApiTest {
             // verify no files
             client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FolderMetadata.class))
+                    .as(BodyCodec.json(ResourceMetadataCollection.class))
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
@@ -620,16 +621,16 @@ public class FileApiTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        FolderMetadata emptyFolderResponse = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
+        ResourceMetadataCollection emptyFolderResponse = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
 
         FileMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "image.png", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "binary/octet-stream");
+                "image.png", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "binary/octet-stream");
 
         FileMetadata expectedImageMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "image.png", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "image/png");
-        FolderMetadata expectedRootFolderMetadata = new FolderMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                "image.png", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "image/png");
+        ResourceMetadataCollection expectedRootFolderMetadata = new ResourceMetadataCollection(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                 List.of(expectedImageMetadata));
 
         Future.succeededFuture().compose((mapper) -> {
@@ -637,7 +638,7 @@ public class FileApiTest {
             // verify no files
             client.get(serverPort, "localhost", "/v1/files/metadata/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FolderMetadata.class))
+                    .as(BodyCodec.json(ResourceMetadataCollection.class))
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
@@ -687,7 +688,7 @@ public class FileApiTest {
         WebClient client = WebClient.create(vertx);
 
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "test_file.txt", null, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt", 17, "text/plain");
+                "test_file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt", 17, "text/plain");
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();

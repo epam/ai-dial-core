@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage;
 
+import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.util.UrlUtil;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -23,7 +24,9 @@ public class ResourceDescription {
 
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(UrlUtil.encodePath(bucketName))
+        builder.append(UrlUtil.encodePath(type.getResourceGroup()))
+                .append(BlobStorageUtil.PATH_SEPARATOR)
+                .append(UrlUtil.encodePath(bucketName))
                 .append(BlobStorageUtil.PATH_SEPARATOR);
 
         if (!parentFolders.isEmpty()) {
@@ -48,7 +51,7 @@ public class ResourceDescription {
     public String getAbsoluteFilePath() {
         StringBuilder builder = new StringBuilder();
         builder.append(bucketLocation)
-                .append(type.getFolder())
+                .append(type.getResourceGroup())
                 .append(BlobStorageUtil.PATH_SEPARATOR);
 
         if (!parentFolders.isEmpty()) {

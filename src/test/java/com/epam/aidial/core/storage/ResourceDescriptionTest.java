@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage;
 
+import com.epam.aidial.core.data.ResourceType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,7 +21,7 @@ public class ResourceDescriptionTest {
         assertEquals("aes-bucket-name", resource.getBucketName());
         assertEquals("buckets/location/", resource.getBucketLocation());
         assertEquals(ResourceType.FILE, resource.getType());
-        assertEquals("aes-bucket-name/", resource.getUrl());
+        assertEquals("files/aes-bucket-name/", resource.getUrl());
         assertEquals("buckets/location/files/", resource.getAbsoluteFilePath());
         assertEquals("/", resource.getOriginalPath());
         assertTrue(resource.isFolder());
@@ -35,7 +36,7 @@ public class ResourceDescriptionTest {
         assertEquals("test-bucket-name", resource.getBucketName());
         assertEquals("buckets/location/", resource.getBucketLocation());
         assertEquals(ResourceType.FILE, resource.getType());
-        assertEquals("test-bucket-name/folder%201/", resource.getUrl());
+        assertEquals("files/test-bucket-name/folder%201/", resource.getUrl());
         assertEquals("buckets/location/files/folder 1/", resource.getAbsoluteFilePath());
         assertEquals("folder%201/", resource.getOriginalPath());
         assertTrue(resource.isFolder());
@@ -50,7 +51,7 @@ public class ResourceDescriptionTest {
         assertEquals("test-bucket-name", resource.getBucketName());
         assertEquals("buckets/location/", resource.getBucketLocation());
         assertEquals(ResourceType.FILE, resource.getType());
-        assertEquals("test-bucket-name/folder1/folder2/", resource.getUrl());
+        assertEquals("files/test-bucket-name/folder1/folder2/", resource.getUrl());
         assertEquals("buckets/location/files/folder1/folder2/", resource.getAbsoluteFilePath());
         assertEquals("folder1/folder2/", resource.getOriginalPath());
         assertTrue(resource.isFolder());
@@ -65,7 +66,7 @@ public class ResourceDescriptionTest {
         assertEquals("test-bucket-name", resource.getBucketName());
         assertEquals("buckets/location/", resource.getBucketLocation());
         assertEquals(ResourceType.FILE, resource.getType());
-        assertEquals("test-bucket-name/folder1/folder2/folder3/", resource.getUrl());
+        assertEquals("files/test-bucket-name/folder1/folder2/folder3/", resource.getUrl());
         assertEquals("buckets/location/files/folder1/folder2/folder3/", resource.getAbsoluteFilePath());
         assertEquals("folder1/folder2/folder3/", resource.getOriginalPath());
         assertTrue(resource.isFolder());
@@ -80,7 +81,7 @@ public class ResourceDescriptionTest {
         assertEquals("test-bucket-name", resource.getBucketName());
         assertEquals("buckets/location/", resource.getBucketLocation());
         assertEquals(ResourceType.FILE, resource.getType());
-        assertEquals("test-bucket-name/file.txt", resource.getUrl());
+        assertEquals("files/test-bucket-name/file.txt", resource.getUrl());
         assertEquals("buckets/location/files/file.txt", resource.getAbsoluteFilePath());
         assertEquals("file.txt", resource.getOriginalPath());
         assertFalse(resource.isFolder());
@@ -95,7 +96,7 @@ public class ResourceDescriptionTest {
         assertEquals("test-bucket-name", resource.getBucketName());
         assertEquals("buckets/location/", resource.getBucketLocation());
         assertEquals(ResourceType.FILE, resource.getType());
-        assertEquals("test-bucket-name/folder1/file.txt", resource.getUrl());
+        assertEquals("files/test-bucket-name/folder1/file.txt", resource.getUrl());
         assertEquals("buckets/location/files/folder1/file.txt", resource.getAbsoluteFilePath());
         assertEquals("folder1/file.txt", resource.getOriginalPath());
         assertFalse(resource.isFolder());
@@ -110,7 +111,7 @@ public class ResourceDescriptionTest {
         assertEquals("test-bucket-name", resource.getBucketName());
         assertEquals("buckets/location/", resource.getBucketLocation());
         assertEquals(ResourceType.FILE, resource.getType());
-        assertEquals("test-bucket-name/folder1/folder2/file.txt", resource.getUrl());
+        assertEquals("files/test-bucket-name/folder1/folder2/file.txt", resource.getUrl());
         assertEquals("buckets/location/files/folder1/folder2/file.txt", resource.getAbsoluteFilePath());
         assertEquals("folder1/folder2/file.txt", resource.getOriginalPath());
         assertFalse(resource.isFolder());

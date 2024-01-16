@@ -2,7 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.data.FileMetadataBase;
+import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
@@ -21,7 +21,7 @@ public class FileMetadataController extends AccessControlBaseController {
         BlobStorage storage = proxy.getStorage();
         return proxy.getVertx().executeBlocking(() -> {
             try {
-                FileMetadataBase metadata = storage.listMetadata(resource);
+                MetadataBase metadata = storage.listMetadata(resource);
                 if (metadata != null) {
                     context.respond(HttpStatus.OK, metadata);
                 } else {
