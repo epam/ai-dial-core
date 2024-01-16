@@ -238,6 +238,8 @@ public class DeploymentPostController {
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
         context.getRequestHeaders().forEach(proxyRequest::putHeader);
 
+        proxy.getTokenStatsTracker().startSpan(context);
+
         proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
@@ -276,9 +278,17 @@ public class DeploymentPostController {
         responseStream.pipe()
                 .endOnFailure(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse())
-                .onFailure(this::handleResponseError)
-                .onComplete(ignore -> finalizeRequest());
+                .onComplete(result -> {
+                    try {
+                        if (result.succeeded()) {
+                            handleResponse();
+                        } else {
+                            handleResponseError(result.cause());
+                        }
+                    } finally {
+                        finalizeRequest();
+                    }
+                });
     }
 
     /**
@@ -288,38 +298,51 @@ public class DeploymentPostController {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        proxy.getLogStore().save(context);
-
-        if (context.getDeployment() instanceof Model && context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-            TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
-            context.setTokenUsage(tokenUsage);
-            proxy.getRateLimiter().increase(context);
-
-            if (tokenUsage == null) {
-                log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
-                        context.getTraceId(), context.getSpanId(),
-                        context.getProject(), context.getDeployment().getName(),
-                        context.getDeployment().getEndpoint(),
-                        context.getUpstreamRoute().get().getEndpoint(),
-                        context.getResponse().getStatusCode(),
-                        context.getResponseBody().length());
+        Future<TokenUsage> tokenUsageFuture;
+        if (context.getDeployment() instanceof Model) {
+            if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
+                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                context.setTokenUsage(tokenUsage);
+                proxy.getRateLimiter().increase(context);
+                tokenUsageFuture = Future.succeededFuture(tokenUsage);
+                if (tokenUsage == null) {
+                    log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                            context.getTraceId(), context.getSpanId(),
+                            context.getProject(), context.getDeployment().getName(),
+                            context.getDeployment().getEndpoint(),
+                            context.getUpstreamRoute().get().getEndpoint(),
+                            context.getResponse().getStatusCode(),
+                            context.getResponseBody().length());
+                } else {
+                    Model model = (Model) context.getDeployment();
+                    tokenUsage.calculateCost(model.getPricing());
+                }
+            } else {
+                tokenUsageFuture = Future.succeededFuture();
             }
+        } else {
+            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
 
-        log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
-                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(),
-                context.getUpstreamRoute().get().getEndpoint(),
-                context.getResponse().getStatusCode(),
-                context.getResponseBody().length(),
-                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
-                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
-                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
-                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
-                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+        tokenUsageFuture.onComplete(ignore -> {
+
+            proxy.getLogStore().save(context);
+
+            log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
+                            + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), context.getDeployment().getName(),
+                    context.getDeployment().getEndpoint(),
+                    context.getUpstreamRoute().get().getEndpoint(),
+                    context.getResponse().getStatusCode(),
+                    context.getResponseBody().length(),
+                    context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                    context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                    context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                    context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                    context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                    context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+        });
     }
 
     /**
@@ -509,6 +532,7 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
+        proxy.getTokenStatsTracker().endSpan(context);
         proxy.getApiKeyStore().invalidateApiKey(proxyApiKeyData);
     }
 }
