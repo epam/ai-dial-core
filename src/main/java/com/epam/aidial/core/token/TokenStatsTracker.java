@@ -6,6 +6,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,7 +22,7 @@ public class TokenStatsTracker {
     public Future<TokenUsage> getTokenStats(ProxyContext context) {
         TraceContext traceContext = traceIdToContext.get(context.getTraceId());
         if (traceContext == null) {
-            return null;
+            return Future.succeededFuture();
         }
         return traceContext.getStats(context);
     }
@@ -39,9 +40,9 @@ public class TokenStatsTracker {
     }
 
     private static class TraceContext {
-        Map<String, TokenStats> spans = new ConcurrentHashMap<>();
+        Map<String, TokenStats> spans = new HashMap<>();
 
-        void addSpan(ProxyContext context) {
+        synchronized void addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
             TokenStats tokenStats = new TokenStats(new TokenUsage(), Promise.promise(), new ArrayList<>());
@@ -49,14 +50,12 @@ public class TokenStatsTracker {
             if (parentSpanId != null) {
                 TokenStats parent = spans.get(parentSpanId);
                 if (parent != null) {
-                    synchronized (parent.children) {
-                        parent.children.add(tokenStats.promise.future());
-                    }
+                    parent.children.add(tokenStats.promise.future());
                 }
             }
         }
 
-        void endSpan(ProxyContext context) {
+        synchronized void endSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             TokenStats tokenStats = spans.get(spanId);
             if (tokenStats != null) {
@@ -64,21 +63,19 @@ public class TokenStatsTracker {
             }
         }
 
-        Future<TokenUsage> getStats(ProxyContext context) {
+        synchronized Future<TokenUsage> getStats(ProxyContext context) {
             TokenStats tokenStats = spans.get(context.getSpanId());
             if (tokenStats == null) {
                 return Future.succeededFuture();
             }
             TokenUsage tokenUsage = tokenStats.tokenUsage;
-            synchronized (tokenStats.children) {
-                return Future.all(tokenStats.children).map(result -> {
-                    for (var child : result.list()) {
-                        TokenUsage stats = (TokenUsage) child;
-                        tokenUsage.increase(stats);
-                    }
-                    return tokenUsage;
-                });
-            }
+            return Future.all(tokenStats.children).map(result -> {
+                for (var child : result.list()) {
+                    TokenUsage stats = (TokenUsage) child;
+                    tokenUsage.increase(stats);
+                }
+                return tokenUsage;
+            });
         }
     }
 

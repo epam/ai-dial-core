@@ -26,7 +26,9 @@ public class TokenUsage {
         if (pricing.getCompletion() != null) {
             cost += completionTokens * Double.parseDouble(pricing.getCompletion());
         }
-        this.cost = cost;
+        if (pricing.getPrompt() != null || pricing.getCompletion() != null) {
+            this.cost = cost;
+        }
     }
 
     public void increase(TokenUsage other) {
@@ -36,12 +38,18 @@ public class TokenUsage {
         completionTokens += other.completionTokens;
         promptTokens += other.promptTokens;
         totalTokens += other.totalTokens;
-        if (other.cost != null) {
-            if (aggCost == null) {
-                aggCost = other.cost;
-            } else {
-                aggCost += other.cost;
-            }
+        aggCost(other.cost);
+        aggCost(other.aggCost);
+    }
+
+    private void aggCost(Double val) {
+        if (val == null) {
+            return;
+        }
+        if (aggCost == null) {
+            aggCost = val;
+        } else {
+            aggCost += val;
         }
     }
 

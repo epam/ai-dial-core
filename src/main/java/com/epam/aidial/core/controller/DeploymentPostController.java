@@ -110,6 +110,8 @@ public class DeploymentPostController {
             return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
+        proxy.getTokenStatsTracker().startSpan(context);
+
         return context.getRequest().body()
                 .onSuccess(this::handleRequestBody)
                 .onFailure(this::handleRequestBodyError);
@@ -238,8 +240,6 @@ public class DeploymentPostController {
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
         context.getRequestHeaders().forEach(proxyRequest::putHeader);
 
-        proxy.getTokenStatsTracker().startSpan(context);
-
         proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
@@ -285,11 +285,12 @@ public class DeploymentPostController {
     /**
      * Called when proxy sent response from the origin to the client.
      */
-    private void handleResponse() {
+    @VisibleForTesting
+    void handleResponse() {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        Future<TokenUsage> tokenUsageFuture;
+        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
                 TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
@@ -306,10 +307,12 @@ public class DeploymentPostController {
                             context.getResponseBody().length());
                 } else {
                     Model model = (Model) context.getDeployment();
-                    tokenUsage.calculateCost(model.getPricing());
+                    try {
+                        tokenUsage.calculateCost(model.getPricing());
+                    } catch (Throwable e) {
+                        log.warn("Failed to calculate cost for model={}", model.getName());
+                    }
                 }
-            } else {
-                tokenUsageFuture = Future.succeededFuture();
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
