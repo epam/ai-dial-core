@@ -278,17 +278,8 @@ public class DeploymentPostController {
         responseStream.pipe()
                 .endOnFailure(false)
                 .to(response)
-                .onComplete(result -> {
-                    try {
-                        if (result.succeeded()) {
-                            handleResponse();
-                        } else {
-                            handleResponseError(result.cause());
-                        }
-                    } finally {
-                        finalizeRequest();
-                    }
-                });
+                .onSuccess(ignored -> handleResponse())
+                .onFailure(this::handleResponseError);
     }
 
     /**
@@ -342,6 +333,8 @@ public class DeploymentPostController {
                     context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
                     context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
                     context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+
+            finalizeRequest();
         });
     }
 
@@ -389,6 +382,7 @@ public class DeploymentPostController {
 
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        finalizeRequest();
     }
 
     private static boolean isValidDeploymentApi(Deployment deployment, String deploymentApi) {
