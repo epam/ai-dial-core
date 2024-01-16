@@ -6,25 +6,26 @@ import lombok.RequiredArgsConstructor;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
 
 @RequiredArgsConstructor
 public class UpstreamRoute implements Iterator<Upstream> {
 
     private final List<Upstream> upstreams;
-    private final AtomicLong counter;
     private final int offset;
+    private final int maxAttempts;
 
-    private Upstream current;
-    private int count;
+    private Upstream upstream;
+    private int attempts;
+    private int next;
+    private int prev;
 
     public int attempts() {
-        return count;
+        return attempts;
     }
 
     @Override
     public boolean hasNext() {
-        return count < upstreams.size();
+        return next < upstreams.size() && attempts < maxAttempts;
     }
 
     /**
@@ -33,13 +34,11 @@ public class UpstreamRoute implements Iterator<Upstream> {
     @Override
     public Upstream next() {
         if (hasNext()) {
-            if (count > 0) {
-                counter.incrementAndGet(); // advance but do not use, anyway we need to write smart thing later
-            }
-
-            int index = (offset + count++) % upstreams.size();
-            current = upstreams.get(index);
-            return current;
+            attempts++;
+            prev = next++;
+            int index = (offset + prev) % upstreams.size();
+            upstream = upstreams.get(index);
+            return upstream;
         }
 
         return null;
@@ -49,7 +48,13 @@ public class UpstreamRoute implements Iterator<Upstream> {
      * @return current endpoint to route to.
      */
     public Upstream get() {
-        Objects.requireNonNull(current);
-        return current;
+        Objects.requireNonNull(upstream);
+        return upstream;
+    }
+
+    public void retry() {
+        if (next > prev) {
+            next = prev;
+        }
     }
 }
