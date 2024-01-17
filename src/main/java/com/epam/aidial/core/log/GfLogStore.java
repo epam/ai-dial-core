@@ -2,6 +2,7 @@ package com.epam.aidial.core.log;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
@@ -68,6 +69,53 @@ public class GfLogStore implements LogStore {
 
         append(entry, "\",\"title\":\"", false);
         append(entry, request.getHeader(Proxy.HEADER_JOB_TITLE), true);
+        append(entry, "\"}", false);
+
+        TokenUsage tokenUsage = context.getTokenUsage();
+        if (tokenUsage != null) {
+            append(entry, ",\"tokenUsage\":{", false);
+            append(entry, "\"completion_tokens\":", false);
+            append(entry, Long.toString(tokenUsage.getCompletionTokens()), true);
+            append(entry, ",\"prompt_tokens\":", false);
+            append(entry, Long.toString(tokenUsage.getPromptTokens()), true);
+            append(entry, ",\"total_tokens\":", false);
+            append(entry, Long.toString(tokenUsage.getTotalTokens()), true);
+            if (tokenUsage.getCost() != null) {
+                append(entry, ",\"cost\":", false);
+                append(entry, tokenUsage.getCost().toString(), true);
+            }
+            if (tokenUsage.getAggCost() != null) {
+                append(entry, ",\"agg_cost\":", false);
+                append(entry, tokenUsage.getAggCost().toString(), true);
+            }
+            append(entry, "}", false);
+        }
+
+        String sourceDeployment = context.getSourceDeployment();
+        if (sourceDeployment != null) {
+            append(entry, ",\"source_deployment\":\"", false);
+            append(entry, sourceDeployment, true);
+            append(entry, "\"", false);
+        }
+
+        String destDeployment = context.getDeployment() == null ? null : context.getDeployment().getName();
+        if (destDeployment != null) {
+            append(entry, ",\"dest_deployment\":\"", false);
+            append(entry, destDeployment, true);
+            append(entry, "\"", false);
+        }
+
+        append(entry, ",\"trace\":{\"trace_id\":\"", false);
+        append(entry, context.getTraceId(), true);
+
+        append(entry, "\",\"span_id\":\"", false);
+        append(entry, context.getSpanId(), true);
+
+        String parentSpanId = context.getParentSpanId();
+        if (parentSpanId != null) {
+            append(entry, "\",\"paren_span_id\":\"", false);
+            append(entry, context.getParentSpanId(), true);
+        }
 
         append(entry, "\"},\"request\":{\"protocol\":\"", false);
         append(entry, request.version().alpnName().toUpperCase(), true);

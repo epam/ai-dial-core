@@ -110,6 +110,8 @@ public class DeploymentPostController {
             return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
+        proxy.getTokenStatsTracker().startSpan(context);
+
         return context.getRequest().body()
                 .onSuccess(this::handleRequestBody)
                 .onFailure(this::handleRequestBodyError);
@@ -277,49 +279,66 @@ public class DeploymentPostController {
                 .endOnFailure(false)
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
-                .onFailure(this::handleResponseError)
-                .onComplete(ignore -> finalizeRequest());
+                .onFailure(this::handleResponseError);
     }
 
     /**
      * Called when proxy sent response from the origin to the client.
      */
-    private void handleResponse() {
+    @VisibleForTesting
+    void handleResponse() {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        proxy.getLogStore().save(context);
-
-        if (context.getDeployment() instanceof Model && context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-            TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
-            context.setTokenUsage(tokenUsage);
-            proxy.getRateLimiter().increase(context);
-
-            if (tokenUsage == null) {
-                log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
-                        context.getTraceId(), context.getSpanId(),
-                        context.getProject(), context.getDeployment().getName(),
-                        context.getDeployment().getEndpoint(),
-                        context.getUpstreamRoute().get().getEndpoint(),
-                        context.getResponse().getStatusCode(),
-                        context.getResponseBody().length());
+        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
+        if (context.getDeployment() instanceof Model) {
+            if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
+                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                context.setTokenUsage(tokenUsage);
+                proxy.getRateLimiter().increase(context);
+                tokenUsageFuture = Future.succeededFuture(tokenUsage);
+                if (tokenUsage == null) {
+                    log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                            context.getTraceId(), context.getSpanId(),
+                            context.getProject(), context.getDeployment().getName(),
+                            context.getDeployment().getEndpoint(),
+                            context.getUpstreamRoute().get().getEndpoint(),
+                            context.getResponse().getStatusCode(),
+                            context.getResponseBody().length());
+                } else {
+                    Model model = (Model) context.getDeployment();
+                    try {
+                        tokenUsage.calculateCost(model.getPricing());
+                    } catch (Throwable e) {
+                        log.warn("Failed to calculate cost for model={}", model.getName());
+                    }
+                }
             }
+        } else {
+            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
 
-        log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
-                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(),
-                context.getUpstreamRoute().get().getEndpoint(),
-                context.getResponse().getStatusCode(),
-                context.getResponseBody().length(),
-                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
-                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
-                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
-                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
-                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+        tokenUsageFuture.onComplete(ignore -> {
+
+            proxy.getLogStore().save(context);
+
+            log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
+                            + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), context.getDeployment().getName(),
+                    context.getDeployment().getEndpoint(),
+                    context.getUpstreamRoute().get().getEndpoint(),
+                    context.getResponse().getStatusCode(),
+                    context.getResponseBody().length(),
+                    context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                    context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                    context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                    context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                    context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                    context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+
+            finalizeRequest();
+        });
     }
 
     /**
@@ -367,6 +386,7 @@ public class DeploymentPostController {
 
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        finalizeRequest();
     }
 
     private static boolean isValidDeploymentApi(Deployment deployment, String deploymentApi) {
@@ -510,6 +530,7 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
+        proxy.getTokenStatsTracker().endSpan(context);
         proxy.getApiKeyStore().invalidateApiKey(proxyApiKeyData);
     }
 }
