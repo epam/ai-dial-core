@@ -273,7 +273,7 @@ public class DeploymentPostController {
         response.setStatusCode(proxyResponse.statusCode());
 
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().attempts()));
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().used()));
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -364,16 +364,17 @@ public class DeploymentPostController {
     }
 
     /**
-     * Called when proxy received failed response the origin.
+     * Called when proxy failed to receive response header from origin.
      */
     private void handleProxyResponseError(Throwable error) {
-        log.warn("Proxy received response error from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error:",
+        log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error:",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
 
-        respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
+        context.getUpstreamRoute().retry();
+        sendRequest();
     }
 
     /**
