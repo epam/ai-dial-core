@@ -13,7 +13,7 @@ public class UpstreamRoute implements Iterator<Upstream> {
     private final List<Upstream> upstreams;
     private final int offset;
     /**
-     * The maximu number of retries for all upstreams.
+     * The maximum number of retries for all upstreams.
      */
     private final int maxRetries;
 
