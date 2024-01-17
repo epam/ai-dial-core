@@ -23,22 +23,22 @@ public class UpstreamRoute implements Iterator<Upstream> {
     private int prev;
 
     /**
-     * @return the number of used upstreams.
+     * @return the number of upstreams which returned any http response.
      */
-    public int attempts() {
+    public int used() {
         return next;
     }
 
     /**
-     * @return the total number of retries due to connection errors.
+     * @return the number of retries due to connection errors.
      */
     public int retries() {
-        return retries;
+        return Math.min(retries, maxRetries);
     }
 
     @Override
     public boolean hasNext() {
-        return next < upstreams.size() && retries < maxRetries;
+        return next < upstreams.size() && retries <= maxRetries;
     }
 
     /**
@@ -68,7 +68,7 @@ public class UpstreamRoute implements Iterator<Upstream> {
      * Retry the current endpoint because some error happened while sending a request.
      */
     public void retry() {
-        if (retries < maxRetries && prev < next) {
+        if (prev < next && retries <= maxRetries) {
             retries++;
             next = prev;
         }
