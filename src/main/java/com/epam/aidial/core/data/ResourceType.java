@@ -6,10 +6,10 @@ import lombok.Getter;
 public enum ResourceType {
     FILE("files");
 
-    private final String resourceGroup;
+    private final String group;
 
-    ResourceType(String resourceGroup) {
-        this.resourceGroup = resourceGroup;
+    ResourceType(String group) {
+        this.group = group;
     }
 
 }

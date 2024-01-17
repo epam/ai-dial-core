@@ -10,24 +10,24 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-public class ResourceMetadataCollection extends MetadataBase {
+public class ResourceFolderMetadata extends MetadataBase {
 
     private List<? extends MetadataBase> items;
 
-    public ResourceMetadataCollection(ResourceType type, String bucket, String name, String path, String url, List<MetadataBase> items) {
+    public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url, List<MetadataBase> items) {
         super(name, path, bucket, url, NodeType.FOLDER, type);
         this.items = items;
     }
 
-    public ResourceMetadataCollection(ResourceType type, String bucket, String name, String path, String url) {
+    public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url) {
         this(type, bucket, name, path, url, null);
     }
 
-    public ResourceMetadataCollection(ResourceDescription resource) {
+    public ResourceFolderMetadata(ResourceDescription resource) {
         this(resource, null);
     }
 
-    public ResourceMetadataCollection(ResourceDescription resource, List<MetadataBase> items) {
+    public ResourceFolderMetadata(ResourceDescription resource, List<MetadataBase> items) {
         this(resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl(), items);
     }
 }

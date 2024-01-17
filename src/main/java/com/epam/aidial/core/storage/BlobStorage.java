@@ -3,7 +3,7 @@ package com.epam.aidial.core.storage;
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.data.ResourceMetadataCollection;
+import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
@@ -151,7 +151,7 @@ public class BlobStorage implements Closeable {
 
         // listing folder
         if (resource.isFolder()) {
-            return new ResourceMetadataCollection(resource, filesMetadata);
+            return new ResourceFolderMetadata(resource, filesMetadata);
         } else {
             // listing file
             if (filesMetadata.size() == 1) {
@@ -186,13 +186,13 @@ public class BlobStorage implements Closeable {
 
                 yield new FileMetadata(resultResource, metadata.getSize(), blobContentType);
             }
-            case FOLDER, RELATIVE_PATH -> new ResourceMetadataCollection(resultResource);
+            case FOLDER, RELATIVE_PATH -> new ResourceFolderMetadata(resultResource);
             case CONTAINER -> throw new IllegalArgumentException("Can't list container");
         };
     }
 
     private static ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
-        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getResourceGroup().length() + 1);
+        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getGroup().length() + 1);
         return ResourceDescription.fromDecoded(resourceType, bucketName, bucketLocation, relativeFilePath);
     }
 

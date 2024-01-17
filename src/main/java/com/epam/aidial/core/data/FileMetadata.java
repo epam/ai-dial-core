@@ -8,7 +8,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class FileMetadata extends ResourceMetadata {
+public class FileMetadata extends ResourceItemMetadata {
     long contentLength;
     String contentType;
 
