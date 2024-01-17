@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class UpstreamBalancer {
 
-    private static final int CONNECTION_ERROR_EXTRA_ATTEMPTS = 2;
+    private static final int CONNECTION_ERROR_RETRIES = 2;
 
     private final ConcurrentMap<String, AtomicLong> counters = new ConcurrentHashMap<>(); // no eviction yet
 
@@ -23,6 +23,6 @@ public class UpstreamBalancer {
             offset = (int) (counter.getAndIncrement() % upstreams.size());
         }
 
-        return new UpstreamRoute(upstreams, offset, upstreams.size() + CONNECTION_ERROR_EXTRA_ATTEMPTS);
+        return new UpstreamRoute(upstreams, offset, CONNECTION_ERROR_RETRIES);
     }
 }
