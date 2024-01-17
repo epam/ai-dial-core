@@ -33,9 +33,7 @@ public class GfLogStore implements LogStore {
 
     @Override
     public void save(ProxyContext context) {
-        if (!LOGGER.isInfoEnabled()
-                || !context.getRequest().method().equals(HttpMethod.POST)
-                || context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
+        if (!LOGGER.isInfoEnabled() || !context.getRequest().method().equals(HttpMethod.POST)) {
             return;
         }
 
