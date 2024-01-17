@@ -1,16 +1,19 @@
 package com.epam.aidial.core.util;
 
+import com.epam.aidial.core.Proxy;
+import com.epam.aidial.core.config.ApiKeyData;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
 
-import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
 
 @UtilityClass
 public class ProxyUtil {
@@ -30,7 +33,8 @@ public class ProxyUtil {
             .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
             .add(HttpHeaders.UPGRADE, "whatever")
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
-            .add(HttpHeaders.ACCEPT_ENCODING, "whatever");
+            .add(HttpHeaders.ACCEPT_ENCODING, "whatever")
+            .add(Proxy.HEADER_API_KEY, "whatever");
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
         copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());
@@ -75,5 +79,30 @@ public class ProxyUtil {
             }
         }
         return defaultValue;
+    }
+
+    public static void collectAttachedFiles(ObjectNode tree, ApiKeyData apiKeyData) {
+        ArrayNode messages = (ArrayNode) tree.get("messages");
+        if (messages == null) {
+            return;
+        }
+        for (int i = 0; i < messages.size(); i++) {
+            JsonNode message = messages.get(i);
+            JsonNode customContent = message.get("custom_content");
+            if (customContent == null) {
+                continue;
+            }
+            ArrayNode attachments = (ArrayNode) customContent.get("attachments");
+            if (attachments == null) {
+                continue;
+            }
+            for (int j = 0; j < attachments.size(); j++) {
+                JsonNode attachment = attachments.get(j);
+                JsonNode url = attachment.get("url");
+                if (url != null) {
+                    apiKeyData.getAttachedFiles().add(url.textValue());
+                }
+            }
+        }
     }
 }

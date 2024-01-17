@@ -7,20 +7,17 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
-import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 public class RateLimiter {
-    private final ConcurrentHashMap<String, Entity> traceIdToEntity = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Id, RateLimit> rates = new ConcurrentHashMap<>();
 
     public void increase(ProxyContext context) {
-        Entity entity = getEntityFromTracingContext(context);
-        if (entity == null || entity.user()) {
+        Key key = context.getKey();
+        if (key == null) {
             return;
         }
         Deployment deployment = context.getDeployment();
@@ -30,7 +27,7 @@ public class RateLimiter {
             return;
         }
 
-        Id id = new Id(entity.id(), deployment.getName(), entity.user());
+        Id id = new Id(key.getKey(), deployment.getName());
         RateLimit rate = rates.computeIfAbsent(id, k -> new RateLimit());
 
         long timestamp = System.currentTimeMillis();
@@ -38,18 +35,13 @@ public class RateLimiter {
     }
 
     public RateLimitResult limit(ProxyContext context) {
-        Entity entity = getEntityFromTracingContext(context);
-        if (entity == null) {
-            Span span = Span.current();
-            log.warn("Entity is not found by traceId={}", span.getSpanContext().getTraceId());
-            return new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied");
-        }
+        Key key = context.getKey();
         Limit limit;
-        if (entity.user()) {
+        if (key == null) {
             // don't support user limits yet
             return RateLimitResult.SUCCESS;
         } else {
-            limit = getLimitByApiKey(context, entity);
+            limit = getLimitByApiKey(context);
         }
 
         Deployment deployment = context.getDeployment();
@@ -63,7 +55,7 @@ public class RateLimiter {
             return new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied");
         }
 
-        Id id = new Id(entity.id(), deployment.getName(), entity.user());
+        Id id = new Id(key.getKey(), deployment.getName());
         RateLimit rate = rates.get(id);
 
         if (rate == null) {
@@ -74,41 +66,12 @@ public class RateLimiter {
         return rate.update(timestamp, limit);
     }
 
-    /**
-     * Returns <code>true</code> if the trace is already registered otherwise <code>false</code>.
-     */
-    public boolean register(ProxyContext context) {
-        String traceId = context.getTraceId();
-        Entity entity = traceIdToEntity.get(traceId);
-        if (entity != null) {
-            // update context with the original requester
-            if (entity.user()) {
-                context.setUserHash(entity.name());
-            } else {
-                context.setOriginalProject(entity.name());
-            }
-        } else {
-            if (context.getKey() != null) {
-                Key key = context.getKey();
-                traceIdToEntity.put(traceId, new Entity(key.getKey(), List.of(key.getRole()), key.getProject(), false));
-            } else {
-                traceIdToEntity.put(traceId, new Entity(context.getUserSub(), context.getUserRoles(), context.getUserHash(), true));
-            }
-        }
-        return entity != null;
-    }
-
-    public void unregister(ProxyContext context) {
-        String traceId = context.getTraceId();
-        traceIdToEntity.remove(traceId);
-    }
-
-    private Limit getLimitByApiKey(ProxyContext context, Entity entity) {
+    private Limit getLimitByApiKey(ProxyContext context) {
         // API key has always one role
-        Role role = context.getConfig().getRoles().get(entity.roles.get(0));
+        Role role = context.getConfig().getRoles().get(context.getKey().getRole());
 
         if (role == null) {
-            log.warn("Role is not found for key: {}", context.getKey().getKey());
+            log.warn("Role is not found for key: {}", context.getKey().getProject());
             return null;
         }
 
@@ -116,22 +79,10 @@ public class RateLimiter {
         return role.getLimits().get(deployment.getName());
     }
 
-    private Entity getEntityFromTracingContext(ProxyContext context) {
-        String traceId = context.getTraceId();
-        return traceIdToEntity.get(traceId);
-    }
-
-    private record Id(String key, String resource, boolean user) {
+    private record Id(String key, String resource) {
         @Override
         public String toString() {
-            return String.format("key: %s, resource: %s, user: %b", key, resource, user);
-        }
-    }
-
-    private record Entity(String id, List<String> roles, String name, boolean user) {
-        @Override
-        public String toString() {
-            return String.format("Entity: %s, resource: %s, user: %b", id, roles, user);
+            return String.format("key: %s, resource: %s", key, resource);
         }
     }
 

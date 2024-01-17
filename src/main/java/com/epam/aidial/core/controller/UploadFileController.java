@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 public class UploadFileController extends AccessControlBaseController {
 
     public UploadFileController(Proxy proxy, ProxyContext context) {
-        super(proxy, context);
+        super(proxy, context, true);
     }
 
     @Override

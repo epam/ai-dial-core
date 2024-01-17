@@ -179,7 +179,7 @@ public class ControllerSelectorTest {
 
     @Test
     public void testSelectListMetadataFileController() {
-        when(request.path()).thenReturn("/v1/files/metadata/bucket/file1");
+        when(request.path()).thenReturn("/v1/metadata/files/bucket/file1");
         when(request.method()).thenReturn(HttpMethod.GET);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);
@@ -196,7 +196,7 @@ public class ControllerSelectorTest {
 
     @Test
     public void testSelectListMetadataFileController2() {
-        when(request.path()).thenReturn("/v1/files/metadata/bucket/fol%2Fder%201/");
+        when(request.path()).thenReturn("/v1/metadata/files/bucket/fol%2Fder%201/");
         when(request.method()).thenReturn(HttpMethod.GET);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);

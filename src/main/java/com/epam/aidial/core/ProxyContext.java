@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
@@ -28,10 +29,20 @@ import java.util.Map;
 public class ProxyContext {
 
     private final Config config;
+    // API key of root requester
     private final Key key;
     private final HttpServerRequest request;
     private final HttpServerResponse response;
+    // OpenTelemetry trace ID
     private final String traceId;
+    // API key data associated with the current request
+    private final ApiKeyData apiKeyData;
+    // OpenTelemetry span ID created by the Core
+    private final String spanId;
+    // OpenTelemetry parent span ID created by the Core
+    private final String parentSpanId;
+    // deployment name of the source(application/assistant/model) associated with the current request
+    private final String sourceDeployment;
 
     private Deployment deployment;
     private String userSub;
@@ -50,25 +61,36 @@ public class ProxyContext {
     private long proxyConnectTimestamp;
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
-    // the project belongs to API key which initiated request
-    private String originalProject;
+    private ExtractedClaims extractedClaims;
 
-    public ProxyContext(Config config, HttpServerRequest request, Key key, ExtractedClaims extractedClaims, String traceId) {
+    public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.config = config;
-        this.key = key;
-        if (key != null) {
-            originalProject = key.getProject();
-        }
+        this.apiKeyData = apiKeyData;
         this.request = request;
         this.response = request.response();
         this.requestTimestamp = System.currentTimeMillis();
+        this.key = apiKeyData.getOriginalKey();
+        if (apiKeyData.getPerRequestKey() != null) {
+            initExtractedClaims(apiKeyData.getExtractedClaims());
+            this.traceId = apiKeyData.getTraceId();
+            this.parentSpanId = apiKeyData.getSpanId();
+            this.sourceDeployment = apiKeyData.getSourceDeployment();
+        } else {
+            initExtractedClaims(extractedClaims);
+            this.traceId = traceId;
+            this.parentSpanId = null;
+            this.sourceDeployment = null;
+        }
+        this.spanId = spanId;
+    }
 
+    private void initExtractedClaims(ExtractedClaims extractedClaims) {
+        this.extractedClaims = extractedClaims;
         if (extractedClaims != null) {
             this.userRoles = extractedClaims.userRoles();
             this.userHash = extractedClaims.userHash();
             this.userSub = extractedClaims.sub();
         }
-        this.traceId = traceId;
     }
 
     public Future<Void> respond(HttpStatus status) {

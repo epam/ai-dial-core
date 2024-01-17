@@ -12,7 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DeleteFileController extends AccessControlBaseController {
 
     public DeleteFileController(Proxy proxy, ProxyContext context) {
-        super(proxy, context);
+        super(proxy, context, true);
     }
 
     @Override

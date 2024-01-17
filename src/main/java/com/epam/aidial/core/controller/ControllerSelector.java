@@ -37,7 +37,8 @@ public class ControllerSelector {
     private static final Pattern PATTERN_BUCKET = Pattern.compile("/v1/bucket");
 
     private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files/([a-zA-Z0-9]+)/(.*)");
-    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("/v1/files/metadata/([a-zA-Z0-9]+)/(.*)");
+
+    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("/v1/metadata/files/([a-zA-Z0-9]+)/(.*)");
 
     private static final Pattern PATTERN_RESOURCE = Pattern.compile("/v1/(conversations|prompts)/([a-zA-Z0-9]+)/(.*)");
 

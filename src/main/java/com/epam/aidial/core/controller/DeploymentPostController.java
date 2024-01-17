@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Addon;
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -34,12 +35,12 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
-import io.vertx.core.net.SocketAddress;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -57,7 +58,7 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private boolean unregisterTrace;
+    private final ApiKeyData proxyApiKeyData = new ApiKeyData();
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -80,8 +81,6 @@ public class DeploymentPostController {
             return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
         }
 
-        unregisterTrace = !proxy.getRateLimiter().register(context);
-
         context.setDeployment(deployment);
 
         RateLimitResult rateLimitResult;
@@ -94,17 +93,24 @@ public class DeploymentPostController {
             return respond(rateLimitResult.status(), rateLimitError);
         }
 
-        log.info("Received request from client. Key: {}. Deployment: {}. Headers: {}", context.getProject(),
-                context.getDeployment().getName(), context.getRequest().headers().size());
+        log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                context.getRequest().headers().size());
 
         UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
         UpstreamRoute endpointRoute = proxy.getUpstreamBalancer().balance(endpointProvider);
         context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.hasNext()) {
-            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), deploymentId, context.getUserSub());
+            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), deploymentId, context.getUserSub());
+
             return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
+
+        proxy.getTokenStatsTracker().startSpan(context);
 
         return context.getRequest().body()
                 .onSuccess(this::handleRequestBody)
@@ -117,7 +123,10 @@ public class DeploymentPostController {
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
-            log.error("No route. Key: {}. Deployment: {}. User sub: {}", context.getProject(), context.getDeployment().getName(), context.getUserSub());
+            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), context.getDeployment().getName(), context.getUserSub());
+
             return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
@@ -137,35 +146,57 @@ public class DeploymentPostController {
     @VisibleForTesting
     void handleRequestBody(Buffer requestBody) {
         Deployment deployment = context.getDeployment();
-        log.info("Received body from client. Key: {}. Deployment: {}. Length: {}", context.getProject(),
-                deployment.getName(), requestBody.length());
+        log.info("Received body from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Length: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), deployment.getName(), requestBody.length());
 
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
-        if (deployment instanceof Assistant) {
-            try {
-                Map.Entry<Buffer, Map<String, String>> enhancedRequest = enhanceAssistantRequest(context);
-                context.setRequestBody(enhancedRequest.getKey());
-                context.setRequestHeaders(enhancedRequest.getValue());
-            } catch (HttpException e) {
-                respond(e.getStatus(), e.getMessage());
-                log.warn("Can't enhance assistant request: {}", e.getMessage());
-                return;
-            } catch (Throwable e) {
-                respond(HttpStatus.BAD_REQUEST);
-                log.warn("Can't enhance assistant request: {}", e.getMessage());
-                return;
-            }
-        }
+        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
-        if (deployment instanceof Model) {
             try {
-                context.setRequestBody(enhanceModelRequest(context));
+                ProxyUtil.collectAttachedFiles(tree, proxyApiKeyData);
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
-                log.warn("Can't enhance model request: {}", e.getMessage());
+                log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
+                        context.getTraceId(), context.getSpanId(), e.getMessage());
+                return;
             }
+
+            if (deployment instanceof Assistant) {
+                try {
+                    Map.Entry<Buffer, Map<String, String>> enhancedRequest = enhanceAssistantRequest(context, tree);
+                    context.setRequestBody(enhancedRequest.getKey());
+                    context.setRequestHeaders(enhancedRequest.getValue());
+                } catch (HttpException e) {
+                    respond(e.getStatus(), e.getMessage());
+                    log.warn("Can't enhance assistant request. Trace: {}. Span: {}. Error: {}",
+                            context.getTraceId(), context.getSpanId(), e.getMessage());
+                    return;
+                } catch (Throwable e) {
+                    respond(HttpStatus.BAD_REQUEST);
+                    log.warn("Can't enhance assistant request. Trace: {}. Span: {}. Error: {}",
+                            context.getTraceId(), context.getSpanId(), e.getMessage());
+                    return;
+                }
+            }
+            if (deployment instanceof Model) {
+                try {
+                    context.setRequestBody(enhanceModelRequest(context, tree));
+                } catch (Throwable e) {
+                    context.respond(HttpStatus.BAD_REQUEST);
+                    log.warn("Can't enhance model request. Trace: {}. Span: {}. Error: {}",
+                            context.getTraceId(), context.getSpanId(), e.getMessage());
+                    return;
+                }
+            }
+        } catch (IOException e) {
+            respond(HttpStatus.BAD_REQUEST);
+            log.warn("Can't parse JSON request body. Trace: {}. Span: {}. Error:",
+                    context.getTraceId(), context.getSpanId(), e);
+            return;
         }
 
         sendRequest();
@@ -176,8 +207,14 @@ public class DeploymentPostController {
      */
     @VisibleForTesting
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Key: {}. Deployment: {}. Address: {}", context.getProject(),
-                context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
+        log.info("Connected to origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                proxyRequest.connection().remoteAddress());
+
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+
+        proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -185,16 +222,13 @@ public class DeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
-        excludeHeaders.add(Proxy.HEADER_API_KEY, "whatever");
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
-        if (deployment.isForwardApiKey()) {
-            proxyRequest.headers().add(Proxy.HEADER_API_KEY, deployment.getApiKey());
-        }
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = context.getUpstreamRoute().get();
@@ -215,7 +249,8 @@ public class DeploymentPostController {
      * Called when proxy received the response headers from the origin.
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received header from origin. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
+        log.info("Received header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
+                context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
@@ -238,60 +273,81 @@ public class DeploymentPostController {
         response.setStatusCode(proxyResponse.statusCode());
 
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().attempts()));
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().used()));
 
         responseStream.pipe()
                 .endOnFailure(false)
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
-                .onFailure(this::handleResponseError)
-                .onComplete(ignore -> unregister());
+                .onFailure(this::handleResponseError);
     }
 
     /**
      * Called when proxy sent response from the origin to the client.
      */
-    private void handleResponse() {
+    @VisibleForTesting
+    void handleResponse() {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        proxy.getLogStore().save(context);
-
-        if (context.getDeployment() instanceof Model && context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-            TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
-            context.setTokenUsage(tokenUsage);
-            proxy.getRateLimiter().increase(context);
-
-            if (tokenUsage == null) {
-                log.warn("Can't find token usage. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
-                        context.getProject(), context.getDeployment().getName(),
-                        context.getDeployment().getEndpoint(),
-                        context.getUpstreamRoute().get().getEndpoint(),
-                        context.getResponse().getStatusCode(),
-                        context.getResponseBody().length());
+        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
+        if (context.getDeployment() instanceof Model) {
+            if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
+                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                context.setTokenUsage(tokenUsage);
+                proxy.getRateLimiter().increase(context);
+                tokenUsageFuture = Future.succeededFuture(tokenUsage);
+                if (tokenUsage == null) {
+                    log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                            context.getTraceId(), context.getSpanId(),
+                            context.getProject(), context.getDeployment().getName(),
+                            context.getDeployment().getEndpoint(),
+                            context.getUpstreamRoute().get().getEndpoint(),
+                            context.getResponse().getStatusCode(),
+                            context.getResponseBody().length());
+                } else {
+                    Model model = (Model) context.getDeployment();
+                    try {
+                        tokenUsage.calculateCost(model.getPricing());
+                    } catch (Throwable e) {
+                        log.warn("Failed to calculate cost for model={}", model.getName());
+                    }
+                }
             }
+        } else {
+            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
 
-        log.info("Sent response to client. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
-                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
-                context.getProject(), context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(),
-                context.getUpstreamRoute().get().getEndpoint(),
-                context.getResponse().getStatusCode(),
-                context.getResponseBody().length(),
-                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
-                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
-                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
-                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
-                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+        tokenUsageFuture.onComplete(ignore -> {
+
+            proxy.getLogStore().save(context);
+
+            log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
+                            + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), context.getDeployment().getName(),
+                    context.getDeployment().getEndpoint(),
+                    context.getUpstreamRoute().get().getEndpoint(),
+                    context.getResponse().getStatusCode(),
+                    context.getResponseBody().length(),
+                    context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                    context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                    context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                    context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                    context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                    context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+
+            finalizeRequest();
+        });
     }
 
     /**
      * Called when proxy failed to receive request body from the client.
      */
     private void handleRequestBodyError(Throwable error) {
-        log.warn("Failed to receive client body: {}", error.getMessage());
+        log.warn("Failed to receive client body. Trace: {}. Span: {}. Error: {}",
+                context.getTraceId(), context.getSpanId(), error.getMessage());
+
         respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
@@ -299,33 +355,38 @@ public class DeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        String projectName = context.getProject();
-        String deploymentName = context.getDeployment().getName();
-        String uri = buildUri(context);
-        log.warn("Can't connect to origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
-                deploymentName, uri, error.getMessage());
+        log.warn("Can't connect to origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                buildUri(context), error.getMessage());
+
         respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
     }
 
     /**
-     * Called when proxy received failed response the origin.
+     * Called when proxy failed to receive response header from origin.
      */
     private void handleProxyResponseError(Throwable error) {
-        String projectName = context.getProject();
-        String deploymentName = context.getDeployment().getName();
-        SocketAddress proxyAddress = context.getProxyRequest().connection().remoteAddress();
-        log.warn("Proxy received response error from origin. Key: {}. Deployment: {}. Address: {}: {}", projectName,
-                deploymentName, proxyAddress, error.getMessage());
-        respond(HttpStatus.BAD_GATEWAY, "Received error response from origin");
+        log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error:",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                context.getProxyRequest().connection().remoteAddress(),
+                error);
+
+        context.getUpstreamRoute().retry();
+        sendRequest();
     }
 
     /**
      * Called when proxy failed to send response to the client.
      */
     private void handleResponseError(Throwable error) {
-        log.warn("Can't send response to client: {}", error.getMessage());
+        log.warn("Can't send response to client. Trace: {}. Span: {}. Error:",
+                context.getTraceId(), context.getSpanId(), error);
+
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        finalizeRequest();
     }
 
     private static boolean isValidDeploymentApi(Deployment deployment, String deploymentApi) {
@@ -357,86 +418,79 @@ public class DeploymentPostController {
         return endpoint + (query == null ? "" : "?" + query);
     }
 
-    private static Map.Entry<Buffer, Map<String, String>> enhanceAssistantRequest(ProxyContext context)
+    private static Map.Entry<Buffer, Map<String, String>> enhanceAssistantRequest(ProxyContext context, ObjectNode tree)
             throws Exception {
         Config config = context.getConfig();
         Assistant assistant = (Assistant) context.getDeployment();
-        Buffer requestBody = context.getRequestBody();
 
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
-            ArrayNode messages = (ArrayNode) tree.get("messages");
-            if (assistant.getPrompt() != null) {
-                deletePrompt(messages);
-                insertPrompt(messages, assistant.getPrompt());
-            }
-
-            Set<String> names = new LinkedHashSet<>(assistant.getAddons());
-            ArrayNode addons = (ArrayNode) tree.get("addons");
-
-            if (addons == null) {
-                addons = tree.putArray("addons");
-            }
-
-            for (JsonNode addon : addons) {
-                String name = addon.get("name").asText("");
-                names.add(name);
-            }
-
-            addons.removeAll();
-            Map<String, String> headers = new HashMap<>();
-            int addonIndex = 0;
-            for (String name : names) {
-                Addon addon = config.getAddons().get(name);
-                if (addon == null) {
-                    throw new HttpException(HttpStatus.NOT_FOUND, "No addon: " + name);
-                }
-
-                if (!DeploymentController.hasAccess(context, addon)) {
-                    throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden addon: " + name);
-                }
-
-                String url = addon.getEndpoint();
-                addons.addObject().put("url", url).put("name", name);
-                if (addon.getToken() != null && !addon.getToken().isBlank()) {
-                    headers.put("x-addon-token-" + addonIndex, addon.getToken());
-                }
-                ++addonIndex;
-            }
-
-            String name = tree.get("model").asText(null);
-            Model model = config.getModels().get(name);
-
-            if (model == null) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "No model: " + name);
-            }
-
-            if (!DeploymentController.hasAccess(context, model)) {
-                throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden model: " + name);
-            }
-
-            Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
-            return Map.entry(updatedBody, headers);
+        ArrayNode messages = (ArrayNode) tree.get("messages");
+        if (assistant.getPrompt() != null) {
+            deletePrompt(messages);
+            insertPrompt(messages, assistant.getPrompt());
         }
+
+        Set<String> names = new LinkedHashSet<>(assistant.getAddons());
+        ArrayNode addons = (ArrayNode) tree.get("addons");
+
+        if (addons == null) {
+            addons = tree.putArray("addons");
+        }
+
+        for (JsonNode addon : addons) {
+            String name = addon.get("name").asText("");
+            names.add(name);
+        }
+
+        addons.removeAll();
+        Map<String, String> headers = new HashMap<>();
+        int addonIndex = 0;
+        for (String name : names) {
+            Addon addon = config.getAddons().get(name);
+            if (addon == null) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "No addon: " + name);
+            }
+
+            if (!DeploymentController.hasAccess(context, addon)) {
+                throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden addon: " + name);
+            }
+
+            String url = addon.getEndpoint();
+            addons.addObject().put("url", url).put("name", name);
+            if (addon.getToken() != null && !addon.getToken().isBlank()) {
+                headers.put("x-addon-token-" + addonIndex, addon.getToken());
+            }
+            ++addonIndex;
+        }
+
+        String name = tree.get("model").asText(null);
+        Model model = config.getModels().get(name);
+
+        if (model == null) {
+            throw new HttpException(HttpStatus.NOT_FOUND, "No model: " + name);
+        }
+
+        if (!DeploymentController.hasAccess(context, model)) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden model: " + name);
+        }
+
+        Buffer updatedBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+        return Map.entry(updatedBody, headers);
     }
 
-    private static Buffer enhanceModelRequest(ProxyContext context) throws Exception {
+    private static Buffer enhanceModelRequest(ProxyContext context, ObjectNode tree) throws Exception {
         Model model = (Model) context.getDeployment();
         String overrideName = model.getOverrideName();
         Buffer requestBody = context.getRequestBody();
+
         if (overrideName == null) {
             return requestBody;
         }
 
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+        tree.remove("model");
+        tree.put("model", overrideName);
 
-            tree.remove("model");
-            tree.put("model", overrideName);
-
-            return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
-        }
+        return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
     }
 
     private static ObjectNode insertPrompt(ArrayNode messages, String prompt) {
@@ -461,23 +515,22 @@ public class DeploymentPostController {
     }
 
     private Future<Void> respond(HttpStatus status, String errorMessage) {
-        unregister();
+        finalizeRequest();
         return context.respond(status, errorMessage);
     }
 
     private Future<Void> respond(HttpStatus status) {
-        unregister();
+        finalizeRequest();
         return context.respond(status);
     }
 
     private Future<Void> respond(HttpStatus status, Object result) {
-        unregister();
+        finalizeRequest();
         return context.respond(status, result);
     }
 
-    private void unregister() {
-        if (unregisterTrace) {
-            proxy.getRateLimiter().unregister(context);
-        }
+    private void finalizeRequest() {
+        proxy.getTokenStatsTracker().endSpan(context);
+        proxy.getApiKeyStore().invalidateApiKey(proxyApiKeyData);
     }
 }

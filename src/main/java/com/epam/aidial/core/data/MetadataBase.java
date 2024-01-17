@@ -7,10 +7,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Data
 @NoArgsConstructor
-public abstract class FileMetadataBase {
+public abstract class MetadataBase {
     private String name;
     private String parentPath;
     private String bucket;
     private String url;
-    private FileType type;
+    private NodeType nodeType;
+    private ResourceType resourceType;
 }

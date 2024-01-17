@@ -1,21 +1,24 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ConfigStore;
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.controller.Controller;
 import com.epam.aidial.core.controller.ControllerSelector;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -63,6 +66,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AccessTokenValidator tokenValidator;
     private final BlobStorage storage;
     private final EncryptionService encryptionService;
+    private final ApiKeyStore apiKeyStore;
+    private final TokenStatsTracker tokenStatsTracker;
     private final ResourceService resourceService;
 
     @Override
@@ -75,7 +80,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void handleError(Throwable error, HttpServerRequest request) {
-        log.warn("Can't handle request: {}", error.getMessage());
+        log.error("Can't handle request", error);
         respond(request, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
@@ -118,9 +123,11 @@ public class Proxy implements Handler<HttpServerRequest> {
         Config config = configStore.load();
         String apiKey = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        String traceId = Span.current().getSpanContext().getTraceId();
+        SpanContext spanContext = Span.current().getSpanContext();
+        String traceId = spanContext.getTraceId();
+        String spanId = spanContext.getSpanId();
         log.debug("Authorization header: {}", authorization);
-        Key key;
+        ApiKeyData apiKeyData;
         if (apiKey == null && authorization == null) {
             respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
             return;
@@ -128,17 +135,17 @@ public class Proxy implements Handler<HttpServerRequest> {
             respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
             return;
         } else if (apiKey != null) {
-            key = config.getKeys().get(apiKey);
+            apiKeyData = apiKeyStore.getApiKeyData(apiKey);
             // Special case handling. OpenAI client sends both API key and Auth headers even if a caller sets just API Key only
             // Auth header is set to the same value as API Key header
             // ignore auth header in this case
             authorization = null;
-            if (key == null) {
+            if (apiKeyData == null) {
                 respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
                 return;
             }
         } else {
-            key = null;
+            apiKeyData = new ApiKeyData();
         }
 
         request.pause();
@@ -147,7 +154,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         extractedClaims.onComplete(result -> {
             try {
                 if (result.succeeded()) {
-                    onExtractClaimsSuccess(result.result(), config, request, key, traceId);
+                    onExtractClaimsSuccess(result.result(), config, request, apiKeyData, traceId, spanId);
                 } else {
                     onExtractClaimsFailure(result.cause(), request);
                 }
@@ -165,8 +172,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
-                                        HttpServerRequest request, Key key, String traceId) throws Exception {
-        ProxyContext context = new ProxyContext(config, request, key, extractedClaims, traceId);
+                                        HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) throws Exception {
+        ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
         Controller controller = ControllerSelector.select(this, context);
         controller.handle();
     }

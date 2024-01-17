@@ -8,18 +8,17 @@ import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
-import io.opentelemetry.context.propagation.ContextPropagators;
-import io.opentelemetry.sdk.OpenTelemetrySdk;
-import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -64,6 +63,8 @@ public class AiDial {
 
     private RedissonClient redisCache;
     private RedissonClient redisStore;
+    private Proxy proxy;
+
     private BlobStorage storage;
     private ResourceService resourceService;
 
@@ -79,7 +80,8 @@ public class AiDial {
             vertx = Vertx.vertx(vertxOptions);
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"));
+            ApiKeyStore apiKeyStore = new ApiKeyStore();
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             LogStore logStore = new GfLogStore(vertx);
             RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
@@ -89,12 +91,15 @@ public class AiDial {
                 storage = new BlobStorage(storageConfig);
             }
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
-            openRedis();
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker();
+            proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator,
+                    storage, encryptionService, apiKeyStore, tokenStatsTracker);
 
+            openRedis();
             resourceService = new ResourceService(vertx, redisCache, redisStore, storage, settings("resources"));
             Proxy proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
-                    storage, encryptionService, resourceService);
+                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -272,12 +277,7 @@ public class AiDial {
     }
 
     private static void setupTracing(VertxOptions vertxOptions) {
-        SdkTracerProvider sdkTracerProvider = SdkTracerProvider.builder().build();
-        OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
-                .setTracerProvider(sdkTracerProvider)
-                .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
-                .build();
-
+        OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder().build().getOpenTelemetrySdk();
         vertxOptions.setTracingOptions(new OpenTelemetryOptions(openTelemetry));
     }
 }
