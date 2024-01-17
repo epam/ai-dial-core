@@ -37,7 +37,7 @@ public class ControllerSelector {
 
     private static final Pattern PATTERN_FILES = Pattern.compile("/v1/files/([a-zA-Z0-9]+)/(.*)");
 
-    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("/v1/files/metadata/([a-zA-Z0-9]+)/(.*)");
+    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("/v1/metadata/files/([a-zA-Z0-9]+)/(.*)");
 
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");

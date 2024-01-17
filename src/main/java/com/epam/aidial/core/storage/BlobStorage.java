@@ -2,8 +2,9 @@ package com.epam.aidial.core.storage;
 
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
-import com.epam.aidial.core.data.FileMetadataBase;
-import com.epam.aidial.core.data.FolderMetadata;
+import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.ResourceFolderMetadata;
+import com.epam.aidial.core.data.ResourceType;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -143,14 +144,14 @@ public class BlobStorage implements Closeable {
     /**
      * List all files/folder metadata for a given resource
      */
-    public FileMetadataBase listMetadata(ResourceDescription resource) {
+    public MetadataBase listMetadata(ResourceDescription resource) {
         ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath());
         PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
-        List<FileMetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
+        List<MetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
 
         // listing folder
         if (resource.isFolder()) {
-            return new FolderMetadata(resource, filesMetadata);
+            return new ResourceFolderMetadata(resource, filesMetadata);
         } else {
             // listing file
             if (filesMetadata.size() == 1) {
@@ -171,7 +172,7 @@ public class BlobStorage implements Closeable {
                 .delimiter(BlobStorageUtil.PATH_SEPARATOR);
     }
 
-    private static FileMetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
+    private static MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
         String bucketName = resource.getBucketName();
         ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
                 resource.getBucketLocation(), metadata.getName());
@@ -185,13 +186,13 @@ public class BlobStorage implements Closeable {
 
                 yield new FileMetadata(resultResource, metadata.getSize(), blobContentType);
             }
-            case FOLDER, RELATIVE_PATH -> new FolderMetadata(resultResource);
+            case FOLDER, RELATIVE_PATH -> new ResourceFolderMetadata(resultResource);
             case CONTAINER -> throw new IllegalArgumentException("Can't list container");
         };
     }
 
     private static ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
-        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getFolder().length() + 1);
+        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getGroup().length() + 1);
         return ResourceDescription.fromDecoded(resourceType, bucketName, bucketLocation, relativeFilePath);
     }
 

@@ -8,17 +8,19 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class FileMetadata extends FileMetadataBase {
+public class FileMetadata extends ResourceItemMetadata {
     long contentLength;
     String contentType;
 
     public FileMetadata(String bucket, String name, String path, String url, long contentLength, String contentType) {
-        super(name, path, bucket, url, FileType.FILE);
+        super(ResourceType.FILE, bucket, name, path, url);
         this.contentLength = contentLength;
         this.contentType = contentType;
     }
 
     public FileMetadata(ResourceDescription resource, long contentLength, String contentType) {
-        this(resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl(), contentLength, contentType);
+        super(resource);
+        this.contentLength = contentLength;
+        this.contentType = contentType;
     }
 }
