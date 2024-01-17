@@ -6,20 +6,27 @@ import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.limiter.RateLimiter;
+import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.token.TokenStatsTracker;
+import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
+import com.epam.aidial.core.util.BufferingReadStream;
+import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -47,6 +54,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,18 +72,24 @@ public class DeploymentPostControllerTest {
     @Mock
     private ApiKeyStore apiKeyStore;
 
+    @Mock
+    private RateLimiter rateLimiter;
+
+    @Mock
+    private LogStore logStore;
+
+    @Mock
+    private TokenStatsTracker tokenStatsTracker;
+
     @InjectMocks
     private DeploymentPostController controller;
 
-    @BeforeEach
-    public void beforeEach() {
-        when(context.getRequest()).thenReturn(request);
-    }
-
     @Test
     public void testUnsupportedContentType() {
+        when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
-        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
 
         controller.handle("app1", "api");
 
@@ -85,6 +99,7 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testForbiddenDeployment() {
+        when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -101,6 +116,7 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testDeploymentNotFound() {
+        when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -115,6 +131,7 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testNoRoute() {
+        when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -130,7 +147,8 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
 
         controller.handle("app1", "chat/completions");
 
@@ -138,7 +156,35 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    public void testHandler_Ok() {
+        when(context.getRequest()).thenReturn(request);
+        request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        Config config = new Config();
+        config.setApplications(new HashMap<>());
+        Application application = new Application();
+        application.setName("app1");
+        config.getApplications().put("app1", application);
+        when(context.getConfig()).thenReturn(config);
+        UpstreamBalancer balancer = mock(UpstreamBalancer.class);
+        when(proxy.getUpstreamBalancer()).thenReturn(balancer);
+        UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
+        when(balancer.balance(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(endpointRoute.hasNext()).thenReturn(true);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(context.getDeployment()).thenReturn(application);
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+
+        controller.handle("app1", "chat/completions");
+
+        verify(tokenStatsTracker).startSpan(eq(context));
+    }
+
+    @Test
     public void testHandleProxyRequest_NotPropagateAuthHeader() {
+        when(context.getRequest()).thenReturn(request);
 
         Config config = new Config();
         config.setApplications(new HashMap<>());
@@ -177,6 +223,7 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testHandleRequestBody_OverrideModelName() throws IOException {
+        when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(upstreamRoute.hasNext()).thenReturn(true);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
@@ -212,6 +259,7 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testHandleRequestBody_NotOverrideModelName() {
+        when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(upstreamRoute.hasNext()).thenReturn(true);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
@@ -241,6 +289,7 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testHandleProxyRequest_PropagateAuthHeader() {
+        when(context.getRequest()).thenReturn(request);
         Application application = new Application();
         application.setName("app1");
         application.setEndpoint("http://app1/chat");
@@ -278,5 +327,56 @@ public class DeploymentPostControllerTest {
         verify(proxy.getApiKeyStore()).assignApiKey(any(ApiKeyData.class));
     }
 
+    @Test
+    public void testHandleResponse_Model() {
+        when(context.getResponseStream()).thenReturn(mock(BufferingReadStream.class, RETURNS_DEEP_STUBS));
+        Model model = new Model();
+        when(context.getDeployment()).thenReturn(model);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+
+        controller.handleResponse();
+
+        verify(rateLimiter).increase(eq(context));
+        verify(context).setTokenUsage(any());
+        verify(logStore).save(eq(context));
+        verify(apiKeyStore).invalidateApiKey(any());
+        verify(tokenStatsTracker).endSpan(eq(context));
+    }
+
+    @Test
+    public void testHandleResponse_App() {
+        when(context.getResponseStream()).thenReturn(mock(BufferingReadStream.class, RETURNS_DEEP_STUBS));
+        Application app = new Application();
+        when(context.getDeployment()).thenReturn(app);
+
+        when(proxy.getLogStore()).thenReturn(logStore);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
+        when(context.getResponseBody()).thenReturn(Buffer.buffer());
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(tokenStatsTracker.getTokenStats(eq(context))).thenReturn(Future.succeededFuture(new TokenUsage()));
+
+        controller.handleResponse();
+
+        verify(rateLimiter, never()).increase(eq(context));
+        verify(tokenStatsTracker).getTokenStats(eq(context));
+        verify(context).setTokenUsage(any());
+        verify(logStore).save(eq(context));
+        verify(apiKeyStore).invalidateApiKey(any());
+        verify(tokenStatsTracker).endSpan(eq(context));
+    }
 
 }
