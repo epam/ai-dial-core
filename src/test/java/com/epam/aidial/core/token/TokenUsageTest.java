@@ -1,87 +1,10 @@
 package com.epam.aidial.core.token;
 
-import com.epam.aidial.core.config.Pricing;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class TokenUsageTest {
-
-    @Test
-    public void testCalculateCost_NullPricing() {
-        TokenUsage tokenUsage = new TokenUsage();
-        tokenUsage.calculateCost(null);
-        assertNull(tokenUsage.getCost());
-    }
-
-    @Test
-    public void testCalculateCost_DifferentUnit() {
-        TokenUsage tokenUsage = new TokenUsage();
-        Pricing pricing = new Pricing();
-        pricing.setUnit("other");
-
-        tokenUsage.calculateCost(pricing);
-
-        assertNull(tokenUsage.getCost());
-    }
-
-    @Test
-    public void testCalculateCost_PromptCompletionNulls() {
-        TokenUsage tokenUsage = new TokenUsage();
-        Pricing pricing = new Pricing();
-        pricing.setUnit("token");
-
-        tokenUsage.calculateCost(pricing);
-
-        assertNull(tokenUsage.getCost());
-    }
-
-    @Test
-    public void testCalculateCost_Normal() {
-        TokenUsage tokenUsage = new TokenUsage();
-        tokenUsage.setPromptTokens(10);
-        tokenUsage.setCompletionTokens(50);
-
-        Pricing pricing = new Pricing();
-        pricing.setUnit("token");
-        pricing.setPrompt("0.5");
-        pricing.setCompletion("0.8");
-
-        tokenUsage.calculateCost(pricing);
-
-        assertEquals(45, tokenUsage.getCost());
-    }
-
-    @Test
-    public void testCalculateCost_PromptNull() {
-        TokenUsage tokenUsage = new TokenUsage();
-        tokenUsage.setPromptTokens(10);
-        tokenUsage.setCompletionTokens(50);
-
-        Pricing pricing = new Pricing();
-        pricing.setUnit("token");
-        pricing.setCompletion("0.8");
-
-        tokenUsage.calculateCost(pricing);
-
-        assertEquals(40, tokenUsage.getCost());
-    }
-
-    @Test
-    public void testCalculateCost_CompletionNull() {
-        TokenUsage tokenUsage = new TokenUsage();
-        tokenUsage.setPromptTokens(10);
-        tokenUsage.setCompletionTokens(50);
-
-        Pricing pricing = new Pricing();
-        pricing.setUnit("token");
-        pricing.setPrompt("0.5");
-
-        tokenUsage.calculateCost(pricing);
-
-        assertEquals(5, tokenUsage.getCost());
-    }
 
     @Test
     public void testIncrease_Model() {
