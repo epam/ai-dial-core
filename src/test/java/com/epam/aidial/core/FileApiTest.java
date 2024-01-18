@@ -434,7 +434,7 @@ public class FileApiTest {
         apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
-        apiKeyData1.setAttachedFiles(Set.of("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt"));
+        apiKeyData1.setAttachedFiles(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt"));
         apiKeyStore.assignApiKey(apiKeyData1);
 
         String apiKey1 = apiKeyData1.getPerRequestKey();
