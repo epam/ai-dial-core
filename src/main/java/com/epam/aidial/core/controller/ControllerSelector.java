@@ -41,6 +41,7 @@ public class ControllerSelector {
     private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("/v1/metadata/files/([a-zA-Z0-9]+)/(.*)");
 
     private static final Pattern PATTERN_RESOURCE = Pattern.compile("/v1/(conversations|prompts)/([a-zA-Z0-9]+)/(.*)");
+    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("/v1/metadata/(conversations|prompts)/([a-zA-Z0-9]+)/(.*)");
 
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("/+v1/([-.@a-zA-Z0-9]+)/rate");
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");
@@ -154,7 +155,16 @@ public class ControllerSelector {
             String folder = match.group(1);
             String bucket = match.group(2);
             String relativePath = match.group(3);
-            ResourceController controller = new ResourceController(proxy, context);
+            ResourceController controller = new ResourceController(proxy, context, false);
+            return () -> controller.handle(folder, bucket, relativePath);
+        }
+
+        match = match(PATTERN_RESOURCE_METADATA, path);
+        if (match != null) {
+            String folder = match.group(1);
+            String bucket = match.group(2);
+            String relativePath = match.group(3);
+            ResourceController controller = new ResourceController(proxy, context, true);
             return () -> controller.handle(folder, bucket, relativePath);
         }
 
@@ -238,7 +248,7 @@ public class ControllerSelector {
             String folder = match.group(1);
             String bucket = match.group(2);
             String relativePath = match.group(3);
-            ResourceController controller = new ResourceController(proxy, context);
+            ResourceController controller = new ResourceController(proxy, context, false);
             return () -> controller.handle(folder, bucket, relativePath);
         }
 
@@ -259,7 +269,7 @@ public class ControllerSelector {
             String folder = match.group(1);
             String bucket = match.group(2);
             String relativePath = match.group(3);
-            ResourceController controller = new ResourceController(proxy, context);
+            ResourceController controller = new ResourceController(proxy, context, false);
             return () -> controller.handle(folder, bucket, relativePath);
         }
 

@@ -26,8 +26,8 @@ public abstract class AccessControlBaseController {
     public Future<?> handle(String folder, String bucket, String path) {
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
-        boolean hasReadAccess = isSharedWithMe(bucket, filePath);
-        boolean hasWriteAccess = hasWriteAccess(filePath, decryptedBucket);
+        boolean hasReadAccess = isSharedWithMe(bucket, path);
+        boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
         boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
         if (!hasAccess) {
@@ -36,7 +36,7 @@ public abstract class AccessControlBaseController {
 
         ResourceDescription resource;
         try {
-            ResourceType type = ResourceType.fromFolder(folder);
+            ResourceType type = ResourceType.of(folder);
             resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
         } catch (Exception ex) {
             String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);

@@ -105,10 +105,10 @@ class ResourceApiTest {
     @Test
     void testWorkflow() {
         Response response = request(HttpMethod.GET, "/folder/conversation");
-        verify(response, 404, "Not found: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+        verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
-        response = request(HttpMethod.GET, "/folder/");
-        verify(response, 404, "Not found: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
+        response = metadata("/folder/");
+        verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
 
         response = request(HttpMethod.PUT, "/folder/conversation", "12345");
         verify(response, 200, "");
@@ -122,23 +122,23 @@ class ResourceApiTest {
         response = request(HttpMethod.GET, "/folder/conversation");
         verify(response, 200, "123456");
 
-        response = request(HttpMethod.GET, "/folder/");
-        verifyNotExact(response, 200, "{\"resources\":[{\"path\":\"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+        response = metadata("/folder/");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
-        response = request(HttpMethod.GET, "/");
-        verify(response, 200, "{\"resources\":[{\"path\":\"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/\"}]}");
+        response = metadata("/");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/\"");
 
         response = request(HttpMethod.DELETE, "/folder/conversation");
         verify(response, 200, "");
 
         response = request(HttpMethod.GET, "/folder/conversation");
-        verify(response, 404, "Not found: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+        verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
         response = request(HttpMethod.DELETE, "/folder/conversation");
-        verify(response, 404, "Not found: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+        verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
-        response = request(HttpMethod.GET, "/folder/");
-        verify(response, 404, "Not found: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
+        response = metadata("/folder/");
+        verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
     }
 
     @Test
@@ -156,7 +156,7 @@ class ResourceApiTest {
             int size = random.nextInt(0, 1024);
             String body = "a".repeat(size);
             String path = "/folder1/folder2/conversation" + id;
-            String notFound = "Not found: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST" + path;
+            String notFound = "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST" + path;
 
             if (type == 0) {
                 Response resource = request(HttpMethod.PUT, path, body);
@@ -210,6 +210,10 @@ class ResourceApiTest {
 
     private Response request(HttpMethod method, String resource, String body) {
         return send(method, "/v1/conversations/" + bucket + resource, body);
+    }
+
+    private Response metadata(String resource) {
+        return send(HttpMethod.GET, "/v1/metadata/conversations/" + bucket + resource, "");
     }
 
     @SneakyThrows

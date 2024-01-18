@@ -5,7 +5,6 @@ import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
-import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
@@ -148,6 +147,14 @@ public class BlobStorage implements Closeable {
      */
     public Blob load(String filePath) {
         return blobStore.getBlob(bucketName, filePath);
+    }
+
+    public boolean exists(String filePath) {
+        return blobStore.blobExists(bucketName, filePath);
+    }
+
+    public BlobMetadata meta(String filePath) {
+        return blobStore.blobMetadata(bucketName, filePath);
     }
 
     /**

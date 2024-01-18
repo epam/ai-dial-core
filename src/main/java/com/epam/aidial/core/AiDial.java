@@ -92,12 +92,11 @@ public class AiDial {
             }
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker();
-            proxy = new Proxy(vertx, client, configStore, logStore, rateLimiter, upstreamBalancer, accessTokenValidator,
-                    storage, encryptionService, apiKeyStore, tokenStatsTracker);
 
             openRedis();
             resourceService = new ResourceService(vertx, redisCache, redisStore, storage, settings("resources"));
-            Proxy proxy = new Proxy(vertx, client, configStore, logStore,
+
+            proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService);
 
