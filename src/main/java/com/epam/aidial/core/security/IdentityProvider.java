@@ -31,26 +31,37 @@ public class IdentityProvider {
 
     public static final ExtractedClaims CLAIMS_WITH_EMPTY_ROLES = new ExtractedClaims(null, Collections.emptyList(), null);
 
+    // path to the claim of user roles in JWT
     private final String[] rolePath;
 
     private final JwkProvider jwkProvider;
 
+    // in memory cache store results obtained from JWK provider
     private final ConcurrentHashMap<String, Future<JwkResult>> cache = new ConcurrentHashMap<>();
 
+    // the name of the claim in JWT to extract user email
     private final String loggingKey;
+    // random salt is used to digest user email
     private final String loggingSalt;
 
     private final MessageDigest sha256Digest;
 
+    // the flag determines if user email should be obfuscated
     private final boolean obfuscateUserEmail;
 
     private final Vertx vertx;
 
+    // the duration is how many milliseconds success JWK result should be stored in the cache
     private final long positiveCacheExpirationMs;
 
+    // the duration is how many milliseconds failed JWK result should be stored in the cache
     private final long negativeCacheExpirationMs;
 
+    // the pattern is used to match if the given JWT can be verified by the current provider
     private final Pattern issuerPattern;
+
+    // the flag disables JWT verification
+    private final boolean disableVerifyJwt;
 
     public IdentityProvider(JsonObject settings, Vertx vertx, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
@@ -59,7 +70,15 @@ public class IdentityProvider {
         this.vertx = vertx;
         positiveCacheExpirationMs = settings.getLong("positiveCacheExpirationMs", TimeUnit.MINUTES.toMillis(10));
         negativeCacheExpirationMs = settings.getLong("negativeCacheExpirationMs", TimeUnit.SECONDS.toMillis(10));
-        String jwksUrl = Objects.requireNonNull(settings.getString("jwksUrl"), "jwksUrl is missed");
+
+        disableVerifyJwt = settings.getBoolean("disableVerifyJwt", false);
+        if (disableVerifyJwt) {
+            jwkProvider = null;
+        } else {
+            String jwksUrl = Objects.requireNonNull(settings.getString("jwksUrl"), "jwksUrl is missed");
+            jwkProvider = jwkProviderSupplier.apply(jwksUrl);
+        }
+
         rolePath = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed").split("\\.");
 
         loggingKey = settings.getString("loggingKey");
@@ -68,8 +87,6 @@ public class IdentityProvider {
         } else {
             loggingSalt = null;
         }
-
-        jwkProvider = jwkProviderSupplier.apply(jwksUrl);
 
         try {
             sha256Digest = MessageDigest.getInstance("SHA-256");
@@ -191,7 +208,14 @@ public class IdentityProvider {
         if (decodedJwt == null) {
             return Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null"));
         }
-        return verifyJwt(decodedJwt).map(jwt -> new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(jwt)));
+        if (disableVerifyJwt) {
+            return Future.succeededFuture(from(decodedJwt));
+        }
+        return verifyJwt(decodedJwt).map(this::from);
+    }
+
+    private ExtractedClaims from(DecodedJWT jwt) {
+        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(jwt));
     }
 
     boolean match(DecodedJWT jwt) {

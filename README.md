@@ -31,15 +31,16 @@ Static settings are used on startup and cannot be changed while application is r
 |-----------------------------------------|--------------------|-
 | config.files                            | aidial.config.json |Config files with parts of the whole config.
 | config.reload                           | 60000              |Config reload interval in milliseconds.
-| identityProviders                       | -                  |List of identity providers
-| identityProviders.*.jwksUrl             | -                  |Url to jwks provider.
-| identityProviders.*.rolePath            | -                  |Path to the claim user roles in JWT token, e.g. `resource_access.chatbot-ui.roles` or just `roles`.
+| identityProviders                       | -                  |List of identity providers. **Note**. At least one identity provider must be provided.
+| identityProviders.*.jwksUrl             | -                  |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`
+| identityProviders.*.rolePath            | -                  |Path to the claim user roles in JWT token, e.g. `resource_access.chatbot-ui.roles` or just `roles`. **Required**.
 | identityProviders.*.loggingKey          | -                  |User information to search in claims of JWT token.
 | identityProviders.*.loggingSalt         | -                  |Salt to hash user information for logging.
 | identityProviders.*.cacheSize           | 10                 |How many JWT tokens to cache.
 | identityProviders.*.cacheExpiration     | 10                 |How long to retain JWT token in cache.
 | identityProviders.*.cacheExpirationUnit | MINUTES            |Unit of cache expiration.
 | identityProviders.*.issuerPattern       | -                  |Regexp to match the claim "iss" to identity provider
+| identityProviders.*.disableVerifyJwt    | false              |The flag disables JWT verification
 | vertx.*                                 | -                  |Vertx settings.
 | server.*                                | -                  |Vertx HTTP server settings for incoming requests.
 | client.*                                | -                  |Vertx HTTP client settings for outbound requests.
