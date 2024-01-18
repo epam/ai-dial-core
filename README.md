@@ -40,6 +40,7 @@ Static settings are used on startup and cannot be changed while application is r
 | identityProviders.*.cacheExpiration     | 10                 |How long to retain JWT token in cache.
 | identityProviders.*.cacheExpirationUnit | MINUTES            |Unit of cache expiration.
 | identityProviders.*.issuerPattern       | -                  |Regexp to match the claim "iss" to identity provider
+| identityProviders.*.disableVerifyJwt    | false              |The flag disables JWT verification
 | vertx.*                                 | -                  |Vertx settings.
 | server.*                                | -                  |Vertx HTTP server settings for incoming requests.
 | client.*                                | -                  |Vertx HTTP client settings for outbound requests.
