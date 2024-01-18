@@ -20,6 +20,7 @@ import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.ModelCostCalculator;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -297,6 +298,11 @@ public class DeploymentPostController {
                 context.setTokenUsage(tokenUsage);
                 proxy.getRateLimiter().increase(context);
                 tokenUsageFuture = Future.succeededFuture(tokenUsage);
+                try {
+                    tokenUsage.setCost(ModelCostCalculator.calculate(context));
+                } catch (Throwable e) {
+                    log.warn("Failed to calculate cost for model={}", context.getDeployment().getName());
+                }
                 if (tokenUsage == null) {
                     log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
                             context.getTraceId(), context.getSpanId(),
@@ -305,13 +311,6 @@ public class DeploymentPostController {
                             context.getUpstreamRoute().get().getEndpoint(),
                             context.getResponse().getStatusCode(),
                             context.getResponseBody().length());
-                } else {
-                    Model model = (Model) context.getDeployment();
-                    try {
-                        tokenUsage.calculateCost(model.getPricing());
-                    } catch (Throwable e) {
-                        log.warn("Failed to calculate cost for model={}", model.getName());
-                    }
                 }
             }
         } else {
