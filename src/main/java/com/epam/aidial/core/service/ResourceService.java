@@ -16,7 +16,6 @@ import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
-import org.redisson.api.RLock;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
@@ -29,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.locks.Lock;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -37,14 +35,13 @@ public class ResourceService implements AutoCloseable {
 
     private static final String BLOB_EXTENSION = ".json";
     private static final String REDIS_QUEUE = "resource:queue";
-    private static final String REDIS_LOCK = "lock:";
     private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists");
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists");
 
     private final Vertx vertx;
-    private final RedissonClient redisCache;
-    private final RedissonClient redisStore;
+    private final RedissonClient redis;
     private final BlobStorage blobStore;
+    private final LockService lockService;
     @Getter
     private final int maxSize;
     private final long syncTimer;
@@ -54,11 +51,11 @@ public class ResourceService implements AutoCloseable {
     private final int compressionMinSize;
 
     public ResourceService(Vertx vertx,
-                           RedissonClient redisCache,
-                           RedissonClient redisStore,
+                           RedissonClient redis,
                            BlobStorage blobStore,
+                           LockService lockService,
                            JsonObject settings) {
-        this(vertx, redisCache, redisStore, blobStore,
+        this(vertx, redis, blobStore, lockService,
                 settings.getInteger("maxSize"),
                 settings.getLong("syncPeriod"),
                 settings.getLong("syncDelay"),
@@ -69,9 +66,9 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceService(Vertx vertx,
-                           RedissonClient redisCache,
-                           RedissonClient redisStore,
+                           RedissonClient redis,
                            BlobStorage blobStore,
+                           LockService lockService,
                            int maxSize,
                            long syncPeriod,
                            long syncDelay,
@@ -79,9 +76,9 @@ public class ResourceService implements AutoCloseable {
                            long cacheExpiration,
                            int compressionMinSize) {
         this.vertx = vertx;
-        this.redisCache = redisCache;
-        this.redisStore = redisStore;
+        this.redis = redis;
         this.blobStore = blobStore;
+        this.lockService = lockService;
         this.maxSize = maxSize;
         this.syncDelay = syncDelay;
         this.syncBatch = syncBatch;
@@ -167,7 +164,7 @@ public class ResourceService implements AutoCloseable {
         Result result = redisGet(redisKey, true);
 
         if (result == null) {
-            try (Locker lock = redisLock(redisKey)) {
+            try (var lock = lockService.lock(redisKey)) {
                 result = redisGet(redisKey, true);
 
                 if (result == null) {
@@ -185,7 +182,7 @@ public class ResourceService implements AutoCloseable {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
-        try (Locker lock = redisLock(redisKey)) {
+        try (var lock = lockService.lock(redisKey)) {
             Result result = redisGet(redisKey, false);
             if (result == null) {
                 result = blobGet(blobKey, false);
@@ -207,7 +204,7 @@ public class ResourceService implements AutoCloseable {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
-        try (Locker lock = redisLock(redisKey)) {
+        try (var lock = lockService.lock(redisKey)) {
             Result result = redisGet(redisKey, false);
             boolean existed = (result == null) ? blobExists(blobKey) : result.exists;
 
@@ -226,7 +223,7 @@ public class ResourceService implements AutoCloseable {
     private Void sync() {
         log.debug("Syncing");
         try {
-            RScoredSortedSet<String> set = redisCache.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+            RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
             long now = time();
 
             for (String redisKey : set.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, syncBatch)) {
@@ -241,15 +238,15 @@ public class ResourceService implements AutoCloseable {
 
     private void sync(String redisKey) {
         log.debug("Syncing resource: {}", redisKey);
-        try (Locker lock = redisTryLock(redisKey)) {
+        try (var lock = lockService.tryLock(redisKey)) {
             if (lock == null) {
                 return;
             }
 
             Result result = redisGet(redisKey, false);
             if (result == null || result.synced) {
-                redisCache.getMap(redisKey, StringCodec.INSTANCE).expireIfNotSet(cacheExpiration);
-                redisCache.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE).remove(redisKey);
+                redis.getMap(redisKey, StringCodec.INSTANCE).expireIfNotSet(cacheExpiration);
+                redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE).remove(redisKey);
                 return;
             }
 
@@ -341,7 +338,7 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     private Result redisGet(String key, boolean withBody) {
-        RMap<String, String> map = redisCache.getMap(key, StringCodec.INSTANCE);
+        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
         Map<String, String> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
 
         if (fields.isEmpty()) {
@@ -358,10 +355,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void redisPut(String key, Result result) {
-        RScoredSortedSet<String> set = redisCache.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
         set.add(time() + syncDelay, key);
 
-        RMap<String, String> map = redisCache.getMap(key, StringCodec.INSTANCE);
+        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
 
         if (!result.synced) {
             map.clearExpire();
@@ -383,26 +380,12 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void redisSync(String key) {
-        RMap<String, String> map = redisCache.getMap(key, StringCodec.INSTANCE);
+        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
         map.put("synced", "true");
         map.expire(cacheExpiration);
 
-        RScoredSortedSet<String> set = redisCache.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
         set.remove(key);
-    }
-
-    private Locker redisLock(String key) {
-        String lockKey = REDIS_LOCK + key;
-        RLock lock = redisStore.getLock(lockKey);
-        lock.lock();
-        return new Locker(lock);
-    }
-
-    @Nullable
-    private Locker redisTryLock(String key) {
-        String lockKey = REDIS_LOCK + key;
-        RLock lock = redisStore.getLock(lockKey);
-        return lock.tryLock() ? new Locker(lock) : null;
     }
 
     private static String redisKey(ResourceDescription descriptor) {
@@ -414,12 +397,5 @@ public class ResourceService implements AutoCloseable {
     }
 
     private record Result(String body, long createdAt, long updatedAt, boolean synced, boolean exists) {
-    }
-
-    private record Locker(Lock lock) implements AutoCloseable {
-        @Override
-        public void close() {
-            lock.unlock();
-        }
     }
 }

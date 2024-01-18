@@ -10,6 +10,7 @@ import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
@@ -61,8 +62,7 @@ public class AiDial {
     private HttpServer server;
     private HttpClient client;
 
-    private RedissonClient redisCache;
-    private RedissonClient redisStore;
+    private RedissonClient redis;
     private Proxy proxy;
 
     private BlobStorage storage;
@@ -93,8 +93,12 @@ public class AiDial {
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker();
 
-            openRedis();
-            resourceService = new ResourceService(vertx, redisCache, redisStore, storage, settings("resources"));
+            redis = openRedis();
+
+            if (redis != null) {
+                LockService lockService = new LockService(redis);
+                resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
+            }
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
@@ -111,31 +115,8 @@ public class AiDial {
         }
     }
 
-    private void openRedis() throws IOException {
-        if (redisStore == null) {
-            redisStore = createRedis("store");
-        }
-
-        if (redisCache == null) {
-            redisCache = createRedis("cache");
-        }
-
-        if (redisStore == null) {
-            redisStore = redisCache;
-        }
-
-        if (redisCache == null) {
-            redisCache = redisStore;
-        }
-    }
-
-    private RedissonClient createRedis(String key) throws IOException {
+    private RedissonClient openRedis() throws IOException {
         JsonObject conf = settings("redis");
-        if (conf.isEmpty()) {
-            return null;
-        }
-
-        conf = conf.getJsonObject(key, new JsonObject());
         if (conf.isEmpty()) {
             return null;
         }
@@ -154,8 +135,7 @@ public class AiDial {
             close(resourceService);
             close(vertx, Vertx::close);
             close(storage);
-            close(redisCache);
-            close(redisStore);
+            close(redis);
             log.info("Proxy stopped");
             LogConfigurator.unconfigure();
         } catch (Throwable e) {

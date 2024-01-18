@@ -37,7 +37,8 @@ class ResourceApiTest {
             redis = RedisServer.builder()
                     .port(16370)
                     .setting("bind 127.0.0.1")
-                    .setting("maxmemory 64M")
+                    .setting("maxmemory 4M")
+                    .setting("maxmemory-policy volatile-lfu")
                     .build();
             redis.start();
 
@@ -52,10 +53,8 @@ class ResourceApiTest {
                         }
                       },
                       "redis": {
-                        "store": {
-                          "singleServerConfig": {
-                            "address": "redis://localhost:16370"
-                          }
+                        "singleServerConfig": {
+                          "address": "redis://localhost:16370"
                         }
                       },
                       "resources": {
