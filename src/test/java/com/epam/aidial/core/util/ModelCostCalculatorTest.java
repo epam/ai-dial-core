@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.when;
 
+@SuppressWarnings("checkstyle:LineLength")
 @ExtendWith(MockitoExtension.class)
 public class ModelCostCalculatorTest {
 
@@ -61,7 +62,7 @@ public class ModelCostCalculatorTest {
     }
 
     @Test
-    public void testCalculate_LengthCost_Chat() {
+    public void testCalculate_LengthCost_Chat_StreamIsFalse() {
         Model model = new Model();
         model.setType(ModelType.CHAT);
         Pricing pricing = new Pricing();
@@ -109,12 +110,62 @@ public class ModelCostCalculatorTest {
                   ],
                   "max_tokens": 500,
                   "temperature": 1,
-                  "stream": true
+                  "stream": false
                 }
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
         assertEquals(24 * 0.5 + 10 * 0.1, ModelCostCalculator.calculate(context));
+    }
+
+    @Test
+    public void testCalculate_LengthCost_Chat_StreamIsTrue() {
+        Model model = new Model();
+        model.setType(ModelType.CHAT);
+        Pricing pricing = new Pricing();
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        pricing.setUnit("char_without_whitespace");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+
+        String response = """
+                data:   {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
+                 
+                 data:   {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"this"}}],"usage":null}
+                 
+                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" is "}}],"usage":null}
+                 
+                 
+                 
+                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"a text"}}],"usage":null}
+                 
+                 data: [DONE]
+                 
+                 
+                """;
+        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
+
+        String request = """
+                {
+                  "messages": [
+                    {
+                      "role": "system",
+                      "content": ""
+                    },
+                    {
+                      "role": "user",
+                      "content": "How are you?"
+                    }
+                  ],
+                  "max_tokens": 500,
+                  "temperature": 1,
+                  "stream": true
+                }
+                """;
+        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
+
+        assertEquals(11 * 0.5 + 10 * 0.1, ModelCostCalculator.calculate(context));
     }
 
     @Test

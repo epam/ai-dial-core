@@ -15,6 +15,7 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
+import java.util.Scanner;
 
 @Slf4j
 @UtilityClass
@@ -57,11 +58,11 @@ public class ModelCostCalculator {
     }
 
     private static Double calculate(ModelType modelType, Buffer requestBody, Buffer responseBody, String promptRate, String completionRate) {
-        int responseLength = getResponseContentLength(modelType, responseBody);
-        int requestLength = getRequestContentLength(modelType, requestBody);
+        RequestLengthResult requestLengthResult = getRequestContentLength(modelType, requestBody);
+        int responseLength = getResponseContentLength(modelType, responseBody, requestLengthResult.stream());
         double cost = 0.0;
         if (promptRate != null) {
-            cost += requestLength * Double.parseDouble(promptRate);
+            cost += requestLengthResult.length() * Double.parseDouble(promptRate);
         }
         if (completionRate != null) {
             cost += responseLength * Double.parseDouble(completionRate);
@@ -72,22 +73,43 @@ public class ModelCostCalculator {
         return null;
     }
 
-    private static int getResponseContentLength(ModelType modelType, Buffer responseBody) {
+    private static int getResponseContentLength(ModelType modelType, Buffer responseBody, boolean isStreamingResponse) {
         if (modelType == ModelType.EMBEDDING) {
             return 0;
         }
-        try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            ArrayNode choices = (ArrayNode) tree.get("choices");
-            JsonNode contentNode = choices.get(0).get("message").get("content");
-            return getLengthWithoutWhitespace(contentNode.textValue());
-        } catch (Throwable e) {
-            log.warn("Failed to calculate response length", e);
-            return 0;
+        if (isStreamingResponse) {
+            try (Scanner scanner = new Scanner(new ByteBufInputStream(responseBody.getByteBuf()))) {
+                scanner.useDelimiter("\n*data: *");
+                int len = 0;
+                while (scanner.hasNext()) {
+                    String chunk = scanner.next();
+                    if (chunk.startsWith("[DONE]")) {
+                        break;
+                    }
+                    ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(chunk);
+                    ArrayNode choices = (ArrayNode) tree.get("choices");
+                    JsonNode contentNode = choices.get(0).get("delta").get("content");
+                    if (contentNode != null) {
+                        len += getLengthWithoutWhitespace(contentNode.textValue());
+                    }
+                }
+                return len;
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                ArrayNode choices = (ArrayNode) tree.get("choices");
+                JsonNode contentNode = choices.get(0).get("message").get("content");
+                return getLengthWithoutWhitespace(contentNode.textValue());
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
-    private static int getRequestContentLength(ModelType modelType, Buffer requestBody) {
+    private static RequestLengthResult getRequestContentLength(ModelType modelType, Buffer requestBody) {
         try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
             int len;
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
@@ -98,7 +120,7 @@ public class ModelCostCalculator {
                     JsonNode message = messages.get(i);
                     len += getLengthWithoutWhitespace(message.get("content").textValue());
                 }
-                return len;
+                return new RequestLengthResult(len, tree.get("stream").asBoolean(false));
             } else {
                 JsonNode input = tree.get("input");
                 if (input instanceof ArrayNode array) {
@@ -110,10 +132,9 @@ public class ModelCostCalculator {
                     len = getLengthWithoutWhitespace(input.textValue());
                 }
             }
-            return len;
+            return new RequestLengthResult(len, false);
         } catch (Throwable e) {
-            log.warn("Failed to calculate request length", e);
-            return 0;
+            throw new RuntimeException(e);
         }
     }
 
@@ -128,6 +149,10 @@ public class ModelCostCalculator {
             }
         }
         return len;
+    }
+
+    private record RequestLengthResult(int length, boolean stream) {
+
     }
 
 }
