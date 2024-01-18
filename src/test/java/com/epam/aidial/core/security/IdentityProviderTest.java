@@ -296,7 +296,7 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_12() {
-        settings.put("disableVerifyJwt", Boolean.TRUE);
+        settings.put("disableJwtVerification", Boolean.TRUE);
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 

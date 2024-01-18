@@ -61,7 +61,7 @@ public class IdentityProvider {
     private final Pattern issuerPattern;
 
     // the flag disables JWT verification
-    private final boolean disableVerifyJwt;
+    private final boolean disableJwtVerification;
 
     public IdentityProvider(JsonObject settings, Vertx vertx, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
@@ -71,8 +71,8 @@ public class IdentityProvider {
         positiveCacheExpirationMs = settings.getLong("positiveCacheExpirationMs", TimeUnit.MINUTES.toMillis(10));
         negativeCacheExpirationMs = settings.getLong("negativeCacheExpirationMs", TimeUnit.SECONDS.toMillis(10));
 
-        disableVerifyJwt = settings.getBoolean("disableVerifyJwt", false);
-        if (disableVerifyJwt) {
+        disableJwtVerification = settings.getBoolean("disableJwtVerification", false);
+        if (disableJwtVerification) {
             jwkProvider = null;
         } else {
             String jwksUrl = Objects.requireNonNull(settings.getString("jwksUrl"), "jwksUrl is missed");
@@ -208,7 +208,7 @@ public class IdentityProvider {
         if (decodedJwt == null) {
             return Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null"));
         }
-        if (disableVerifyJwt) {
+        if (disableJwtVerification) {
             return Future.succeededFuture(from(decodedJwt));
         }
         return verifyJwt(decodedJwt).map(this::from);
