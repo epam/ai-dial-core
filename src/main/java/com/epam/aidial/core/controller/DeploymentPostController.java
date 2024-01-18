@@ -301,7 +301,8 @@ public class DeploymentPostController {
                 try {
                     tokenUsage.setCost(ModelCostCalculator.calculate(context));
                 } catch (Throwable e) {
-                    log.warn("Failed to calculate cost for model={}", context.getDeployment().getName());
+                    log.warn("Failed to calculate cost for model={}. Trace: {}. Span: {}",
+                            context.getDeployment().getName(), context.getTraceId(), context.getSpanId());
                 }
                 if (tokenUsage == null) {
                     log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",

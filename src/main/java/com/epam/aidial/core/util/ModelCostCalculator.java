@@ -91,7 +91,7 @@ public class ModelCostCalculator {
         try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
             int len;
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            if (modelType == ModelType.COMPLETION) {
+            if (modelType == ModelType.CHAT) {
                 ArrayNode messages = (ArrayNode) tree.get("messages");
                 len = 0;
                 for (int i = 0; i < messages.size(); i++) {
