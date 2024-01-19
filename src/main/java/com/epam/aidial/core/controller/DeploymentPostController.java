@@ -298,7 +298,7 @@ public class DeploymentPostController {
                 TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
                 if (tokenUsage == null) {
                     Pricing pricing = model.getPricing();
-                    if (pricing != null && "token".equals(pricing.getUnit())) {
+                    if (pricing == null || "token".equals(pricing.getUnit())) {
                         log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
                                 context.getTraceId(), context.getSpanId(),
                                 context.getProject(), context.getDeployment().getName(),
