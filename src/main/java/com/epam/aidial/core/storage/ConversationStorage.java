@@ -26,10 +26,8 @@ public class ConversationStorage {
 
     private static final String STORE_QUEUE_KEY = "store-queue";
     private static final int SECONDS_TO_EXPIRE = 60*60;
-//    public static final String CONTAINER = "stagingdialtest";
-//    public static final String ACCESS_KEY = "";
-    public static final String CONTAINER = "dialtestlarge";
-    public static final String ACCESS_KEY = "";
+    public static final String CONTAINER = "stagingdialtest";
+    public static final String ACCESS_KEY = """;
     BlobStore blobStore;
     RedissonClient redisson;
     String bucketName;
@@ -126,7 +124,7 @@ public class ConversationStorage {
 
     public static void main(String[] args) throws InterruptedException {
 
-        Config config = new Config();
+//        Config config = new Config();
 //        config.useClusterServers()
 //                .setMasterConnectionPoolSize(10)
 //                .setSlaveConnectionPoolSize(10)
@@ -137,31 +135,31 @@ public class ConversationStorage {
 //                    "redis://localhost:6383",
 //                    "redis://localhost:6384",
 //                    "redis://localhost:6385"));
-        config.useSingleServer()
+  //      config.useSingleServer()
                 //.setConnectionPoolSize(10)
-                .setAddress("redis://localhost:6379");
-        RedissonClient client = Redisson.create(config);
+//                .setAddress("redis://localhost:6379");
+//        RedissonClient client = Redisson.create(config);
 
-        ContextBuilder builder = ContextBuilder.newBuilder("azureblob");
-        builder.credentials(ConversationStorage.CONTAINER, ConversationStorage.ACCESS_KEY);
-        var storeContext = builder.buildView(BlobStoreContext.class);
-        var blobStore = storeContext.getBlobStore();
+//        ContextBuilder builder = ContextBuilder.newBuilder("azureblob");
+//        builder.credentials(ConversationStorage.CONTAINER, ConversationStorage.ACCESS_KEY);
+//        var storeContext = builder.buildView(BlobStoreContext.class);
+//        var blobStore = storeContext.getBlobStore();
+//
+//        var conversationStorage = new ConversationStorage(blobStore, client, "rail");
+//        var storageThread = new Thread(conversationStorage::storeQueueProcessing);
+//        storageThread.start();
 
-        var conversationStorage = new ConversationStorage(blobStore, client, "rail");
-        var storageThread = new Thread(conversationStorage::storeQueueProcessing);
-        storageThread.start();
+//        for (int i = 0; i < 10; ++i) {
+//            conversationStorage.storeConversation("user/50001/conversations/c-" + i + ".txt", ("test" + i).getBytes());
+//        }
 
-        for (int i = 0; i < 10; ++i) {
-            conversationStorage.storeConversation("user/50001/conversations/c-" + i + ".txt", ("test" + i).getBytes());
-        }
-
-        Thread.sleep(3000);
+//        Thread.sleep(3000);
 
 //        for (int i = 0; i < 10; ++i) {
 //            var file = conversationStorage.getConversation("user/50001/conversations/c-" + i + ".txt");
 //            System.out.println(new String(file));
 //        }
-        storageThread.interrupt();
+//        storageThread.interrupt();
     }
 
 

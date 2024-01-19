@@ -5,7 +5,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.TreeMap;
@@ -16,6 +18,7 @@ import static com.epam.aidial.core.storage.BlobStorage.buildListContainerOptions
 import io.micrometer.core.instrument.util.IOUtils;
 import org.apache.commons.math3.distribution.ZipfDistribution;
 import org.jclouds.ContextBuilder;
+import org.jclouds.blobstore.BlobStore;
 import org.jclouds.blobstore.BlobStoreContext;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.options.ListContainerOptions;
@@ -59,74 +62,122 @@ public class QueryBenchmark {
     ThreadLocal<Integer> rowIndex = ThreadLocal.withInitial(() -> 0);
     AtomicInteger commonIndex = new AtomicInteger(0);
 
-    @Setup(Level.Trial)
-    public void initDistribution() throws IOException {
-        random = new Random();
-        userIndexOffset = new int[USER_TYPES.length];
-        zipfDistribution = new ZipfDistribution[USER_TYPES.length];
-        payload8k = IOUtils.toString(Objects.requireNonNull(
-                ConversationStorage.class.getResourceAsStream("/payload_8k.txt")),
-                StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8);
-        payload1024k = IOUtils.toString(Objects.requireNonNull(
-                ConversationStorage.class.getResourceAsStream("/payload_1024k.txt")),
-                StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8);
+    BlobStore blobStore;
 
-        var users = new ArrayList<Integer>();
-        var chats = new ArrayList<Integer>();
-        try (var testStream = ConversationStorage.class.getResourceAsStream("/test.csv")) {
-            try (var reader = new BufferedReader(new InputStreamReader(testStream))) {
-                String s = reader.readLine();
-                while (s != null) {
-                    String[] split = s.split(", ");
-                    users.add(Integer.parseInt(split[1]));
-                    chats.add(Integer.parseInt(split[2]));
-                    s = reader.readLine();
-                }
+    //@Setup(Level.Trial)
+    public void initDistribution() throws IOException {
+//        random = new Random();
+//        userIndexOffset = new int[USER_TYPES.length];
+//        zipfDistribution = new ZipfDistribution[USER_TYPES.length];
+//        payload8k = IOUtils.toString(Objects.requireNonNull(
+//                ConversationStorage.class.getResourceAsStream("/payload_8k.txt")),
+//                StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8);
+//        payload1024k = IOUtils.toString(Objects.requireNonNull(
+//                ConversationStorage.class.getResourceAsStream("/payload_1024k.txt")),
+//                StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8);
+//
+//        var users = new ArrayList<Integer>();
+//        var chats = new ArrayList<Integer>();
+//        try (var testStream = ConversationStorage.class.getResourceAsStream("/test.csv")) {
+//            try (var reader = new BufferedReader(new InputStreamReader(testStream))) {
+//                String s = reader.readLine();
+//                while (s != null) {
+//                    String[] split = s.split(", ");
+//                    users.add(Integer.parseInt(split[1]));
+//                    chats.add(Integer.parseInt(split[2]));
+//                    s = reader.readLine();
+//                }
+//            }
+//        }
+//        test = new int[2][];
+//        test[0] = users.stream().mapToInt(Integer::intValue).toArray();
+//        test[1] = chats.stream().mapToInt(Integer::intValue).toArray();
+//
+//        IOUtils.toString(Objects.requireNonNull(
+//                ConversationStorage.class.getResourceAsStream("/test.csv")),
+//                StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8);
+//
+//        int offset = 0;
+//        for (int i = 0; i < USER_TYPES.length; i++) {
+//            double coef = USER_TYPES[i];
+//            int count = (int) (USER_COUNT * coef);
+//            userIndexOffset[i] = offset;
+//            zipfDistribution[i] = new ZipfDistribution(count, 0.5573040992021561);
+//            offset += count;
+//        }
+//        ContextBuilder builder = ContextBuilder.newBuilder("azureblob");
+//        builder.credentials(ConversationStorage.CONTAINER, ConversationStorage.ACCESS_KEY);
+//        var storeContext = builder.buildView(BlobStoreContext.class);
+//        var blobStore = storeContext.getBlobStore();
+//
+//        Config config = new Config();
+//        config.useClusterServers()
+//                .setNodeAddresses(List.of(
+//                    "redis://localhost:6380",
+//                    "redis://localhost:6381",
+//                    "redis://localhost:6382",
+//                    "redis://localhost:6383",
+//                    "redis://localhost:6384",
+//                    "redis://localhost:6385"));
+////        config.useSingleServer()
+////                .setAddress("redis://localhost:6379");
+//        RedissonClient client = Redisson.create(config);
+//
+//        conversationStorage = new ConversationStorage(blobStore, client, "rail");
+//
+//        payload1024kStr = new String(payload1024k);
+//        for (int i = 0; i < BIG_FILE_COUNT; ++i) {
+//            var bucket = conversationStorage.redisson.getBucket("" + i);
+//            System.out.println("Writing " + i);
+//            bucket.set(payload1024kStr);
+//        }
+
+        initAWS();
+    }
+
+    List<String> s3Files = new ArrayList<>();
+
+    @Setup(Level.Trial)
+    public void initAWS() {
+        ContextBuilder builder = ContextBuilder.newBuilder("aws-s3")
+                        .credentials("", "");
+
+        var storeContext = builder.buildView(BlobStoreContext.class);
+        this.blobStore = storeContext.getBlobStore();
+        //blobStore.getBlob("staging-dial-test", "");
+
+        ListContainerOptions options = buildListContainerOptions(BlobStorageUtil.normalizePathForQuery(""));
+        var topLevel = blobStore.list("staging-dial-test", options).stream().map(StorageMetadata::getName).toList();
+
+        for (var folder : topLevel) {
+            ListContainerOptions options2 = buildListContainerOptions(BlobStorageUtil.normalizePathForQuery(folder));
+            var secondLevel = blobStore.list("staging-dial-test", options2).stream().map(StorageMetadata::getName).toList();
+            for (var file : secondLevel) {
+                s3Files.add(file);
             }
         }
-        test = new int[2][];
-        test[0] = users.stream().mapToInt(Integer::intValue).toArray();
-        test[1] = chats.stream().mapToInt(Integer::intValue).toArray();
 
-        IOUtils.toString(Objects.requireNonNull(
-                ConversationStorage.class.getResourceAsStream("/test.csv")),
-                StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8);
+        System.out.println(s3Files);
+    }
 
-        int offset = 0;
-        for (int i = 0; i < USER_TYPES.length; i++) {
-            double coef = USER_TYPES[i];
-            int count = (int) (USER_COUNT * coef);
-            userIndexOffset[i] = offset;
-            zipfDistribution[i] = new ZipfDistribution(count, 0.5573040992021561);
-            offset += count;
-        }
-        ContextBuilder builder = ContextBuilder.newBuilder("azureblob");
-        builder.credentials(ConversationStorage.CONTAINER, ConversationStorage.ACCESS_KEY);
-        var storeContext = builder.buildView(BlobStoreContext.class);
-        var blobStore = storeContext.getBlobStore();
+    @Benchmark
+    public void randomAccessS3File() throws IOException {
+        var path = s3Files.get(random.nextInt(s3Files.size()));
+        var blob = blobStore.getBlob("staging-dial-test", path);
 
-        Config config = new Config();
-        config.useClusterServers()
-                .setNodeAddresses(List.of(
-                    "redis://localhost:6380",
-                    "redis://localhost:6381",
-                    "redis://localhost:6382",
-                    "redis://localhost:6383",
-                    "redis://localhost:6384",
-                    "redis://localhost:6385"));
-//        config.useSingleServer()
-//                .setAddress("redis://localhost:6379");
-        RedissonClient client = Redisson.create(config);
+        var data = blob.getPayload().openStream().readAllBytes();
 
-        conversationStorage = new ConversationStorage(blobStore, client, "rail");
-
-        payload1024kStr = new String(payload1024k);
-        for (int i = 0; i < BIG_FILE_COUNT; ++i) {
-            var bucket = conversationStorage.redisson.getBucket("" + i);
-            System.out.println("Writing " + i);
-            bucket.set(payload1024kStr);
+        if (data.length != 1_048_576) {
+            throw new RuntimeException("Not equal 1071153");
         }
     }
+
+
+//    @Benchmark
+//    public List<String> type0ListRecentDir() {
+//        return conversationStorage.listConversations(getTestPath(0, true, true));
+//    }
+
 
     @TearDown(Level.Trial)
     public void teardown() {
@@ -205,28 +256,31 @@ public class QueryBenchmark {
     }
 
     public static void main(String[] args) throws IOException {
-        QueryBenchmark q = new QueryBenchmark();
-        q.initDistribution();
+        var q = new QueryBenchmark();
+        q.initAWS();
 
-//        var file = q.type2AccessRecentFile();
-
-//        for (int i = 0; i < 100; ++i) {
-//            if (q.random.nextInt(100) < 5) {
-//                System.out.println(q.genPath(0, false, true));
-//            } else {
-//                System.out.println(q.genPath(0, true, true));
-//            }
+//        QueryBenchmark q = new QueryBenchmark();
+//        q.initDistribution();
+//
+////        var file = q.type2AccessRecentFile();
+//
+////        for (int i = 0; i < 100; ++i) {
+////            if (q.random.nextInt(100) < 5) {
+////                System.out.println(q.genPath(0, false, true));
+////            } else {
+////                System.out.println(q.genPath(0, true, true));
+////            }
+////        }
+//        var counts = new TreeMap<Integer, Integer>();
+//        for (int i = 0; i < 10000; ++i) {
+//            int x = q.zipfDistribution[0].sample();
+//            counts.computeIfAbsent(x, y -> 0);
+//            counts.put(x, counts.get(x) + 1);
 //        }
-        var counts = new TreeMap<Integer, Integer>();
-        for (int i = 0; i < 10000; ++i) {
-            int x = q.zipfDistribution[0].sample();
-            counts.computeIfAbsent(x, y -> 0);
-            counts.put(x, counts.get(x) + 1);
-        }
-        for (var x : counts.entrySet()) {
-            System.out.println(x.getValue());
-            //System.out.println(x.getKey() + " " +  x.getValue());
-        }
+//        for (var x : counts.entrySet()) {
+//            System.out.println(x.getValue());
+//            //System.out.println(x.getKey() + " " +  x.getValue());
+//        }
     }
 //
 //    @Benchmark
@@ -399,4 +453,6 @@ public class QueryBenchmark {
 //        }
 //        System.out.format("user %s is completed in %d millis\n", fakeUserDir, (System.currentTimeMillis() - before));
 //    }
+
+
 }
