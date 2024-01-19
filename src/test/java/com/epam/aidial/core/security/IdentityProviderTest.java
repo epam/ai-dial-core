@@ -35,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -61,6 +62,8 @@ public class IdentityProviderTest {
         settings.put("jwksUrl", "http://host/jwks");
         settings.put("rolePath", "roles");
         settings.put("issuerPattern", "issuer");
+        settings.put("loggingKey", "email");
+        settings.put("loggingSalt", "salt");
     }
 
     @Test
@@ -288,6 +291,32 @@ public class IdentityProviderTest {
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
             assertEquals(Collections.emptyList(), claims.userRoles());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_12() {
+        settings.put("disableJwtVerification", Boolean.TRUE);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("role"))
+                .withClaim("email", "test@email.com")
+                .withClaim("sub", "sub").sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token));
+
+        verifyNoInteractions(jwkProvider);
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("role"), claims.userRoles());
+            assertEquals("sub", claims.sub());
+            assertNotNull(claims.userHash());
         });
     }
 
