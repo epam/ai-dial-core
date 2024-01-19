@@ -346,7 +346,7 @@ public class DeploymentPostControllerTest {
         controller.handleResponse();
 
         verify(rateLimiter).increase(eq(context));
-        verify(context).setTokenUsage(any());
+        verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(apiKeyStore).invalidateApiKey(any());
         verify(tokenStatsTracker).endSpan(eq(context));
@@ -373,7 +373,7 @@ public class DeploymentPostControllerTest {
 
         verify(rateLimiter, never()).increase(eq(context));
         verify(tokenStatsTracker).getTokenStats(eq(context));
-        verify(context).setTokenUsage(any());
+        verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(apiKeyStore).invalidateApiKey(any());
         verify(tokenStatsTracker).endSpan(eq(context));

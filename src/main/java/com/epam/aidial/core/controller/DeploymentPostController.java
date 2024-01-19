@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.limiter.RateLimitResult;
@@ -292,9 +293,22 @@ public class DeploymentPostController {
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
-        if (context.getDeployment() instanceof Model) {
+        if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
                 TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                if (tokenUsage == null) {
+                    Pricing pricing = model.getPricing();
+                    if (pricing == null || "token".equals(pricing.getUnit())) {
+                        log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                                context.getTraceId(), context.getSpanId(),
+                                context.getProject(), context.getDeployment().getName(),
+                                context.getDeployment().getEndpoint(),
+                                context.getUpstreamRoute().get().getEndpoint(),
+                                context.getResponse().getStatusCode(),
+                                context.getResponseBody().length());
+                    }
+                    tokenUsage = new TokenUsage();
+                }
                 context.setTokenUsage(tokenUsage);
                 proxy.getRateLimiter().increase(context);
                 tokenUsageFuture = Future.succeededFuture(tokenUsage);
@@ -303,15 +317,6 @@ public class DeploymentPostController {
                 } catch (Throwable e) {
                     log.warn("Failed to calculate cost for model={}. Trace: {}. Span: {}",
                             context.getDeployment().getName(), context.getTraceId(), context.getSpanId());
-                }
-                if (tokenUsage == null) {
-                    log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
-                            context.getTraceId(), context.getSpanId(),
-                            context.getProject(), context.getDeployment().getName(),
-                            context.getDeployment().getEndpoint(),
-                            context.getUpstreamRoute().get().getEndpoint(),
-                            context.getResponse().getStatusCode(),
-                            context.getResponseBody().length());
                 }
             }
         } else {
