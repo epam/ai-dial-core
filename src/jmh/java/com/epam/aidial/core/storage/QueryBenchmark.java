@@ -157,7 +157,7 @@ public class QueryBenchmark {
             }
         }
 
-        System.out.println(s3Files);
+        random = new Random(1);
     }
 
     @Benchmark

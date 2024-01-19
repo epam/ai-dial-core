@@ -27,7 +27,7 @@ public class ConversationStorage {
     private static final String STORE_QUEUE_KEY = "store-queue";
     private static final int SECONDS_TO_EXPIRE = 60*60;
     public static final String CONTAINER = "stagingdialtest";
-    public static final String ACCESS_KEY = """;
+    public static final String ACCESS_KEY = "";
     BlobStore blobStore;
     RedissonClient redisson;
     String bucketName;

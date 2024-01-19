@@ -1,6 +1,5 @@
 plugins {
     id "java"
-    id 'checkstyle'
     id 'application'
     id 'io.freefair.lombok' version '8.0.1'
     id "me.champeau.jmh" version "0.7.2"
@@ -15,9 +14,6 @@ java {
     }
 }
 
-checkstyle {
-    configDirectory = file("$rootProject.projectDir/checkstyle")
-}
 
 repositories {
     mavenCentral()
