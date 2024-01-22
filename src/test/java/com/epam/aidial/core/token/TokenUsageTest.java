@@ -20,6 +20,7 @@ public class TokenUsageTest {
         modelUsage.setCompletionTokens(50);
         modelUsage.setTotalTokens(60);
         modelUsage.setCost(new BigDecimal("10.0"));
+        modelUsage.setAggCost(new BigDecimal("10.0"));
 
         tokenUsage.increase(modelUsage);
 

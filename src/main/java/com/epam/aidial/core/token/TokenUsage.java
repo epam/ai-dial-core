@@ -19,7 +19,6 @@ public class TokenUsage {
         completionTokens += other.completionTokens;
         promptTokens += other.promptTokens;
         totalTokens += other.totalTokens;
-        aggCost(other.cost);
         aggCost(other.aggCost);
     }
 

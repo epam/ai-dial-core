@@ -62,6 +62,7 @@ public class TokenStatsTrackerTest {
         modelTokenUsage.setCompletionTokens(80);
         modelTokenUsage.setPromptTokens(20);
         modelTokenUsage.setCost(new BigDecimal("10.0"));
+        modelTokenUsage.setAggCost(new BigDecimal("10.0"));
 
         // core receives response from model
         when(app.getTokenUsage()).thenReturn(modelTokenUsage);
