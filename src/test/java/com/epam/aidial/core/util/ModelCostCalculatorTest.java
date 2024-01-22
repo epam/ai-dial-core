@@ -11,6 +11,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.when;
@@ -58,7 +60,7 @@ public class ModelCostCalculatorTest {
         tokenUsage.setPromptTokens(10);
         when(context.getTokenUsage()).thenReturn(tokenUsage);
 
-        assertEquals(6.0, ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context));
     }
 
     @Test
@@ -115,7 +117,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(24 * 0.5 + 10 * 0.1, ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("13.0"), ModelCostCalculator.calculate(context));
     }
 
     @Test
@@ -165,7 +167,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(11 * 0.5 + 10 * 0.1, ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("6.5"), ModelCostCalculator.calculate(context));
     }
 
     @Test
@@ -186,12 +188,12 @@ public class ModelCostCalculatorTest {
 
         String request = """
                 {
-                  "input": ["text", "123"]                    
+                  "input": ["text", "123"]
                 }
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(0.1 * 7, ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("0.7"), ModelCostCalculator.calculate(context));
     }
 
     @Test
@@ -212,11 +214,11 @@ public class ModelCostCalculatorTest {
 
         String request = """
                 {
-                  "input": "text"                    
+                  "input": "text"
                 }
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(0.1 * 4, ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("0.4"), ModelCostCalculator.calculate(context));
     }
 }
