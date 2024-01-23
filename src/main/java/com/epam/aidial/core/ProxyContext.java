@@ -62,6 +62,7 @@ public class ProxyContext {
     private long proxyResponseTimestamp;
     private long responseBodyTimestamp;
     private ExtractedClaims extractedClaims;
+    private ApiKeyData proxyApiKeyData;
 
     public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.config = config;
@@ -111,5 +112,9 @@ public class ProxyContext {
 
     public String getProject() {
         return key == null ? null : key.getProject();
+    }
+
+    public String getExecutionPath() {
+        return proxyApiKeyData == null ? null : proxyApiKeyData.getExecutionPath();
     }
 }

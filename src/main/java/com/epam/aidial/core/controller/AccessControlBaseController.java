@@ -24,9 +24,10 @@ public abstract class AccessControlBaseController {
      * @param path url encoded resource path
      */
     public Future<?> handle(String resourceType, String bucket, String path) {
+        ResourceType type = ResourceType.of(resourceType);
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
-        boolean hasReadAccess = isSharedWithMe(bucket, path);
+        boolean hasReadAccess = isSharedWithMe(type, bucket, path);
         boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
         boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
@@ -36,7 +37,6 @@ public abstract class AccessControlBaseController {
 
         ResourceDescription resource;
         try {
-            ResourceType type = ResourceType.of(resourceType);
             resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
         } catch (Exception ex) {
             String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);
@@ -48,8 +48,8 @@ public abstract class AccessControlBaseController {
 
     protected abstract Future<?> handle(ResourceDescription resource);
 
-    protected boolean isSharedWithMe(String bucket, String filePath) {
-        String url = bucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
+    protected boolean isSharedWithMe(ResourceType type, String bucket, String filePath) {
+        String url = type.getGroup() + BlobStorageUtil.PATH_SEPARATOR + bucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
         return context.getApiKeyData().getAttachedFiles().contains(url);
     }
 

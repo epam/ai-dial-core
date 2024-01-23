@@ -71,7 +71,7 @@ public class GfLogStore implements LogStore {
 
         TokenUsage tokenUsage = context.getTokenUsage();
         if (tokenUsage != null) {
-            append(entry, ",\"tokenUsage\":{", false);
+            append(entry, ",\"token_usage\":{", false);
             append(entry, "\"completion_tokens\":", false);
             append(entry, Long.toString(tokenUsage.getCompletionTokens()), true);
             append(entry, ",\"prompt_tokens\":", false);
@@ -103,15 +103,22 @@ public class GfLogStore implements LogStore {
             append(entry, "\"", false);
         }
 
+        String executionPath = context.getExecutionPath();
+        if (executionPath != null) {
+            append(entry, ",\"execution_path\":\"", false);
+            append(entry, executionPath, true);
+            append(entry, "\"", false);
+        }
+
         append(entry, ",\"trace\":{\"trace_id\":\"", false);
         append(entry, context.getTraceId(), true);
 
-        append(entry, "\",\"span_id\":\"", false);
+        append(entry, "\",\"core_span_id\":\"", false);
         append(entry, context.getSpanId(), true);
 
         String parentSpanId = context.getParentSpanId();
         if (parentSpanId != null) {
-            append(entry, "\",\"paren_span_id\":\"", false);
+            append(entry, "\",\"core_parent_span_id\":\"", false);
             append(entry, context.getParentSpanId(), true);
         }
 

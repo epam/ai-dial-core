@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.limiter.RateLimitResult;
@@ -20,6 +21,7 @@ import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.ModelCostCalculator;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -42,6 +44,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -58,7 +61,6 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private final ApiKeyData proxyApiKeyData = new ApiKeyData();
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -110,6 +112,11 @@ public class DeploymentPostController {
             return respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
+
         proxy.getTokenStatsTracker().startSpan(context);
 
         return context.getRequest().body()
@@ -157,7 +164,7 @@ public class DeploymentPostController {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
             try {
-                ProxyUtil.collectAttachedFiles(tree, proxyApiKeyData);
+                ProxyUtil.collectAttachedFiles(tree, context.getProxyApiKeyData());
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
@@ -212,10 +219,6 @@ public class DeploymentPostController {
                 context.getProject(), context.getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
 
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-
-        proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
-
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
@@ -228,6 +231,7 @@ public class DeploymentPostController {
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
@@ -291,27 +295,32 @@ public class DeploymentPostController {
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
-        if (context.getDeployment() instanceof Model) {
+        if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
                 TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                if (tokenUsage == null) {
+                    Pricing pricing = model.getPricing();
+                    if (pricing == null || "token".equals(pricing.getUnit())) {
+                        log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                                context.getTraceId(), context.getSpanId(),
+                                context.getProject(), context.getDeployment().getName(),
+                                context.getDeployment().getEndpoint(),
+                                context.getUpstreamRoute().get().getEndpoint(),
+                                context.getResponse().getStatusCode(),
+                                context.getResponseBody().length());
+                    }
+                    tokenUsage = new TokenUsage();
+                }
                 context.setTokenUsage(tokenUsage);
                 proxy.getRateLimiter().increase(context);
                 tokenUsageFuture = Future.succeededFuture(tokenUsage);
-                if (tokenUsage == null) {
-                    log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
-                            context.getTraceId(), context.getSpanId(),
-                            context.getProject(), context.getDeployment().getName(),
-                            context.getDeployment().getEndpoint(),
-                            context.getUpstreamRoute().get().getEndpoint(),
-                            context.getResponse().getStatusCode(),
-                            context.getResponseBody().length());
-                } else {
-                    Model model = (Model) context.getDeployment();
-                    try {
-                        tokenUsage.calculateCost(model.getPricing());
-                    } catch (Throwable e) {
-                        log.warn("Failed to calculate cost for model={}", model.getName());
-                    }
+                try {
+                    BigDecimal cost = ModelCostCalculator.calculate(context);
+                    tokenUsage.setCost(cost);
+                    tokenUsage.setAggCost(cost);
+                } catch (Throwable e) {
+                    log.warn("Failed to calculate cost for model={}. Trace: {}. Span: {}",
+                            context.getDeployment().getName(), context.getTraceId(), context.getSpanId());
                 }
             }
         } else {
@@ -531,6 +540,6 @@ public class DeploymentPostController {
 
     private void finalizeRequest() {
         proxy.getTokenStatsTracker().endSpan(context);
-        proxy.getApiKeyStore().invalidateApiKey(proxyApiKeyData);
+        proxy.getApiKeyStore().invalidateApiKey(context.getProxyApiKeyData());
     }
 }

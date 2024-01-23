@@ -176,10 +176,13 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
 
         controller.handle("app1", "chat/completions");
 
         verify(tokenStatsTracker).startSpan(eq(context));
+        verify(apiKeyStore).assignApiKey(any(ApiKeyData.class));
     }
 
     @Test
@@ -203,15 +206,9 @@ public class DeploymentPostControllerTest {
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
-        ApiKeyData apiKeyData = new ApiKeyData();
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-
-        Mockito.doAnswer(invocation -> {
-            ApiKeyData arg = invocation.getArgument(0);
-            arg.setPerRequestKey("key1");
-            return null;
-        }).when(apiKeyStore).assignApiKey(any(ApiKeyData.class));
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("key1");
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
 
         Buffer requestBody = Buffer.buffer();
         when(context.getRequestBody()).thenReturn(requestBody);
@@ -219,6 +216,7 @@ public class DeploymentPostControllerTest {
         controller.handleProxyRequest(proxyRequest);
 
         assertNull(proxyHeaders.get(AUTHORIZATION));
+        assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
     }
 
     @Test
@@ -295,9 +293,6 @@ public class DeploymentPostControllerTest {
         application.setEndpoint("http://app1/chat");
         application.setForwardAuthToken(true);
 
-        ApiKeyData apiKeyData = new ApiKeyData();
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
-
         when(context.getDeployment()).thenReturn(application);
 
         MultiMap headers = new HeadersMultiMap();
@@ -305,12 +300,6 @@ public class DeploymentPostControllerTest {
         headers.add(AUTHORIZATION, "token");
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        Mockito.doAnswer(invocation -> {
-            ApiKeyData arg = invocation.getArgument(0);
-            arg.setPerRequestKey("key1");
-            return null;
-        }).when(apiKeyStore).assignApiKey(any(ApiKeyData.class));
-        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
 
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
@@ -319,12 +308,15 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer();
         when(context.getRequestBody()).thenReturn(requestBody);
 
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("key1");
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
         controller.handleProxyRequest(proxyRequest);
 
         assertEquals("key1", proxyHeaders.get(HEADER_API_KEY));
         assertEquals("token", proxyHeaders.get(AUTHORIZATION));
 
-        verify(proxy.getApiKeyStore()).assignApiKey(any(ApiKeyData.class));
     }
 
     @Test
@@ -346,7 +338,7 @@ public class DeploymentPostControllerTest {
         controller.handleResponse();
 
         verify(rateLimiter).increase(eq(context));
-        verify(context).setTokenUsage(any());
+        verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(apiKeyStore).invalidateApiKey(any());
         verify(tokenStatsTracker).endSpan(eq(context));
@@ -373,7 +365,7 @@ public class DeploymentPostControllerTest {
 
         verify(rateLimiter, never()).increase(eq(context));
         verify(tokenStatsTracker).getTokenStats(eq(context));
-        verify(context).setTokenUsage(any());
+        verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(apiKeyStore).invalidateApiKey(any());
         verify(tokenStatsTracker).endSpan(eq(context));
