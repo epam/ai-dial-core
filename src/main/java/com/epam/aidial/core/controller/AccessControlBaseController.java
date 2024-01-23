@@ -23,7 +23,7 @@ public abstract class AccessControlBaseController {
      * @param bucket url encoded bucket name
      * @param path url encoded resource path
      */
-    public Future<?> handle(String folder, String bucket, String path) {
+    public Future<?> handle(String resourceType, String bucket, String path) {
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
         boolean hasReadAccess = isSharedWithMe(bucket, path);
@@ -36,7 +36,7 @@ public abstract class AccessControlBaseController {
 
         ResourceDescription resource;
         try {
-            ResourceType type = ResourceType.of(folder);
+            ResourceType type = ResourceType.of(resourceType);
             resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
         } catch (Exception ex) {
             String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);

@@ -43,7 +43,7 @@ public class ResourceController extends AccessControlBaseController {
             return deleteResource(descriptor);
         }
 
-        return context.respond(HttpStatus.BAD_GATEWAY);
+        return context.respond(HttpStatus.BAD_GATEWAY, "No route");
     }
 
     private Future<?> getMetadata(ResourceDescription descriptor) {
