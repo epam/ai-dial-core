@@ -33,21 +33,27 @@ public class ApiKeyData {
     private Set<String> attachedFiles = new HashSet<>();
     // deployment name of the source(application/assistant/model) associated with the current request
     private String sourceDeployment;
+    // Execution path of the root request
+    private String executionPath;
 
     public ApiKeyData() {
     }
 
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
+        String currentPath;
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
             proxyApiKeyData.setTraceId(context.getTraceId());
+            currentPath = context.getProject() == null ? context.getUserHash() : context.getProject();
         } else {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
+            currentPath = context.getApiKeyData().getExecutionPath();
         }
+        proxyApiKeyData.setExecutionPath(currentPath + "->" + context.getDeployment().getName());
         proxyApiKeyData.setSpanId(context.getSpanId());
         proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
     }

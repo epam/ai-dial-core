@@ -15,13 +15,14 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.Scanner;
 
 @Slf4j
 @UtilityClass
 public class ModelCostCalculator {
 
-    public static Double calculate(ProxyContext context) {
+    public static BigDecimal calculate(ProxyContext context) {
         Deployment deployment = context.getDeployment();
         if (!(deployment instanceof Model model)) {
             return null;
@@ -40,37 +41,41 @@ public class ModelCostCalculator {
         };
     }
 
-    private static Double calculate(TokenUsage tokenUsage, String promptRate, String completionRate) {
+    private static BigDecimal calculate(TokenUsage tokenUsage, String promptRate, String completionRate) {
         if (tokenUsage == null) {
             return null;
         }
-        double cost = 0.0;
+        BigDecimal cost = null;
         if (promptRate != null) {
-            cost += tokenUsage.getPromptTokens() * Double.parseDouble(promptRate);
+            cost = new BigDecimal(tokenUsage.getPromptTokens()).multiply(new BigDecimal(promptRate));
         }
         if (completionRate != null) {
-            cost += tokenUsage.getCompletionTokens() * Double.parseDouble(completionRate);
+            BigDecimal completionCost = new BigDecimal(tokenUsage.getCompletionTokens()).multiply(new BigDecimal(completionRate));
+            if (cost != null) {
+                cost = cost.add(completionCost);
+            } else {
+                cost = completionCost;
+            }
         }
-        if (promptRate != null || completionRate != null) {
-            return cost;
-        }
-        return null;
+        return cost;
     }
 
-    private static Double calculate(ModelType modelType, Buffer requestBody, Buffer responseBody, String promptRate, String completionRate) {
+    private static BigDecimal calculate(ModelType modelType, Buffer requestBody, Buffer responseBody, String promptRate, String completionRate) {
         RequestLengthResult requestLengthResult = getRequestContentLength(modelType, requestBody);
         int responseLength = getResponseContentLength(modelType, responseBody, requestLengthResult.stream());
-        double cost = 0.0;
+        BigDecimal cost = null;
         if (promptRate != null) {
-            cost += requestLengthResult.length() * Double.parseDouble(promptRate);
+            cost = new BigDecimal(requestLengthResult.length()).multiply(new BigDecimal(promptRate));
         }
         if (completionRate != null) {
-            cost += responseLength * Double.parseDouble(completionRate);
+            BigDecimal completionCost = new BigDecimal(responseLength).multiply(new BigDecimal(completionRate));
+            if (cost == null) {
+                cost = completionCost;
+            } else {
+                cost = cost.add(completionCost);
+            }
         }
-        if (promptRate != null || completionRate != null) {
-            return cost;
-        }
-        return null;
+        return cost;
     }
 
     private static int getResponseContentLength(ModelType modelType, Buffer responseBody, boolean isStreamingResponse) {

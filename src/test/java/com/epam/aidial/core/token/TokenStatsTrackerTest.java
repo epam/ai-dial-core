@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -59,7 +61,8 @@ public class TokenStatsTrackerTest {
         modelTokenUsage.setTotalTokens(100);
         modelTokenUsage.setCompletionTokens(80);
         modelTokenUsage.setPromptTokens(20);
-        modelTokenUsage.setCost(10.0);
+        modelTokenUsage.setCost(new BigDecimal("10.0"));
+        modelTokenUsage.setAggCost(new BigDecimal("10.0"));
 
         // core receives response from model
         when(app.getTokenUsage()).thenReturn(modelTokenUsage);
@@ -76,7 +79,7 @@ public class TokenStatsTrackerTest {
         assertEquals(100, result.getTotalTokens());
         assertEquals(80, result.getCompletionTokens());
         assertEquals(20, result.getPromptTokens());
-        assertEquals(10.0, result.getAggCost());
+        assertEquals(new BigDecimal("10.0"), result.getAggCost());
         assertNull(result.getCost());
 
         // core ends span for request to app
