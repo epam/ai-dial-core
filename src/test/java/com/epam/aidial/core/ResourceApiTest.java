@@ -65,8 +65,11 @@ class ResourceApiTest {
                     }
                     """.formatted(testDir);
 
+            JsonObject settings = AiDial.settings()
+                    .mergeIn(new JsonObject(overrides), true);
+
             dial = new AiDial();
-            dial.setExtraSettings(new JsonObject(overrides));
+            dial.setSettings(settings);
             dial.start();
         } catch (Throwable e) {
             destroy();

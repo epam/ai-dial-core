@@ -57,7 +57,6 @@ import java.util.concurrent.TimeUnit;
 public class AiDial {
 
     private JsonObject settings;
-    private JsonObject extraSettings = new JsonObject();
     private Vertx vertx;
     private HttpServer server;
     private HttpClient client;
@@ -72,7 +71,7 @@ public class AiDial {
     void start() throws Exception {
         System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
-            settings = settings(extraSettings);
+            settings = (settings == null) ? settings() : settings;
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
             setupTracing(vertxOptions);
@@ -145,15 +144,14 @@ public class AiDial {
         }
     }
 
-    private JsonObject settings(String key) {
-        return settings.getJsonObject(key, new JsonObject());
-    }
-
-    private static JsonObject settings(JsonObject extraSettings) throws Exception {
+    public static JsonObject settings() throws Exception {
         return defaultSettings()
                 .mergeIn(fileSettings(), true)
-                .mergeIn(envSettings(), true)
-                .mergeIn(extraSettings, true);
+                .mergeIn(envSettings(), true);
+    }
+
+    private JsonObject settings(String key) {
+        return settings.getJsonObject(key, new JsonObject());
     }
 
     private static JsonObject defaultSettings() throws IOException {
