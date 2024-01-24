@@ -115,7 +115,7 @@ public class ResourceController extends AccessControlBaseController {
                     String body = bytes.toString(StandardCharsets.UTF_8);
                     return vertx.executeBlocking(() -> service.putResource(descriptor, body));
                 })
-                .onSuccess((ok) -> context.respond(HttpStatus.OK))
+                .onSuccess((metadata) -> context.respond(HttpStatus.OK, metadata))
                 .onFailure(error -> {
                     if (error instanceof HttpException exception) {
                         context.respond(exception.getStatus(), exception.getMessage());

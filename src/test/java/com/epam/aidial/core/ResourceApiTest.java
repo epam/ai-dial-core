@@ -113,13 +113,13 @@ class ResourceApiTest {
         verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
 
         response = request(HttpMethod.PUT, "/folder/conversation", "12345");
-        verify(response, 200, "");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         response = request(HttpMethod.GET, "/folder/conversation");
         verify(response, 200, "12345");
 
         response = request(HttpMethod.PUT, "/folder/conversation", "123456");
-        verify(response, 200, "");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder");
 
         response = request(HttpMethod.GET, "/folder/conversation");
         verify(response, 200, "123456");
@@ -162,7 +162,7 @@ class ResourceApiTest {
 
             if (type == 0) {
                 Response resource = request(HttpMethod.PUT, path, body);
-                verify(resource, 200, "");
+                verifyNotExact(resource, 200, path);
 
                 resource = request(HttpMethod.GET, path);
                 verify(resource, 200, body);
@@ -180,7 +180,7 @@ class ResourceApiTest {
                 if (response.status() == 200) {
                     body = response.body() + body;
                     Response resource = request(HttpMethod.PUT, path, body);
-                    verify(resource, 200, "");
+                    verifyNotExact(resource, 200, path);
 
                     resource = request(HttpMethod.GET, path);
                     verify(resource, 200, body);

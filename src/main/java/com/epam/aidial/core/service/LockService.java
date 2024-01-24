@@ -53,12 +53,12 @@ public class LockService {
                         local time = redis.call('time')
                         local now = time[1] * 1000000 + time[2]
                         local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
-                                               
+                        
                         if (deadline ~= nil and now < deadline) then
                           return deadline - now
                         end
-                                                
-                        redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])                                               \s
+                        
+                        redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
                         return 0
                         """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
     }

@@ -178,7 +178,7 @@ public class ResourceService implements AutoCloseable {
         return result.exists ? result.body : null;
     }
 
-    public boolean putResource(ResourceDescription descriptor, String body) {
+    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body) {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
@@ -195,9 +195,9 @@ public class ResourceService implements AutoCloseable {
             if (!result.exists) {
                 blobPut(blobKey, "", createdAt, updatedAt);
             }
-        }
 
-        return true;
+            return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+        }
     }
 
     public boolean deleteResource(ResourceDescription descriptor) {
