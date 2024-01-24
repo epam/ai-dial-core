@@ -5,7 +5,6 @@ import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
-import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
@@ -44,15 +43,11 @@ public class BlobStorage implements Closeable {
     private final String bucketName;
 
     public BlobStorage(Storage config) {
-        this(config, null);
-    }
-
-    @VisibleForTesting
-    public BlobStorage(Storage config, Properties overrides) {
         ContextBuilder builder = ContextBuilder.newBuilder(config.getProvider());
         if (config.getEndpoint() != null) {
             builder.endpoint(config.getEndpoint());
         }
+        Properties overrides = config.getOverrides();
         if (overrides != null) {
             builder.overrides(overrides);
         }
