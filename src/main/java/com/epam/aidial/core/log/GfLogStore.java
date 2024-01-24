@@ -79,11 +79,11 @@ public class GfLogStore implements LogStore {
             append(entry, ",\"total_tokens\":", false);
             append(entry, Long.toString(tokenUsage.getTotalTokens()), true);
             if (tokenUsage.getCost() != null) {
-                append(entry, ",\"cost\":", false);
+                append(entry, ",\"deployment_price\":", false);
                 append(entry, tokenUsage.getCost().toString(), true);
             }
             if (tokenUsage.getAggCost() != null) {
-                append(entry, ",\"agg_cost\":", false);
+                append(entry, ",\"price\":", false);
                 append(entry, tokenUsage.getAggCost().toString(), true);
             }
             append(entry, "}", false);
@@ -91,15 +91,8 @@ public class GfLogStore implements LogStore {
 
         String sourceDeployment = context.getSourceDeployment();
         if (sourceDeployment != null) {
-            append(entry, ",\"source_deployment\":\"", false);
+            append(entry, ",\"parent_deployment\":\"", false);
             append(entry, sourceDeployment, true);
-            append(entry, "\"", false);
-        }
-
-        String destDeployment = context.getDeployment() == null ? null : context.getDeployment().getName();
-        if (destDeployment != null) {
-            append(entry, ",\"dest_deployment\":\"", false);
-            append(entry, destDeployment, true);
             append(entry, "\"", false);
         }
 
