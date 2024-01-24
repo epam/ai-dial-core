@@ -11,10 +11,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import javax.annotation.Nullable;
 
-@Slf4j
 /**
  * Simple spin-lock implementation which works with Redis as cache. Supports volatile-* eviction policies.
  */
+@Slf4j
 public class LockService {
 
     private static final long PERIOD = TimeUnit.SECONDS.toMicros(60);
