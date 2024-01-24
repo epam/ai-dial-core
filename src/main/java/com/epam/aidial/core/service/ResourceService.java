@@ -364,7 +364,7 @@ public class ResourceService implements AutoCloseable {
 
     private void redisPut(String key, Result result) {
         RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
-        set.add(time() + syncDelay, key); // add intention to change before changing
+        set.add(time() + syncDelay, key); // add resource to sync set before changing because calls below can fail
 
         RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
 
