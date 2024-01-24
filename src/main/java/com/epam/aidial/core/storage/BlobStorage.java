@@ -28,6 +28,7 @@ import org.jclouds.s3.domain.ObjectMetadataBuilder;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 @Slf4j
 public class BlobStorage implements Closeable {
@@ -46,8 +47,9 @@ public class BlobStorage implements Closeable {
         if (config.getEndpoint() != null) {
             builder.endpoint(config.getEndpoint());
         }
-        if (config.getOverrides() != null) {
-            builder.overrides(config.getOverrides());
+        Properties overrides = config.getOverrides();
+        if (overrides != null) {
+            builder.overrides(overrides);
         }
         builder.credentials(config.getIdentity(), config.getCredential());
         this.storeContext = builder.buildView(BlobStoreContext.class);

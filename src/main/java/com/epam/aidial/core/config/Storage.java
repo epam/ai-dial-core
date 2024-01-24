@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
 @Data
 public class Storage {
     /**
-     * Specifies storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage
+     * Specifies storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem
      */
     String provider;
     /**
@@ -34,5 +34,9 @@ public class Storage {
      */
     boolean createBucket;
 
+    /**
+     * Optional. Collection of key-value pairs for overrides, for example: "jclouds.filesystem.basedir": "/tmp/data"
+     */
+    @Nullable
     Properties overrides;
 }
