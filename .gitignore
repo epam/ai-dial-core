@@ -3,5 +3,5 @@
 .vscode/
 build/
 bin/
-.temp/
+.tmp/
 *.log
