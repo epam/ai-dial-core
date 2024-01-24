@@ -46,7 +46,7 @@
     "credential": "secret-key",
     "bucket": "dial",
     "overrides": {
-      "jclouds.filesystem.basedir": "/tmp/data"
+      "jclouds.filesystem.basedir": ".tmp/data"
     }
   }
 }
