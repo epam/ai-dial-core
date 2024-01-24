@@ -65,6 +65,14 @@ public class ResourceService implements AutoCloseable {
         );
     }
 
+    /**
+     * @param maxSize - max allowed size in bytes for a resource.
+     * @param syncPeriod - period in milliseconds, how frequently check for resources to sync.
+     * @param syncDelay - delay in milliseconds for a resource to be written back in object storage after last modification.
+     * @param syncBatch - how many resources to sync in one go.
+     * @param cacheExpiration - expiration in milliseconds for synced resources in Redis.
+     * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
+     */
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
                            BlobStorage blobStore,
@@ -193,7 +201,7 @@ public class ResourceService implements AutoCloseable {
             redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true));
 
             if (!result.exists) {
-                blobPut(blobKey, "", createdAt, updatedAt);
+                blobPut(blobKey, "", createdAt, updatedAt); // create an empty object for listing
             }
 
             return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
@@ -356,7 +364,7 @@ public class ResourceService implements AutoCloseable {
 
     private void redisPut(String key, Result result) {
         RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
-        set.add(time() + syncDelay, key);
+        set.add(time() + syncDelay, key); // add intention to change before changing
 
         RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
 
@@ -373,7 +381,7 @@ public class ResourceService implements AutoCloseable {
         );
         map.putAll(fields);
 
-        if (result.synced) {
+        if (result.synced) { // cleanup because it is already synced
             map.expire(cacheExpiration);
             set.remove(key);
         }
