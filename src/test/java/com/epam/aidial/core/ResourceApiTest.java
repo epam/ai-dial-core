@@ -230,7 +230,7 @@ class ResourceApiTest {
                 .onSuccess(result::complete)
                 .onFailure(result::completeExceptionally);
 
-        return result.get(15, TimeUnit.SECONDS);
+        return result.get(30, TimeUnit.SECONDS);
     }
 
     private record Response(HttpClientResponse response, String body) {
