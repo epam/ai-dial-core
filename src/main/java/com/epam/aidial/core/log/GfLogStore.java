@@ -4,10 +4,12 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.epam.deltix.gflog.api.LogLevel;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
@@ -20,6 +22,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Slf4j
 public class GfLogStore implements LogStore {
@@ -52,7 +55,7 @@ public class GfLogStore implements LogStore {
         }
     }
 
-    private void append(ProxyContext context, LogEntry entry) {
+    private void append(ProxyContext context, LogEntry entry) throws JsonProcessingException {
         HttpServerRequest request = context.getRequest();
         HttpServerResponse response = context.getResponse();
 
@@ -103,11 +106,10 @@ public class GfLogStore implements LogStore {
             append(entry, "\"", false);
         }
 
-        String executionPath = context.getExecutionPath();
+        List<String> executionPath = context.getExecutionPath();
         if (executionPath != null) {
-            append(entry, ",\"execution_path\":\"", false);
-            append(entry, executionPath, true);
-            append(entry, "\"", false);
+            append(entry, ",\"execution_path\":", false);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), true);
         }
 
         append(entry, ",\"trace\":{\"trace_id\":\"", false);

@@ -114,7 +114,7 @@ public class ProxyContext {
         return key == null ? null : key.getProject();
     }
 
-    public String getExecutionPath() {
+    public List<String> getExecutionPath() {
         return proxyApiKeyData == null ? null : proxyApiKeyData.getExecutionPath();
     }
 }
