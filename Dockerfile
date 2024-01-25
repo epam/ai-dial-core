@@ -19,6 +19,10 @@ RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
 
 ENV AIDIAL_SETTINGS=/app/config/aidial.settings.json
 ENV JAVA_OPTS="-Dgflog.config=/app/config/gflog.xml"
+ENV OTEL_TRACES_EXPORTER="none"
+ENV OTEL_METRICS_EXPORTER="none"
+ENV OTEL_LOGS_EXPORTER="none"
+
 WORKDIR /app
 
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
