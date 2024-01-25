@@ -102,7 +102,7 @@ public class GfLogStore implements LogStore {
         List<String> executionPath = context.getExecutionPath();
         if (executionPath != null) {
             append(entry, ",\"execution_path\":", false);
-            append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), true);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
         append(entry, ",\"trace\":{\"trace_id\":\"", false);
