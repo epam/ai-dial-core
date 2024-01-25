@@ -11,6 +11,7 @@ import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
@@ -67,6 +68,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final EncryptionService encryptionService;
     private final ApiKeyStore apiKeyStore;
     private final TokenStatsTracker tokenStatsTracker;
+    private final ResourceService resourceService;
 
     @Override
     public void handle(HttpServerRequest request) {

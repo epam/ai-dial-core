@@ -54,7 +54,8 @@ Static settings are used on startup and cannot be changed while application is r
 | storage.endpoint                           | -                  | Optional. Specifies endpoint url for s3 compatible storages                                                       
 | storage.identity                           | -                  | Blob storage access key                                                                                           
 | storage.credential                         | -                  | Blob storage secret key                                                                                           
-| storage.bucket                             | -                  | Blob storage bucket                                                                                               
+| storage.bucket                             | -                  | Blob storage bucket  
+| storage.overrides.*                        | -                  | Key-value pairs to override storage settings
 | storage.createBucket                       | false              | Indicates whether bucket should be created on start-up                                                            
 | encryption.password                        | -                  | Password used for AES encryption                                                                                  
 | encryption.salt                            | -                  | Salt used for AES encryption                                                                                      

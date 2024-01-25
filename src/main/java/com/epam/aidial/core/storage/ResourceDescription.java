@@ -109,6 +109,16 @@ public class ResourceDescription {
         return from(type, bucketName, bucketLocation, path, elements, BlobStorageUtil.isFolder(path));
     }
 
+    public static ResourceDescription fromDecoded(ResourceDescription description, String absolutePath) {
+        String prefix = description.getBucketLocation() + description.getType().getGroup() + "/";
+        if (!absolutePath.startsWith(prefix)) {
+            throw new IllegalArgumentException("Incompatible description and absolute path");
+        }
+
+        String relativePath = absolutePath.substring(prefix.length());
+        return fromDecoded(description.getType(), description.getBucketName(), description.getBucketLocation(), relativePath);
+    }
+
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,
                                             String originalPath, List<String> paths, boolean isFolder) {
         boolean isEmptyElements = paths.isEmpty();

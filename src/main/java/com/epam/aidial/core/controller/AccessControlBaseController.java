@@ -13,23 +13,22 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
 
-    private static final String DEFAULT_RESOURCE_ERROR_MESSAGE = "Invalid file url provided %s";
+    private static final String DEFAULT_RESOURCE_ERROR_MESSAGE = "Invalid resource url provided %s";
 
     final Proxy proxy;
     final ProxyContext context;
     final boolean checkFullAccess;
 
-
     /**
      * @param bucket url encoded bucket name
-     * @param filePath url encoded file path
+     * @param path url encoded resource path
      */
-    public Future<?> handle(String bucket, String filePath) {
-        ResourceType type = ResourceType.FILE;
+    public Future<?> handle(String resourceType, String bucket, String path) {
+        ResourceType type = ResourceType.of(resourceType);
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
-        boolean hasReadAccess = isSharedWithMe(type, bucket, filePath);
-        boolean hasWriteAccess = hasWriteAccess(filePath, decryptedBucket);
+        boolean hasReadAccess = isSharedWithMe(type, bucket, path);
+        boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
         boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
         if (!hasAccess) {
@@ -38,9 +37,9 @@ public abstract class AccessControlBaseController {
 
         ResourceDescription resource;
         try {
-            resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, filePath);
+            resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
         } catch (Exception ex) {
-            String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(filePath);
+            String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
