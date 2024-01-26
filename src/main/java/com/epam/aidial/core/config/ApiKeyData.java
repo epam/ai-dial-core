@@ -4,7 +4,9 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.security.ExtractedClaims;
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -34,26 +36,28 @@ public class ApiKeyData {
     // deployment name of the source(application/assistant/model) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request
-    private String executionPath;
+    private List<String> executionPath;
 
     public ApiKeyData() {
     }
 
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
-        String currentPath;
+        List<String> currentPath;
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
             proxyApiKeyData.setTraceId(context.getTraceId());
-            currentPath = context.getProject() == null ? context.getUserHash() : context.getProject();
+            currentPath = new ArrayList<>();
+            currentPath.add(context.getProject() == null ? context.getUserHash() : context.getProject());
         } else {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
-            currentPath = context.getApiKeyData().getExecutionPath();
+            currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
-        proxyApiKeyData.setExecutionPath(currentPath + "->" + context.getDeployment().getName());
+        currentPath.add(context.getDeployment().getName());
+        proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
         proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
     }
