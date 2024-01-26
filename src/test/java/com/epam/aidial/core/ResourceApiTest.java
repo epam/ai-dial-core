@@ -40,6 +40,8 @@ class ResourceApiTest {
     static void init() throws Exception {
         try {
             testDir = FileUtil.baseTestPath(ResourceApiTest.class);
+            FileUtil.createDir(testDir.resolve("test"));
+
             redis = RedisServer.builder()
                     .port(16370)
                     .setting("bind 127.0.0.1")
@@ -103,21 +105,17 @@ class ResourceApiTest {
             if (redis != null) {
                 redis.stop();
             }
+
+            FileUtil.deleteDir(testDir);
         }
     }
 
     @BeforeEach
     void setUp() {
-        FileUtil.createDir(testDir.resolve("test"));
         Response response = send(HttpMethod.GET, "/v1/bucket", "");
         assertEquals(response.status, 200);
         bucket = new JsonObject(response.body).getString("bucket");
         assertNotNull(bucket);
-    }
-
-    @AfterEach
-    void tearDown() {
-        FileUtil.deleteDir(testDir);
     }
 
     @Test
