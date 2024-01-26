@@ -113,7 +113,7 @@ public class ResourceService implements AutoCloseable {
         String blobKey = blobKey(descriptor);
         PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit);
 
-        if (set.isEmpty()) {
+        if (set.isEmpty() && !descriptor.isRootFolder()) {
             return null;
         }
 

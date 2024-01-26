@@ -74,6 +74,10 @@ public class ResourceDescription {
         return parentFolders.isEmpty() ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
     }
 
+    public boolean isRootFolder() {
+        return isFolder && name == null;
+    }
+
     /**
      * @param type           resource type
      * @param bucketName     bucket name (encrypted)
