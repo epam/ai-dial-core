@@ -254,6 +254,14 @@ public class AiDial {
     }
 
     private static void setupTracing(VertxOptions vertxOptions) {
+        String otlMetricExporter = getOtlSetting("OTEL_METRICS_EXPORTER", "otel.metrics.exporter");
+        if (otlMetricExporter == null) {
+            System.setProperty("otel.metrics.exporter", "none");
+        }
+        String otlLogsExporter = getOtlSetting("OTEL_LOGS_EXPORTER", "otel.logs.exporter");
+        if (otlLogsExporter == null) {
+            System.setProperty("otel.logs.exporter", "none");
+        }
         // disable trace exporter if the endpoint is not provided explicitly
         String otlExporterEndpoint = getOtlSetting("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "otel.exporter.otlp.traces.endpoint");
         if (otlExporterEndpoint == null) {
