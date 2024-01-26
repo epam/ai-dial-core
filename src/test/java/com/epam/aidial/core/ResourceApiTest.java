@@ -37,7 +37,7 @@ class ResourceApiTest {
             redis = RedisServer.builder()
                     .port(16370)
                     .setting("bind 127.0.0.1")
-                    .setting("maxmemory 4M")
+                    .setting("maxmemory 16M")
                     .setting("maxmemory-policy volatile-lfu")
                     .build();
             redis.start();
@@ -230,7 +230,7 @@ class ResourceApiTest {
                 .onSuccess(result::complete)
                 .onFailure(result::completeExceptionally);
 
-        return result.get(30, TimeUnit.SECONDS);
+        return result.get(15, TimeUnit.SECONDS);
     }
 
     private record Response(HttpClientResponse response, String body) {
