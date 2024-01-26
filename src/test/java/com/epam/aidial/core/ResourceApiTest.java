@@ -1,10 +1,18 @@
 package com.epam.aidial.core;
 
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -13,11 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import redis.embedded.RedisServer;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -28,6 +33,7 @@ class ResourceApiTest {
     private static RedisServer redis;
     private static AiDial dial;
     private static Path testDir;
+    private static CloseableHttpClient client;
     private String bucket;
 
     @BeforeAll
@@ -41,6 +47,8 @@ class ResourceApiTest {
                     .setting("maxmemory-policy volatile-lfu")
                     .build();
             redis.start();
+
+            client = HttpClientBuilder.create().build();
 
             String overrides = """
                     {
@@ -82,8 +90,12 @@ class ResourceApiTest {
     }
 
     @AfterAll
-    static void destroy() {
+    static void destroy() throws Exception {
         try {
+            if (client != null) {
+                client.close();
+            }
+
             if (dial != null) {
                 dial.stop();
             }
@@ -98,7 +110,7 @@ class ResourceApiTest {
     void setUp() {
         FileUtil.createDir(testDir.resolve("test"));
         Response response = send(HttpMethod.GET, "/v1/bucket", "");
-        assertEquals(response.response().statusCode(), 200);
+        assertEquals(response.status, 200);
         bucket = new JsonObject(response.body).getString("bucket");
         assertNotNull(bucket);
     }
@@ -226,25 +238,32 @@ class ResourceApiTest {
     }
 
     @SneakyThrows
-    private Response send(HttpMethod method, String uri, String body) {
-        CompletableFuture<Response> result = new CompletableFuture<>();
-        dial.getClient().request(method, dial.getServer().actualPort(), "127.0.0.1", uri)
-                .compose(request -> {
-                    request.headers().add("api-key", "proxyKey1");
-                    return request.send(body);
-                })
-                .compose(response -> response.body().map(bytes -> new Response(response, bytes.toString(StandardCharsets.UTF_8))))
-                .onSuccess(result::complete)
-                .onFailure(result::completeExceptionally);
+    private Response send(HttpMethod method, String path, String body) {
+        String uri = "http://127.0.0.1:" + dial.getServer().actualPort() + path;
+        HttpUriRequest request;
 
-        return result.get(15, TimeUnit.SECONDS);
-    }
-
-    private record Response(HttpClientResponse response, String body) {
-        public int status() {
-            return response.statusCode();
+        if (method == HttpMethod.GET) {
+            request = new HttpGet(uri);
+        } else if (method == HttpMethod.PUT) {
+            HttpPut put = new HttpPut(uri);
+            put.setEntity(new StringEntity(body));
+            request = put;
+        } else if (method == HttpMethod.DELETE) {
+            request = new HttpDelete(uri);
+        } else {
+            throw new IllegalArgumentException("Unsupported method: " + method);
         }
 
+        request.addHeader("api-key", "proxyKey1");
+
+        try (CloseableHttpResponse response = client.execute(request)) {
+            int status = response.getStatusLine().getStatusCode();
+            String answer = EntityUtils.toString(response.getEntity());
+            return new Response(status, answer);
+        }
+    }
+
+    private record Response(int status, String body) {
         public boolean ok() {
             return status() == 200;
         }
