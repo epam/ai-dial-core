@@ -254,7 +254,20 @@ public class AiDial {
     }
 
     private static void setupTracing(VertxOptions vertxOptions) {
+        // disable trace exporter if the endpoint is not provided explicitly
+        String otlExporterEndpoint = getOtlSetting("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "otel.exporter.otlp.traces.endpoint");
+        if (otlExporterEndpoint == null) {
+            System.setProperty("otel.traces.exporter", "none");
+        }
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder().build().getOpenTelemetrySdk();
         vertxOptions.setTracingOptions(new OpenTelemetryOptions(openTelemetry));
+    }
+
+    private static String getOtlSetting(String envVar, String systemProperty) {
+        String val = System.getenv(envVar);
+        if (val != null) {
+            return val;
+        }
+        return System.getProperty(systemProperty);
     }
 }
