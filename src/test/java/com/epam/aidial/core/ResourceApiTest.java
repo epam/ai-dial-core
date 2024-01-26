@@ -43,7 +43,11 @@ class ResourceApiTest {
             redis.start();
 
             String overrides = """
-                    { "storage": {
+                    {
+                      "client": {
+                        "connectTimeout": 5000
+                      },
+                      "storage": {
                         "bucket": "test",
                         "provider": "filesystem",
                         "identity": "access-key",
