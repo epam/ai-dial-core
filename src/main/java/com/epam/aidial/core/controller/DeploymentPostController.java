@@ -540,6 +540,8 @@ public class DeploymentPostController {
 
     private void finalizeRequest() {
         proxy.getTokenStatsTracker().endSpan(context);
-        proxy.getApiKeyStore().invalidateApiKey(context.getProxyApiKeyData());
+        if (context.getProxyApiKeyData() != null) {
+            proxy.getApiKeyStore().invalidateApiKey(context.getProxyApiKeyData());
+        }
     }
 }
