@@ -83,7 +83,7 @@ public class DeploymentController {
         Set<String> expectedUserRoles = deployment.getUserRoles();
         List<String> actualUserRoles = context.getUserRoles();
 
-        if (expectedUserRoles.isEmpty()) {
+        if (expectedUserRoles.isEmpty() || actualUserRoles == null) {
             return true;
         }
 

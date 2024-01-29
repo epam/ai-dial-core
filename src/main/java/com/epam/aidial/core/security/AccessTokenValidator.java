@@ -13,8 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import static com.epam.aidial.core.security.IdentityProvider.CLAIMS_WITH_EMPTY_ROLES;
-
 public class AccessTokenValidator {
 
     private final List<IdentityProvider> providers = new ArrayList<>();
@@ -38,7 +36,7 @@ public class AccessTokenValidator {
     public Future<ExtractedClaims> extractClaims(String authHeader) {
         try {
             if (authHeader == null) {
-                return Future.succeededFuture(CLAIMS_WITH_EMPTY_ROLES);
+                return Future.succeededFuture();
             }
             String encodedToken = Objects.requireNonNull(extractTokenFromHeader(authHeader), "Can't extract access token from header");
             DecodedJWT jwt = IdentityProvider.decodeJwtToken(encodedToken);

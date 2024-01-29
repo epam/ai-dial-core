@@ -41,7 +41,7 @@ public class RateLimiterTest {
     public void testLimit_EntityNotFound() {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(new Key());
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "unknown-trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "unknown-trace-id", "span-id");
         proxyContext.setDeployment(new Application());
 
         RateLimitResult result = rateLimiter.limit(proxyContext);
@@ -66,7 +66,7 @@ public class RateLimiterTest {
         key.setRole("role");
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "trace-id", "span-id");
         proxyContext.setDeployment(new Model());
 
         RateLimitResult result = rateLimiter.limit(proxyContext);
@@ -84,7 +84,7 @@ public class RateLimiterTest {
         key.setProject("project");
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "trace-id", "span-id");
         proxyContext.setDeployment(new Model());
 
         RateLimitResult result = rateLimiter.limit(proxyContext);
@@ -107,7 +107,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, null, "trace-id", "span-id");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -131,7 +131,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, null, "trace-id", "span-id");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
