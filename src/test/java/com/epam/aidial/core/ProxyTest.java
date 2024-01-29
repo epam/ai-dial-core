@@ -221,7 +221,7 @@ public class ProxyTest {
         when(configStore.load()).thenReturn(config);
         when(apiKeyStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
 
-        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
+        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture());
 
         proxy.handle(request);
 
@@ -274,7 +274,7 @@ public class ProxyTest {
         when(configStore.load()).thenReturn(config);
         when(apiKeyStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
 
-        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES));
+        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture());
 
         proxy.handle(request);
 
