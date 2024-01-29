@@ -15,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,8 +27,6 @@ import static java.util.Collections.EMPTY_LIST;
 
 @Slf4j
 public class IdentityProvider {
-
-    public static final ExtractedClaims CLAIMS_WITH_EMPTY_ROLES = new ExtractedClaims(null, Collections.emptyList(), null);
 
     private final String[] rolePath;
 

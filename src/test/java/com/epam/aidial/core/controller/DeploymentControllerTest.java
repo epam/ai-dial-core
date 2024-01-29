@@ -102,6 +102,16 @@ public class DeploymentControllerTest {
     }
 
     @Test
+    public void testHasAssessByRole_DeploymentRolesIsNull() {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        Deployment deployment = mock(Deployment.class);
+
+        when(deployment.getUserRoles()).thenReturn(Collections.emptySet());
+
+        assertTrue(DeploymentController.hasAccessByUserRoles(proxyContext, deployment));
+    }
+
+    @Test
     public void testHasAssessByRole_RoleMismatch() {
         ProxyContext proxyContext = mock(ProxyContext.class);
         Deployment deployment = mock(Deployment.class);
