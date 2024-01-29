@@ -52,7 +52,7 @@ public class AccessTokenValidatorTest {
         assertNotNull(future);
         future.onComplete(res -> {
             assertTrue(res.succeeded());
-            assertEquals(IdentityProvider.CLAIMS_WITH_EMPTY_ROLES, res.result());
+            assertNull(res.result());
         });
     }
 
