@@ -82,7 +82,6 @@ public class AiDial {
             ApiKeyStore apiKeyStore = new ApiKeyStore();
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             LogStore logStore = new GfLogStore(vertx);
-            RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
             AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
             if (storage == null) {
@@ -94,9 +93,11 @@ public class AiDial {
 
             redis = openRedis();
 
+            RateLimiter rateLimiter = null;
             if (redis != null) {
                 LockService lockService = new LockService(redis);
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
+                rateLimiter = new RateLimiter(vertx, lockService, redis);
             }
 
             proxy = new Proxy(vertx, client, configStore, logStore,
