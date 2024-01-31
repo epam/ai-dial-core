@@ -32,4 +32,8 @@ public class RateLimit {
             return RateLimitResult.SUCCESS;
         }
     }
+
+    long timeout() {
+        return Math.max(day.getWindow().window(), minute.getWindow().window());
+    }
 }

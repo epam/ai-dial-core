@@ -16,6 +16,8 @@ import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.time.Duration;
+
 @Slf4j
 @RequiredArgsConstructor
 public class RateLimiter {
@@ -114,6 +116,7 @@ public class RateLimiter {
             }
             long timestamp = System.currentTimeMillis();
             rateLimit.add(timestamp, totalUsedTokens);
+            bucket.expire(Duration.ofMillis(rateLimit.timeout()));
         } while (!bucket.compareAndSet(prevValue, ProxyUtil.MAPPER.writeValueAsString(rateLimit)));
         return null;
     }
@@ -132,7 +135,7 @@ public class RateLimiter {
     }
 
     private String getRedisKey(String projectKey, String deploymentName) {
-        return String.format("limit.token.api.key.%s.%s", projectKey, deploymentName);
+        return String.format("rate_limit:token.api.key.%s.%s", projectKey, deploymentName);
     }
 
 }

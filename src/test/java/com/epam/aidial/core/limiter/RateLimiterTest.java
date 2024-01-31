@@ -158,7 +158,7 @@ public class RateLimiterTest {
         });
 
         RBucket<Object> bucket = mock(RBucket.class);
-        when(redis.getBucket(eq("limit.token.api.key.key.model"), eq(StringCodec.INSTANCE))).thenReturn(bucket);
+        when(redis.getBucket(eq("rate_limit:token.api.key.key.model"), eq(StringCodec.INSTANCE))).thenReturn(bucket);
 
         Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 
@@ -192,7 +192,7 @@ public class RateLimiterTest {
         });
 
         RBucket<Object> bucket = mock(RBucket.class);
-        when(redis.getBucket(eq("limit.token.api.key.key.model"), eq(StringCodec.INSTANCE))).thenReturn(bucket);
+        when(redis.getBucket(eq("rate_limit:token.api.key.key.model"), eq(StringCodec.INSTANCE))).thenReturn(bucket);
         RateLimit rateLimit = new RateLimit();
         rateLimit.add(System.currentTimeMillis(), 10);
         String json = ProxyUtil.MAPPER.writeValueAsString(rateLimit);
