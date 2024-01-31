@@ -169,11 +169,16 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     public String getResource(ResourceDescription descriptor) {
+        return getResource(descriptor, true);
+    }
+
+    @Nullable
+    public String getResource(ResourceDescription descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
         if (result == null) {
-            try (var lock = lockService.lock(redisKey)) {
+            try (var ignore = lock ? lockService.lock(redisKey) : null) {
                 result = redisGet(redisKey, true);
 
                 if (result == null) {
@@ -187,22 +192,15 @@ public class ResourceService implements AutoCloseable {
         return result.exists ? result.body : null;
     }
 
-    private String getResourceWithoutLock(ResourceDescription descriptor) {
-        String redisKey = redisKey(descriptor);
-        Result result = redisGet(redisKey, true);
-        if (result == null) {
-            String blobKey = blobKey(descriptor);
-            result = blobGet(blobKey, true);
-            redisPut(redisKey, result);
-        }
-        return result.exists ? result.body : null;
+    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body) {
+        return putResource(descriptor, body, true);
     }
 
-    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body) {
+    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body, boolean lock) {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
-        try (var lock = lockService.lock(redisKey)) {
+        try (var ignore = lock ? lockService.lock(redisKey) : null) {
             Result result = redisGet(redisKey, false);
             if (result == null) {
                 result = blobGet(blobKey, false);
@@ -220,31 +218,13 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    private void putResourceWithoutLock(ResourceDescription descriptor, String body) {
-        String redisKey = redisKey(descriptor);
-        String blobKey = blobKey(descriptor);
-
-        Result result = redisGet(redisKey, false);
-        if (result == null) {
-            result = blobGet(blobKey, false);
-        }
-
-        long updatedAt = time();
-        long createdAt = result.exists ? result.createdAt : updatedAt;
-        redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true));
-
-        if (!result.exists) {
-            blobPut(blobKey, "", createdAt, updatedAt); // create an empty object for listing
-        }
-    }
-
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
-            String body = getResourceWithoutLock(descriptor);
+            String body = getResource(descriptor, false);
             String updatedBody = fn.apply(body);
-            putResourceWithoutLock(descriptor, updatedBody);
+            putResource(descriptor, updatedBody, false);
         }
     }
 
@@ -252,7 +232,7 @@ public class ResourceService implements AutoCloseable {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
-        try (var lock = lockService.lock(redisKey)) {
+        try (var ignore = lockService.lock(redisKey)) {
             Result result = redisGet(redisKey, false);
             boolean existed = (result == null) ? blobExists(blobKey) : result.exists;
 
