@@ -2,7 +2,9 @@ package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.util.HttpStatus;
+import lombok.Data;
 
+@Data
 public class RateLimit {
 
     private final RateBucket minute = new RateBucket(RateWindow.MINUTE);

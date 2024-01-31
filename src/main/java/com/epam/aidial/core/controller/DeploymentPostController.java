@@ -139,13 +139,14 @@ public class DeploymentPostController {
         ErrorData rateLimitError = new ErrorData();
         rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
         rateLimitError.getError().setMessage(result.errorMessage());
-        log.error("Rate limit error {}. Key: {}. User sub: {}", result.errorMessage(), context.getProject(), context.getUserSub());
+        log.error("Rate limit error {}. Key: {}. User sub: {}. Trace: {}. Span: {}", result.errorMessage(),
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId());
         respond(result.status(), rateLimitError);
     }
 
     private void handleRateLimitFailure(Throwable error) {
-        log.warn("Failed to check limits. Trace: {}. Span: {}. Error: {}",
-                context.getTraceId(), context.getSpanId(), error.getMessage());
+        log.warn("Failed to check limits. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to check limits");
     }
 

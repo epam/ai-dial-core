@@ -5,7 +5,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
-import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -23,79 +22,100 @@ public class RateLimiter {
 
     private final Vertx vertx;
 
-    private final LockService lockService;
-
     private final RedissonClient redis;
 
     public Future<Void> increase(ProxyContext context) {
-        Key key = context.getKey();
-        if (key == null) {
-            return Future.succeededFuture();
-        }
-        Deployment deployment = context.getDeployment();
-        TokenUsage usage = context.getTokenUsage();
-
-        if (usage == null || usage.getTotalTokens() <= 0) {
-            return Future.succeededFuture();
-        }
-
-        String redisKey = getRedisKey(key.getKey(), deployment.getName());
-        return vertx.executeBlocking(() -> {
-            try (var ignore = lockService.lock(redisKey)) {
-                RBucket<String>  bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-                String json = bucket.get();
-                RateLimit rateLimit;
-                if (json == null) {
-                    rateLimit = new RateLimit();
-                } else {
-                    rateLimit = ProxyUtil.MAPPER.readValue(json, RateLimit.class);
-                }
-                long timestamp = System.currentTimeMillis();
-                rateLimit.add(timestamp, usage.getTotalTokens());
-                bucket.set(ProxyUtil.MAPPER.writeValueAsString(rateLimit));
+        try {
+            // skip checking limits if redis is not available
+            if (redis == null) {
+                return Future.succeededFuture();
             }
-            return null;
-        });
+            Key key = context.getKey();
+            if (key == null) {
+                return Future.succeededFuture();
+            }
+            Deployment deployment = context.getDeployment();
+            TokenUsage usage = context.getTokenUsage();
+
+            if (usage == null || usage.getTotalTokens() <= 0) {
+                return Future.succeededFuture();
+            }
+
+            String redisKey = getRedisKey(key.getKey(), deployment.getName());
+            return vertx.executeBlocking(() -> updateLimit(redisKey, usage.getTotalTokens()));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
     }
 
     public Future<RateLimitResult> limit(ProxyContext context) {
-        Key key = context.getKey();
-        Limit limit;
-        if (key == null) {
-            // don't support user limits yet
-            return Future.succeededFuture(RateLimitResult.SUCCESS);
-        } else {
-            limit = getLimitByApiKey(context);
-        }
-
-        Deployment deployment = context.getDeployment();
-
-        if (limit == null || !limit.isPositive()) {
-            if (limit == null) {
-                log.warn("Limit is not found for deployment: {}", deployment.getName());
+        try {
+            // skip checking limits if redis is not available
+            if (redis == null) {
+                return Future.succeededFuture(RateLimitResult.SUCCESS);
+            }
+            Key key = context.getKey();
+            Limit limit;
+            if (key == null) {
+                // don't support user limits yet
+                return Future.succeededFuture(RateLimitResult.SUCCESS);
             } else {
-                log.warn("Limit must be positive for deployment: {}", deployment.getName());
+                limit = getLimitByApiKey(context);
             }
-            return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
-        }
 
-        String redisKey = getRedisKey(key.getKey(), deployment.getName());
-        return vertx.executeBlocking(() -> {
-            try (var ignore = lockService.lock(redisKey)) {
-                RBucket<String>  bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-                String json = bucket.get();
-                RateLimit rateLimit;
-                if (json == null) {
-                    return RateLimitResult.SUCCESS;
+            Deployment deployment = context.getDeployment();
+
+            if (limit == null || !limit.isPositive()) {
+                if (limit == null) {
+                    log.warn("Limit is not found for deployment: {}", deployment.getName());
                 } else {
-                    rateLimit = ProxyUtil.MAPPER.readValue(json, RateLimit.class);
+                    log.warn("Limit must be positive for deployment: {}", deployment.getName());
                 }
-                long timestamp = System.currentTimeMillis();
-                RateLimitResult result = rateLimit.update(timestamp, limit);
-                bucket.set(ProxyUtil.MAPPER.writeValueAsString(rateLimit));
-                return result;
+                return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
             }
-        });
+
+            String redisKey = getRedisKey(key.getKey(), deployment.getName());
+            return vertx.executeBlocking(() -> checkLimit(redisKey, limit));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    private RateLimitResult checkLimit(String redisKey, Limit limit) throws Exception {
+        RBucket<String> bucket;
+        String prevValue;
+        RateLimit rateLimit;
+        RateLimitResult result;
+        do {
+            bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+            prevValue = bucket.get();
+            if (prevValue == null) {
+                return RateLimitResult.SUCCESS;
+            } else {
+                rateLimit = ProxyUtil.MAPPER.readValue(prevValue, RateLimit.class);
+            }
+            long timestamp = System.currentTimeMillis();
+            result = rateLimit.update(timestamp, limit);
+        } while (!bucket.compareAndSet(prevValue, ProxyUtil.MAPPER.writeValueAsString(rateLimit)));
+        return result;
+    }
+
+    private Void updateLimit(String redisKey, long totalUsedTokens) throws Exception {
+        RBucket<String> bucket;
+        String prevValue;
+        RateLimit rateLimit;
+        do {
+            bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+            prevValue = bucket.get();
+            if (prevValue == null) {
+                rateLimit = new RateLimit();
+            } else {
+                rateLimit = ProxyUtil.MAPPER.readValue(prevValue, RateLimit.class);
+            }
+            long timestamp = System.currentTimeMillis();
+            rateLimit.add(timestamp, totalUsedTokens);
+        } while (!bucket.compareAndSet(prevValue, ProxyUtil.MAPPER.writeValueAsString(rateLimit)));
+        return null;
     }
 
     private Limit getLimitByApiKey(ProxyContext context) {
@@ -112,7 +132,7 @@ public class RateLimiter {
     }
 
     private String getRedisKey(String projectKey, String deploymentName) {
-        return String.format("limit.api.key.%s.%s", projectKey, deploymentName);
+        return String.format("limit.token.api.key.%s.%s", projectKey, deploymentName);
     }
 
 }

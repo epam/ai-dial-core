@@ -93,12 +93,12 @@ public class AiDial {
 
             redis = openRedis();
 
-            RateLimiter rateLimiter = null;
             if (redis != null) {
                 LockService lockService = new LockService(redis);
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
-                rateLimiter = new RateLimiter(vertx, lockService, redis);
             }
+
+            RateLimiter rateLimiter = new RateLimiter(vertx, redis);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
