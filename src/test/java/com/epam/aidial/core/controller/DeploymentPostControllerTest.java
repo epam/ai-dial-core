@@ -330,6 +330,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(ProxyContext.class))).thenReturn(Future.succeededFuture());
 
         controller.handleResponse();
 

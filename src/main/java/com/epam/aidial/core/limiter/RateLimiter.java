@@ -84,22 +84,16 @@ public class RateLimiter {
     }
 
     private RateLimitResult checkLimit(String redisKey, Limit limit) throws Exception {
-        RBucket<String> bucket;
-        String prevValue;
         RateLimit rateLimit;
-        RateLimitResult result;
-        do {
-            bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-            prevValue = bucket.get();
-            if (prevValue == null) {
-                return RateLimitResult.SUCCESS;
-            } else {
-                rateLimit = ProxyUtil.MAPPER.readValue(prevValue, RateLimit.class);
-            }
-            long timestamp = System.currentTimeMillis();
-            result = rateLimit.update(timestamp, limit);
-        } while (!bucket.compareAndSet(prevValue, ProxyUtil.MAPPER.writeValueAsString(rateLimit)));
-        return result;
+        RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+        String prevValue = bucket.get();
+        if (prevValue == null) {
+            return RateLimitResult.SUCCESS;
+        } else {
+            rateLimit = ProxyUtil.MAPPER.readValue(prevValue, RateLimit.class);
+        }
+        long timestamp = System.currentTimeMillis();
+        return rateLimit.update(timestamp, limit);
     }
 
     private Void updateLimit(String redisKey, long totalUsedTokens) throws Exception {

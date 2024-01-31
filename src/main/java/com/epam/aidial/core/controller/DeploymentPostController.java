@@ -98,9 +98,7 @@ public class DeploymentPostController {
             } else {
                 handleRateLimitSuccess(deploymentId);
             }
-        }).onFailure(error -> {
-            handleRateLimitFailure(error);
-        });
+        }).onFailure(this::handleRateLimitFailure);
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
@@ -338,7 +336,10 @@ public class DeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                proxy.getRateLimiter().increase(context);
+                proxy.getRateLimiter().increase(context).onFailure(error -> {
+                    log.warn("Failed to increase limit. Trace: {}. Span: {}",
+                            context.getTraceId(), context.getSpanId(), error);
+                });
                 tokenUsageFuture = Future.succeededFuture(tokenUsage);
                 try {
                     BigDecimal cost = ModelCostCalculator.calculate(context);
@@ -346,7 +347,7 @@ public class DeploymentPostController {
                     tokenUsage.setAggCost(cost);
                 } catch (Throwable e) {
                     log.warn("Failed to calculate cost for model={}. Trace: {}. Span: {}",
-                            context.getDeployment().getName(), context.getTraceId(), context.getSpanId());
+                            context.getDeployment().getName(), context.getTraceId(), context.getSpanId(), e);
                 }
             }
         } else {

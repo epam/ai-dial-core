@@ -197,7 +197,6 @@ public class RateLimiterTest {
         rateLimit.add(System.currentTimeMillis(), 10);
         String json = ProxyUtil.MAPPER.writeValueAsString(rateLimit);
         when(bucket.get()).thenReturn(json);
-        when(bucket.compareAndSet(any(String.class), any(String.class))).thenReturn(true);
 
         Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 
