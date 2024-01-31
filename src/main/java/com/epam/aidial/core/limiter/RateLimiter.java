@@ -102,17 +102,16 @@ public class RateLimiter {
     private Void updateLimit(String path, ProxyContext context, long totalUsedTokens) {
         String bucketLocation = BlobStorageUtil.buildUserBucket(context);
         ResourceDescription resourceDescription = ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
-        resourceService.computeResource(resourceDescription, new Function<String, String>() {
-            @SneakyThrows
-            @Override
-            public String apply(String prevValue) {
-                RateLimit rateLimit = ProxyUtil.MAPPER.readValue(prevValue, RateLimit.class);
-                long timestamp = System.currentTimeMillis();
-                rateLimit.add(timestamp, totalUsedTokens);
-                return ProxyUtil.MAPPER.writeValueAsString(rateLimit);
-            }
-        });
+        resourceService.computeResource(resourceDescription, json -> updateLimit(json, totalUsedTokens));
         return null;
+    }
+
+    @SneakyThrows
+    private String updateLimit(String json, long totalUsedTokens) {
+        RateLimit rateLimit = ProxyUtil.MAPPER.readValue(json, RateLimit.class);
+        long timestamp = System.currentTimeMillis();
+        rateLimit.add(timestamp, totalUsedTokens);
+        return ProxyUtil.MAPPER.writeValueAsString(rateLimit);
     }
 
     private Limit getLimitByApiKey(ProxyContext context) {
@@ -129,7 +128,7 @@ public class RateLimiter {
     }
 
     private static String getPath(String deploymentName) {
-        return String.format("token/%s", deploymentName);
+        return String.format("%s/tokens", deploymentName);
     }
 
 }

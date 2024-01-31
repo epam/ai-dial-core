@@ -93,10 +93,10 @@ public class DeploymentPostController {
         }
 
         return rateLimitResultFuture.onSuccess(result -> {
-            if (result.status() != HttpStatus.OK) {
-                handleRateLimitHit(result);
-            } else {
+            if (result.status() == HttpStatus.OK) {
                 handleRateLimitSuccess(deploymentId);
+            } else {
+                handleRateLimitHit(result);
             }
         }).onFailure(this::handleRateLimitFailure);
     }
