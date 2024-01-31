@@ -129,7 +129,7 @@ public class RateLimiter {
     }
 
     private static String getPath(String deploymentName) {
-        return String.format("/token/%s", deploymentName);
+        return String.format("token/%s", deploymentName);
     }
 
 }
