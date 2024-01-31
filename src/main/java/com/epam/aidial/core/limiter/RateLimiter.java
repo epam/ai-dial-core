@@ -5,18 +5,20 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RBucket;
-import org.redisson.api.RedissonClient;
-import org.redisson.client.codec.StringCodec;
 
-import java.time.Duration;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -24,12 +26,12 @@ public class RateLimiter {
 
     private final Vertx vertx;
 
-    private final RedissonClient redis;
+    private final ResourceService resourceService;
 
     public Future<Void> increase(ProxyContext context) {
         try {
             // skip checking limits if redis is not available
-            if (redis == null) {
+            if (resourceService == null) {
                 return Future.succeededFuture();
             }
             Key key = context.getKey();
@@ -43,8 +45,8 @@ public class RateLimiter {
                 return Future.succeededFuture();
             }
 
-            String redisKey = getRedisKey(key.getKey(), deployment.getName());
-            return vertx.executeBlocking(() -> updateLimit(redisKey, usage.getTotalTokens()));
+            String path = getPath(deployment.getName());
+            return vertx.executeBlocking(() -> updateLimit(path, context, usage.getTotalTokens()));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -53,7 +55,7 @@ public class RateLimiter {
     public Future<RateLimitResult> limit(ProxyContext context) {
         try {
             // skip checking limits if redis is not available
-            if (redis == null) {
+            if (resourceService == null) {
                 return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
             Key key = context.getKey();
@@ -76,17 +78,18 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
             }
 
-            String redisKey = getRedisKey(key.getKey(), deployment.getName());
-            return vertx.executeBlocking(() -> checkLimit(redisKey, limit));
+            String path = getPath(deployment.getName());
+            return vertx.executeBlocking(() -> checkLimit(path, limit, context));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
     }
 
-    private RateLimitResult checkLimit(String redisKey, Limit limit) throws Exception {
+    private RateLimitResult checkLimit(String path, Limit limit, ProxyContext context) throws Exception {
         RateLimit rateLimit;
-        RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-        String prevValue = bucket.get();
+        String bucketLocation = BlobStorageUtil.buildUserBucket(context);
+        ResourceDescription resourceDescription = ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
+        String prevValue = resourceService.getResource(resourceDescription);
         if (prevValue == null) {
             return RateLimitResult.SUCCESS;
         } else {
@@ -96,22 +99,19 @@ public class RateLimiter {
         return rateLimit.update(timestamp, limit);
     }
 
-    private Void updateLimit(String redisKey, long totalUsedTokens) throws Exception {
-        RBucket<String> bucket;
-        String prevValue;
-        RateLimit rateLimit;
-        do {
-            bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-            prevValue = bucket.get();
-            if (prevValue == null) {
-                rateLimit = new RateLimit();
-            } else {
-                rateLimit = ProxyUtil.MAPPER.readValue(prevValue, RateLimit.class);
+    private Void updateLimit(String path, ProxyContext context, long totalUsedTokens) {
+        String bucketLocation = BlobStorageUtil.buildUserBucket(context);
+        ResourceDescription resourceDescription = ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
+        resourceService.computeResource(resourceDescription, new Function<String, String>() {
+            @SneakyThrows
+            @Override
+            public String apply(String prevValue) {
+                RateLimit rateLimit = ProxyUtil.MAPPER.readValue(prevValue, RateLimit.class);
+                long timestamp = System.currentTimeMillis();
+                rateLimit.add(timestamp, totalUsedTokens);
+                return ProxyUtil.MAPPER.writeValueAsString(rateLimit);
             }
-            long timestamp = System.currentTimeMillis();
-            rateLimit.add(timestamp, totalUsedTokens);
-            bucket.expire(Duration.ofMillis(rateLimit.timeout()));
-        } while (!bucket.compareAndSet(prevValue, ProxyUtil.MAPPER.writeValueAsString(rateLimit)));
+        });
         return null;
     }
 
@@ -128,8 +128,8 @@ public class RateLimiter {
         return role.getLimits().get(deployment.getName());
     }
 
-    private String getRedisKey(String projectKey, String deploymentName) {
-        return String.format("rate_limit:token.api.key.%s.%s", projectKey, deploymentName);
+    private static String getPath(String deploymentName) {
+        return String.format("/token/%s", deploymentName);
     }
 
 }

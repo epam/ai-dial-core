@@ -9,8 +9,9 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.security.ExtractedClaims;
+import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
-import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
@@ -19,9 +20,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RBucket;
-import org.redisson.api.RedissonClient;
-import org.redisson.client.codec.StringCodec;
 
 import java.util.Collections;
 import java.util.Map;
@@ -30,8 +28,6 @@ import java.util.concurrent.Callable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,7 +37,7 @@ public class RateLimiterTest {
     private Vertx vertx;
 
     @Mock
-    private RedissonClient redis;
+    private ResourceService resourceService;
 
     @Mock
     private HttpServerRequest request;
@@ -140,6 +136,7 @@ public class RateLimiterTest {
         Key key = new Key();
         key.setRole("role");
         key.setKey("key");
+        key.setProject("api-key");
         Config config = new Config();
         Role role = new Role();
         Limit limit = new Limit();
@@ -157,8 +154,7 @@ public class RateLimiterTest {
             return Future.succeededFuture(callable.call());
         });
 
-        RBucket<Object> bucket = mock(RBucket.class);
-        when(redis.getBucket(eq("rate_limit:token.api.key.key.model"), eq(StringCodec.INSTANCE))).thenReturn(bucket);
+        when(resourceService.getResource(any(ResourceDescription.class))).thenReturn(null);
 
         Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 
@@ -172,6 +168,7 @@ public class RateLimiterTest {
         Key key = new Key();
         key.setRole("role");
         key.setKey("key");
+        key.setProject("api-key");
         Config config = new Config();
         Role role = new Role();
         Limit limit = new Limit();
@@ -190,13 +187,6 @@ public class RateLimiterTest {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
-
-        RBucket<Object> bucket = mock(RBucket.class);
-        when(redis.getBucket(eq("rate_limit:token.api.key.key.model"), eq(StringCodec.INSTANCE))).thenReturn(bucket);
-        RateLimit rateLimit = new RateLimit();
-        rateLimit.add(System.currentTimeMillis(), 10);
-        String json = ProxyUtil.MAPPER.writeValueAsString(rateLimit);
-        when(bucket.get()).thenReturn(json);
 
         Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 

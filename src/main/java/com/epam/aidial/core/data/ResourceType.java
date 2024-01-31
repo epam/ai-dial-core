@@ -4,7 +4,7 @@ import lombok.Getter;
 
 @Getter
 public enum ResourceType {
-    FILE("files"), CONVERSATION("conversations"), PROMPT("prompts");
+    FILE("files"), CONVERSATION("conversations"), PROMPT("prompts"), LIMIT("limits");
 
     private final String group;
 

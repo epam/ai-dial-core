@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -205,6 +206,16 @@ public class ResourceService implements AutoCloseable {
             }
 
             return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+        }
+    }
+
+    public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
+        String redisKey = redisKey(descriptor);
+
+        try (var ignore = lockService.lock(redisKey)) {
+            String body = getResource(descriptor);
+            String updatedBody = fn.apply(body);
+            putResource(descriptor, updatedBody);
         }
     }
 

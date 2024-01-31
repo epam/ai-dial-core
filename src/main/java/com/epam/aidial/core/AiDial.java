@@ -98,7 +98,7 @@ public class AiDial {
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
             }
 
-            RateLimiter rateLimiter = new RateLimiter(vertx, redis);
+            RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
