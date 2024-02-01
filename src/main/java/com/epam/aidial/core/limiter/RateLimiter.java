@@ -18,6 +18,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
+import java.util.Map;
+
 @Slf4j
 @RequiredArgsConstructor
 public class RateLimiter {
@@ -32,10 +35,7 @@ public class RateLimiter {
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
-            Key key = context.getKey();
-            if (key == null) {
-                return Future.succeededFuture();
-            }
+
             Deployment deployment = context.getDeployment();
             TokenUsage usage = context.getTokenUsage();
 
@@ -59,8 +59,7 @@ public class RateLimiter {
             Key key = context.getKey();
             Limit limit;
             if (key == null) {
-                // don't support user limits yet
-                return Future.succeededFuture(RateLimitResult.SUCCESS);
+                limit = getLimitByUser(context);
             } else {
                 limit = getLimitByApiKey(context);
             }
@@ -128,6 +127,36 @@ public class RateLimiter {
 
         Deployment deployment = context.getDeployment();
         return role.getLimits().get(deployment.getName());
+    }
+
+    private Limit getLimitByUser(ProxyContext context) {
+        List<String> userRoles = context.getUserRoles();
+        String deploymentName = context.getDeployment().getName();
+        Map<String, Role> userRoleToDeploymentLimits = context.getConfig().getUserRoles();
+        long minuteLimit = 0;
+        long dayLimit = 0;
+        for (String userRole : userRoles) {
+            Role role = userRoleToDeploymentLimits.get(userRole);
+            if (role == null) {
+                continue;
+            }
+            Limit limit = role.getLimits().get(deploymentName);
+            if (limit == null) {
+                continue;
+            }
+            minuteLimit = Math.max(minuteLimit, limit.getMinute());
+            dayLimit = Math.max(dayLimit, limit.getDay());
+        }
+        if (minuteLimit == 0) {
+            minuteLimit = Long.MAX_VALUE;
+        }
+        if (dayLimit == 0) {
+            dayLimit = Long.MAX_VALUE;
+        }
+        Limit limit = new Limit();
+        limit.setMinute(minuteLimit);
+        limit.setDay(dayLimit);
+        return limit;
     }
 
     private static String getPath(String deploymentName) {
