@@ -1,0 +1,37 @@
+{
+  "config": {
+    "files": ["/app/config/aidial.config.json"]
+  },
+  "redis": {
+    "singleServerConfig": {
+      "address": "redis://localhost:16370"
+    }
+  },
+  "identityProviders": {
+    "azure": {
+      "jwksUrl": "https://login.microsoftonline.com/path/discovery/keys",
+      "rolePath": "groups",
+      "issuerPattern": "^https:\\/\\/some\\.windows\\.net.+$"
+    },
+    "keycloak": {
+      "jwksUrl": "https://host.com/realms/your/protocol/openid-connect/certs",
+      "rolePath": "resource_access.your.roles",
+      "issuerPattern": "^https:\\/\\/some-keycloak.com.+$"
+    },
+    "test": {
+      "disableJwtVerification": true,
+      "rolePath": "role"
+    }
+  },
+  "storage": {
+    "provider" : "s3",
+    "endpoint" : "https://s3.endpoint:9000",
+    "identity": "access-key",
+    "credential": "secret-key",
+    "bucket": "your-bucket"
+  },
+  "encryption": {
+    "salt": "salt",
+    "password": "pass"
+  }
+}
