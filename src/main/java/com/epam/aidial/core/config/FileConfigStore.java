@@ -108,15 +108,11 @@ public final class FileConfigStore implements ConfigStore {
     }
 
     private Config loadConfig() throws Exception {
-        JsonNode tree = null;
+        JsonNode tree = ProxyUtil.MAPPER.createObjectNode();
 
         for (String path : paths) {
             try (InputStream stream = openStream(path)) {
-                if (tree == null) {
-                    tree = ProxyUtil.MAPPER.readTree(stream);
-                } else {
-                    tree = ProxyUtil.MAPPER.readerForUpdating(tree).readTree(stream);
-                }
+                tree = ProxyUtil.MAPPER.readerForUpdating(tree).readTree(stream);
             }
         }
 

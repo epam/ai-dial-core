@@ -17,7 +17,6 @@ FROM eclipse-temurin:17-jdk-alpine
 # TODO remove the fix once a new version is released
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
 
-ENV JAVA_OPTS="-Dgflog.config=/app/config/gflog.xml"
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
 ENV OTEL_LOGS_EXPORTER="none"
@@ -27,7 +26,6 @@ WORKDIR /app
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
 
 COPY --from=builder --chown=appuser:appuser /build/ .
-COPY --chown=appuser:appuser ./config/* /app/config/
 RUN mkdir /app/log && chown -R appuser:appuser /app
 
 USER appuser

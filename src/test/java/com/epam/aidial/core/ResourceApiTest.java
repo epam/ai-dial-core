@@ -131,6 +131,9 @@ class ResourceApiTest {
         response = request(HttpMethod.PUT, "/folder/conversation", "12345");
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
+        response = request(HttpMethod.PUT, "/folder/conversation", "12345", "if-none-match", "*");
+        verifyNotExact(response, 409, "Resource already exists: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+
         response = request(HttpMethod.GET, "/folder/conversation");
         verify(response, 200, "12345");
 
@@ -163,6 +166,12 @@ class ResourceApiTest {
     void testLimit() {
         Response response = request(HttpMethod.PUT, "/folder/big", "1".repeat(1024 * 1024 + 1));
         verify(response, 413, "Resource size: 1048577 exceeds max limit: 1048576");
+    }
+
+    @Test
+    void testUnsupportedIfNoneMatchHeader() {
+        Response response = request(HttpMethod.PUT, "/folder/big", "1", "if-none-match", "unsupported");
+        verify(response, 400, "only header if-none-match=* is supported");
     }
 
     @Test
@@ -226,8 +235,8 @@ class ResourceApiTest {
         return request(method, resource, "");
     }
 
-    private Response request(HttpMethod method, String resource, String body) {
-        return send(method, "/v1/conversations/" + bucket + resource, body);
+    private Response request(HttpMethod method, String resource, String body, String... headers) {
+        return send(method, "/v1/conversations/" + bucket + resource, body, headers);
     }
 
     private Response metadata(String resource) {
@@ -235,7 +244,7 @@ class ResourceApiTest {
     }
 
     @SneakyThrows
-    private Response send(HttpMethod method, String path, String body) {
+    private Response send(HttpMethod method, String path, String body, String... headers) {
         String uri = "http://127.0.0.1:" + dial.getServer().actualPort() + path;
         HttpUriRequest request;
 
@@ -252,6 +261,12 @@ class ResourceApiTest {
         }
 
         request.addHeader("api-key", "proxyKey1");
+
+        for (int i = 0; i < headers.length; i += 2) {
+            String key = headers[i];
+            String value = headers[i + 1];
+            request.addHeader(key, value);
+        }
 
         try (CloseableHttpResponse response = client.execute(request)) {
             int status = response.getStatusLine().getStatusCode();

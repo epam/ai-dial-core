@@ -9,6 +9,7 @@ import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
@@ -106,6 +107,13 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
         }
 
+        String ifNoneMatch = context.getRequest().getHeader(HttpHeaders.IF_NONE_MATCH);
+        boolean overwrite = (ifNoneMatch == null);
+
+        if (ifNoneMatch != null && !ifNoneMatch.equals("*")) {
+            return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
+        }
+
         return context.getRequest().body().compose(bytes -> {
                     if (bytes.length() > contentLimit) {
                         String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
@@ -113,9 +121,15 @@ public class ResourceController extends AccessControlBaseController {
                     }
 
                     String body = bytes.toString(StandardCharsets.UTF_8);
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body));
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite));
                 })
-                .onSuccess((metadata) -> context.respond(HttpStatus.OK, metadata))
+                .onSuccess((metadata) -> {
+                    if (metadata == null) {
+                        context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
+                    } else {
+                        context.respond(HttpStatus.OK, metadata);
+                    }
+                })
                 .onFailure(error -> {
                     if (error instanceof HttpException exception) {
                         context.respond(exception.getStatus(), exception.getMessage());

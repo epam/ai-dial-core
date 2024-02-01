@@ -59,7 +59,6 @@ Static settings are used on startup and cannot be changed while application is r
 | storage.createBucket                       | false              | Indicates whether bucket should be created on start-up                                                            
 | encryption.password                        | -                  | Password used for AES encryption                                                                                  
 | encryption.salt                            | -                  | Salt used for AES encryption                                                                                      
-| encryption.salt                            | -                  | Salt used for AES encryption                                                                                      
 | resources.maxSize                          | 1048576            | Max allowed size in bytes for a resource
 | resources.syncPeriod                       | 60000              | Period in milliseconds, how frequently check for resources to sync
 | resources.syncDelay                        | 120000             | Delay in milliseconds for a resource to be written back in object storage after last modification
@@ -76,7 +75,7 @@ maxmemory 4G
 maxmemory-policy volatile-lfu
 ```
 
-Note: Redis will be strictly required in the upcoming releases 0.7+.
+Note: Redis will be strictly required in the upcoming releases 0.8+.
 
 ### Dynamic settings
 
