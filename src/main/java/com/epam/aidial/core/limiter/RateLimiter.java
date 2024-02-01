@@ -18,8 +18,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.function.Function;
-
 @Slf4j
 @RequiredArgsConstructor
 public class RateLimiter {
@@ -108,7 +106,12 @@ public class RateLimiter {
 
     @SneakyThrows
     private String updateLimit(String json, long totalUsedTokens) {
-        RateLimit rateLimit = ProxyUtil.MAPPER.readValue(json, RateLimit.class);
+        RateLimit rateLimit;
+        if (json == null) {
+            rateLimit = new RateLimit();
+        } else {
+            rateLimit = ProxyUtil.MAPPER.readValue(json, RateLimit.class);
+        }
         long timestamp = System.currentTimeMillis();
         rateLimit.add(timestamp, totalUsedTokens);
         return ProxyUtil.MAPPER.writeValueAsString(rateLimit);
