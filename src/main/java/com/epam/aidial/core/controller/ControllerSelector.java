@@ -47,6 +47,10 @@ public class ControllerSelector {
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/tokenize");
     private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("/+v1/deployments/([-.@a-zA-Z0-9]+)/truncate_prompt");
 
+    private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("/v1/ops/resource/share/(create|list|discard|revoke)");
+    private static final Pattern INVITATIONS = Pattern.compile("/v1/invitations");
+    private static final Pattern INVITATION = Pattern.compile("/v1/invitations/([a-zA-Z0-9]+)");
+
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = context.getRequest().path();
         String decodedPath = URLDecoder.decode(path, StandardCharsets.UTF_8);
@@ -174,6 +178,19 @@ public class ControllerSelector {
             return controller::getBucket;
         }
 
+        match = match(INVITATION, path);
+        if (match != null) {
+            String invitationId = match.group(1);
+            InvitationController controller = new InvitationController(proxy, context);
+            return () -> controller.getOrAcceptInvitation(invitationId);
+        }
+
+        match = match(INVITATIONS, path);
+        if (match != null) {
+            InvitationController controller = new InvitationController(proxy, context);
+            return controller::getInvitations;
+        }
+
         return null;
     }
 
@@ -229,6 +246,15 @@ public class ControllerSelector {
 
             DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
             return () -> controller.handle(deploymentId, getter, true);
+        }
+
+        match = match(SHARE_RESOURCE_OPERATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            ShareController.Operation op = ShareController.Operation.valueOf(operation.toUpperCase());
+
+            ShareController controller = new ShareController(proxy, context);
+            return () -> controller.handle(op);
         }
 
         return null;

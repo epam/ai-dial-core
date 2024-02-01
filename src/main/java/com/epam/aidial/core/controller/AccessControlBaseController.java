@@ -21,19 +21,16 @@ public abstract class AccessControlBaseController {
 
     /**
      * @param bucket url encoded bucket name
-     * @param path url encoded resource path
+     * @param path   url encoded resource path
      */
     public Future<?> handle(String resourceType, String bucket, String path) {
         ResourceType type = ResourceType.of(resourceType);
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
-        boolean hasReadAccess = isSharedWithMe(type, bucket, path);
-        boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
-        boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
-        if (!hasAccess) {
-            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
-        }
+        // we should take a real user bucket not provided from resource
+        String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String actualUserBucket = proxy.getEncryptionService().encrypt(actualUserLocation);
 
         ResourceDescription resource;
         try {
@@ -43,14 +40,23 @@ public abstract class AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
+        boolean hasReadAccess = isSharedWithMe(resource, type, bucket, path, actualUserBucket, actualUserLocation);
+        boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
+        boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
+
+        if (!hasAccess) {
+            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
+        }
+
         return handle(resource);
     }
 
     protected abstract Future<?> handle(ResourceDescription resource);
 
-    protected boolean isSharedWithMe(ResourceType type, String bucket, String filePath) {
-        String url = type.getGroup() + BlobStorageUtil.PATH_SEPARATOR + bucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
-        return context.getApiKeyData().getAttachedFiles().contains(url);
+    protected boolean isSharedWithMe(ResourceDescription resource, ResourceType type, String providedBucket, String filePath, String userBucket, String userLocation) {
+        String url = type.getGroup() + BlobStorageUtil.PATH_SEPARATOR + providedBucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
+        return context.getApiKeyData().getAttachedFiles().contains(url)
+                || (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
     }
 
     protected boolean hasWriteAccess(String filePath, String decryptedBucket) {

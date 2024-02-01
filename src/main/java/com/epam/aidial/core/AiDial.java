@@ -10,8 +10,10 @@ import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
@@ -99,9 +101,12 @@ public class AiDial {
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
             }
 
+            InvitationService invitationService = new InvitationService(redis);
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
+
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
-                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService);
+                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService, shareService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

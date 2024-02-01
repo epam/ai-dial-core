@@ -70,6 +70,10 @@ public class ResourceDescription {
         return builder.toString();
     }
 
+    public boolean isRootFolder() {
+        return isFolder && name == null;
+    }
+
     public String getParentPath() {
         return parentFolders.isEmpty() ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
     }
@@ -117,6 +121,15 @@ public class ResourceDescription {
 
         String relativePath = absolutePath.substring(prefix.length());
         return fromDecoded(description.getType(), description.getBucketName(), description.getBucketLocation(), relativePath);
+    }
+
+    public static ResourceDescription fromLink(String link) {
+        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+
+        ResourceType resourceType = ResourceType.of(parts[0]);
+        String bucket = parts[1];
+
+        return fromEncoded(resourceType, bucket, "fake/location/", link.substring(bucket.length() + parts[0].length() + 2));
     }
 
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,
