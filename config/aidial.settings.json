@@ -1,8 +1,0 @@
-{
-  "server": {
-    "port": 8080
-  },
-  "config": {
-    "files": ["/app/config/aidial.config.json"]
-  }
-}
