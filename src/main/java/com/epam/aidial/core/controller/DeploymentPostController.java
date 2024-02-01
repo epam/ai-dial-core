@@ -85,22 +85,29 @@ public class DeploymentPostController {
 
         context.setDeployment(deployment);
 
-        RateLimitResult rateLimitResult;
-        if (deployment instanceof Model && (rateLimitResult = proxy.getRateLimiter().limit(context)).status() != HttpStatus.OK) {
-            // Returning an error similar to the Azure format.
-            ErrorData rateLimitError = new ErrorData();
-            rateLimitError.getError().setCode(String.valueOf(rateLimitResult.status().getCode()));
-            rateLimitError.getError().setMessage(rateLimitResult.errorMessage());
-            log.error("Rate limit error {}. Key: {}. User sub: {}", rateLimitResult.errorMessage(), context.getProject(), context.getUserSub());
-            return respond(rateLimitResult.status(), rateLimitError);
+        Future<RateLimitResult> rateLimitResultFuture;
+        if (deployment instanceof Model) {
+            rateLimitResultFuture = proxy.getRateLimiter().limit(context);
+        } else {
+            rateLimitResultFuture = Future.succeededFuture(RateLimitResult.SUCCESS);
         }
 
+        return rateLimitResultFuture.onSuccess(result -> {
+            if (result.status() == HttpStatus.OK) {
+                handleRateLimitSuccess(deploymentId);
+            } else {
+                handleRateLimitHit(result);
+            }
+        }).onFailure(this::handleRateLimitFailure);
+    }
+
+    private void handleRateLimitSuccess(String deploymentId) {
         log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
+        UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(context.getDeployment());
         UpstreamRoute endpointRoute = proxy.getUpstreamBalancer().balance(endpointProvider);
         context.setUpstreamRoute(endpointRoute);
 
@@ -109,7 +116,8 @@ public class DeploymentPostController {
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), deploymentId, context.getUserSub());
 
-            return respond(HttpStatus.BAD_GATEWAY, "No route");
+            respond(HttpStatus.BAD_GATEWAY, "No route");
+            return;
         }
 
         ApiKeyData proxyApiKeyData = new ApiKeyData();
@@ -119,9 +127,25 @@ public class DeploymentPostController {
 
         proxy.getTokenStatsTracker().startSpan(context);
 
-        return context.getRequest().body()
+        context.getRequest().body()
                 .onSuccess(this::handleRequestBody)
                 .onFailure(this::handleRequestBodyError);
+    }
+
+    private void handleRateLimitHit(RateLimitResult result) {
+        // Returning an error similar to the Azure format.
+        ErrorData rateLimitError = new ErrorData();
+        rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
+        rateLimitError.getError().setMessage(result.errorMessage());
+        log.error("Rate limit error {}. Key: {}. User sub: {}. Trace: {}. Span: {}", result.errorMessage(),
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId());
+        respond(result.status(), rateLimitError);
+    }
+
+    private void handleRateLimitFailure(Throwable error) {
+        log.warn("Failed to check limits. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
+        respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to check limits");
     }
 
     @SneakyThrows
@@ -312,7 +336,10 @@ public class DeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                proxy.getRateLimiter().increase(context);
+                proxy.getRateLimiter().increase(context).onFailure(error -> {
+                    log.warn("Failed to increase limit. Trace: {}. Span: {}",
+                            context.getTraceId(), context.getSpanId(), error);
+                });
                 tokenUsageFuture = Future.succeededFuture(tokenUsage);
                 try {
                     BigDecimal cost = ModelCostCalculator.calculate(context);
@@ -320,7 +347,7 @@ public class DeploymentPostController {
                     tokenUsage.setAggCost(cost);
                 } catch (Throwable e) {
                     log.warn("Failed to calculate cost for model={}. Trace: {}. Span: {}",
-                            context.getDeployment().getName(), context.getTraceId(), context.getSpanId());
+                            context.getDeployment().getName(), context.getTraceId(), context.getSpanId(), e);
                 }
             }
         } else {

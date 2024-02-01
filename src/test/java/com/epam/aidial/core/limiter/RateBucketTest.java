@@ -54,7 +54,7 @@ class RateBucketTest {
     }
 
     private void add(long interval, long count, long expected) {
-        RateWindow window = bucket.window();
+        RateWindow window = bucket.getWindow();
         long whole = interval * window.interval();
         long fraction = ThreadLocalRandom.current().nextLong(0, window.interval());
 
@@ -64,7 +64,7 @@ class RateBucketTest {
     }
 
     private void update(long interval, long expected) {
-        RateWindow window = bucket.window();
+        RateWindow window = bucket.getWindow();
         long whole = interval * window.interval();
         long fraction = ThreadLocalRandom.current().nextLong(0, window.interval());
 

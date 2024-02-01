@@ -31,7 +31,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
@@ -331,6 +330,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(rateLimiter.increase(any(ProxyContext.class))).thenReturn(Future.succeededFuture());
 
         controller.handleResponse();
 

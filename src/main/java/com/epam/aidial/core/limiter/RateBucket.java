@@ -1,14 +1,14 @@
 package com.epam.aidial.core.limiter;
 
-import lombok.Getter;
-import lombok.experimental.Accessors;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
+@Data
+@NoArgsConstructor
 public class RateBucket {
 
-    @Getter
-    @Accessors(fluent = true)
-    private final RateWindow window;
-    private final long[] sums;
+    private RateWindow window;
+    private long[] sums;
     private long sum;
     private long start = Long.MIN_VALUE;
     private long end = Long.MIN_VALUE;

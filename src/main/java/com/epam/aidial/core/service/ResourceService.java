@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -168,11 +169,16 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     public String getResource(ResourceDescription descriptor) {
+        return getResource(descriptor, true);
+    }
+
+    @Nullable
+    public String getResource(ResourceDescription descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
         if (result == null) {
-            try (var lock = lockService.lock(redisKey)) {
+            try (var ignore = lock ? lockService.lock(redisKey) : null) {
                 result = redisGet(redisKey, true);
 
                 if (result == null) {
@@ -187,10 +193,14 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata putResource(ResourceDescription descriptor, String body) {
+        return putResource(descriptor, body, true);
+    }
+
+    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body, boolean lock) {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
-        try (var lock = lockService.lock(redisKey)) {
+        try (var ignore = lock ? lockService.lock(redisKey) : null) {
             Result result = redisGet(redisKey, false);
             if (result == null) {
                 result = blobGet(blobKey, false);
@@ -208,11 +218,21 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
+    public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
+        String redisKey = redisKey(descriptor);
+
+        try (var ignore = lockService.lock(redisKey)) {
+            String body = getResource(descriptor, false);
+            String updatedBody = fn.apply(body);
+            putResource(descriptor, updatedBody, false);
+        }
+    }
+
     public boolean deleteResource(ResourceDescription descriptor) {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
-        try (var lock = lockService.lock(redisKey)) {
+        try (var ignore = lockService.lock(redisKey)) {
             Result result = redisGet(redisKey, false);
             boolean existed = (result == null) ? blobExists(blobKey) : result.exists;
 
