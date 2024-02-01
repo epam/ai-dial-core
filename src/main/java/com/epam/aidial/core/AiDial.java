@@ -84,7 +84,6 @@ public class AiDial {
             ApiKeyStore apiKeyStore = new ApiKeyStore();
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             LogStore logStore = new GfLogStore(vertx);
-            RateLimiter rateLimiter = new RateLimiter();
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
             AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
             if (storage == null) {
@@ -103,6 +102,7 @@ public class AiDial {
 
             InvitationService invitationService = new InvitationService(redis);
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
+            RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
@@ -259,7 +259,28 @@ public class AiDial {
     }
 
     private static void setupTracing(VertxOptions vertxOptions) {
+        String otlMetricExporter = getOtlSetting("OTEL_METRICS_EXPORTER", "otel.metrics.exporter");
+        if (otlMetricExporter == null) {
+            System.setProperty("otel.metrics.exporter", "none");
+        }
+        String otlLogsExporter = getOtlSetting("OTEL_LOGS_EXPORTER", "otel.logs.exporter");
+        if (otlLogsExporter == null) {
+            System.setProperty("otel.logs.exporter", "none");
+        }
+        // disable trace exporter if the endpoint is not provided explicitly
+        String otlExporterEndpoint = getOtlSetting("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "otel.exporter.otlp.traces.endpoint");
+        if (otlExporterEndpoint == null) {
+            System.setProperty("otel.traces.exporter", "none");
+        }
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder().build().getOpenTelemetrySdk();
         vertxOptions.setTracingOptions(new OpenTelemetryOptions(openTelemetry));
+    }
+
+    private static String getOtlSetting(String envVar, String systemProperty) {
+        String val = System.getenv(envVar);
+        if (val != null) {
+            return val;
+        }
+        return System.getProperty(systemProperty);
     }
 }

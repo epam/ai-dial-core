@@ -6,10 +6,10 @@ on:
 jobs:
   gitlab-dev-deploy:
     if: ${{ github.event.registry_package.package_version.container_metadata.tag.name == 'development' }}
-    uses: epam/ai-dial-ci/.github/workflows/deploy-development.yml@1.0.1
+    uses: epam/ai-dial-ci/.github/workflows/deploy-development.yml@1.3.1
     with:
-      gitlab-project-id: '1826'
-      gitlab-project-ref: 'master'
+      gitlab-project-id: "1826"
+      gitlab-project-ref: "master"
     secrets:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_ACCESS_TOKEN: ${{ secrets.DEPLOY_ACCESS_TOKEN }}

@@ -31,7 +31,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
@@ -88,7 +87,6 @@ public class DeploymentPostControllerTest {
     public void testUnsupportedContentType() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
-        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
 
         controller.handle("app1", "api");
@@ -147,7 +145,6 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
 
         controller.handle("app1", "chat/completions");
@@ -333,14 +330,13 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(rateLimiter.increase(any(ProxyContext.class))).thenReturn(Future.succeededFuture());
 
         controller.handleResponse();
 
         verify(rateLimiter).increase(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
-        verify(apiKeyStore).invalidateApiKey(any());
         verify(tokenStatsTracker).endSpan(eq(context));
     }
 
@@ -358,7 +354,6 @@ public class DeploymentPostControllerTest {
         when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(tokenStatsTracker.getTokenStats(eq(context))).thenReturn(Future.succeededFuture(new TokenUsage()));
 
         controller.handleResponse();
@@ -367,7 +362,6 @@ public class DeploymentPostControllerTest {
         verify(tokenStatsTracker).getTokenStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
-        verify(apiKeyStore).invalidateApiKey(any());
         verify(tokenStatsTracker).endSpan(eq(context));
     }
 

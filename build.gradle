@@ -56,6 +56,7 @@ dependencies {
     testImplementation 'io.vertx:vertx-junit5:4.4.6'
     testImplementation 'org.mockito:mockito-core:5.7.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
+    testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
     testImplementation('com.github.lansheng228:embedded-redis:7.0.9') {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
@@ -67,5 +68,9 @@ application {
 }
 
 test {
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        exceptionFormat = "full"
+    }
     useJUnitPlatform()
 }

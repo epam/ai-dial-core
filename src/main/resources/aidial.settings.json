@@ -36,7 +36,7 @@
     "compressionSupported": true
   },
   "config": {
-    "files": ["aidial.config.json"],
+    "files": [],
     "reload": 60000
   },
   "identityProviders": {

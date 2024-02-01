@@ -225,8 +225,6 @@ public class ResourceService implements AutoCloseable {
             String body = getResource(descriptor, false);
             String updatedBody = fn.apply(body);
             putResource(descriptor, updatedBody, false);
-        } catch (Exception e) {
-            log.error("Failed to apply changes to the resource", e);
         }
     }
 
