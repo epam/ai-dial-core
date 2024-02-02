@@ -30,7 +30,8 @@ public class ApplicationController {
         }
 
         ApplicationData data = createApplication(application);
-        return context.respond(HttpStatus.OK, data);
+        context.respond(HttpStatus.OK, data);
+        return Future.succeededFuture();
     }
 
     public Future<?> getApplications() {
@@ -47,7 +48,8 @@ public class ApplicationController {
         ListData<ApplicationData> list = new ListData<>();
         list.setData(applications);
 
-        return context.respond(HttpStatus.OK, list);
+        context.respond(HttpStatus.OK, list);
+        return Future.succeededFuture();
     }
 
     private static ApplicationData createApplication(Application application) {
