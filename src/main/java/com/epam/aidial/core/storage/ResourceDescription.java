@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -14,6 +15,9 @@ import java.util.stream.Collectors;
 @Data
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
+
+    private static final int MAX_PATH_SIZE = 900;
+
     ResourceType type;
     String name;
     List<String> parentFolders;
@@ -95,7 +99,11 @@ public class ResourceDescription {
                 verify(isValidFilename(element), "Invalid path provided " + urlEncodedRelativePath)
         );
 
-        return from(type, bucketName, bucketLocation, urlEncodedRelativePath, elements, BlobStorageUtil.isFolder(urlEncodedRelativePath));
+        ResourceDescription resource = from(type, bucketName, bucketLocation, urlEncodedRelativePath, elements, BlobStorageUtil.isFolder(urlEncodedRelativePath));
+        verify(resource.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_SIZE,
+                "Resource path exceeds max allowed size: " + MAX_PATH_SIZE);
+
+        return resource;
     }
 
     /**
