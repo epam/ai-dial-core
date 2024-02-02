@@ -37,11 +37,11 @@ public class RouteController implements Controller {
     private final ProxyContext context;
 
     @Override
-    public void handle() {
+    public Future<?> handle() {
         Route route = selectRoute();
         if (route == null) {
             context.respond(HttpStatus.BAD_GATEWAY, "No route");
-            return;
+            return Future.succeededFuture();
         }
 
         Route.Response response = route.getResponse();
@@ -51,7 +51,7 @@ public class RouteController implements Controller {
 
             if (!upstreamRoute.hasNext()) {
                 context.respond(HttpStatus.BAD_GATEWAY, "No route");
-                return;
+                return Future.succeededFuture();
             }
 
             context.setUpstreamRoute(upstreamRoute);
@@ -63,6 +63,7 @@ public class RouteController implements Controller {
         context.getRequest().body()
                 .onSuccess(this::handleRequestBody)
                 .onFailure(this::handleRequestBodyError);
+        return Future.succeededFuture();
     }
 
     @SneakyThrows

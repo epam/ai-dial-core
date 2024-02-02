@@ -152,30 +152,32 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization);
 
         extractedClaims.onComplete(result -> {
+            Future<?> future;
             try {
                 if (result.succeeded()) {
-                    onExtractClaimsSuccess(result.result(), config, request, apiKeyData, traceId, spanId);
+                    future = onExtractClaimsSuccess(result.result(), config, request, apiKeyData, traceId, spanId);
                 } else {
-                    onExtractClaimsFailure(result.cause(), request);
+                    future = onExtractClaimsFailure(result.cause(), request);
                 }
             } catch (Throwable e) {
                 handleError(e, request);
-            } finally {
-                request.resume();
+                future = Future.failedFuture(e);
             }
+            future.onComplete(ignore -> request.resume());
         });
     }
 
-    private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
+    private Future<?> onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
         log.error("Can't extract claims from authorization header", error);
         respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
+        return Future.succeededFuture();
     }
 
-    private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
+    private Future<?> onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
                                         HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) throws Exception {
         ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
         Controller controller = ControllerSelector.select(this, context);
-        controller.handle();
+        return controller.handle();
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {

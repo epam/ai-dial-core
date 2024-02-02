@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -27,12 +28,12 @@ public class DeploymentFeatureController {
     private final Proxy proxy;
     private final ProxyContext context;
 
-    public void handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
+    public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
 
         if (deployment == null || !DeploymentController.hasAccessByUserRoles(context, deployment)) {
             context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
-            return;
+            return Future.succeededFuture();
         }
 
         String endpoint = endpointGetter.apply(deployment);
@@ -40,6 +41,7 @@ public class DeploymentFeatureController {
         context.getRequest().body()
                 .onSuccess(requestBody -> this.handleRequestBody(endpoint, requireEndpoint, requestBody))
                 .onFailure(this::handleRequestBodyError);
+        return Future.succeededFuture();
     }
 
     @SneakyThrows

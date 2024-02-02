@@ -85,6 +85,8 @@ public class DeploymentPostController {
 
         context.setDeployment(deployment);
 
+        context.getRequest().pause();
+
         Future<RateLimitResult> rateLimitResultFuture;
         if (deployment instanceof Model) {
             rateLimitResultFuture = proxy.getRateLimiter().limit(context);
@@ -92,13 +94,24 @@ public class DeploymentPostController {
             rateLimitResultFuture = Future.succeededFuture(RateLimitResult.SUCCESS);
         }
 
-        return rateLimitResultFuture.onSuccess(result -> {
-            if (result.status() == HttpStatus.OK) {
-                handleRateLimitSuccess(deploymentId);
-            } else {
-                handleRateLimitHit(result);
+        return rateLimitResultFuture.andThen(result -> {
+            try {
+                if (result.succeeded()) {
+                    RateLimitResult rateLimitResult = result.result();
+                    if (rateLimitResult.status() == HttpStatus.OK) {
+                        handleRateLimitSuccess(deploymentId);
+                    } else {
+                        handleRateLimitHit(rateLimitResult);
+                    }
+                } else {
+                    handleRateLimitFailure(result.cause());
+                }
+            } catch (Throwable e) {
+                handleError(e);
+            } finally {
+                context.getRequest().resume();
             }
-        }).onFailure(this::handleRateLimitFailure);
+        });
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
@@ -146,6 +159,12 @@ public class DeploymentPostController {
         log.warn("Failed to check limits. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
                 context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to check limits");
+    }
+
+    private void handleError(Throwable error) {
+        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(),  error);
+        respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @SneakyThrows

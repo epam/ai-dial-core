@@ -35,7 +35,8 @@ public class ModelController {
         }
 
         ModelData data = createModel(model);
-        return context.respond(HttpStatus.OK, data);
+        context.respond(HttpStatus.OK, data);
+        return Future.succeededFuture();
     }
 
     public Future<?> getModels() {
@@ -52,7 +53,8 @@ public class ModelController {
         ListData<ModelData> list = new ListData<>();
         list.setData(models);
 
-        return context.respond(HttpStatus.OK, list);
+        context.respond(HttpStatus.OK, list);
+        return Future.succeededFuture();
     }
 
     private static ModelData createModel(Model model) {
