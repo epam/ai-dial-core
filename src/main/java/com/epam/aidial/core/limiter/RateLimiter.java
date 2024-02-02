@@ -4,6 +4,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.service.ResourceService;
@@ -20,10 +21,13 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @RequiredArgsConstructor
 public class RateLimiter {
+
+    private static final Limit DEFAULT_LIMIT = new Limit();
 
     private final Vertx vertx;
 
@@ -131,27 +135,20 @@ public class RateLimiter {
 
     private Limit getLimitByUser(ProxyContext context) {
         List<String> userRoles = context.getUserRoles();
+        Limit defaultUserLimit = getDefaultUserLimit(context.getDeployment());
+        if (userRoles.isEmpty()) {
+            return defaultUserLimit;
+        }
         String deploymentName = context.getDeployment().getName();
         Map<String, Role> userRoleToDeploymentLimits = context.getConfig().getUserRoles();
         long minuteLimit = 0;
         long dayLimit = 0;
         for (String userRole : userRoles) {
-            Role role = userRoleToDeploymentLimits.get(userRole);
-            if (role == null) {
-                continue;
-            }
-            Limit limit = role.getLimits().get(deploymentName);
-            if (limit == null) {
-                continue;
-            }
+            Limit limit = Optional.ofNullable(userRoleToDeploymentLimits.get(userRole))
+                    .map(role -> role.getLimits().get(deploymentName))
+                    .orElse(defaultUserLimit);
             minuteLimit = Math.max(minuteLimit, limit.getMinute());
             dayLimit = Math.max(dayLimit, limit.getDay());
-        }
-        if (minuteLimit == 0) {
-            minuteLimit = Long.MAX_VALUE;
-        }
-        if (dayLimit == 0) {
-            dayLimit = Long.MAX_VALUE;
         }
         Limit limit = new Limit();
         limit.setMinute(minuteLimit);
@@ -161,6 +158,13 @@ public class RateLimiter {
 
     private static String getPath(String deploymentName) {
         return String.format("%s/tokens", deploymentName);
+    }
+
+    private static Limit getDefaultUserLimit(Deployment deployment) {
+        if (deployment instanceof Model model) {
+            return model.getDefaultUserLimit() == null ? DEFAULT_LIMIT : model.getDefaultUserLimit();
+        }
+        return DEFAULT_LIMIT;
     }
 
 }
