@@ -67,11 +67,11 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
-     * @param maxSize - max allowed size in bytes for a resource.
-     * @param syncPeriod - period in milliseconds, how frequently check for resources to sync.
-     * @param syncDelay - delay in milliseconds for a resource to be written back in object storage after last modification.
-     * @param syncBatch - how many resources to sync in one go.
-     * @param cacheExpiration - expiration in milliseconds for synced resources in Redis.
+     * @param maxSize            - max allowed size in bytes for a resource.
+     * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
+     * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
+     * @param syncBatch          - how many resources to sync in one go.
+     * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
      * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
      */
     public ResourceService(Vertx vertx,
@@ -192,11 +192,12 @@ public class ResourceService implements AutoCloseable {
         return result.exists ? result.body : null;
     }
 
-    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body) {
-        return putResource(descriptor, body, true);
+    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body, boolean overwrite) {
+        return putResource(descriptor, body, overwrite, true);
     }
 
-    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body, boolean lock) {
+    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body,
+                                            boolean overwrite, boolean lock) {
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
@@ -204,6 +205,10 @@ public class ResourceService implements AutoCloseable {
             Result result = redisGet(redisKey, false);
             if (result == null) {
                 result = blobGet(blobKey, false);
+            }
+
+            if (result.exists && !overwrite) {
+                return null;
             }
 
             long updatedAt = time();
@@ -224,7 +229,7 @@ public class ResourceService implements AutoCloseable {
         try (var ignore = lockService.lock(redisKey)) {
             String body = getResource(descriptor, false);
             String updatedBody = fn.apply(body);
-            putResource(descriptor, updatedBody, false);
+            putResource(descriptor, updatedBody, true, false);
         }
     }
 
