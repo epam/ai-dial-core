@@ -29,6 +29,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URLDecoder;
@@ -151,30 +152,20 @@ public class Proxy implements Handler<HttpServerRequest> {
         request.pause();
         Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization);
 
-        extractedClaims.onComplete(result -> {
-            Future<?> future;
-            try {
-                if (result.succeeded()) {
-                    future = onExtractClaimsSuccess(result.result(), config, request, apiKeyData, traceId, spanId);
-                } else {
-                    future = onExtractClaimsFailure(result.cause(), request);
-                }
-            } catch (Throwable e) {
-                handleError(e, request);
-                future = Future.failedFuture(e);
-            }
-            future.onComplete(ignore -> request.resume());
-        });
+        extractedClaims.onFailure(error -> onExtractClaimsFailure(error, request))
+                .compose(claims -> onExtractClaimsSuccess(claims, config, request, apiKeyData, traceId, spanId))
+                .onFailure(error -> handleError(error, request))
+                .onComplete(ignore -> request.resume());
     }
 
-    private Future<?> onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
+    private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
         log.error("Can't extract claims from authorization header", error);
         respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
-        return Future.succeededFuture();
     }
 
+    @SneakyThrows
     private Future<?> onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
-                                        HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) throws Exception {
+                                        HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
         ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
         Controller controller = ControllerSelector.select(this, context);
         return controller.handle();

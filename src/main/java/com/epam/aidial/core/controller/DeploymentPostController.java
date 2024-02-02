@@ -50,6 +50,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -85,8 +86,6 @@ public class DeploymentPostController {
 
         context.setDeployment(deployment);
 
-        context.getRequest().pause();
-
         Future<RateLimitResult> rateLimitResultFuture;
         if (deployment instanceof Model) {
             rateLimitResultFuture = proxy.getRateLimiter().limit(context);
@@ -94,23 +93,13 @@ public class DeploymentPostController {
             rateLimitResultFuture = Future.succeededFuture(RateLimitResult.SUCCESS);
         }
 
-        return rateLimitResultFuture.andThen(result -> {
-            try {
-                if (result.succeeded()) {
-                    RateLimitResult rateLimitResult = result.result();
-                    if (rateLimitResult.status() == HttpStatus.OK) {
-                        handleRateLimitSuccess(deploymentId);
-                    } else {
-                        handleRateLimitHit(rateLimitResult);
-                    }
-                } else {
-                    handleRateLimitFailure(result.cause());
-                }
-            } catch (Throwable e) {
-                handleError(e);
-            } finally {
-                context.getRequest().resume();
+        return rateLimitResultFuture.map((Function<RateLimitResult, Void>) result -> {
+            if (result.status() == HttpStatus.OK) {
+                handleRateLimitSuccess(deploymentId);
+            } else {
+                handleRateLimitHit(result);
             }
+            return null;
         });
     }
 
