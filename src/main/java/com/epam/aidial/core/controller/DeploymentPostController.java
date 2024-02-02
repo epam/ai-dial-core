@@ -50,6 +50,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -92,13 +93,14 @@ public class DeploymentPostController {
             rateLimitResultFuture = Future.succeededFuture(RateLimitResult.SUCCESS);
         }
 
-        return rateLimitResultFuture.onSuccess(result -> {
+        return rateLimitResultFuture.map((Function<RateLimitResult, Void>) result -> {
             if (result.status() == HttpStatus.OK) {
                 handleRateLimitSuccess(deploymentId);
             } else {
                 handleRateLimitHit(result);
             }
-        }).onFailure(this::handleRateLimitFailure);
+            return null;
+        });
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
@@ -146,6 +148,12 @@ public class DeploymentPostController {
         log.warn("Failed to check limits. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
                 context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to check limits");
+    }
+
+    private void handleError(Throwable error) {
+        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(),  error);
+        respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @SneakyThrows

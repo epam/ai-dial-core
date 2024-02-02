@@ -43,7 +43,8 @@ public abstract class AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
-        return handle(resource);
+        handle(resource);
+        return Future.succeededFuture();
     }
 
     protected abstract Future<?> handle(ResourceDescription resource);
