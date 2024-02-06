@@ -131,6 +131,9 @@ class ResourceApiTest {
         response = request(HttpMethod.PUT, "/folder/conversation", "12345");
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
+        response = metadata("/?recursive=true");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
         response = request(HttpMethod.PUT, "/folder/conversation", "12345", "if-none-match", "*");
         verifyNotExact(response, 409, "Resource already exists: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
