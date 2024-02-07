@@ -162,7 +162,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                     log.info("Request completed");
                     request.resume();
                     log.info("Request resumed");
-                } );
+                });
     }
 
     private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
