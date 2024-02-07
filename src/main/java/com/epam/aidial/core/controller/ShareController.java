@@ -23,12 +23,14 @@ public class ShareController {
     final ProxyContext context;
 
     public Future<?> handle(Operation operation) {
-        return switch (operation) {
+        switch (operation) {
             case LIST -> listSharedResources();
             case CREATE -> createSharedResources();
             case REVOKE -> revokeSharedResources();
             case DISCARD -> discardSharedResources();
-        };
+            default -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Operation %s is not supported".formatted(operation));
+        }
+        return Future.succeededFuture();
     }
 
     public Future<?> listSharedResources() {
