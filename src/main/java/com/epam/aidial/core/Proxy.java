@@ -158,7 +158,11 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         extractedClaims.onFailure(error -> onExtractClaimsFailure(error, request))
                 .compose(claims -> onExtractClaimsSuccess(claims, config, request, apiKeyData, traceId, spanId))
-                .onComplete(ignore -> request.resume());
+                .onComplete(ignore -> {
+                    log.info("Request completed");
+                    request.resume();
+                    log.info("Request resumed");
+                } );
     }
 
     private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
@@ -174,6 +178,7 @@ public class Proxy implements Handler<HttpServerRequest> {
             ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
             Controller controller = ControllerSelector.select(this, context);
             future = controller.handle();
+            log.info("Controller selected {}", controller.getClass().getName());
         } catch (Exception t) {
             future = Future.failedFuture(t);
         }
