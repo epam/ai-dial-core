@@ -104,15 +104,15 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public MetadataBase getMetadata(ResourceDescription descriptor, String token, int limit) {
+    public MetadataBase getMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         return descriptor.isFolder()
-                ? getFolderMetadata(descriptor, token, limit)
+                ? getFolderMetadata(descriptor, token, limit, recursive)
                 : getItemMetadata(descriptor);
     }
 
-    private ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit) {
+    private ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
-        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit);
+        PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
 
         if (set.isEmpty() && !descriptor.isRootFolder()) {
             return null;
