@@ -1,19 +1,26 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.data.Invitation;
+import com.epam.aidial.core.data.InvitationsMap;
 import com.epam.aidial.core.data.ResourceLink;
+import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.ApiKeyGenerator;
+import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.HttpException;
+import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.ProxyUtil;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RBucket;
-import org.redisson.api.RSet;
-import org.redisson.api.RedissonClient;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -21,61 +28,121 @@ import javax.annotation.Nullable;
 @Slf4j
 public class InvitationService {
 
-    private static final String INVITATION_PATTERN = "invitations:%s";
+    private static final String INVITATION_RESOURCE_FILENAME = "invitations";
+    static final String INVITATION_PATH_BASE = "v1/invitations";
 
-    private static final int EXPIRATION_IN_DAYS = 3;
+    private final ResourceService resourceService;
+    private final EncryptionService encryptionService;
+    private final int expirationInSeconds;
 
-    private final RedissonClient redis;
-
-    public Invitation createInvitation(String owner, Set<ResourceLink> resources) {
-        String invitationId = generateId();
+    public Invitation createInvitation(String bucket, String location, Set<ResourceLink> resources) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
-        Instant expirationTime = Instant.now().plus(EXPIRATION_IN_DAYS, ChronoUnit.DAYS);
-        Invitation invitation = new Invitation(invitationId, owner, resources, creationTime.toEpochMilli(), expirationTime.toEpochMilli());
+        Instant expirationTime = Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS);
+        Invitation invitation = new Invitation(invitationId, resources, creationTime.toEpochMilli(), expirationTime.toEpochMilli());
 
-        RBucket<Invitation> cachedInvitation = redis.getBucket(INVITATION_PATTERN.formatted(invitationId));
-        cachedInvitation.set(invitation);
-        cachedInvitation.expire(expirationTime);
+        resourceService.computeResource(resource, state -> {
+            InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
+            if (invitations == null) {
+                invitations = new InvitationsMap(new HashMap<>());
+            }
+            invitations.getInvitations().put(invitationId, invitation);
 
-        RSet<String> userInvitations = redis.getSet(INVITATION_PATTERN.formatted(owner));
-        userInvitations.add(invitationId);
+            return ProxyUtil.convertToString(invitations);
+        });
 
         return invitation;
     }
 
     @Nullable
     public Invitation getInvitation(String invitationId) {
-        return (Invitation) redis.getBucket(INVITATION_PATTERN.formatted(invitationId)).get();
-    }
-
-    public void deleteInvitation(String userId, String invitationId) {
-        RBucket<Invitation> invitationObject = redis.getBucket(INVITATION_PATTERN.formatted(invitationId));
-
-        if (invitationObject.isExists()) {
-            Invitation invitation = invitationObject.get();
-            String invitationOwner = invitation.getOwner();
-            if (invitationOwner.equals(userId)) {
-                invitationObject.delete();
-
-                RSet<String> userInvitations = redis.getSet(INVITATION_PATTERN.formatted(userId));
-                userInvitations.remove(invitationId);
-            } else {
-                throw new RuntimeException("Permission denied");
-            }
-        } else {
-            throw new RuntimeException("Invitation with ID %s not found".formatted(invitationId));
+        ResourceDescription resource = getInvitationResource(invitationId);
+        String resourceState = resourceService.getResource(resource);
+        InvitationsMap invitations = ProxyUtil.convertToObject(resourceState, InvitationsMap.class);
+        if (invitations == null) {
+            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
         }
+
+        Invitation invitation = invitations.getInvitations().get(invitationId);
+        if (invitation == null) {
+            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+        }
+
+        Instant expireAt = Instant.ofEpochMilli(invitation.getExpireAt());
+        if (Instant.now().isAfter(expireAt)) {
+            // invitation expired - we need to clean up state
+            cleanUpExpiredInvitations(resource, List.of(invitationId));
+            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+        }
+
+        return invitation;
     }
 
-    public List<Invitation> getMyInvitations(String userId) {
-        RSet<String> userInvitations = redis.getSet(INVITATION_PATTERN.formatted(userId));
-        return userInvitations.stream()
-                .map(invitationId -> (Invitation) redis.getBucket(INVITATION_PATTERN.formatted(invitationId)).get())
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+    public void deleteInvitation(String bucket, String location, String invitationId) {
+        ResourceDescription resource = getInvitationResource(invitationId);
+        // deny operation if caller is not an owner
+        if (!resource.getBucketName().equals(bucket)) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Only invitation owner can delete invitation");
+        }
+        cleanUpExpiredInvitations(resource, List.of(invitationId));
     }
 
-    private static String generateId() {
-        return UUID.randomUUID().toString().replaceAll("-", "");
+    public List<Invitation> getMyInvitations(String bucket, String location) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        String state = resourceService.getResource(resource);
+        InvitationsMap invitationMap = ProxyUtil.convertToObject(state, InvitationsMap.class);
+        if (invitationMap == null || invitationMap.getInvitations().isEmpty()) {
+            return List.of();
+        }
+
+        Collection<Invitation> invitations = invitationMap.getInvitations().values();
+        Instant currentTime = Instant.now();
+        Set<String> invitationsToEvict = invitations.stream()
+                .filter(invitation -> currentTime.isAfter(Instant.ofEpochMilli(invitation.getExpireAt())))
+                .map(Invitation::getId)
+                .collect(Collectors.toSet());
+
+        if (!invitationsToEvict.isEmpty()) {
+            cleanUpExpiredInvitations(resource, invitationsToEvict);
+            invitationsToEvict.forEach(invitationToEvict -> invitationMap.getInvitations().remove(invitationToEvict));
+        }
+
+        return invitationMap.getInvitations().values().stream().toList();
+    }
+
+    private void cleanUpExpiredInvitations(ResourceDescription resource, Collection<String> idsToEvict) {
+        resourceService.computeResource(resource, state -> {
+            InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
+            if (invitations == null) {
+                invitations = new InvitationsMap(new HashMap<>());
+            }
+            Map<String, Invitation> invitationMap = invitations.getInvitations();
+            idsToEvict.forEach(invitationMap::remove);
+
+            return ProxyUtil.convertToString(invitations);
+        });
+    }
+
+    private ResourceDescription getInvitationResource(String invitationId) {
+        // decrypt invitation ID to obtain its location
+        String decryptedInvitationPath = encryptionService.decrypt(invitationId);
+        if (decryptedInvitationPath == null) {
+            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+        }
+
+        String[] parts = decryptedInvitationPath.split(BlobStorageUtil.PATH_SEPARATOR);
+        // due to current design decoded resource location looks like: Users/<SUB>/invitations/invitations.json/<random_id>
+        if (parts.length != 5) {
+            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+        }
+        String location = parts[0] + BlobStorageUtil.PATH_SEPARATOR + parts[1] + BlobStorageUtil.PATH_SEPARATOR;
+        String bucket = encryptionService.encrypt(location);
+        ResourceType resourceType = ResourceType.of(parts[2]);
+        return ResourceDescription.fromDecoded(resourceType, bucket, location, INVITATION_RESOURCE_FILENAME);
+    }
+
+    private String generateInvitationId(ResourceDescription resource) {
+        return encryptionService.encrypt(resource.getAbsoluteFilePath() + BlobStorageUtil.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
     }
 }

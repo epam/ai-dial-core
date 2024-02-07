@@ -21,8 +21,9 @@ public class InvitationController {
     public Future<?> getInvitations() {
         return proxy.getVertx().executeBlocking(() -> {
             InvitationService invitationService = proxy.getInvitationService();
-            String userId = context.getUserSub() == null ? context.getProject() : context.getUserSub();
-            List<Invitation> invitations = invitationService.getMyInvitations(userId);
+            String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+            String bucket = proxy.getEncryptionService().encrypt(bucketLocation);
+            List<Invitation> invitations = invitationService.getMyInvitations(bucket, bucketLocation);
 
             return context.respond(HttpStatus.OK, invitations);
         });
@@ -36,7 +37,7 @@ public class InvitationController {
                     ShareService shareService = proxy.getShareService();
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = proxy.getEncryptionService().encrypt(bucketLocation);
-                    shareService.acceptShare(bucket, bucketLocation, invitationId);
+                    shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
                     return context.respond(HttpStatus.OK);
                 } catch (Exception e) {
                     return context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());

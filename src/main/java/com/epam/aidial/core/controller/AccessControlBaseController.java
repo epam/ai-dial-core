@@ -27,6 +27,9 @@ public abstract class AccessControlBaseController {
         ResourceType type = ResourceType.of(resourceType);
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
+        if (decryptedBucket == null) {
+            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
+        }
 
         // we should take a real user bucket not provided from resource
         String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
@@ -40,7 +43,7 @@ public abstract class AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
-        boolean hasReadAccess = isSharedWithMe(resource, type, bucket, path, actualUserBucket, actualUserLocation);
+        boolean hasReadAccess = isSharedResource(resource, actualUserBucket, actualUserLocation);
         boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
         boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
@@ -53,10 +56,12 @@ public abstract class AccessControlBaseController {
 
     protected abstract Future<?> handle(ResourceDescription resource);
 
-    protected boolean isSharedWithMe(ResourceDescription resource, ResourceType type, String providedBucket, String filePath, String userBucket, String userLocation) {
-        String url = type.getGroup() + BlobStorageUtil.PATH_SEPARATOR + providedBucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
-        return context.getApiKeyData().getAttachedFiles().contains(url)
-                || (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
+    protected boolean isSharedResource(ResourceDescription resource, String userBucket, String userLocation) {
+        // some per-request API-keys may have access to the resources implicitly
+        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
+        // resource was shared explicitly by share API
+        boolean isExplicitlyShared = (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
+        return isAutoShared || isExplicitlyShared;
     }
 
     protected boolean hasWriteAccess(String filePath, String decryptedBucket) {
