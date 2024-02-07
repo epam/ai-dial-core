@@ -11,10 +11,12 @@ import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
 
 @AllArgsConstructor
+@Slf4j
 public class ShareController {
 
     private static final String LIST_SHARED_BY_ME_RESOURCES = "others";
@@ -23,6 +25,7 @@ public class ShareController {
     final ProxyContext context;
 
     public Future<?> handle(Operation operation) {
+        log.info("Received share operation: " + operation);
         switch (operation) {
             case LIST -> listSharedResources();
             case CREATE -> createSharedResources();
@@ -71,6 +74,7 @@ public class ShareController {
             try {
                 String body = buffer.toString(StandardCharsets.UTF_8);
                 request = ProxyUtil.convertToObject(body, ShareResourcesRequest.class);
+                log.info("Received body: {}", request);
             } catch (Exception e) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
@@ -79,7 +83,10 @@ public class ShareController {
             String bucket = proxy.getEncryptionService().encrypt(bucketLocation);
             return proxy.getVertx()
                     .executeBlocking(() -> proxy.getShareService().initializeShare(bucket, bucketLocation, request))
-                    .onSuccess(response -> context.respond(HttpStatus.OK, response))
+                    .onSuccess(response -> {
+                        log.info("Sending response body back: {}", response);
+                        context.respond(HttpStatus.OK, response);
+                    })
                     .onFailure(error -> {
                         if (error instanceof HttpException httpException) {
                             context.respond(httpException.getStatus(), httpException.getMessage());

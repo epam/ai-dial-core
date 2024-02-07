@@ -117,6 +117,7 @@ public class ShareService {
         }
 
         Invitation invitation = invitationService.createInvitation(bucket, location, resources);
+        log.info("Share request initiated successfully {}", invitation);
         return new InvitationLink(InvitationService.INVITATION_PATH_BASE + BlobStorageUtil.PATH_SEPARATOR + invitation.getId());
     }
 
