@@ -51,7 +51,8 @@ public abstract class AccessControlBaseController {
             return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
         }
 
-        return handle(resource);
+        handle(resource);
+        return Future.succeededFuture();
     }
 
     protected abstract Future<?> handle(ResourceDescription resource);

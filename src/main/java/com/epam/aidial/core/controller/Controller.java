@@ -1,5 +1,7 @@
 package com.epam.aidial.core.controller;
 
+import io.vertx.core.Future;
+
 import java.io.Serializable;
 
 /**
@@ -10,5 +12,8 @@ import java.io.Serializable;
  */
 public interface Controller extends Serializable {
 
-    void handle() throws Exception;
+    /**
+     * The controller must return non-null instance of {@link Future}.
+     */
+    Future<?> handle() throws Exception;
 }
