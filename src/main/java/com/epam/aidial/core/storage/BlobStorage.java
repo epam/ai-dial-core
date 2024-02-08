@@ -189,11 +189,16 @@ public class BlobStorage implements Closeable {
         }
     }
 
-    public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults) {
+    public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults, boolean recursive) {
         ListContainerOptions options = new ListContainerOptions()
                 .prefix(absoluteFilePath)
-                .maxResults(maxResults)
-                .delimiter(BlobStorageUtil.PATH_SEPARATOR);
+                .maxResults(maxResults);
+
+        if (recursive) {
+            options.recursive();
+        } else {
+            options.delimiter(BlobStorageUtil.PATH_SEPARATOR);
+        }
 
         if (afterMarker != null) {
             options.afterMarker(afterMarker);
