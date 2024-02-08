@@ -166,7 +166,13 @@ class ResourceApiTest {
     }
 
     @Test
-    void testLimit() {
+    void testMaxKeySize() {
+        Response response = request(HttpMethod.PUT, "/" + "1".repeat(900), "body");
+        verify(response, 400, "Resource path exceeds max allowed size: 900");
+    }
+
+    @Test
+    void testMaxContentSize() {
         Response response = request(HttpMethod.PUT, "/folder/big", "1".repeat(1024 * 1024 + 1));
         verify(response, 413, "Resource size: 1048577 exceeds max limit: 1048576");
     }
