@@ -131,6 +131,9 @@ class ResourceApiTest {
         response = request(HttpMethod.PUT, "/folder/conversation", "12345");
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
+        response = metadata("/?recursive=true");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
         response = request(HttpMethod.PUT, "/folder/conversation", "12345", "if-none-match", "*");
         verifyNotExact(response, 409, "Resource already exists: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
@@ -163,7 +166,13 @@ class ResourceApiTest {
     }
 
     @Test
-    void testLimit() {
+    void testMaxKeySize() {
+        Response response = request(HttpMethod.PUT, "/" + "1".repeat(900), "body");
+        verify(response, 400, "Resource path exceeds max allowed size: 900");
+    }
+
+    @Test
+    void testMaxContentSize() {
         Response response = request(HttpMethod.PUT, "/folder/big", "1".repeat(1024 * 1024 + 1));
         verify(response, 413, "Resource size: 1048577 exceeds max limit: 1048576");
     }

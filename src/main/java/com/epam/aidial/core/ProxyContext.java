@@ -20,13 +20,17 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Getter
 @Setter
 public class ProxyContext {
+
+    private static final int LOG_MAX_ERROR_LENGTH = 200;
 
     private final Config config;
     // API key of root requester
@@ -106,8 +110,16 @@ public class ProxyContext {
     }
 
     public Future<Void> respond(HttpStatus status, String body) {
-        return response.setStatusCode(status.getCode())
-                .end(body == null ? "" : body);
+        if (body == null) {
+            body = "";
+        }
+
+        if (status != HttpStatus.OK) {
+            log.warn("Responding with error. Trace: {}. Span: {}. Status: {}. Body: {}", traceId, spanId, status,
+                    body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
+        }
+
+        return response.setStatusCode(status.getCode()).end(body);
     }
 
     public String getProject() {

@@ -154,7 +154,6 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         extractedClaims.onFailure(error -> onExtractClaimsFailure(error, request))
                 .compose(claims -> onExtractClaimsSuccess(claims, config, request, apiKeyData, traceId, spanId))
-                .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
 
@@ -166,9 +165,15 @@ public class Proxy implements Handler<HttpServerRequest> {
     @SneakyThrows
     private Future<?> onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
                                         HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
-        ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
-        Controller controller = ControllerSelector.select(this, context);
-        return controller.handle();
+        Future<?> future;
+        try {
+            ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
+            Controller controller = ControllerSelector.select(this, context);
+            future = controller.handle();
+        } catch (Exception t) {
+            future = Future.failedFuture(t);
+        }
+        return future.onFailure(error -> handleError(error, request));
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {

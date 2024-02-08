@@ -50,18 +50,20 @@ public class ResourceController extends AccessControlBaseController {
     private Future<?> getMetadata(ResourceDescription descriptor) {
         String token;
         int limit;
+        boolean recursive;
 
         try {
             token = context.getRequest().getParam("token");
             limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
+            recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
             if (limit < 0 || limit > 1000) {
                 throw new IllegalArgumentException("Limit is out of allowed range");
             }
         } catch (Throwable error) {
-            return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range");
+            return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit))
+        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive))
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
