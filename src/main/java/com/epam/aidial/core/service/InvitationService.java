@@ -9,7 +9,7 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
-import lombok.AllArgsConstructor;
+import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
@@ -22,16 +22,22 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
-@AllArgsConstructor
 @Slf4j
 public class InvitationService {
 
     private static final String INVITATION_RESOURCE_FILENAME = "invitations";
+    private static final int DEFAULT_INVITATION_TTL_IN_SECONDS = 259_200;
     static final String INVITATION_PATH_BASE = "/v1/invitations";
 
     private final ResourceService resourceService;
     private final EncryptionService encryptionService;
     private final int expirationInSeconds;
+
+    public InvitationService(ResourceService resourceService, EncryptionService encryptionService, JsonObject settings) {
+        this.resourceService = resourceService;
+        this.encryptionService = encryptionService;
+        this.expirationInSeconds = settings.getInteger("invitationTtlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
+    }
 
     public Invitation createInvitation(String bucket, String location, Set<ResourceLink> resources) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);

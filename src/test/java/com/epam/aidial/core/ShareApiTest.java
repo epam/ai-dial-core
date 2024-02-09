@@ -471,4 +471,26 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
         verify(response, 400, "No resources provided");
     }
+
+    @Test
+    public void testAcceptOwnShareRequest() {
+        // initialize share request
+        Response response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null);
+        verify(response, 400, "Resource conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation already belong to you");
+    }
 }

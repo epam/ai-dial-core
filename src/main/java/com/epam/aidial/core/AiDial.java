@@ -100,7 +100,7 @@ public class AiDial {
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
             }
 
-            InvitationService invitationService = new InvitationService(resourceService, encryptionService, 259_200);
+            InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 

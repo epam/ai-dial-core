@@ -138,6 +138,13 @@ public class ShareService {
 
         Set<ResourceLink> resourceLinks = invitation.getResources();
 
+        for (ResourceLink link : resourceLinks) {
+            String url = link.url();
+            if (ResourceDescription.fromLink(url, encryptionService).getBucketName().equals(bucket)) {
+                throw new IllegalArgumentException("Resource %s already belong to you".formatted(url));
+            }
+        }
+
         // group resources with the same type to reduce resource transformations
         Map<ResourceType, List<ResourceLink>> resourceGroups = resourceLinks.stream()
                 .collect(Collectors.groupingBy(ResourceLink::getResourceType));

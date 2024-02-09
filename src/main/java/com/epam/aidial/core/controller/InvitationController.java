@@ -12,7 +12,6 @@ import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
-import lombok.AllArgsConstructor;
 
 import java.util.HashSet;
 import java.util.List;
@@ -58,6 +57,8 @@ public class InvitationController {
                 } catch (Exception e) {
                     if (e instanceof ResourceNotFoundException) {
                         return context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
+                    } else if (e instanceof IllegalArgumentException) {
+                        return context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
                     }
                     return context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
                 }
