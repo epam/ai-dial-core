@@ -24,7 +24,8 @@ public class ResourceController extends AccessControlBaseController {
     private final boolean metadata;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
-        super(proxy, context, true);
+        // PUT and DELETE require full access, GET - not
+        super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.metadata = metadata;

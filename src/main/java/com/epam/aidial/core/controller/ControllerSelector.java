@@ -278,6 +278,13 @@ public class ControllerSelector {
             return () -> controller.handle(resource, bucket, relativePath);
         }
 
+        match = match(INVITATION, path);
+        if (match != null) {
+            String invitationId = match.group(1);
+            InvitationController controller = new InvitationController(proxy, context);
+            return () -> controller.deleteInvitation(invitationId);
+        }
+
         return null;
     }
 

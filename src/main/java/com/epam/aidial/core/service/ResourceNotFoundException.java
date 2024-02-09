@@ -3,7 +3,6 @@ package com.epam.aidial.core.service;
 public class ResourceNotFoundException extends RuntimeException {
 
     public ResourceNotFoundException() {
-
     }
 
     public ResourceNotFoundException(String message) {

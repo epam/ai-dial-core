@@ -8,8 +8,6 @@ import com.epam.aidial.core.security.ApiKeyGenerator;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.util.HttpException;
-import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +27,7 @@ import javax.annotation.Nullable;
 public class InvitationService {
 
     private static final String INVITATION_RESOURCE_FILENAME = "invitations";
-    static final String INVITATION_PATH_BASE = "v1/invitations";
+    static final String INVITATION_PATH_BASE = "/v1/invitations";
 
     private final ResourceService resourceService;
     private final EncryptionService encryptionService;
@@ -58,22 +56,25 @@ public class InvitationService {
     @Nullable
     public Invitation getInvitation(String invitationId) {
         ResourceDescription resource = getInvitationResource(invitationId);
+        if (resource == null) {
+            return null;
+        }
         String resourceState = resourceService.getResource(resource);
         InvitationsMap invitations = ProxyUtil.convertToObject(resourceState, InvitationsMap.class);
         if (invitations == null) {
-            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+            return null;
         }
 
         Invitation invitation = invitations.getInvitations().get(invitationId);
         if (invitation == null) {
-            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+            return null;
         }
 
         Instant expireAt = Instant.ofEpochMilli(invitation.getExpireAt());
         if (Instant.now().isAfter(expireAt)) {
             // invitation expired - we need to clean up state
             cleanUpExpiredInvitations(resource, List.of(invitationId));
-            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+            return null;
         }
 
         return invitation;
@@ -81,9 +82,12 @@ public class InvitationService {
 
     public void deleteInvitation(String bucket, String location, String invitationId) {
         ResourceDescription resource = getInvitationResource(invitationId);
+        if (resource == null) {
+            throw new ResourceNotFoundException("No invitation found for ID" + invitationId);
+        }
         // deny operation if caller is not an owner
         if (!resource.getBucketName().equals(bucket)) {
-            throw new HttpException(HttpStatus.FORBIDDEN, "Only invitation owner can delete invitation");
+            throw new PermissionDeniedException("You are not invitation owner");
         }
         cleanUpExpiredInvitations(resource, List.of(invitationId));
     }
@@ -124,17 +128,18 @@ public class InvitationService {
         });
     }
 
+    @Nullable
     private ResourceDescription getInvitationResource(String invitationId) {
         // decrypt invitation ID to obtain its location
         String decryptedInvitationPath = encryptionService.decrypt(invitationId);
         if (decryptedInvitationPath == null) {
-            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+            return null;
         }
 
         String[] parts = decryptedInvitationPath.split(BlobStorageUtil.PATH_SEPARATOR);
         // due to current design decoded resource location looks like: Users/<SUB>/invitations/invitations.json/<random_id>
         if (parts.length != 5) {
-            throw new ResourceNotFoundException("No invitation found for ID " + invitationId);
+            return null;
         }
         String location = parts[0] + BlobStorageUtil.PATH_SEPARATOR + parts[1] + BlobStorageUtil.PATH_SEPARATOR;
         String bucket = encryptionService.encrypt(location);

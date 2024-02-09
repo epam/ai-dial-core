@@ -105,19 +105,20 @@ public class ShareService {
      */
     public InvitationLink initializeShare(String bucket, String location, ShareResourcesRequest request) {
         // validate resources - owner must be current user
-        Set<ResourceLink> resources = request.getResources();
-        if (resources.isEmpty()) {
+        Set<ResourceLink> resourceLinks = request.getResources();
+        if (resourceLinks.isEmpty()) {
             throw new IllegalArgumentException("No resources provided");
         }
 
-        for (ResourceLink resourceLink : resources) {
-            if (!bucket.equals(resourceLink.getBucket())) {
-                throw new IllegalArgumentException("Requested share resource do not belong to the user " + resourceLink);
+        for (ResourceLink resourceLink : resourceLinks) {
+            String url = resourceLink.url();
+            ResourceDescription resource = getResourceFromLink(url);
+            if (!bucket.equals(resource.getBucketName())) {
+                throw new IllegalArgumentException("Resource %s do not belong to the user".formatted(url));
             }
         }
 
-        Invitation invitation = invitationService.createInvitation(bucket, location, resources);
-        log.info("Share request initiated successfully {}", invitation);
+        Invitation invitation = invitationService.createInvitation(bucket, location, resourceLinks);
         return new InvitationLink(InvitationService.INVITATION_PATH_BASE + BlobStorageUtil.PATH_SEPARATOR + invitation.getId());
     }
 
@@ -150,27 +151,24 @@ public class ShareService {
             // write user location to the resource owner
             ResourceDescription sharedByMe = getShareResource(ResourceType.SHARED_BY_ME, resourceType, ownerBucket, ownerLocation);
             resourceService.computeResource(sharedByMe, state -> {
-                SharedByMeDto dto;
-                if (state == null) {
-                    Map<String, Set<String>> resourceToUsers = new HashMap<>();
-                    dto = new SharedByMeDto(resourceToUsers);
-                } else {
-                    dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
+                SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
+                if (dto == null) {
+                    dto = new SharedByMeDto(new HashMap<>());
                 }
 
                 // add user location for each link
-                links.forEach(resourceLink -> dto.addUserToResource(resourceLink.url(), location));
+                for (ResourceLink resourceLink : links) {
+                    dto.addUserToResource(resourceLink.url(), location);
+                }
 
                 return ProxyUtil.convertToString(dto);
             });
 
             ResourceDescription sharedWithMe = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
             resourceService.computeResource(sharedWithMe, state -> {
-                ResourceLinkCollection collection;
-                if (state == null) {
+                ResourceLinkCollection collection = ProxyUtil.convertToObject(state, ResourceLinkCollection.class);
+                if (collection == null) {
                     collection = new ResourceLinkCollection(new HashSet<>());
-                } else {
-                    collection = ProxyUtil.convertToObject(state, ResourceLinkCollection.class);
                 }
 
                 // add all links to the user
@@ -218,7 +216,8 @@ public class ShareService {
     public void revokeSharedAccess(String bucket, String location, ResourceLinkCollection resources) {
         // validate that all resources belong to the user, who perform this action
         for (ResourceLink link : resources.getResources()) {
-            if (!link.getBucket().equals(bucket)) {
+            ResourceDescription resource = getResourceFromLink(link.url());
+            if (!resource.getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("You are only allowed to revoke access from own resources");
             }
         }
@@ -250,13 +249,14 @@ public class ShareService {
 
     public void discardSharedAccess(String bucket, String location, ResourceLinkCollection resources) {
         for (ResourceLink link : resources.getResources()) {
-            ResourceType resourceType = link.getResourceType();
+            ResourceDescription resource = getResourceFromLink(link.url());
+            ResourceType resourceType = resource.getType();
             removeSharedResource(bucket, location, link, resourceType);
 
             String ownerBucket = link.getBucket();
             String ownerLocation = encryptionService.decrypt(ownerBucket);
 
-            ResourceDescription sharedWithMe = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, ownerBucket, ownerLocation);
+            ResourceDescription sharedWithMe = getShareResource(ResourceType.SHARED_BY_ME, resourceType, ownerBucket, ownerLocation);
             resourceService.computeResource(sharedWithMe, ownerState -> {
                 SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(ownerState, SharedByMeDto.class);
                 if (sharedByMeDto != null) {
@@ -290,6 +290,14 @@ public class ShareService {
                         return new ResourceItemMetadata(resource);
                     }
                 }).toList();
+    }
+
+    private ResourceDescription getResourceFromLink(String url) {
+        try {
+            return ResourceDescription.fromLink(url, encryptionService);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Incorrect resource link provided " + url);
+        }
     }
 
     private static ResourceDescription getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {
