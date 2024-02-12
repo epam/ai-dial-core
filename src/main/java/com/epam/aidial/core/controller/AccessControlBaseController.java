@@ -5,7 +5,6 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.Future;
@@ -64,22 +63,14 @@ public abstract class AccessControlBaseController {
                     }
 
                     return false;
-                }).andThen(result -> {
-                    if (result.succeeded()) {
-                        if (result.result()) {
-                            handle(resource);
-                        } else {
-                            context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
-                        }
-
+                })
+                .map(hasAccess  -> {
+                    if (hasAccess) {
+                        handle(resource);
                     } else {
-                        Throwable error = result.cause();
-                        if (error instanceof HttpException httpException) {
-                            context.respond(httpException.getStatus(), httpException.getMessage());
-                        } else {
-                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-                        }
+                        context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
                     }
+                    return null;
                 });
     }
 
