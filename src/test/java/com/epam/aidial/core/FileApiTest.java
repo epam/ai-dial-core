@@ -1,7 +1,5 @@
 package com.epam.aidial.core;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
@@ -745,10 +743,5 @@ public class FileApiTest {
 
     private static MultipartForm generateMultipartForm(String fileName, String content, String contentType) {
         return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
-    }
-
-    private static String generateJwtToken(String user) {
-        Algorithm algorithm = Algorithm.HMAC256("secret_key");
-        return JWT.create().withClaim("iss", "issuer").withClaim("sub", user).sign(algorithm);
     }
 }

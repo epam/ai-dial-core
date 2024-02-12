@@ -7,4 +7,8 @@ public class Features {
     private String rateEndpoint;
     private String tokenizeEndpoint;
     private String truncatePromptEndpoint;
+
+    private Boolean systemPromptSupported;
+    private Boolean toolsSupported;
+    private Boolean seedSupported;
 }
