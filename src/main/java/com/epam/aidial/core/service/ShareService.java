@@ -114,7 +114,7 @@ public class ShareService {
             String url = resourceLink.url();
             ResourceDescription resource = getResourceFromLink(url);
             if (!bucket.equals(resource.getBucketName())) {
-                throw new IllegalArgumentException("Resource %s do not belong to the user".formatted(url));
+                throw new IllegalArgumentException("Resource %s does not belong to the user".formatted(url));
             }
         }
 

@@ -29,7 +29,7 @@ public abstract class AccessControlBaseController {
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
         if (decryptedBucket == null) {
-            context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
+            context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
             return Future.succeededFuture();
         }
 
@@ -46,42 +46,48 @@ public abstract class AccessControlBaseController {
             return Future.succeededFuture();
         }
 
-        Future<Void> permissionFuture = proxy.getVertx().executeBlocking(() -> {
-            boolean hasReadAccess = isSharedResource(resource, actualUserBucket, actualUserLocation);
-            boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
-            boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
+        return proxy.getVertx()
+                .executeBlocking(() -> {
+                    boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
+                    if (hasWriteAccess) {
+                        return true;
+                    }
 
-            if (!hasAccess) {
-                throw new HttpException(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
-            }
+                    if (!checkFullAccess) {
+                        // some per-request API-keys may have access to the resources implicitly
+                        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
+                        if (isAutoShared) {
+                            return true;
+                        }
 
-            return null;
-        });
+                        return isSharedResource(resource, actualUserBucket, actualUserLocation);
+                    }
 
-        permissionFuture.andThen((handler) -> {
-            if (handler.succeeded()) {
-                handle(resource);
-            } else {
-                Throwable error = handler.cause();
-                if (error instanceof HttpException httpException) {
-                    context.respond(httpException.getStatus(), httpException.getMessage());
-                } else {
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-                }
-            }
-        });
+                    return false;
+                }).andThen(result -> {
+                    if (result.succeeded()) {
+                        if (result.result()) {
+                            handle(resource);
+                        } else {
+                            context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
+                        }
 
-        return permissionFuture;
+                    } else {
+                        Throwable error = result.cause();
+                        if (error instanceof HttpException httpException) {
+                            context.respond(httpException.getStatus(), httpException.getMessage());
+                        } else {
+                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                        }
+                    }
+                });
     }
 
     protected abstract Future<?> handle(ResourceDescription resource);
 
     protected boolean isSharedResource(ResourceDescription resource, String userBucket, String userLocation) {
-        // some per-request API-keys may have access to the resources implicitly
-        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
         // resource was shared explicitly by share API
-        boolean isExplicitlyShared = (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
-        return isAutoShared || isExplicitlyShared;
+        return (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
     }
 
     protected boolean hasWriteAccess(String filePath, String decryptedBucket) {

@@ -2,8 +2,6 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.data.Invitation;
-import com.epam.aidial.core.data.InvitationCollection;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.PermissionDeniedException;
@@ -13,15 +11,12 @@ import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 
-import java.util.HashSet;
-import java.util.List;
-
 public class InvitationController {
 
-    final Proxy proxy;
-    final ProxyContext context;
-    final InvitationService invitationService;
-    final ShareService shareService;
+    private final Proxy proxy;
+    private final ProxyContext context;
+    private final InvitationService invitationService;
+    private final ShareService shareService;
     final EncryptionService encryptionService;
 
     public InvitationController(Proxy proxy, ProxyContext context) {
@@ -33,68 +28,72 @@ public class InvitationController {
     }
 
     public Future<?> getInvitations() {
-        proxy.getVertx().executeBlocking(() -> {
-            String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
-            String bucket = encryptionService.encrypt(bucketLocation);
-            List<Invitation> invitations = invitationService.getMyInvitations(bucket, bucketLocation);
-            InvitationCollection response = new InvitationCollection(new HashSet<>());
-            response.getInvitations().addAll(invitations);
-
-            return context.respond(HttpStatus.OK, response);
-        });
+        proxy.getVertx()
+                .executeBlocking(() -> {
+                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucket = encryptionService.encrypt(bucketLocation);
+                    return invitationService.getMyInvitations(bucket, bucketLocation);
+                })
+                .onSuccess(response -> context.respond(HttpStatus.OK, response))
+                .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
         return Future.succeededFuture();
     }
 
     public Future<?> getOrAcceptInvitation(String invitationId) {
         String accept = context.getRequest().getParam("accept");
         if (accept != null) {
-            proxy.getVertx().executeBlocking(() -> {
-                try {
-                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
-                    String bucket = encryptionService.encrypt(bucketLocation);
-                    shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
-                    return context.respond(HttpStatus.OK);
-                } catch (Exception e) {
-                    if (e instanceof ResourceNotFoundException) {
-                        return context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
-                    } else if (e instanceof IllegalArgumentException) {
-                        return context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
-                    }
-                    return context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-                }
-            });
+            proxy.getVertx()
+                    .executeBlocking(() -> {
+                        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                        String bucket = encryptionService.encrypt(bucketLocation);
+                        shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
+                        return null;
+                    })
+                    .onSuccess(ignore -> context.respond(HttpStatus.OK))
+                    .onFailure(error -> {
+                        if (error instanceof ResourceNotFoundException) {
+                            context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
+                        } else if (error instanceof IllegalArgumentException) {
+                            context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+                        }
+                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                    });
         } else {
-            proxy.getVertx().executeBlocking(() -> {
-                Invitation invitation = invitationService.getInvitation(invitationId);
-                if (invitation == null) {
-                    return context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
-                }
-
-                return context.respond(HttpStatus.OK, invitation);
-            });
+            proxy.getVertx()
+                    .executeBlocking(() -> invitationService.getInvitation(invitationId))
+                    .onSuccess(invitation -> {
+                        if (invitation == null) {
+                            context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
+                            return;
+                        }
+                        context.respond(HttpStatus.OK, invitation);
+                    }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
         }
         return Future.succeededFuture();
     }
 
     public Future<?> deleteInvitation(String invitationId) {
-        proxy.getVertx().executeBlocking(() -> {
-            String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
-            String bucket = encryptionService.encrypt(bucketLocation);
-            try {
-                invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
-                return context.respond(HttpStatus.OK);
-            } catch (Exception e) {
-                if (e instanceof PermissionDeniedException) {
-                    return context.respond(HttpStatus.FORBIDDEN, e.getMessage());
-                }
+        proxy.getVertx()
+                .executeBlocking(() -> {
+                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucket = encryptionService.encrypt(bucketLocation);
+                    invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
+                    return null;
+                })
+                .onSuccess(ignore -> context.respond(HttpStatus.OK)).onFailure(error -> {
+                    String errorMessage = error.getMessage();
+                    if (error instanceof PermissionDeniedException) {
+                        context.respond(HttpStatus.FORBIDDEN, errorMessage);
+                        return;
+                    }
 
-                if (e instanceof ResourceNotFoundException) {
-                    return context.respond(HttpStatus.NOT_FOUND, e.getMessage());
-                }
+                    if (error instanceof ResourceNotFoundException) {
+                        context.respond(HttpStatus.NOT_FOUND, errorMessage);
+                        return;
+                    }
 
-                return context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-            }
-        });
+                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMessage);
+                });
 
         return Future.succeededFuture();
     }

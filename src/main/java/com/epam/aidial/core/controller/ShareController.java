@@ -22,10 +22,10 @@ public class ShareController {
 
     private static final String LIST_SHARED_BY_ME_RESOURCES = "others";
 
-    final Proxy proxy;
-    final ProxyContext context;
-    final ShareService shareService;
-    final EncryptionService encryptionService;
+    private final Proxy proxy;
+    private final ProxyContext context;
+    private final ShareService shareService;
+    private final EncryptionService encryptionService;
 
     public ShareController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
@@ -92,7 +92,8 @@ public class ShareController {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return proxy.getVertx().executeBlocking(() -> shareService.initializeShare(bucket, bucketLocation, request));
-                }).onSuccess(response -> context.respond(HttpStatus.OK, response))
+                })
+                .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(this::handleServiceError);
     }
 
@@ -125,7 +126,8 @@ public class ShareController {
                                 shareService.revokeSharedAccess(bucket, bucketLocation, request);
                                 return null;
                             });
-                }).onSuccess(response -> context.respond(HttpStatus.OK))
+                })
+                .onSuccess(response -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
     }
 

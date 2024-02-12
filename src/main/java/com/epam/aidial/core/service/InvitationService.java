@@ -1,6 +1,7 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.data.Invitation;
+import com.epam.aidial.core.data.InvitationCollection;
 import com.epam.aidial.core.data.InvitationsMap;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
@@ -16,6 +17,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,6 +26,8 @@ import javax.annotation.Nullable;
 
 @Slf4j
 public class InvitationService {
+
+    private static final InvitationCollection EMPTY_INVITATION_COLLECTION = new InvitationCollection(Set.of());
 
     private static final String INVITATION_RESOURCE_FILENAME = "invitations";
     private static final int DEFAULT_INVITATION_TTL_IN_SECONDS = 259_200;
@@ -98,12 +102,12 @@ public class InvitationService {
         cleanUpExpiredInvitations(resource, List.of(invitationId));
     }
 
-    public List<Invitation> getMyInvitations(String bucket, String location) {
+    public InvitationCollection getMyInvitations(String bucket, String location) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String state = resourceService.getResource(resource);
         InvitationsMap invitationMap = ProxyUtil.convertToObject(state, InvitationsMap.class);
         if (invitationMap == null || invitationMap.getInvitations().isEmpty()) {
-            return List.of();
+            return EMPTY_INVITATION_COLLECTION;
         }
 
         Collection<Invitation> invitations = invitationMap.getInvitations().values();
@@ -118,7 +122,7 @@ public class InvitationService {
             invitationsToEvict.forEach(invitationToEvict -> invitationMap.getInvitations().remove(invitationToEvict));
         }
 
-        return invitationMap.getInvitations().values().stream().toList();
+        return new InvitationCollection(new HashSet<>(invitationMap.getInvitations().values()));
     }
 
     private void cleanUpExpiredInvitations(ResourceDescription resource, Collection<String> idsToEvict) {
