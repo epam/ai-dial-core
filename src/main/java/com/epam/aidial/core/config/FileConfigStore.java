@@ -72,7 +72,7 @@ public final class FileConfigStore implements ConfigStore {
                     assistant.setEndpoint(assistants.getEndpoint());
                 }
 
-                setMissingFeatures(assistant, assistants.getFeatures());
+                inheritMissingFeatures(assistant, assistants.getFeatures());
             }
             // base assistant
             if (assistants.getEndpoint() != null) {
@@ -127,7 +127,7 @@ public final class FileConfigStore implements ConfigStore {
         }
     }
 
-    private static void setMissingFeatures(Deployment model, Features features) {
+    private static void inheritMissingFeatures(Deployment model, Features features) {
         if (features == null) {
             return;
         }
@@ -146,6 +146,15 @@ public final class FileConfigStore implements ConfigStore {
         }
         if (modelFeatures.getTruncatePromptEndpoint() == null) {
             modelFeatures.setTruncatePromptEndpoint(features.getTruncatePromptEndpoint());
+        }
+        if (modelFeatures.getSystemPromptSupported() == null) {
+            modelFeatures.setSystemPromptSupported(features.getSystemPromptSupported());
+        }
+        if (modelFeatures.getToolsSupported() == null) {
+            modelFeatures.setToolsSupported(features.getToolsSupported());
+        }
+        if (modelFeatures.getSeedSupported() == null) {
+            modelFeatures.setSeedSupported(features.getSeedSupported());
         }
     }
 }

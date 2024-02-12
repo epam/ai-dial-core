@@ -12,4 +12,8 @@ public class FeaturesData {
     private boolean rate;
     private boolean tokenize;
     private boolean truncatePrompt;
+
+    private boolean systemPrompt;
+    private boolean tools;
+    private boolean seed;
 }

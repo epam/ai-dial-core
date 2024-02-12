@@ -103,10 +103,20 @@ public class DeploymentController {
         if (features == null) {
             return null;
         }
+
         FeaturesData data = new FeaturesData();
         data.setRate(features.getRateEndpoint() != null);
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
+
+        data.setSystemPrompt(booleanOrDefault(features.getSystemPromptSupported(), true));
+        data.setTools(booleanOrDefault(features.getToolsSupported(), false));
+        data.setSeed(booleanOrDefault(features.getSeedSupported(), false));
+
         return data;
+    }
+
+    public static boolean booleanOrDefault(Boolean obj, boolean def) {
+        return obj != null ? obj : def;
     }
 }

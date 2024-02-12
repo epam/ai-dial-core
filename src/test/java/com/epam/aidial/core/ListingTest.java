@@ -86,23 +86,34 @@ public class ListingTest {
     }
 
     @Test
+    void testFeaturesEmbedding(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "embedding-ada", "features", null);
+    }
+
+    @Test
     void testFeaturesModel(Vertx vertx, VertxTestContext context) {
         checkListing(vertx, context, "/openai/models", "chat-gpt-35-turbo", "features", """
-                    { "rate": true, "tokenize": true, "truncate_prompt": true }
+                    { "rate": true, "tokenize": true, "truncate_prompt": true
+                    , "system_prompt": true, "tools": true, "seed": true
+                    }
                 """);
     }
 
     @Test
     void testFeaturesApplication(Vertx vertx, VertxTestContext context) {
         checkListing(vertx, context, "/openai/applications", "app", "features", """
-                    { "rate": true, "tokenize": false, "truncate_prompt": false }
+                    { "rate": true, "tokenize": false, "truncate_prompt": false
+                    , "system_prompt": false, "tools": false, "seed": false
+                    }
                 """);
     }
 
     @Test
     void testFeaturesAssistant(Vertx vertx, VertxTestContext context) {
         checkListing(vertx, context, "/openai/assistants", "search-assistant", "features", """
-                    { "rate": true, "tokenize": false, "truncate_prompt": false }
+                    { "rate": true, "tokenize": false, "truncate_prompt": false
+                    , "system_prompt": true, "tools": false, "seed": false
+                    }
                 """);
     }
 
