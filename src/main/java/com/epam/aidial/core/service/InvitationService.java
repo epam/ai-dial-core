@@ -40,7 +40,7 @@ public class InvitationService {
     public InvitationService(ResourceService resourceService, EncryptionService encryptionService, JsonObject settings) {
         this.resourceService = resourceService;
         this.encryptionService = encryptionService;
-        this.expirationInSeconds = settings.getInteger("invitationTtlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
+        this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
     }
 
     public Invitation createInvitation(String bucket, String location, Set<ResourceLink> resources) {

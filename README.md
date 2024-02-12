@@ -67,7 +67,7 @@ Static settings are used on startup and cannot be changed while application is r
 | resources.compressionMinSize               | 256                | Compress a resource with gzip if its size in bytes more or equal to this value
 | redis.singleServerConfig.address           | -                  | Redis single server addresses, e.g. "redis://host:port"                                                                                        
 | redis.clusterServersConfig.nodeAddresses   | -                  | Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]
-| invitations.invitationTtlInSeconds         | 259200             | Invitation time to live in seconds
+| invitations.ttlInSeconds                   | 259200             | Invitation time to live in seconds
 
 ### Redis
 The Redis can be used as a cache with volatile-* eviction policies:

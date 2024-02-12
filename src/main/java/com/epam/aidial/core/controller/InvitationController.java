@@ -17,7 +17,7 @@ public class InvitationController {
     private final ProxyContext context;
     private final InvitationService invitationService;
     private final ShareService shareService;
-    final EncryptionService encryptionService;
+    private final EncryptionService encryptionService;
 
     public InvitationController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
@@ -55,8 +55,9 @@ public class InvitationController {
                             context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
                         } else if (error instanceof IllegalArgumentException) {
                             context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+                        } else {
+                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
                         }
-                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
                     });
         } else {
             proxy.getVertx()
@@ -64,9 +65,9 @@ public class InvitationController {
                     .onSuccess(invitation -> {
                         if (invitation == null) {
                             context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
-                            return;
+                        } else {
+                            context.respond(HttpStatus.OK, invitation);
                         }
-                        context.respond(HttpStatus.OK, invitation);
                     }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
         }
         return Future.succeededFuture();
@@ -80,19 +81,16 @@ public class InvitationController {
                     invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
                     return null;
                 })
-                .onSuccess(ignore -> context.respond(HttpStatus.OK)).onFailure(error -> {
+                .onSuccess(ignore -> context.respond(HttpStatus.OK))
+                .onFailure(error -> {
                     String errorMessage = error.getMessage();
                     if (error instanceof PermissionDeniedException) {
                         context.respond(HttpStatus.FORBIDDEN, errorMessage);
-                        return;
-                    }
-
-                    if (error instanceof ResourceNotFoundException) {
+                    } else if (error instanceof ResourceNotFoundException) {
                         context.respond(HttpStatus.NOT_FOUND, errorMessage);
-                        return;
+                    } else {
+                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMessage);
                     }
-
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMessage);
                 });
 
         return Future.succeededFuture();

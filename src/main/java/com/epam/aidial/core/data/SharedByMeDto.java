@@ -14,8 +14,8 @@ import java.util.Set;
 public class SharedByMeDto {
     Map<String, Set<String>> resourceToUsers;
 
-    public void addUserToResource(String url, String userId) {
+    public void addUserToResource(String url, String userLocation) {
         Set<String> users = resourceToUsers.computeIfAbsent(url, k -> new HashSet<>());
-        users.add(userId);
+        users.add(userLocation);
     }
 }

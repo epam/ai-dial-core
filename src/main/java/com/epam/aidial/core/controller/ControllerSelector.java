@@ -177,7 +177,7 @@ public class ControllerSelector {
 
         match = match(INVITATION, path);
         if (match != null) {
-            String invitationId = match.group(1);
+            String invitationId = UrlUtil.decodePath(match.group(1));
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.getOrAcceptInvitation(invitationId);
         }
@@ -271,7 +271,7 @@ public class ControllerSelector {
 
         match = match(INVITATION, path);
         if (match != null) {
-            String invitationId = match.group(1);
+            String invitationId =  UrlUtil.decodePath(match.group(1));
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.deleteInvitation(invitationId);
         }

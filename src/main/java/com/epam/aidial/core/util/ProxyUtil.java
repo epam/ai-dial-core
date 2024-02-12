@@ -116,7 +116,7 @@ public class ProxyUtil {
         try {
             return MAPPER.readValue(payload, clazz);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            throw new IllegalArgumentException(e);
         }
     }
 
@@ -129,7 +129,7 @@ public class ProxyUtil {
         try {
             return MAPPER.writeValueAsString(data);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            throw new IllegalArgumentException(e);
         }
     }
 }

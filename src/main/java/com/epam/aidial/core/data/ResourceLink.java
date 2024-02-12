@@ -8,7 +8,7 @@ public record ResourceLink(String url) {
     @JsonIgnore
     public ResourceType getResourceType() {
         if (url == null) {
-            throw new RuntimeException("Resource link can not be null");
+            throw new IllegalStateException("Resource link can not be null");
         }
 
         String[] paths = url.split(BlobStorageUtil.PATH_SEPARATOR);
@@ -23,7 +23,7 @@ public record ResourceLink(String url) {
     @JsonIgnore
     public String getBucket() {
         if (url == null) {
-            throw new RuntimeException("Resource link can not be null");
+            throw new IllegalStateException("Resource link can not be null");
         }
 
         String[] paths = url.split(BlobStorageUtil.PATH_SEPARATOR);

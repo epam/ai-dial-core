@@ -201,7 +201,7 @@ public class ShareService {
             return true;
         }
 
-        // check if your have shared access to the parent folder
+        // check if you have shared access to the parent folder
         ResourceDescription parentFolder = resource.getParent();
         while (parentFolder != null) {
             if (sharedLinks.contains(new ResourceLink(parentFolder.getUrl()))) {
@@ -221,15 +221,20 @@ public class ShareService {
      * @param resources - collection of links to revoke access
      */
     public void revokeSharedAccess(String bucket, String location, ResourceLinkCollection resources) {
+        Set<ResourceLink> resourceLinks = resources.getResources();
+        if (resourceLinks.isEmpty()) {
+            throw new IllegalArgumentException("No resources provided");
+        }
+
         // validate that all resources belong to the user, who perform this action
-        for (ResourceLink link : resources.getResources()) {
+        for (ResourceLink link : resourceLinks) {
             ResourceDescription resource = getResourceFromLink(link.url());
             if (!resource.getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("You are only allowed to revoke access from own resources");
             }
         }
 
-        for (ResourceLink link : resources.getResources()) {
+        for (ResourceLink link : resourceLinks) {
             ResourceType resourceType = link.getResourceType();
             ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, resourceType, bucket, location);
             String state = resourceService.getResource(sharedByMeResource);
@@ -255,7 +260,12 @@ public class ShareService {
     }
 
     public void discardSharedAccess(String bucket, String location, ResourceLinkCollection resources) {
-        for (ResourceLink link : resources.getResources()) {
+        Set<ResourceLink> resourceLinks = resources.getResources();
+        if (resourceLinks.isEmpty()) {
+            throw new IllegalArgumentException("No resources provided");
+        }
+
+        for (ResourceLink link : resourceLinks) {
             ResourceDescription resource = getResourceFromLink(link.url());
             ResourceType resourceType = resource.getType();
             removeSharedResource(bucket, location, link, resourceType);

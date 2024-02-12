@@ -134,6 +134,8 @@ public class ShareController {
     private void handleServiceError(Throwable error) {
         if (error instanceof IllegalArgumentException) {
             context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+        } else if (error instanceof HttpException httpException) {
+            context.respond(httpException.getStatus(), httpException.getMessage());
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
         }
