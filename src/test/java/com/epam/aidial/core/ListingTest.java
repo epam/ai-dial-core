@@ -1,7 +1,5 @@
 package com.epam.aidial.core;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.client.WebClient;
@@ -44,11 +42,6 @@ public class ListingTest {
         dial.stop();
     }
 
-    private static String generateJwtToken(String user) {
-        Algorithm algorithm = Algorithm.HMAC256("secret_key");
-        return JWT.create().withClaim("sub", user).sign(algorithm);
-    }
-
     @BeforeEach
     public void setUp() {
         // prepare test directory
@@ -61,7 +54,7 @@ public class ListingTest {
         FileUtil.deleteDir(testDir);
     }
 
-    void checkListing(Vertx vertx, VertxTestContext context, String uri, String id, String field, String expected) {
+    void checkListing(Vertx vertx, VertxTestContext context, String uri, String id, String field, Object expected) {
         Consumer<String> checker = (str) -> {
             JsonObject json = new JsonObject(str);
             JsonObject foundElem = null;
@@ -79,31 +72,51 @@ public class ListingTest {
                 throw new AssertionError("Element with id " + id + " not found");
             }
 
-            JsonObject expectedJson = expected == null ? null : new JsonObject(expected);
-            assertEquals(expectedJson, foundElem.getValue(field));
+            Object actual = field == null ? foundElem : foundElem.getValue(field);
+            assertEquals(expected, actual);
         };
         checkResponse(vertx, context, uri, checker);
     }
 
     @Test
+    void testDisplayVersion(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "test-model-v1", "display_version", "1.0");
+    }
+
+    @Test
+    void testFeaturesEmbedding(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "embedding-ada", "features", new JsonObject("""
+                    { "rate": false, "tokenize": false, "truncate_prompt": false
+                    , "system_prompt": true, "tools": false, "seed": false
+                    }
+                """));
+    }
+
+    @Test
     void testFeaturesModel(Vertx vertx, VertxTestContext context) {
-        checkListing(vertx, context, "/openai/models", "chat-gpt-35-turbo", "features", """
-                    { "rate": true, "tokenize": true, "truncate_prompt": true }
-                """);
+        checkListing(vertx, context, "/openai/models", "chat-gpt-35-turbo", "features", new JsonObject("""
+                    { "rate": true, "tokenize": true, "truncate_prompt": true
+                    , "system_prompt": true, "tools": true, "seed": true
+                    }
+                """));
     }
 
     @Test
     void testFeaturesApplication(Vertx vertx, VertxTestContext context) {
-        checkListing(vertx, context, "/openai/applications", "app", "features", """
-                    { "rate": true, "tokenize": false, "truncate_prompt": false }
-                """);
+        checkListing(vertx, context, "/openai/applications", "app", "features", new JsonObject("""
+                    { "rate": true, "tokenize": false, "truncate_prompt": false
+                    , "system_prompt": false, "tools": false, "seed": false
+                    }
+                """));
     }
 
     @Test
     void testFeaturesAssistant(Vertx vertx, VertxTestContext context) {
-        checkListing(vertx, context, "/openai/assistants", "search-assistant", "features", """
-                    { "rate": true, "tokenize": false, "truncate_prompt": false }
-                """);
+        checkListing(vertx, context, "/openai/assistants", "search-assistant", "features", new JsonObject("""
+                    { "rate": true, "tokenize": false, "truncate_prompt": false
+                    , "system_prompt": true, "tools": false, "seed": false
+                    }
+                """));
     }
 
     void checkResponse(Vertx vertx, VertxTestContext context, String uri, Consumer<String> checker) {

@@ -100,13 +100,28 @@ public class DeploymentController {
     }
 
     static FeaturesData createFeatures(Features features) {
-        if (features == null) {
-            return null;
-        }
         FeaturesData data = new FeaturesData();
+
+        if (features == null) {
+            return data;
+        }
+
         data.setRate(features.getRateEndpoint() != null);
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
+
+        if (features.getSystemPromptSupported() != null) {
+            data.setSystemPrompt(features.getSystemPromptSupported());
+        }
+
+        if (features.getToolsSupported() != null) {
+            data.setTools(features.getToolsSupported());
+        }
+
+        if (features.getSeedSupported() != null) {
+            data.setSeed(features.getSeedSupported());
+        }
+
         return data;
     }
 }

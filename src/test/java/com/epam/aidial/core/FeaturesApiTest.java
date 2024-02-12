@@ -1,7 +1,5 @@
 package com.epam.aidial.core;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.ext.web.client.WebClient;
@@ -43,11 +41,6 @@ public class FeaturesApiTest {
     public static void destroy() {
         // stop server
         dial.stop();
-    }
-
-    private static String generateJwtToken(String user) {
-        Algorithm algorithm = Algorithm.HMAC256("secret_key");
-        return JWT.create().withClaim("sub", user).sign(algorithm);
     }
 
     @BeforeEach
