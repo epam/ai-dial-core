@@ -77,7 +77,7 @@ public class ResourceDescription {
     }
 
     @Nullable
-    public ResourceDescription getParentFolder() {
+    public ResourceDescription getParent() {
         if (parentFolders.isEmpty()) {
             return null;
         }

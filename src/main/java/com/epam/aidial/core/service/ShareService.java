@@ -202,12 +202,12 @@ public class ShareService {
         }
 
         // check if your have shared access to the parent folder
-        ResourceDescription parentFolder = resource.getParentFolder();
+        ResourceDescription parentFolder = resource.getParent();
         while (parentFolder != null) {
             if (sharedLinks.contains(new ResourceLink(parentFolder.getUrl()))) {
                 return true;
             }
-            parentFolder = parentFolder.getParentFolder();
+            parentFolder = parentFolder.getParent();
         }
 
         return false;

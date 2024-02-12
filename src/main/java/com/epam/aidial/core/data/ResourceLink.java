@@ -13,6 +13,10 @@ public record ResourceLink(String url) {
 
         String[] paths = url.split(BlobStorageUtil.PATH_SEPARATOR);
 
+        if (paths.length < 2) {
+            throw new IllegalStateException("Invalid resource link provided: " + url);
+        }
+
         return ResourceType.of(paths[0]);
     }
 
