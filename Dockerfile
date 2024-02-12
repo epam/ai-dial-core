@@ -15,7 +15,9 @@ FROM eclipse-temurin:17-jdk-alpine
 
 # fix CVE-2023-5363
 # TODO remove the fix once a new version is released
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
+# fix CVE-2023-52425
+RUN apk upgrade --no-cache libexpat
 
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
