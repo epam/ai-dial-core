@@ -100,11 +100,12 @@ public class DeploymentController {
     }
 
     static FeaturesData createFeatures(Features features) {
+        FeaturesData data = new FeaturesData();
+
         if (features == null) {
-            return null;
+            return data;
         }
 
-        FeaturesData data = new FeaturesData();
         data.setRate(features.getRateEndpoint() != null);
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);

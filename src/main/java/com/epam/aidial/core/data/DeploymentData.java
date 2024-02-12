@@ -17,6 +17,7 @@ public class DeploymentData {
     private String assistant;
     private String application;
     private String displayName;
+    private String displayVersion;
     private String iconUrl;
     private String description;
     private String owner = "organization-owner";
@@ -25,7 +26,7 @@ public class DeploymentData {
     private long createdAt = 1672534800;
     private long updatedAt = 1672534800;
     private ScaleSettingsData scaleSettings = new ScaleSettingsData();
-    private FeaturesData features;
+    private FeaturesData features = new FeaturesData();
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
 }

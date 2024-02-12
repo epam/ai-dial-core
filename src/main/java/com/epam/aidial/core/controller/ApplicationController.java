@@ -57,6 +57,7 @@ public class ApplicationController {
         data.setId(application.getName());
         data.setApplication(application.getName());
         data.setDisplayName(application.getDisplayName());
+        data.setDisplayVersion(application.getDisplayVersion());
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
         data.setFeatures(DeploymentController.createFeatures(application.getFeatures()));
