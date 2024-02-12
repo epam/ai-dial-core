@@ -72,7 +72,7 @@ public final class FileConfigStore implements ConfigStore {
                     assistant.setEndpoint(assistants.getEndpoint());
                 }
 
-                inheritMissingFeatures(assistant, assistants.getFeatures());
+                setMissingFeatures(assistant, assistants.getFeatures());
             }
             // base assistant
             if (assistants.getEndpoint() != null) {
@@ -127,7 +127,7 @@ public final class FileConfigStore implements ConfigStore {
         }
     }
 
-    private static void inheritMissingFeatures(Deployment model, Features features) {
+    private static void setMissingFeatures(Deployment model, Features features) {
         if (features == null) {
             return;
         }

@@ -110,14 +110,18 @@ public class DeploymentController {
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
 
-        data.setSystemPrompt(booleanOrDefault(features.getSystemPromptSupported(), true));
-        data.setTools(booleanOrDefault(features.getToolsSupported(), false));
-        data.setSeed(booleanOrDefault(features.getSeedSupported(), false));
+        if (features.getSystemPromptSupported() != null) {
+            data.setSystemPrompt(features.getSystemPromptSupported());
+        }
+
+        if (features.getToolsSupported() != null) {
+            data.setTools(features.getToolsSupported());
+        }
+
+        if (features.getSeedSupported() != null) {
+            data.setSeed(features.getSeedSupported());
+        }
 
         return data;
-    }
-
-    public static boolean booleanOrDefault(Boolean obj, boolean def) {
-        return obj != null ? obj : def;
     }
 }
