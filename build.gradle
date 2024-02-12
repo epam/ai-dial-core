@@ -47,7 +47,7 @@ dependencies {
     implementation 'com.auth0:jwks-rsa:0.22.1'
     implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
     implementation 'org.apache.jclouds.api:filesystem:2.5.0'
-    implementation 'org.redisson:redisson:3.25.1'
+    implementation 'org.redisson:redisson:3.26.1'
     runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.5'
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
