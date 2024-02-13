@@ -147,5 +147,14 @@ public final class FileConfigStore implements ConfigStore {
         if (modelFeatures.getTruncatePromptEndpoint() == null) {
             modelFeatures.setTruncatePromptEndpoint(features.getTruncatePromptEndpoint());
         }
+        if (modelFeatures.getSystemPromptSupported() == null) {
+            modelFeatures.setSystemPromptSupported(features.getSystemPromptSupported());
+        }
+        if (modelFeatures.getToolsSupported() == null) {
+            modelFeatures.setToolsSupported(features.getToolsSupported());
+        }
+        if (modelFeatures.getSeedSupported() == null) {
+            modelFeatures.setSeedSupported(features.getSeedSupported());
+        }
     }
 }

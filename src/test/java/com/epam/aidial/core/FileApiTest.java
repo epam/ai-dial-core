@@ -1,7 +1,5 @@
 package com.epam.aidial.core;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
@@ -213,7 +211,7 @@ public class FileApiTest {
                         context.succeeding(response -> {
                             context.verify(() -> {
                                 assertEquals(403, response.statusCode());
-                                assertEquals("You don't have an access to the bucket testbucket", response.body());
+                                assertEquals("You don't have an access to the FILE testbucket/", response.body());
                                 context.completeNow();
                             });
                         })
@@ -399,7 +397,8 @@ public class FileApiTest {
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(403, response.statusCode());
-                                    assertEquals("You don't have an access to the bucket 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST", response.body());
+                                    assertEquals("You don't have an access to the FILE 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt",
+                                            response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -469,7 +468,7 @@ public class FileApiTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(403, response.statusCode());
-                            assertEquals("You don't have an access to the bucket 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt", response.body());
+                            assertEquals("You don't have an access to the FILE 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
@@ -744,10 +743,5 @@ public class FileApiTest {
 
     private static MultipartForm generateMultipartForm(String fileName, String content, String contentType) {
         return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
-    }
-
-    private static String generateJwtToken(String user) {
-        Algorithm algorithm = Algorithm.HMAC256("secret_key");
-        return JWT.create().withClaim("iss", "issuer").withClaim("sub", user).sign(algorithm);
     }
 }

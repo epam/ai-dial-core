@@ -45,6 +45,10 @@ public class ControllerSelector {
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/([^/]+)/tokenize$");
     private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/([^/]+)/truncate_prompt$");
 
+    private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke)$");
+    private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
+    private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
+
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = context.getRequest().path();
         HttpMethod method = context.getRequest().method();
@@ -171,6 +175,19 @@ public class ControllerSelector {
             return controller::getBucket;
         }
 
+        match = match(INVITATION, path);
+        if (match != null) {
+            String invitationId = UrlUtil.decodePath(match.group(1));
+            InvitationController controller = new InvitationController(proxy, context);
+            return () -> controller.getOrAcceptInvitation(invitationId);
+        }
+
+        match = match(INVITATIONS, path);
+        if (match != null) {
+            InvitationController controller = new InvitationController(proxy, context);
+            return controller::getInvitations;
+        }
+
         return null;
     }
 
@@ -222,6 +239,15 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, true);
         }
 
+        match = match(SHARE_RESOURCE_OPERATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            ShareController.Operation op = ShareController.Operation.valueOf(operation.toUpperCase());
+
+            ShareController controller = new ShareController(proxy, context);
+            return () -> controller.handle(op);
+        }
+
         return null;
     }
 
@@ -241,6 +267,13 @@ public class ControllerSelector {
             String relativePath = match.group(3);
             ResourceController controller = new ResourceController(proxy, context, false);
             return () -> controller.handle(resource, bucket, relativePath);
+        }
+
+        match = match(INVITATION, path);
+        if (match != null) {
+            String invitationId =  UrlUtil.decodePath(match.group(1));
+            InvitationController controller = new InvitationController(proxy, context);
+            return () -> controller.deleteInvitation(invitationId);
         }
 
         return null;

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.storage;
 
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.util.UrlUtil;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 
 @Data
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -74,12 +76,22 @@ public class ResourceDescription {
         return builder.toString();
     }
 
-    public String getParentPath() {
-        return parentFolders.isEmpty() ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
+    @Nullable
+    public ResourceDescription getParent() {
+        if (parentFolders.isEmpty()) {
+            return null;
+        }
+
+        String parentFolderName = parentFolders.get(parentFolders.size() - 1);
+        return new ResourceDescription(type, parentFolderName, parentFolders.subList(0, parentFolders.size() - 1), originalPath, bucketName, bucketLocation, true);
     }
 
     public boolean isRootFolder() {
         return isFolder && name == null;
+    }
+
+    public String getParentPath() {
+        return parentFolders.isEmpty() ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
     }
 
     /**
@@ -129,6 +141,24 @@ public class ResourceDescription {
 
         String relativePath = absolutePath.substring(prefix.length());
         return fromDecoded(description.getType(), description.getBucketName(), description.getBucketLocation(), relativePath);
+    }
+
+    public static ResourceDescription fromLink(String link, EncryptionService encryptionService) {
+        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Invalid resource link provided " + link);
+        }
+
+        ResourceType resourceType = ResourceType.of(parts[0]);
+        String bucket = parts[1];
+        String location = encryptionService.decrypt(bucket);
+        if (location == null) {
+            throw new IllegalArgumentException("Unknown bucket " + bucket);
+        }
+
+        String resourcePath = link.substring(bucket.length() + parts[0].length() + 2);
+        return fromEncoded(resourceType, bucket, location, resourcePath);
     }
 
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,

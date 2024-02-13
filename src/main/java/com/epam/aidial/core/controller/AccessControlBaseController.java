@@ -21,37 +21,64 @@ public abstract class AccessControlBaseController {
 
     /**
      * @param bucket url encoded bucket name
-     * @param path url encoded resource path
+     * @param path   url encoded resource path
      */
     public Future<?> handle(String resourceType, String bucket, String path) {
         ResourceType type = ResourceType.of(resourceType);
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
-        boolean hasReadAccess = isSharedWithMe(type, bucket, path);
-        boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
-        boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
-
-        if (!hasAccess) {
-            return context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the bucket " + bucket);
+        if (decryptedBucket == null) {
+            context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
+            return Future.succeededFuture();
         }
+
+        // we should take a real user bucket not provided from resource
+        String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String actualUserBucket = proxy.getEncryptionService().encrypt(actualUserLocation);
 
         ResourceDescription resource;
         try {
             resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
         } catch (Exception ex) {
             String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);
-            return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
+            context.respond(HttpStatus.BAD_REQUEST, errorMessage);
+            return Future.succeededFuture();
         }
 
-        handle(resource);
-        return Future.succeededFuture();
+        return proxy.getVertx()
+                .executeBlocking(() -> {
+                    boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
+                    if (hasWriteAccess) {
+                        return true;
+                    }
+
+                    if (!checkFullAccess) {
+                        // some per-request API-keys may have access to the resources implicitly
+                        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
+                        if (isAutoShared) {
+                            return true;
+                        }
+
+                        return isSharedResource(resource, actualUserBucket, actualUserLocation);
+                    }
+
+                    return false;
+                })
+                .map(hasAccess  -> {
+                    if (hasAccess) {
+                        handle(resource);
+                    } else {
+                        context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
+                    }
+                    return null;
+                });
     }
 
     protected abstract Future<?> handle(ResourceDescription resource);
 
-    protected boolean isSharedWithMe(ResourceType type, String bucket, String filePath) {
-        String url = type.getGroup() + BlobStorageUtil.PATH_SEPARATOR + bucket + BlobStorageUtil.PATH_SEPARATOR + filePath;
-        return context.getApiKeyData().getAttachedFiles().contains(url);
+    protected boolean isSharedResource(ResourceDescription resource, String userBucket, String userLocation) {
+        // resource was shared explicitly by share API
+        return (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
     }
 
     protected boolean hasWriteAccess(String filePath, String decryptedBucket) {

@@ -62,6 +62,7 @@ public class ModelController {
         data.setId(model.getName());
         data.setModel(model.getName());
         data.setDisplayName(model.getDisplayName());
+        data.setDisplayVersion(model.getDisplayVersion());
         data.setIconUrl(model.getIconUrl());
         data.setDescription(model.getDescription());
         data.setFeatures(DeploymentController.createFeatures(model.getFeatures()));
