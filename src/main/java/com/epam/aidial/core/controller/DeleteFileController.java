@@ -2,17 +2,26 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.ResourceLink;
+import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashSet;
+import java.util.Set;
+
 @Slf4j
 public class DeleteFileController extends AccessControlBaseController {
 
+    private final ShareService shareService;
+
     public DeleteFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
+        this.shareService = proxy.getShareService();
     }
 
     @Override
@@ -27,6 +36,13 @@ public class DeleteFileController extends AccessControlBaseController {
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             try {
                 storage.delete(absoluteFilePath);
+                // clean shared access
+                // TODO remove check when redis become mandatory
+                if (shareService != null) {
+                    Set<ResourceLink> resourceLinks = new HashSet<>();
+                    resourceLinks.add(new ResourceLink(resource.getUrl()));
+                    shareService.revokeSharedAccess(resource.getBucketName(), resource.getBucketLocation(), new ResourceLinkCollection(resourceLinks));
+                }
                 return null;
             } catch (Exception ex) {
                 log.error("Failed to delete file  %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()), ex);

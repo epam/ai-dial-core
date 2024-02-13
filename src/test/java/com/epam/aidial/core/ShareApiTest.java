@@ -403,6 +403,71 @@ public class ShareApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testCleanUpShareAccessWhenOnResourceDeletion() {
+        // create conversation
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // verify user2 do not have access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        verify(response, 200, "12345");
+
+        // delete resource
+        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", null);
+        verify(response, 200);
+
+        // create resource with same name
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "987654");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
+        // verify user2 has no access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+    }
+
+    @Test
+    public void testResourceDeletionWithoutSharingState() {
+        // create conversation
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
+        // delete resource
+        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", null);
+        verify(response, 200);
+
+        // create resource with same name
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "987654");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
+        // download resource
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null);
+        verify(response, 200, "987654");
+    }
+
+    @Test
     public void testShareRequestWithIncorrectBody() {
         Response response = operationRequest("/v1/ops/resource/share/create", """
                 {
