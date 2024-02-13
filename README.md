@@ -91,6 +91,20 @@ Dynamic settings include:
 * Access Permissions
 * Rate Limits
 
+| Parameter                       | Description  |
+| ------------------------------- | ------------ |
+| routes                          | Path(s) for specific upstream routing or to respond with a configured body. |
+| applications                    | A list of deployed AI DIAL Applications and their parameters:<br />`<application_name>`: Unique application name. |
+| applications.<application_name> | `endpoint`: AI DIAL Application API for chat completions.<br />`iconUrl`: Icon path for the AI DIAL Application on UI.<br />`description`: Brief AI DIAL Application description.<br />`displayName`: AI DIAL Application name on UI. |
+| models                          | A list of deployed models and their parameters:<br />`<model_name>`: Unique model name. |
+| models.<model_name>             | `type`: Model type—`chat` or `embedding`.<br />`iconUrl`: Icon path for the model on UI.<br />`description`: Brief model description.<br />`displayName`: Model name on UI.<br />`endpoint`: Model API for chat completions or embeddings.<br />`upstreams`: Used for load-balancing—request is sent to model endpoint containing X-UPSTREAM-ENDPOINT and X-UPSTREAM-KEY headers. |
+| models.<model_name>.upstreams   | `endpoint`: Model endpoint.<br />`key`: Your API key. |
+| keys                            | API Keys parameters:<br />`<core_key>`: Your API key. |
+| keys.<core_key>                 | `project`: Project name assigned to this key.<br />`role`: A configured role name that defines key permissions. |
+| roles                           | API key roles `<role_name>` with associated limits. Each API key has one role defined in the list of roles. Roles are associated with models, applications, assistants, and defined limits. |
+| roles.<role_name>               | `limits`: Limits for models, applications, or assistants. |
+| roles.<role_name>.limits        | `minute`: Total tokens per minute limit sent to the model, managed via floating window approach for well-distributed rate limiting.<br />`day`: Total tokens per day limit sent to the model, managed via floating window approach for balanced rate limiting. |
+
 ## License
 
 Copyright (C) 2023 EPAM Systems
