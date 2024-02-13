@@ -253,6 +253,11 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
+    @Nullable
+    public String getStoragePrefix() {
+        return blobStore.getPrefix();
+    }
+
     private Void sync() {
         log.debug("Syncing");
         try {

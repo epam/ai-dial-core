@@ -56,7 +56,8 @@ Static settings are used on startup and cannot be changed while application is r
 | storage.credential                         | -                  | Blob storage secret key                                                                                           
 | storage.bucket                             | -                  | Blob storage bucket  
 | storage.overrides.*                        | -                  | Key-value pairs to override storage settings
-| storage.createBucket                       | false              | Indicates whether bucket should be created on start-up                                                            
+| storage.createBucket                       | false              | Indicates whether bucket should be created on start-up     
+| storage.prefix                             | -                  | Base prefix for all stored resources. Must not contain path separators or any invalid chars
 | encryption.password                        | -                  | Password used for AES encryption                                                                                  
 | encryption.salt                            | -                  | Salt used for AES encryption                                                                                      
 | resources.maxSize                          | 1048576            | Max allowed size in bytes for a resource

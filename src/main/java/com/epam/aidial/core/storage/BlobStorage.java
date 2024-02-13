@@ -6,6 +6,7 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import io.vertx.core.buffer.Buffer;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
 import org.jclouds.blobstore.BlobStore;
@@ -41,6 +42,8 @@ public class BlobStorage implements Closeable {
     private final BlobStoreContext storeContext;
     private final BlobStore blobStore;
     private final String bucketName;
+    @Getter
+    private final String prefix;
 
     public BlobStorage(Storage config) {
         ContextBuilder builder = ContextBuilder.newBuilder(config.getProvider());
@@ -55,6 +58,7 @@ public class BlobStorage implements Closeable {
         this.storeContext = builder.buildView(BlobStoreContext.class);
         this.blobStore = storeContext.getBlobStore();
         this.bucketName = config.getBucket();
+        this.prefix = config.getPrefix();
         createBucketIfNeeded(config);
     }
 
@@ -220,7 +224,7 @@ public class BlobStorage implements Closeable {
 
     private static MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
         String bucketName = resource.getBucketName();
-        ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
+        ResourceDescription resultResource = getResourceDescription(resource.getStoragePrefix(), resource.getType(), bucketName,
                 resource.getBucketLocation(), metadata.getName());
 
         return switch (metadata.getType()) {
@@ -237,9 +241,15 @@ public class BlobStorage implements Closeable {
         };
     }
 
-    private static ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
-        String relativeFilePath = absoluteFilePath.substring(bucketLocation.length() + resourceType.getGroup().length() + 1);
-        return ResourceDescription.fromDecoded(resourceType, bucketName, bucketLocation, relativeFilePath);
+    private static ResourceDescription getResourceDescription(String storagePrefix, ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
+        String relativeFilePath = absoluteFilePath;
+        // remove storage prefix
+        if (storagePrefix != null) {
+            relativeFilePath = relativeFilePath.substring(storagePrefix.length() + 1);
+        }
+        // remove bucket location and resource group
+        relativeFilePath = relativeFilePath.substring(bucketLocation.length() + resourceType.getGroup().length() + 1);
+        return ResourceDescription.fromDecoded(storagePrefix, resourceType, bucketName, bucketLocation, relativeFilePath);
     }
 
     private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {
