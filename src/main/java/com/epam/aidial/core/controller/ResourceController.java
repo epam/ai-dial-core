@@ -2,7 +2,10 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.ResourceLink;
+import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
@@ -14,6 +17,8 @@ import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -21,6 +26,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private final Vertx vertx;
     private final ResourceService service;
+    private final ShareService shareService;
     private final boolean metadata;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
@@ -28,6 +34,7 @@ public class ResourceController extends AccessControlBaseController {
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
+        this.shareService = proxy.getShareService();
         this.metadata = metadata;
     }
 
@@ -148,7 +155,13 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> service.deleteResource(descriptor))
+        return vertx.executeBlocking(() -> {
+                    Set<ResourceLink> resourceLinks = new HashSet<>();
+                    resourceLinks.add(new ResourceLink(descriptor.getUrl()));
+                    shareService.revokeSharedAccess(descriptor.getBucketName(), descriptor.getBucketLocation(),
+                            new ResourceLinkCollection(resourceLinks));
+                    return service.deleteResource(descriptor);
+                })
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);
