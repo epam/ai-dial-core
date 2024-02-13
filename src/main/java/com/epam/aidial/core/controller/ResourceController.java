@@ -156,19 +156,11 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         return vertx.executeBlocking(() -> {
-                    boolean isDeleted = service.deleteResource(descriptor);
-                    if (isDeleted) {
-                        // clean shared access
-                        // TODO remove check when redis become mandatory
-                        if (shareService != null) {
-                            Set<ResourceLink> resourceLinks = new HashSet<>();
-                            resourceLinks.add(new ResourceLink(descriptor.getUrl()));
-                            shareService.revokeSharedAccess(descriptor.getBucketName(), descriptor.getBucketLocation(),
-                                    new ResourceLinkCollection(resourceLinks));
-                        }
-                    }
-
-                    return isDeleted;
+                    Set<ResourceLink> resourceLinks = new HashSet<>();
+                    resourceLinks.add(new ResourceLink(descriptor.getUrl()));
+                    shareService.revokeSharedAccess(descriptor.getBucketName(), descriptor.getBucketLocation(),
+                            new ResourceLinkCollection(resourceLinks));
+                    return service.deleteResource(descriptor);
                 })
                 .onSuccess(deleted -> {
                     if (deleted) {

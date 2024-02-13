@@ -35,7 +35,6 @@ public class DeleteFileController extends AccessControlBaseController {
         BlobStorage storage = proxy.getStorage();
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             try {
-                storage.delete(absoluteFilePath);
                 // clean shared access
                 // TODO remove check when redis become mandatory
                 if (shareService != null) {
@@ -43,6 +42,7 @@ public class DeleteFileController extends AccessControlBaseController {
                     resourceLinks.add(new ResourceLink(resource.getUrl()));
                     shareService.revokeSharedAccess(resource.getBucketName(), resource.getBucketLocation(), new ResourceLinkCollection(resourceLinks));
                 }
+                storage.delete(absoluteFilePath);
                 return null;
             } catch (Exception ex) {
                 log.error("Failed to delete file  %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()), ex);
