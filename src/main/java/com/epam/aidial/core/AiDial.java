@@ -68,6 +68,8 @@ public class AiDial {
 
     private BlobStorage storage;
     private ResourceService resourceService;
+    private InvitationService invitationService;
+    private ShareService shareService;
 
     @VisibleForTesting
     void start() throws Exception {
@@ -96,12 +98,13 @@ public class AiDial {
             redis = openRedis();
 
             if (redis != null) {
+                log.warn("Redis config is not found, some features may be unavailable");
                 LockService lockService = new LockService(redis);
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
+                invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
+                shareService = new ShareService(resourceService, invitationService, encryptionService);
             }
 
-            InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
