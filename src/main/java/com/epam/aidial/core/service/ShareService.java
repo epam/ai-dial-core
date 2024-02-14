@@ -273,12 +273,7 @@ public class ShareService {
         for (ResourceLink link : resourceLinks) {
             ResourceDescription resource = getResourceFromLink(link.url());
             ResourceType resourceType = resource.getType();
-            try {
-                removeSharedResource(bucket, location, link, resourceType);
-            } catch (Throwable e) {
-                e.printStackTrace();
-            }
-
+            removeSharedResource(bucket, location, link, resourceType);
 
             String ownerBucket = link.getBucket();
             String ownerLocation = encryptionService.decrypt(ownerBucket);
