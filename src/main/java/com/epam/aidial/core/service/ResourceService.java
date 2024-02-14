@@ -227,10 +227,13 @@ public class ResourceService implements AutoCloseable {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
-            String body = getResource(descriptor, false);
-            String updatedBody = fn.apply(body);
-            if (updatedBody != null) {
-                putResource(descriptor, updatedBody, true, false);
+            String oldBody = getResource(descriptor, false);
+            String newBody = fn.apply(oldBody);
+            if (newBody != null) {
+                // update resource only if body changed
+                if (!newBody.equals(oldBody)) {
+                    putResource(descriptor, newBody, true, false);
+                }
             }
         }
     }
