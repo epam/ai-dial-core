@@ -118,7 +118,7 @@ public class AiDial {
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
             stop();
-            System.exit(-1);
+            throw e;
         }
     }
 
@@ -240,7 +240,11 @@ public class AiDial {
 
     public static void main(String[] args) throws Exception {
         AiDial dial = new AiDial();
-        dial.start();
+        try {
+            dial.start();
+        } finally {
+            System.exit(-1);
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
     }
 
