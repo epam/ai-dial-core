@@ -229,7 +229,9 @@ public class ResourceService implements AutoCloseable {
         try (var ignore = lockService.lock(redisKey)) {
             String body = getResource(descriptor, false);
             String updatedBody = fn.apply(body);
-            putResource(descriptor, updatedBody, true, false);
+            if (updatedBody != null) {
+                putResource(descriptor, updatedBody, true, false);
+            }
         }
     }
 

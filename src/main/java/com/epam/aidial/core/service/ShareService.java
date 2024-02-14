@@ -242,6 +242,11 @@ public class ShareService {
             if (dto != null) {
                 Set<String> userLocations = dto.getResourceToUsers().get(link.url());
 
+                // if userLocations is NULL - this means that provided resource wasn't shared
+                if (userLocations == null) {
+                    continue;
+                }
+
                 for (String userLocation : userLocations) {
                     String userBucket = encryptionService.encrypt(userLocation);
                     removeSharedResource(userBucket, userLocation, link, resourceType);
@@ -268,7 +273,12 @@ public class ShareService {
         for (ResourceLink link : resourceLinks) {
             ResourceDescription resource = getResourceFromLink(link.url());
             ResourceType resourceType = resource.getType();
-            removeSharedResource(bucket, location, link, resourceType);
+            try {
+                removeSharedResource(bucket, location, link, resourceType);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+
 
             String ownerBucket = link.getBucket();
             String ownerLocation = encryptionService.decrypt(ownerBucket);
@@ -277,7 +287,11 @@ public class ShareService {
             resourceService.computeResource(sharedWithMe, ownerState -> {
                 SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(ownerState, SharedByMeDto.class);
                 if (sharedByMeDto != null) {
-                    sharedByMeDto.getResourceToUsers().get(link.url()).remove(location);
+                    Set<String> userLocations = sharedByMeDto.getResourceToUsers().get(link.url());
+                    // if userLocations is NULL - this means that provided resource wasn't shared
+                    if (userLocations != null) {
+                        userLocations.remove(location);
+                    }
                 }
 
                 return ProxyUtil.convertToString(sharedByMeDto);
