@@ -242,7 +242,7 @@ public class AiDial {
         AiDial dial = new AiDial();
         try {
             dial.start();
-        } finally {
+        } catch (Throwable e) {
             System.exit(-1);
         }
         Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
