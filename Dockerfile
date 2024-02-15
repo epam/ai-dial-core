@@ -44,7 +44,5 @@ EXPOSE 8080 9464
 
 RUN mkdir -p /app/log
 RUN chown -R appuser:appuser /app/log
-VOLUME /app/log
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["/app/bin/aidial-core"]

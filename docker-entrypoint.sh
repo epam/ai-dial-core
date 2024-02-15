@@ -1,11 +1,17 @@
 #!/bin/sh
-set -Eeo pipefail
+set -Ee
 
-user=$(id -u)
+# If no args passed to `docker run` or first argument start with `--`, then the user is passing arguments to the core
+if [ $# -lt 1 ] || echo "$1" | grep -qE '^--'; then
+  user=$(id -u)
 
-if [ "$1" = '/app/bin/aidial-core' ] && [ "$user" = '0' ]; then
-  find . \! -user appuser -exec chown appuser '{}' +
-  exec su-exec appuser "$@"
+  if [ "$user" = '0' ]; then
+    find . ! -user appuser -exec chown appuser '{}' +
+    exec su-exec appuser "/app/bin/aidial-core" "$@"
+  else
+    exec "/app/bin/aidial-core" "$@"
+  fi
 else
+  # Otherwise, we assume the user wants to run his own process, for example a `bash` shell to explore this image
   exec "$@"
 fi
