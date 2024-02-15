@@ -50,10 +50,10 @@ Static settings are used on startup and cannot be changed while application is r
 | vertx.*                                    | -                  | Vertx settings.                                                                                                   
 | server.*                                   | -                  | Vertx HTTP server settings for incoming requests.                                                                 
 | client.*                                   | -                  | Vertx HTTP client settings for outbound requests.                                                                 
-| storage.provider                           | -                  | Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage                 
+| storage.provider                           | -                  | Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem                 
 | storage.endpoint                           | -                  | Optional. Specifies endpoint url for s3 compatible storages                                                       
-| storage.identity                           | -                  | Blob storage access key                                                                                           
-| storage.credential                         | -                  | Blob storage secret key                                                                                           
+| storage.identity                           | -                  | Blob storage access key. Can be optional for filesystem and aws-s3 providers                                                                                           
+| storage.credential                         | -                  | Blob storage secret key. Can be optional for filesystem and aws-s3 providers                                                                                           
 | storage.bucket                             | -                  | Blob storage bucket  
 | storage.overrides.*                        | -                  | Key-value pairs to override storage settings
 | storage.createBucket                       | false              | Indicates whether bucket should be created on start-up                                                            
