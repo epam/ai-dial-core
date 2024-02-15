@@ -43,7 +43,7 @@ HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
 EXPOSE 8080 9464
 
 ENV LOG_DIR /app/log
-RUN mkdir -p $LOG_DIR
-RUN chown -R appuser:appuser $LOG_DIR
+RUN mkdir -p "$LOG_DIR"
+RUN chown -R appuser:appuser "$LOG_DIR"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
