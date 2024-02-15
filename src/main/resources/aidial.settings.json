@@ -42,12 +42,10 @@
   },
   "storage": {
     "provider" : "filesystem",
-    "identity": "access-key",
-    "credential": "secret-key",
     "bucket": "dial",
     "createBucket": true,
     "overrides": {
-      "jclouds.filesystem.basedir": ".tmp/data"
+      "jclouds.filesystem.basedir": "data"
     }
   }
 }
