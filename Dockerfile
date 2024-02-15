@@ -16,6 +16,8 @@ FROM eclipse-temurin:17-jdk-alpine
 # fix CVE-2023-5363
 # TODO remove the fix once a new version is released
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
+# fix CVE-2023-52425
+RUN apk upgrade --no-cache libexpat
 
 ENV AIDIAL_SETTINGS=/app/config/aidial.settings.json
 ENV JAVA_OPTS="-Dgflog.config=/app/config/gflog.xml"

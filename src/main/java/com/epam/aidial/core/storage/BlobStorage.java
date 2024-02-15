@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.FileMetadataBase;
 import com.epam.aidial.core.data.FolderMetadata;
-import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
@@ -43,19 +42,17 @@ public class BlobStorage implements Closeable {
     private final String bucketName;
 
     public BlobStorage(Storage config) {
-        this(config, null);
-    }
-
-    @VisibleForTesting
-    public BlobStorage(Storage config, Properties overrides) {
-        ContextBuilder builder = ContextBuilder.newBuilder(config.getProvider());
+        String provider = config.getProvider();
+        ContextBuilder builder = ContextBuilder.newBuilder(provider);
         if (config.getEndpoint() != null) {
             builder.endpoint(config.getEndpoint());
         }
+        Properties overrides = config.getOverrides();
         if (overrides != null) {
             builder.overrides(overrides);
         }
-        builder.credentials(config.getIdentity(), config.getCredential());
+        CredentialProvider credentialProvider = getCredentialProvider(StorageProvider.from(provider), config.getIdentity(), config.getCredential());
+        builder.credentialsSupplier(credentialProvider::getCredentials);
         this.storeContext = builder.buildView(BlobStoreContext.class);
         this.blobStore = storeContext.getBlobStore();
         this.bucketName = config.getBucket();
@@ -205,6 +202,20 @@ public class BlobStorage implements Closeable {
                 .contentType(contentType)
                 .build();
         return BaseMutableContentMetadata.fromContentMetadata(contentMetadata);
+    }
+
+    private static CredentialProvider getCredentialProvider(StorageProvider provider, String identity, String credential) {
+        return switch (provider) {
+            case S3, AZURE_BLOB, GOOGLE_CLOUD_STORAGE -> new DefaultCredentialProvider(identity, credential);
+            case FILESYSTEM -> new DefaultCredentialProvider("identity", "credential");
+            case AWS_S3 -> {
+                if (identity != null && credential != null) {
+                    yield new DefaultCredentialProvider(identity, credential);
+                } else {
+                    yield new Ec2InstanceMetadataCredentialProvider();
+                }
+            }
+        };
     }
 
     private void createBucketIfNeeded(Storage config) {

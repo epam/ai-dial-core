@@ -2,6 +2,7 @@ package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -14,6 +15,7 @@ import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
 
 import java.util.Map;
+import javax.annotation.Nullable;
 
 @UtilityClass
 public class ProxyUtil {
@@ -103,6 +105,18 @@ public class ProxyUtil {
                     apiKeyData.getAttachedFiles().add(url.textValue());
                 }
             }
+        }
+    }
+
+    @Nullable
+    public static <T> T convertToObject(String payload, Class<T> clazz) {
+        if (payload == null) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(payload, clazz);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(e);
         }
     }
 }

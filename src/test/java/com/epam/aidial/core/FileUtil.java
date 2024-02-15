@@ -47,6 +47,7 @@ public class FileUtil {
         storageConfig.setProvider("filesystem");
         storageConfig.setIdentity("access-key");
         storageConfig.setCredential("secret-key");
-        return new BlobStorage(storageConfig, properties);
+        storageConfig.setOverrides(properties);
+        return new BlobStorage(storageConfig);
     }
 }

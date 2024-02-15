@@ -41,10 +41,11 @@
   "identityProviders": {
   },
   "storage": {
-    "provider" : "s3",
-    "endpoint" : "http://localhost:9000",
-    "identity": "access-key",
-    "credential": "secret-key",
-    "bucket": "dail"
+    "provider" : "filesystem",
+    "bucket": "dial",
+    "createBucket": true,
+    "overrides": {
+      "jclouds.filesystem.basedir": "data"
+    }
   }
 }
