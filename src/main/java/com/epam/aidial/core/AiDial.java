@@ -98,11 +98,12 @@ public class AiDial {
             redis = openRedis();
 
             if (redis != null) {
-                log.warn("Redis config is not found, some features may be unavailable");
                 LockService lockService = new LockService(redis);
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
                 invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
                 shareService = new ShareService(resourceService, invitationService, encryptionService);
+            } else {
+                log.warn("Redis config is not found, some features may be unavailable");
             }
 
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
