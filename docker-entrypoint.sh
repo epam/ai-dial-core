@@ -6,7 +6,7 @@ if [ $# -lt 1 ] || echo "$1" | grep -qE '^--'; then
   user=$(id -u)
 
   if [ "$user" = '0' ]; then
-    find . ! -user appuser -exec chown appuser '{}' +
+    find $LOG_DIR ! -user appuser -exec chown appuser '{}' +
     exec su-exec appuser "/app/bin/aidial-core" "$@"
   else
     exec "/app/bin/aidial-core" "$@"
