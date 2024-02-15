@@ -18,9 +18,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
+/**
+ * Implementation of EC2 Instance Metadata credentials provider by following
+ * see <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-metadata-v2-how-it-works.html">AWS spec</a>
+ */
 @Slf4j
 public class Ec2InstanceMetadataCredentialProvider implements CredentialProvider {
 
@@ -28,9 +30,9 @@ public class Ec2InstanceMetadataCredentialProvider implements CredentialProvider
     private static final String EC2_INSTANCE_METADATA_CREDENTIALS_URL = EC2_INSTANCE_METADATA_BASE_URL + "meta-data/iam/security-credentials/";
     private static final String EC2_TOKEN_TTL_HEADER_NAME = "X-aws-ec2-metadata-token-ttl-seconds";
     private static final String EC2_METADATA_TOKEN_HEADER_NAME = "X-aws-ec2-metadata-token";
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.of(10, ChronoUnit.SECONDS);
 
     private final HttpClient httpClient;
-    private final Lock lock = new ReentrantLock();
 
     private SessionCredentials credentials;
 
@@ -42,13 +44,11 @@ public class Ec2InstanceMetadataCredentialProvider implements CredentialProvider
         this(HttpClient.newHttpClient());
     }
 
-
     @Override
-    public SessionCredentials getCredentials() {
-        lock.lock();
+    public synchronized SessionCredentials getCredentials() {
         try {
             // if token present and not expired
-            if (credentials != null && credentials.getExpiration().isPresent() && credentials.getExpiration().get().after(Date.from(Instant.now()))) {
+            if (credentials != null && credentials.getExpiration().isPresent() && Date.from(Instant.now()).after(credentials.getExpiration().get())) {
                 return credentials;
             }
             String token = getToken();
@@ -64,8 +64,6 @@ public class Ec2InstanceMetadataCredentialProvider implements CredentialProvider
             return credentials;
         } catch (Exception e) {
             throw new RuntimeException(e);
-        }  finally {
-            lock.unlock();
         }
     }
 
@@ -73,7 +71,7 @@ public class Ec2InstanceMetadataCredentialProvider implements CredentialProvider
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(EC2_INSTANCE_METADATA_BASE_URL + "api/token"))
                 .setHeader(EC2_TOKEN_TTL_HEADER_NAME, "21600")
-                .timeout(Duration.of(10, ChronoUnit.SECONDS))
+                .timeout(DEFAULT_REQUEST_TIMEOUT)
                 .PUT(HttpRequest.BodyPublishers.noBody())
                 .build();
 
@@ -84,7 +82,7 @@ public class Ec2InstanceMetadataCredentialProvider implements CredentialProvider
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(EC2_INSTANCE_METADATA_CREDENTIALS_URL))
                 .setHeader(EC2_METADATA_TOKEN_HEADER_NAME, token)
-                .timeout(Duration.of(10, ChronoUnit.SECONDS))
+                .timeout(DEFAULT_REQUEST_TIMEOUT)
                 .GET()
                 .build();
 
@@ -95,7 +93,7 @@ public class Ec2InstanceMetadataCredentialProvider implements CredentialProvider
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(EC2_INSTANCE_METADATA_CREDENTIALS_URL + roleName))
                 .setHeader(EC2_METADATA_TOKEN_HEADER_NAME, token)
-                .timeout(Duration.of(10, ChronoUnit.SECONDS))
+                .timeout(DEFAULT_REQUEST_TIMEOUT)
                 .GET()
                 .build();
 

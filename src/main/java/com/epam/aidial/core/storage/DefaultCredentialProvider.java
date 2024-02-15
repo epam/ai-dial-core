@@ -6,16 +6,14 @@ import java.util.Objects;
 
 public class DefaultCredentialProvider implements CredentialProvider {
 
-    private final String identity;
-    private final String credential;
+    private final Credentials credentials;
 
     public DefaultCredentialProvider(String identity, String credential) {
-        this.identity = Objects.requireNonNull(identity);
-        this.credential = Objects.requireNonNull(credential);
+        this.credentials = new Credentials(Objects.requireNonNull(identity), Objects.requireNonNull(credential));
     }
 
     @Override
     public Credentials getCredentials() {
-        return new Credentials(identity, credential);
+        return credentials;
     }
 }
