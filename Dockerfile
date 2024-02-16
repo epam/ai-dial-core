@@ -46,4 +46,9 @@ ENV LOG_DIR /app/log
 RUN mkdir -p "$LOG_DIR"
 RUN chown -R appuser:appuser "$LOG_DIR"
 
+# Local storage dir configured in the default aidial.settings.json
+ENV STORAGE_DIR /app/.tmp/data
+RUN mkdir -p "$STORAGE_DIR"
+RUN chown -R appuser:appuser "$STORAGE_DIR"
+
 ENTRYPOINT ["docker-entrypoint.sh"]
