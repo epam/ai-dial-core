@@ -1,6 +1,7 @@
 package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.config.Limit;
+import com.epam.aidial.core.data.LimitStats;
 import com.epam.aidial.core.util.HttpStatus;
 import lombok.Data;
 
@@ -31,5 +32,12 @@ public class RateLimit {
         } else {
             return RateLimitResult.SUCCESS;
         }
+    }
+
+    public void update(long timestamp, LimitStats limitStats) {
+        long minuteTotal = minute.update(timestamp);
+        long dayTotal = day.update(timestamp);
+        limitStats.getDayTokenStats().setUsed(dayTotal);
+        limitStats.getMinuteTokenStats().setUsed(minuteTotal);
     }
 }
