@@ -59,6 +59,7 @@ public class ResourceBaseTest {
                         "provider": "filesystem",
                         "identity": "access-key",
                         "credential": "secret-key",
+                        "prefix": "test-2",
                         "overrides": {
                           "jclouds.filesystem.basedir": "%s"
                         }
