@@ -38,8 +38,7 @@ public abstract class AccessControlBaseController {
 
         ResourceDescription resource;
         try {
-            String storagePrefix = BlobStorageUtil.getStoragePrefix(proxy);
-            resource = ResourceDescription.fromEncoded(storagePrefix, type, urlDecodedBucket, decryptedBucket, path);
+            resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
         } catch (Exception ex) {
             String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);
             context.respond(HttpStatus.BAD_REQUEST, errorMessage);

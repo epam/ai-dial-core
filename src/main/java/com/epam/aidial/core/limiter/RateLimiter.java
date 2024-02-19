@@ -14,22 +14,17 @@ import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@RequiredArgsConstructor
 public class RateLimiter {
 
     private final Vertx vertx;
 
     private final ResourceService resourceService;
-    private final String storagePrefix;
-
-    public RateLimiter(Vertx vertx, ResourceService resourceService) {
-        this.vertx = vertx;
-        this.resourceService = resourceService;
-        this.storagePrefix = resourceService.getStoragePrefix();
-    }
 
     public Future<Void> increase(ProxyContext context) {
         try {
@@ -91,7 +86,7 @@ public class RateLimiter {
     private RateLimitResult checkLimit(String path, Limit limit, ProxyContext context) throws Exception {
         RateLimit rateLimit;
         String bucketLocation = BlobStorageUtil.buildUserBucket(context);
-        ResourceDescription resourceDescription = ResourceDescription.fromEncoded(storagePrefix, ResourceType.LIMIT, bucketLocation, bucketLocation, path);
+        ResourceDescription resourceDescription = ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
         String prevValue = resourceService.getResource(resourceDescription);
         if (prevValue == null) {
             return RateLimitResult.SUCCESS;
@@ -104,7 +99,7 @@ public class RateLimiter {
 
     private Void updateLimit(String path, ProxyContext context, long totalUsedTokens) {
         String bucketLocation = BlobStorageUtil.buildUserBucket(context);
-        ResourceDescription resourceDescription = ResourceDescription.fromEncoded(storagePrefix, ResourceType.LIMIT, bucketLocation, bucketLocation, path);
+        ResourceDescription resourceDescription = ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
         resourceService.computeResource(resourceDescription, json -> updateLimit(json, totalUsedTokens));
         return null;
     }

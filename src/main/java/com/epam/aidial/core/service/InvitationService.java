@@ -36,17 +36,15 @@ public class InvitationService {
     private final ResourceService resourceService;
     private final EncryptionService encryptionService;
     private final int expirationInSeconds;
-    private final String storagePrefix;
 
     public InvitationService(ResourceService resourceService, EncryptionService encryptionService, JsonObject settings) {
         this.resourceService = resourceService;
         this.encryptionService = encryptionService;
         this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
-        this.storagePrefix = resourceService.getStoragePrefix();
     }
 
     public Invitation createInvitation(String bucket, String location, Set<ResourceLink> resources) {
-        ResourceDescription resource = ResourceDescription.fromDecoded(storagePrefix, ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
         Instant expirationTime = Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS);
@@ -105,7 +103,7 @@ public class InvitationService {
     }
 
     public InvitationCollection getMyInvitations(String bucket, String location) {
-        ResourceDescription resource = ResourceDescription.fromDecoded(storagePrefix, ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String state = resourceService.getResource(resource);
         InvitationsMap invitationMap = ProxyUtil.convertToObject(state, InvitationsMap.class);
         if (invitationMap == null || invitationMap.getInvitations().isEmpty()) {
@@ -156,15 +154,10 @@ public class InvitationService {
         String location = parts[0] + BlobStorageUtil.PATH_SEPARATOR + parts[1] + BlobStorageUtil.PATH_SEPARATOR;
         String bucket = encryptionService.encrypt(location);
         ResourceType resourceType = ResourceType.of(parts[2]);
-        return ResourceDescription.fromDecoded(storagePrefix, resourceType, bucket, location, INVITATION_RESOURCE_FILENAME);
+        return ResourceDescription.fromDecoded(resourceType, bucket, location, INVITATION_RESOURCE_FILENAME);
     }
 
     private String generateInvitationId(ResourceDescription resource) {
-        String filePath = resource.getAbsoluteFilePath();
-        // substring storagePrefix if any
-        if (storagePrefix != null) {
-            filePath = filePath.substring(storagePrefix.length() + 1);
-        }
-        return encryptionService.encrypt(filePath + BlobStorageUtil.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
+        return encryptionService.encrypt(resource.getAbsoluteFilePath() + BlobStorageUtil.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
     }
 }

@@ -1,11 +1,9 @@
 package com.epam.aidial.core.storage;
 
-import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import io.vertx.core.http.impl.MimeMapping;
 import lombok.experimental.UtilityClass;
 
-import java.util.Objects;
 import javax.annotation.Nullable;
 
 @UtilityClass
@@ -58,10 +56,5 @@ public class BlobStorageUtil {
 
     public boolean isFolder(String path) {
         return path.endsWith(PATH_SEPARATOR);
-    }
-
-    @Nullable
-    public String getStoragePrefix(Proxy proxy) {
-        return Objects.requireNonNull(proxy.getStorage()).getPrefix();
     }
 }

@@ -19,6 +19,8 @@ import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.Tier;
 import org.jclouds.blobstore.domain.internal.BlobMetadataImpl;
+import org.jclouds.blobstore.domain.internal.MutableStorageMetadataImpl;
+import org.jclouds.blobstore.domain.internal.PageSetImpl;
 import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.io.ContentMetadata;
@@ -30,6 +32,9 @@ import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class BlobStorage implements Closeable {
@@ -42,7 +47,10 @@ public class BlobStorage implements Closeable {
     private final BlobStoreContext storeContext;
     private final BlobStore blobStore;
     private final String bucketName;
+
+    // defines a root folder for all resources in bucket
     @Getter
+    @Nullable
     private final String prefix;
 
     public BlobStorage(Storage config) {
@@ -70,7 +78,8 @@ public class BlobStorage implements Closeable {
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
     public MultipartUpload initMultipartUpload(String absoluteFilePath, String contentType) {
-        BlobMetadata metadata = buildBlobMetadata(absoluteFilePath, contentType, bucketName);
+        String storageLocation = getStorageLocation(absoluteFilePath);
+        BlobMetadata metadata = buildBlobMetadata(storageLocation, contentType, bucketName);
         return blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE);
     }
 
@@ -112,7 +121,8 @@ public class BlobStorage implements Closeable {
      * @param data             whole content data
      */
     public void store(String absoluteFilePath, String contentType, Buffer data) {
-        Blob blob = blobStore.blobBuilder(absoluteFilePath)
+        String storageLocation = getStorageLocation(absoluteFilePath);
+        Blob blob = blobStore.blobBuilder(storageLocation)
                 .payload(new BufferPayload(data))
                 .contentLength(data.length())
                 .contentType(contentType)
@@ -134,7 +144,8 @@ public class BlobStorage implements Closeable {
                       String contentEncoding,
                       Map<String, String> metadata,
                       byte[] data) {
-        Blob blob = blobStore.blobBuilder(absoluteFilePath)
+        String storageLocation = getStorageLocation(absoluteFilePath);
+        Blob blob = blobStore.blobBuilder(storageLocation)
                 .payload(data)
                 .contentLength(data.length)
                 .contentType(contentType)
@@ -152,15 +163,18 @@ public class BlobStorage implements Closeable {
      * @return Blob instance if file was found, null - otherwise
      */
     public Blob load(String filePath) {
-        return blobStore.getBlob(bucketName, filePath);
+        String storageLocation = getStorageLocation(filePath);
+        return blobStore.getBlob(bucketName, storageLocation);
     }
 
     public boolean exists(String filePath) {
-        return blobStore.blobExists(bucketName, filePath);
+        String storageLocation = getStorageLocation(filePath);
+        return blobStore.blobExists(bucketName, storageLocation);
     }
 
     public BlobMetadata meta(String filePath) {
-        return blobStore.blobMetadata(bucketName, filePath);
+        String storageLocation = getStorageLocation(filePath);
+        return blobStore.blobMetadata(bucketName, storageLocation);
     }
 
     /**
@@ -169,14 +183,16 @@ public class BlobStorage implements Closeable {
      * @param filePath absolute file path, for example: Users/user1/files/inputs/data.csv
      */
     public void delete(String filePath) {
-        blobStore.removeBlob(bucketName, filePath);
+        String storageLocation = getStorageLocation(filePath);
+        blobStore.removeBlob(bucketName, storageLocation);
     }
 
     /**
      * List all files/folder metadata for a given resource
      */
     public MetadataBase listMetadata(ResourceDescription resource) {
-        ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath());
+        String storageLocation = getStorageLocation(resource.getAbsoluteFilePath());
+        ListContainerOptions options = buildListContainerOptions(storageLocation);
         PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
         List<MetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
 
@@ -194,8 +210,9 @@ public class BlobStorage implements Closeable {
     }
 
     public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults, boolean recursive) {
+        String storageLocation = getStorageLocation(absoluteFilePath);
         ListContainerOptions options = new ListContainerOptions()
-                .prefix(absoluteFilePath)
+                .prefix(storageLocation)
                 .maxResults(maxResults);
 
         if (recursive) {
@@ -208,7 +225,28 @@ public class BlobStorage implements Closeable {
             options.afterMarker(afterMarker);
         }
 
-        return blobStore.list(bucketName, options);
+        PageSet<? extends StorageMetadata> originalSet = blobStore.list(bucketName, options);
+        if (prefix == null) {
+            return originalSet;
+        }
+        // if prefix defined - subtract it from blob key
+        String nextMarker = originalSet.getNextMarker();
+        Set<MutableStorageMetadataImpl> resultSet = originalSet.stream()
+                .map(MutableStorageMetadataImpl::new)
+                .map(metadata -> {
+                    metadata.setName(removePrefix(metadata.getName()));
+                    return metadata;
+                })
+                .collect(Collectors.toSet());
+
+        return new PageSetImpl<>(resultSet, nextMarker);
+    }
+
+    private String removePrefix(String path) {
+        if (prefix == null) {
+            return path;
+        }
+        return path.substring(prefix.length() + 1);
     }
 
     @Override
@@ -222,9 +260,9 @@ public class BlobStorage implements Closeable {
                 .delimiter(BlobStorageUtil.PATH_SEPARATOR);
     }
 
-    private static MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
+    private MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
         String bucketName = resource.getBucketName();
-        ResourceDescription resultResource = getResourceDescription(resource.getStoragePrefix(), resource.getType(), bucketName,
+        ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
                 resource.getBucketLocation(), metadata.getName());
 
         return switch (metadata.getType()) {
@@ -241,15 +279,13 @@ public class BlobStorage implements Closeable {
         };
     }
 
-    private static ResourceDescription getResourceDescription(String storagePrefix, ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
-        String relativeFilePath = absoluteFilePath;
-        // remove storage prefix
-        if (storagePrefix != null) {
-            relativeFilePath = relativeFilePath.substring(storagePrefix.length() + 1);
-        }
-        // remove bucket location and resource group
-        relativeFilePath = relativeFilePath.substring(bucketLocation.length() + resourceType.getGroup().length() + 1);
-        return ResourceDescription.fromDecoded(storagePrefix, resourceType, bucketName, bucketLocation, relativeFilePath);
+    private ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
+        // bucketLocation + resourceType + /
+        int bucketAndResourceCharsLength = bucketLocation.length() + resourceType.getGroup().length() + 1;
+        // bucketAndResourceCharsLength or bucketAndResourceCharsLength + prefix + /
+        int charsToSkip = prefix == null ? bucketAndResourceCharsLength : prefix.length() + 1 + bucketAndResourceCharsLength;
+        String relativeFilePath = absoluteFilePath.substring(charsToSkip);
+        return ResourceDescription.fromDecoded(resourceType, bucketName, bucketLocation, relativeFilePath);
     }
 
     private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {
@@ -268,5 +304,15 @@ public class BlobStorage implements Closeable {
         if (config.isCreateBucket() && !storeContext.getBlobStore().containerExists(bucketName)) {
             storeContext.getBlobStore().createContainerInLocation(null, bucketName);
         }
+    }
+
+    /**
+     * Adds a storage prefix if any.
+     *
+     * @param absoluteFilePath - absolute file path that contains a user bucket location, resource type and relative resource path
+     * @return a full storage path
+     */
+    private String getStorageLocation(String absoluteFilePath) {
+        return prefix == null ? absoluteFilePath : prefix + BlobStorageUtil.PATH_SEPARATOR + absoluteFilePath;
     }
 }

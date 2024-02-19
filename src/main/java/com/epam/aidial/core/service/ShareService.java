@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
+@AllArgsConstructor
 public class ShareService {
 
     private static final String SHARE_RESOURCE_FILENAME = "share";
@@ -35,14 +36,6 @@ public class ShareService {
     private final ResourceService resourceService;
     private final InvitationService invitationService;
     private final EncryptionService encryptionService;
-    private final String storagePrefix;
-
-    public ShareService(ResourceService resourceService, InvitationService invitationService, EncryptionService encryptionService) {
-        this.resourceService = resourceService;
-        this.invitationService = invitationService;
-        this.encryptionService = encryptionService;
-        this.storagePrefix = resourceService.getStoragePrefix();
-    }
 
     /**
      * Returns a list of resources shared with user.
@@ -147,7 +140,7 @@ public class ShareService {
 
         for (ResourceLink link : resourceLinks) {
             String url = link.url();
-            if (ResourceDescription.fromLink(storagePrefix, url, encryptionService).getBucketName().equals(bucket)) {
+            if (ResourceDescription.fromLink(url, encryptionService).getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("Resource %s already belong to you".formatted(url));
             }
         }
@@ -306,7 +299,7 @@ public class ShareService {
 
     private List<MetadataBase> linksToMetadata(Stream<String> links) {
         return links
-                .map(link -> ResourceDescription.fromLink(storagePrefix, link, encryptionService))
+                .map(link -> ResourceDescription.fromLink(link, encryptionService))
                 .map(resource -> {
                     if (resource.isFolder()) {
                         return new ResourceFolderMetadata(resource);
@@ -318,14 +311,14 @@ public class ShareService {
 
     private ResourceDescription getResourceFromLink(String url) {
         try {
-            return ResourceDescription.fromLink(storagePrefix, url, encryptionService);
+            return ResourceDescription.fromLink(url, encryptionService);
         } catch (Exception e) {
             throw new IllegalArgumentException("Incorrect resource link provided " + url);
         }
     }
 
     private ResourceDescription getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {
-        return ResourceDescription.fromDecoded(storagePrefix, shareResourceType, bucket, location,
+        return ResourceDescription.fromDecoded(shareResourceType, bucket, location,
                 requestedResourceType.getGroup() + BlobStorageUtil.PATH_SEPARATOR + SHARE_RESOURCE_FILENAME);
     }
 }
