@@ -371,9 +371,11 @@ public class ResourceService implements AutoCloseable {
         return descriptor.isFolder() ? path : (path + BLOB_EXTENSION);
     }
 
-    private static String blobKeyFromRedisKey(String redisKey) {
-        int i = redisKey.indexOf(":");
-        return redisKey.substring(i + 1) + BLOB_EXTENSION;
+    private String blobKeyFromRedisKey(String redisKey) {
+        // redis key may have prefix, we need to subtract it, because BlobStore manage prefix on its own
+        int delimiterIndex = redisKey.indexOf(":");
+        int prefixChars = prefix != null ? prefix.length() + 1 : 0;
+        return redisKey.substring(prefixChars + delimiterIndex + 1) + BLOB_EXTENSION;
     }
 
     private static String fromBlobKey(String blobKey) {
