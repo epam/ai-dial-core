@@ -99,7 +99,7 @@ public class AiDial {
 
             if (redis != null) {
                 LockService lockService = new LockService(redis);
-                resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
+                resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
                 invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
                 shareService = new ShareService(resourceService, invitationService, encryptionService);
             } else {
