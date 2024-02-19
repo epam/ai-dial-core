@@ -27,6 +27,10 @@ ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
 ENV OTEL_LOGS_EXPORTER="none"
 
+# Local storage dir configured in the default aidial.settings.json
+ENV STORAGE_DIR /app/data
+ENV LOG_DIR /app/log
+
 WORKDIR /app
 
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
@@ -42,13 +46,7 @@ HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
 
 EXPOSE 8080 9464
 
-ENV LOG_DIR /app/log
-RUN mkdir -p "$LOG_DIR"
-RUN chown -R appuser:appuser "$LOG_DIR"
-
-# Local storage dir configured in the default aidial.settings.json
-ENV STORAGE_DIR /app/data
-RUN mkdir -p "$STORAGE_DIR"
-RUN chown -R appuser:appuser "$STORAGE_DIR"
+RUN mkdir -p "$LOG_DIR" && chown -R appuser:appuser "$LOG_DIR"
+RUN mkdir -p "$STORAGE_DIR" && chown -R appuser:appuser "$STORAGE_DIR"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
