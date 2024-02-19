@@ -48,6 +48,7 @@ public class FileUtil {
         storageConfig.setIdentity("access-key");
         storageConfig.setCredential("secret-key");
         storageConfig.setOverrides(properties);
+        storageConfig.setPrefix("test");
         return new BlobStorage(storageConfig);
     }
 }
