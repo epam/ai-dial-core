@@ -103,6 +103,8 @@ public class AiDial {
                 resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
                 invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
                 shareService = new ShareService(resourceService, invitationService, encryptionService);
+            } else {
+                log.warn("Redis config is not found, some features may be unavailable");
             }
 
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
@@ -116,7 +118,7 @@ public class AiDial {
 
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {
-            log.warn("Proxy failed to start:", e);
+            log.error("Proxy failed to start:", e);
             stop();
             throw e;
         }
@@ -240,7 +242,11 @@ public class AiDial {
 
     public static void main(String[] args) throws Exception {
         AiDial dial = new AiDial();
-        dial.start();
+        try {
+            dial.start();
+        } catch (Throwable e) {
+            System.exit(-1);
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
     }
 
