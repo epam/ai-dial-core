@@ -2,6 +2,8 @@ package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -83,7 +85,7 @@ public class ProxyUtil {
         return defaultValue;
     }
 
-    public static void collectAttachedFiles(ObjectNode tree, ApiKeyData apiKeyData) {
+    public static void collectAttachedFiles(ObjectNode tree, ApiKeyData apiKeyData, EncryptionService encryptionService) {
         ArrayNode messages = (ArrayNode) tree.get("messages");
         if (messages == null) {
             return;
@@ -102,7 +104,14 @@ public class ProxyUtil {
                 JsonNode attachment = attachments.get(j);
                 JsonNode url = attachment.get("url");
                 if (url != null) {
-                    apiKeyData.getAttachedFiles().add(url.textValue());
+                    try {
+                        String urlValue = url.textValue();
+                        // build
+                        ResourceDescription resource = ResourceDescription.fromLink(urlValue, encryptionService);
+                        apiKeyData.getAttachedFiles().add(resource.getUrl());
+                    } catch (Exception e) {
+                        // ignore, probably a public link
+                    }
                 }
             }
         }
