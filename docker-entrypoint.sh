@@ -6,12 +6,24 @@ set -Ee
 if [ $# -lt 1 ]; then
 
   # If the container is run under the root user, update the ownership of directories
-  # that may be mounted as volumes to ensure 'appuser' has the necessary access rights.
+  # that may be mounted as volumes to ensure the specified user:group
+  # has the necessary access rights.
   if [ "$(id -u)" = '0' ]; then
-    find "$LOG_DIR" ! -user appuser -exec chown appuser '{}' +
-    find "$STORAGE_DIR" ! -user appuser -exec chown appuser '{}' +
 
-    exec su-exec appuser "/app/bin/aidial-core" "$@"
+    if [ -n "$PUID" ]; then
+      export UID="$PUID"
+    fi
+
+    if [ -n "$PGID" ]; then
+      export GID="$PGID"
+    fi
+
+    echo "Changing the ownership of /app, $LOG_DIR and $STORAGE_DIR to $UID:$GID"
+    find "/app" ! -user $UID -exec chown $UID:$GID '{}' +
+    find "$LOG_DIR" ! -user $UID -exec chown $UID:$GID '{}' +
+    find "$STORAGE_DIR" ! -user $UID -exec chown $UID:$GID '{}' +
+
+    exec su-exec $UID:$GID "/app/bin/aidial-core" "$@"
   fi
 
   exec "/app/bin/aidial-core" "$@"

@@ -31,24 +31,28 @@ ENV OTEL_LOGS_EXPORTER="none"
 ENV STORAGE_DIR /app/data
 ENV LOG_DIR /app/log
 
+ENV UID 1001
+ENV GID 1001
+
 WORKDIR /app
 
-RUN adduser -u 1001 --disabled-password --gecos "" appuser
+RUN addgroup --gid "$GID" appgroup && \
+    adduser --uid "$UID" --ingroup appgroup --disabled-password --gecos "" appuser
 
-COPY --from=builder --chown=appuser:appuser /build/ .
-RUN chown -R appuser:appuser /app
+COPY --from=builder --chown=appuser:appgroup /build/ .
+RUN chown -R appuser:appgroup /app
 
-COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
+COPY --chown=appuser:appgroup docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+RUN mkdir -p "$LOG_DIR" && \
+    chown -R appuser:appgroup "$LOG_DIR" && \
+    mkdir -p "$STORAGE_DIR" && \
+    chown -R appuser:appgroup "$STORAGE_DIR"
 
 HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
   CMD wget --no-verbose --spider --tries=1 http://localhost:8080/health || exit 1
 
 EXPOSE 8080 9464
-
-RUN mkdir -p "$LOG_DIR" && \
-    chown -R appuser:appuser "$LOG_DIR" && \
-    mkdir -p "$STORAGE_DIR" && \
-    chown -R appuser:appuser "$STORAGE_DIR"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
