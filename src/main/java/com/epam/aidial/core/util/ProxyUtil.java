@@ -15,11 +15,13 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 import javax.annotation.Nullable;
 
 @UtilityClass
+@Slf4j
 public class ProxyUtil {
 
     public static final JsonMapper MAPPER = JsonMapper.builder()
@@ -106,10 +108,10 @@ public class ProxyUtil {
                 if (url != null) {
                     try {
                         String urlValue = url.textValue();
-                        // build
                         ResourceDescription resource = ResourceDescription.fromLink(urlValue, encryptionService);
                         apiKeyData.getAttachedFiles().add(resource.getUrl());
                     } catch (Exception e) {
+                        log.warn("Failed to share attachment {}. Probably not a dial resource", url);
                         // ignore, probably a public link
                     }
                 }
