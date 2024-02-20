@@ -83,7 +83,8 @@ public class ResourceDescription {
         }
 
         String parentFolderName = parentFolders.get(parentFolders.size() - 1);
-        return new ResourceDescription(type, parentFolderName, parentFolders.subList(0, parentFolders.size() - 1), originalPath, bucketName, bucketLocation, true);
+        return new ResourceDescription(type, parentFolderName,
+                parentFolders.subList(0, parentFolders.size() - 1), originalPath, bucketName, bucketLocation, true);
     }
 
     public boolean isRootFolder() {

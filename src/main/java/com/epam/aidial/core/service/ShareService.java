@@ -27,8 +27,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@AllArgsConstructor
 @Slf4j
+@AllArgsConstructor
 public class ShareService {
 
     private static final String SHARE_RESOURCE_FILENAME = "share";
@@ -326,7 +326,7 @@ public class ShareService {
         }
     }
 
-    private static ResourceDescription getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {
+    private ResourceDescription getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {
         return ResourceDescription.fromDecoded(shareResourceType, bucket, location,
                 requestedResourceType.getGroup() + BlobStorageUtil.PATH_SEPARATOR + SHARE_RESOURCE_FILENAME);
     }

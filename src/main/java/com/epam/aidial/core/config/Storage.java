@@ -27,7 +27,7 @@ public class Storage {
     @Nullable
     String credential;
     /**
-     * container name/root bucket
+     * Container name/root bucket
      */
     String bucket;
 
@@ -41,4 +41,10 @@ public class Storage {
      */
     @Nullable
     Properties overrides;
+
+    /**
+     * Optional. Name of the root folder in a bucket, base folder for all resource. Must not contain path separators or any illegal chars
+     */
+    @Nullable
+    String prefix;
 }
