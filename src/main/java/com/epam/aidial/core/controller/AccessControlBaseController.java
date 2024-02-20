@@ -28,7 +28,7 @@ public abstract class AccessControlBaseController {
         String urlDecodedBucket = UrlUtil.decodePath(bucket);
         String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
         boolean hasReadAccess = isSharedWithMe(bucket, filePath);
-        boolean hasWriteAccess = hasWriteAccess(filePath, decryptedBucket);
+        boolean hasWriteAccess = proxy.getAccessService().hasWriteAccess(bucket, filePath, context);
         boolean hasAccess = checkFullAccess ? hasWriteAccess : hasReadAccess || hasWriteAccess;
 
         if (!hasAccess) {
