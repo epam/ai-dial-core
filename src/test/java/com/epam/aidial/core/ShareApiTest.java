@@ -38,8 +38,8 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create conversation
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201", "12345");
-        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201\"");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", "12345");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
 
         // initialize share request
         response = operationRequest("/v1/ops/resource/share/create", """
@@ -47,7 +47,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "invitationType": "link",
                   "resources": [
                     {
-                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201"
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
                     }
                   ]
                 }
@@ -58,10 +58,10 @@ public class ShareApiTest extends ResourceBaseTest {
 
         // verify invitation details
         response = send(HttpMethod.GET, invitationLink.invitationLink(), null, null);
-        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201\"");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
 
         // verify user2 do not have access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
         verify(response, 403);
 
         // accept invitation
@@ -69,7 +69,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // verify user2 has access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
         verify(response, 200, "12345");
 
         // verify user1 has no shared_with_me resources
@@ -95,10 +95,10 @@ public class ShareApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "resources" : [ {
-                    "name" : "conversation 1",
+                    "name" : "conversation 1@",
                     "parentPath" : "folder",
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION"
                     } ]
@@ -115,10 +115,10 @@ public class ShareApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "resources" : [ {
-                    "name" : "conversation 1",
+                    "name" : "conversation 1@",
                     "parentPath" : "folder",
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION"
                     } ]
@@ -168,8 +168,8 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create conversation
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
-        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", "12345");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
 
         // initialize share request
         response = operationRequest("/v1/ops/resource/share/create", """
@@ -177,7 +177,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "invitationType": "link",
                   "resources": [
                     {
-                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@"
                     }
                   ]
                 }
@@ -187,7 +187,7 @@ public class ShareApiTest extends ResourceBaseTest {
         assertNotNull(invitationLink);
 
         // verify user2 do not have access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
         verify(response, 403);
 
         // accept invitation
@@ -195,7 +195,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // verify user2 has access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
         verify(response, 200, "12345");
 
         // revoke share access
@@ -203,7 +203,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 {
                   "resources": [
                     {
-                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%40"
                     }
                   ]
                 }
@@ -211,7 +211,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // verify user2 do not have access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
         verify(response, 403);
 
         // verify user1 has no shared_with_me resources
@@ -357,8 +357,8 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create conversation
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
-        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", "12345");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
 
         // initialize share request
         response = operationRequest("/v1/ops/resource/share/create", """
@@ -366,7 +366,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "invitationType": "link",
                   "resources": [
                     {
-                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%40"
                     }
                   ]
                 }
@@ -376,7 +376,7 @@ public class ShareApiTest extends ResourceBaseTest {
         assertNotNull(invitationLink);
 
         // verify user2 do not have access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
         verify(response, 403);
 
         // accept invitation
@@ -384,7 +384,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // verify user2 has access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%40", null, "Api-key", "proxyKey2");
         verify(response, 200, "12345");
 
         // discard share access
@@ -392,7 +392,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 {
                   "resources": [
                     {
-                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%40"
                     }
                   ]
                 }
@@ -400,7 +400,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // verify user2 do not have access to the conversation
-        response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%40", null, "Api-key", "proxyKey2");
         verify(response, 403);
 
         // verify user1 has no shared_with_me resources
@@ -439,10 +439,10 @@ public class ShareApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "resources" : [ {
-                    "name" : "conversation",
+                    "name" : "conversation@",
                     "parentPath" : "folder",
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION"
                     } ]

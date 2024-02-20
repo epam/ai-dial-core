@@ -1,7 +1,10 @@
 package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.config.Encryption;
+import com.epam.aidial.core.security.EncryptionService;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -11,6 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ProxyUtilTest {
+
+    private static EncryptionService encryptionService;
+
+    @BeforeAll
+    public static void init() {
+        encryptionService = new EncryptionService(new Encryption("password", "salt"));
+    }
 
     @Test
     public void testCollectAttachedFiles_ChatRequest() throws IOException {
@@ -78,12 +88,12 @@ public class ProxyUtilTest {
                           {
                             "type": "application/octet-stream",
                             "title": "LICENSE",
-                            "url": "b1/LICENSE"
+                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE"
                           },
                           {
                             "type": "binary/octet-stream",
                             "title": "Dockerfile",
-                            "url": "b1/Dockerfile"
+                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile"
                           }
                         ]
                       }
@@ -94,9 +104,12 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, apiKeyData);
+        ProxyUtil.collectAttachedFiles(tree, apiKeyData, encryptionService);
 
-        assertEquals(Set.of("b1/Dockerfile", "b1/LICENSE"), apiKeyData.getAttachedFiles());
+        assertEquals(
+                Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE"),
+                apiKeyData.getAttachedFiles()
+        );
     }
 
     @Test
@@ -109,8 +122,46 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, apiKeyData);
+        ProxyUtil.collectAttachedFiles(tree, apiKeyData, encryptionService);
 
         assertTrue(apiKeyData.getAttachedFiles().isEmpty());
+    }
+
+    @Test
+    public void testAttachmentLinkNormalization() throws IOException {
+        String content = """
+                {
+                  "modelId": "model",
+                  "messages": [
+                    {
+                      "content": "Compare these files?",
+                      "role": "user",
+                      "custom_content": {
+                        "attachments": [
+                          {
+                            "type": "application/octet-stream",
+                            "title": "LICENSE",
+                            "url": "https://publicUrl/some-link"
+                          },
+                          {
+                            "type": "binary/octet-stream",
+                            "title": "Dockerfile",
+                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/model%40%201/attachment"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "id": "id"
+                }
+                """;
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
+        ApiKeyData apiKeyData = new ApiKeyData();
+        ProxyUtil.collectAttachedFiles(tree, apiKeyData, encryptionService);
+
+        assertEquals(
+                Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/model@%201/attachment"),
+                apiKeyData.getAttachedFiles()
+        );
     }
 }
