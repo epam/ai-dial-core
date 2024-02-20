@@ -106,10 +106,11 @@ public class ProxyUtil {
                 JsonNode attachment = attachments.get(j);
                 JsonNode url = attachment.get("url");
                 if (url != null) {
-                    if (checkAccessFn.apply(url.textValue())) {
-                        apiKeyData.getAttachedFiles().add(url.textValue());
+                    String urlValue = url.textValue();
+                    if (checkAccessFn.apply(urlValue)) {
+                        apiKeyData.getAttachedFiles().add(urlValue);
                     } else {
-                        throw new HttpException(FORBIDDEN, "Access denied to the file %s");
+                        throw new HttpException(FORBIDDEN, "Access denied to the file %s".formatted(urlValue));
                     }
                 }
             }

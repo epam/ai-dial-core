@@ -5,6 +5,8 @@ import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.util.UrlUtil;
 import lombok.AllArgsConstructor;
 
+import java.net.URI;
+
 @AllArgsConstructor
 public class AccessService {
 
@@ -28,12 +30,21 @@ public class AccessService {
         if (url == null) {
             return false;
         }
-        int index = url.indexOf(BlobStorageUtil.PATH_SEPARATOR);
-        if (index < 0) {
-            return false;
+        try {
+            URI uri = new URI(url);
+            if (uri.isAbsolute()) {
+                // assuming the url is public
+                return true;
+            }
+            int index = url.indexOf(BlobStorageUtil.PATH_SEPARATOR);
+            if (index < 0) {
+                return false;
+            }
+            String bucket = url.substring(0, index);
+            String path = url.substring(index + 1);
+            return hasWriteAccess(bucket, path, context);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-        String bucket = url.substring(0, index);
-        String path = url.substring(index + 1);
-        return hasWriteAccess(bucket, path, context);
     }
 }
