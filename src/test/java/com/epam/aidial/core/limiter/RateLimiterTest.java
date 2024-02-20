@@ -110,7 +110,7 @@ public class RateLimiterTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig));
+        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 
