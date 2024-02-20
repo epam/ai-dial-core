@@ -46,7 +46,9 @@ HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
 
 EXPOSE 8080 9464
 
-RUN mkdir -p "$LOG_DIR" && chown -R appuser:appuser "$LOG_DIR"
-RUN mkdir -p "$STORAGE_DIR" && chown -R appuser:appuser "$STORAGE_DIR"
+RUN mkdir -p "$LOG_DIR" && \
+    chown -R appuser:appuser "$LOG_DIR" && \
+    mkdir -p "$STORAGE_DIR" && \
+    chown -R appuser:appuser "$STORAGE_DIR"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
