@@ -7,6 +7,7 @@ import com.epam.aidial.core.controller.Controller;
 import com.epam.aidial.core.controller.ControllerSelector;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
@@ -65,6 +66,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final BlobStorage storage;
     private final EncryptionService encryptionService;
     private final ApiKeyStore apiKeyStore;
+    private final AccessService accessService;
 
     @Override
     public void handle(HttpServerRequest request) {

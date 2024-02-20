@@ -155,7 +155,12 @@ public class DeploymentPostController {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
             try {
-                ProxyUtil.collectAttachedFiles(tree, proxyApiKeyData);
+                ProxyUtil.collectAttachedFiles(tree, proxyApiKeyData, link -> proxy.getAccessService().hasWriteAccess(link, context));
+            } catch (HttpException e) {
+                respond(e.getStatus(), e.getMessage());
+                log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
+                        context.getTraceId(), context.getSpanId(), e.getMessage());
+                return;
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
