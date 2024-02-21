@@ -36,7 +36,7 @@ public class ProxyUtilTest {
                           {
                             "type": "application/octet-stream",
                             "title": "Dockerfile",
-                            "url": "b1/Dockerfile"
+                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile"
                           }
                         ]
                       }
@@ -78,12 +78,12 @@ public class ProxyUtilTest {
                           {
                             "type": "application/octet-stream",
                             "title": "LICENSE",
-                            "url": "b1/LICENSE"
+                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE"
                           },
                           {
                             "type": "binary/octet-stream",
                             "title": "Dockerfile",
-                            "url": "b1/Dockerfile"
+                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile"
                           }
                         ]
                       }
@@ -94,9 +94,12 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, apiKeyData);
+        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
 
-        assertEquals(Set.of("b1/Dockerfile", "b1/LICENSE"), apiKeyData.getAttachedFiles());
+        assertEquals(
+                Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE"),
+                apiKeyData.getAttachedFiles()
+        );
     }
 
     @Test
@@ -109,8 +112,9 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, apiKeyData);
+        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
 
         assertTrue(apiKeyData.getAttachedFiles().isEmpty());
     }
+
 }
