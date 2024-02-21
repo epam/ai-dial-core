@@ -18,6 +18,7 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 @UtilityClass
@@ -87,7 +88,7 @@ public class ProxyUtil {
         return defaultValue;
     }
 
-    public static void collectAttachedFiles(ObjectNode tree, ApiKeyData apiKeyData, EncryptionService encryptionService) {
+    public static void collectAttachedFiles(ObjectNode tree, Consumer<String> consumer) {
         ArrayNode messages = (ArrayNode) tree.get("messages");
         if (messages == null) {
             return;
@@ -106,14 +107,7 @@ public class ProxyUtil {
                 JsonNode attachment = attachments.get(j);
                 JsonNode url = attachment.get("url");
                 if (url != null) {
-                    try {
-                        String urlValue = url.textValue();
-                        ResourceDescription resource = ResourceDescription.fromLink(urlValue, encryptionService);
-                        apiKeyData.getAttachedFiles().add(resource.getUrl());
-                    } catch (Exception e) {
-                        log.warn("Failed to share attachment {}. Probably not a dial resource", url);
-                        // ignore, probably a public link
-                    }
+                    consumer.accept(url.textValue());
                 }
             }
         }
