@@ -13,6 +13,8 @@ import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.limiter.RateLimitResult;
+import com.epam.aidial.core.security.AccessService;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
 import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
@@ -45,6 +47,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -196,7 +199,12 @@ public class DeploymentPostController {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
             try {
-                ProxyUtil.collectAttachedFiles(tree, context.getProxyApiKeyData());
+                ProxyUtil.collectAttachedFiles(tree, link -> processAttachedFile(link, context.getProxyApiKeyData()));
+            } catch (HttpException e) {
+                respond(e.getStatus(), e.getMessage());
+                log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
+                        context.getTraceId(), context.getSpanId(), e.getMessage());
+                return;
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
@@ -239,6 +247,32 @@ public class DeploymentPostController {
         }
 
         sendRequest();
+    }
+
+    private void processAttachedFile(String url, ApiKeyData apiKeyData) {
+        ResourceDescription resource = getResourceDescription(url);
+        if (resource == null) {
+            return;
+        }
+        AccessService accessService = proxy.getAccessService();
+        if (accessService.hasWriteAccess(resource, context) || accessService.isSharedResource(resource, context)) {
+            apiKeyData.getAttachedFiles().add(resource.getUrl());
+        } else {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
+        }
+    }
+
+    @SneakyThrows
+    private ResourceDescription getResourceDescription(String url) {
+        if (url == null) {
+            return null;
+        }
+        URI uri = new URI(url);
+        if (uri.isAbsolute()) {
+            // skip public resource
+            return null;
+        }
+        return ResourceDescription.fromLink(url, proxy.getEncryptionService());
     }
 
     /**
