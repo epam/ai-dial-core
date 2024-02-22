@@ -48,6 +48,9 @@ dependencies {
     implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
     implementation 'org.apache.jclouds.api:filesystem:2.5.0'
     implementation 'org.redisson:redisson:3.25.1'
+    implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
+    implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
+
     runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.5'
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
