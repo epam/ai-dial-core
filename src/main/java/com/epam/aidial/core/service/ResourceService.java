@@ -40,6 +40,8 @@ public class ResourceService implements AutoCloseable {
     private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists");
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists");
 
+    private static final Result BLOB_NOT_FOUND = new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false);
+
     private final Vertx vertx;
     private final RedissonClient redis;
     private final BlobStorage blobStore;
@@ -190,7 +192,9 @@ public class ResourceService implements AutoCloseable {
                 if (result == null) {
                     String blobKey = blobKey(descriptor);
                     result = blobGet(blobKey, true);
-                    redisPut(redisKey, result);
+                    if (result.exists) {
+                        redisPut(redisKey, result);
+                    }
                 }
             }
         }
@@ -327,13 +331,13 @@ public class ResourceService implements AutoCloseable {
         }
 
         if (meta == null) {
-            return new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false);
+            return BLOB_NOT_FOUND;
         }
 
         long createdAt = Long.parseLong(meta.getUserMetadata().get("created_at"));
         long updatedAt = Long.parseLong(meta.getUserMetadata().get("updated_at"));
 
-        String body = "";
+        String body = null;
 
         if (blob != null) {
             String encoding = meta.getContentMetadata().getContentEncoding();
