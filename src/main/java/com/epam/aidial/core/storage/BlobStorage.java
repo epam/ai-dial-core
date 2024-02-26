@@ -306,13 +306,7 @@ public class BlobStorage implements Closeable {
         return switch (provider) {
             case S3, AZURE_BLOB, GOOGLE_CLOUD_STORAGE -> new DefaultCredentialProvider(identity, credential);
             case FILESYSTEM -> new DefaultCredentialProvider("identity", "credential");
-            case AWS_S3 -> {
-                if (identity != null && credential != null) {
-                    yield new DefaultCredentialProvider(identity, credential);
-                } else {
-                    yield new Ec2InstanceMetadataCredentialProvider();
-                }
-            }
+            case AWS_S3 -> new AwsCredentialProvider(identity, credential);
         };
     }
 
