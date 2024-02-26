@@ -192,9 +192,7 @@ public class ResourceService implements AutoCloseable {
                 if (result == null) {
                     String blobKey = blobKey(descriptor);
                     result = blobGet(blobKey, true);
-                    if (result.exists) {
-                        redisPut(redisKey, result);
-                    }
+                    redisPut(redisKey, result);
                 }
             }
         }
@@ -337,7 +335,7 @@ public class ResourceService implements AutoCloseable {
         long createdAt = Long.parseLong(meta.getUserMetadata().get("created_at"));
         long updatedAt = Long.parseLong(meta.getUserMetadata().get("updated_at"));
 
-        String body = null;
+        String body = "";
 
         if (blob != null) {
             String encoding = meta.getContentMetadata().getContentEncoding();
