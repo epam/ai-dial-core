@@ -4,6 +4,8 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.service.InvitationService;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -18,10 +20,14 @@ import java.util.Set;
 public class DeleteFileController extends AccessControlBaseController {
 
     private final ShareService shareService;
+    private final InvitationService invitationService;
+    private final LockService lockService;
 
     public DeleteFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
         this.shareService = proxy.getShareService();
+        this.invitationService = proxy.getInvitationService();
+        this.lockService = proxy.getLockService();
     }
 
     @Override
@@ -35,15 +41,14 @@ public class DeleteFileController extends AccessControlBaseController {
         BlobStorage storage = proxy.getStorage();
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             try {
-                // clean shared access
-                // TODO remove check when redis become mandatory
-                if (shareService != null) {
-                    Set<ResourceLink> resourceLinks = new HashSet<>();
-                    resourceLinks.add(new ResourceLink(resource.getUrl()));
+                Set<ResourceLink> resourceLinks = new HashSet<>();
+                resourceLinks.add(new ResourceLink(resource.getUrl()));
+                return lockService.underUserLock(proxy, context, () -> {
+                    invitationService.cleanUpResourceLinks(resource.getBucketName(), resource.getBucketLocation(), resourceLinks);
                     shareService.revokeSharedAccess(resource.getBucketName(), resource.getBucketLocation(), new ResourceLinkCollection(resourceLinks));
-                }
-                storage.delete(absoluteFilePath);
-                return null;
+                    storage.delete(absoluteFilePath);
+                    return null;
+                });
             } catch (Exception ex) {
                 log.error("Failed to delete file  %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()), ex);
                 throw new RuntimeException(ex);

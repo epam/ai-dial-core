@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.vertx.core.http.HttpMethod;
@@ -32,6 +33,9 @@ public class ResourceBaseTest {
     Path testDir;
     CloseableHttpClient client;
     String bucket;
+
+    int serverPort;
+    ApiKeyStore apiKeyStore;
 
     @BeforeEach
     void init() throws Exception {
@@ -83,6 +87,8 @@ public class ResourceBaseTest {
             dial = new AiDial();
             dial.setSettings(settings);
             dial.start();
+            serverPort = dial.getServer().actualPort();
+            apiKeyStore = dial.getProxy().getApiKeyStore();
 
             Response response = send(HttpMethod.GET, "/v1/bucket", null, "");
             assertEquals(response.status, 200);
@@ -156,7 +162,7 @@ public class ResourceBaseTest {
 
     @SneakyThrows
     Response send(HttpMethod method, String path, String queryParams, String body, String... headers) {
-        String uri = "http://127.0.0.1:" + dial.getServer().actualPort() + path + (queryParams != null ? "?" + queryParams : "");
+        String uri = "http://127.0.0.1:" + serverPort + path + (queryParams != null ? "?" + queryParams : "");
         HttpUriRequest request;
 
         if (method == HttpMethod.GET) {

@@ -4,6 +4,8 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.service.InvitationService;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -27,6 +29,8 @@ public class ResourceController extends AccessControlBaseController {
     private final Vertx vertx;
     private final ResourceService service;
     private final ShareService shareService;
+    private final LockService lockService;
+    private final InvitationService invitationService;
     private final boolean metadata;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
@@ -35,6 +39,8 @@ public class ResourceController extends AccessControlBaseController {
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.shareService = proxy.getShareService();
+        this.lockService = proxy.getLockService();
+        this.invitationService = proxy.getInvitationService();
         this.metadata = metadata;
     }
 
@@ -158,9 +164,12 @@ public class ResourceController extends AccessControlBaseController {
         return vertx.executeBlocking(() -> {
                     Set<ResourceLink> resourceLinks = new HashSet<>();
                     resourceLinks.add(new ResourceLink(descriptor.getUrl()));
-                    shareService.revokeSharedAccess(descriptor.getBucketName(), descriptor.getBucketLocation(),
-                            new ResourceLinkCollection(resourceLinks));
-                    return service.deleteResource(descriptor);
+                    return lockService.underUserLock(proxy, context, () -> {
+                        invitationService.cleanUpResourceLinks(descriptor.getBucketName(), descriptor.getBucketLocation(), resourceLinks);
+                        shareService.revokeSharedAccess(descriptor.getBucketName(), descriptor.getBucketLocation(),
+                                new ResourceLinkCollection(resourceLinks));
+                        return service.deleteResource(descriptor);
+                    });
                 })
                 .onSuccess(deleted -> {
                     if (deleted) {

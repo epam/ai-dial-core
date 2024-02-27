@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -125,6 +126,30 @@ public class InvitationService {
         return new InvitationCollection(new HashSet<>(invitationMap.getInvitations().values()));
     }
 
+    public void cleanUpResourceLinks(String bucket, String location, Set<ResourceLink> resourcesToCleanUp) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        resourceService.computeResource(resource, state -> {
+            InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
+            if (invitations == null) {
+                invitations = new InvitationsMap(new HashMap<>());
+            }
+            Map<String, Invitation> invitationMap = invitations.getInvitations();
+            List<Invitation> invitationsToRemove = new ArrayList<>();
+            for (Invitation invitation : invitationMap.values()) {
+                Set<ResourceLink> invitationResourceLinks = invitation.getResources();
+                invitationResourceLinks.removeAll(resourcesToCleanUp);
+
+                if (invitationResourceLinks.isEmpty()) {
+                    invitationsToRemove.add(invitation);
+                }
+            }
+
+            invitationsToRemove.forEach(invitationToRemove -> invitationMap.remove(invitationToRemove.getId()));
+
+            return ProxyUtil.convertToString(invitations);
+        });
+    }
+
     private void cleanUpExpiredInvitations(ResourceDescription resource, Collection<String> idsToEvict) {
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
@@ -139,7 +164,7 @@ public class InvitationService {
     }
 
     @Nullable
-    private ResourceDescription getInvitationResource(String invitationId) {
+    public ResourceDescription getInvitationResource(String invitationId) {
         // decrypt invitation ID to obtain its location
         String decryptedInvitationPath = encryptionService.decrypt(invitationId);
         if (decryptedInvitationPath == null) {
