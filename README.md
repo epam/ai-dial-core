@@ -52,8 +52,8 @@ Static settings are used on startup and cannot be changed while application is r
 | client.*                                   | -                  | Vertx HTTP client settings for outbound requests.
 | storage.provider                           | -                  | Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem
 | storage.endpoint                           | -                  | Optional. Specifies endpoint url for s3 compatible storages
-| storage.identity                           | -                  | Blob storage access key. Can be optional for filesystem and aws-s3 providers
-| storage.credential                         | -                  | Blob storage secret key. Can be optional for filesystem and aws-s3 providers
+| storage.identity                           | -                  | Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
+| storage.credential                         | -                  | Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
 | storage.bucket                             | -                  | Blob storage bucket
 | storage.overrides.*                        | -                  | Key-value pairs to override storage settings
 | storage.createBucket                       | false              | Indicates whether bucket should be created on start-up
@@ -69,6 +69,21 @@ Static settings are used on startup and cannot be changed while application is r
 | redis.singleServerConfig.address           | -                  | Redis single server addresses, e.g. "redis://host:port"
 | redis.clusterServersConfig.nodeAddresses   | -                  | Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]
 | invitations.ttlInSeconds                   | 259200             | Invitation time to live in seconds
+
+### Google Cloud Storage
+
+There are two types of credentials providers supported:
+ - User credentials. You can create a service account and authenticate using its private key obtained from Developer console
+ - Temporary credentials. Application default credentials (ADC)
+
+#### User credentials
+
+You should set `storage.credential` to a path to private key JSON file. `storage.identity` may be empty.
+
+#### Temporary credentials
+
+You should follow [instructions](https://cloud.google.com/kubernetes-engine/docs/concepts/workload-identity) to setup your pod in GKE.
+`storage.credential` and `storage.identity` must be unset.
 
 ### Redis
 The Redis can be used as a cache with volatile-* eviction policies:
