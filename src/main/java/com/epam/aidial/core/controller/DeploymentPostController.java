@@ -254,9 +254,12 @@ public class DeploymentPostController {
         if (resource == null) {
             return;
         }
+        String resourceUrl = resource.getUrl();
         AccessService accessService = proxy.getAccessService();
-        if (accessService.hasWriteAccess(resource, context) || accessService.isSharedResource(resource, context)) {
-            apiKeyData.getAttachedFiles().add(resource.getUrl());
+        if (accessService.hasWriteAccess(resource, context)
+                || accessService.isSharedResource(resource, context)
+                || apiKeyData.getAttachedFiles().contains(resourceUrl)) {
+            apiKeyData.getAttachedFiles().add(resourceUrl);
         } else {
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
         }
