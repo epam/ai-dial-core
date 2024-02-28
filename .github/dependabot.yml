@@ -11,3 +11,12 @@ updates:
     commit-message:
       # Prefix all commit messages with "chore: "
       prefix: "chore"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    commit-message:
+      # Prefix all commit messages with "chore: "
+      prefix: "chore"
