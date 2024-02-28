@@ -23,11 +23,21 @@ public class GcpCredentialProvider implements CredentialProvider {
 
     private GoogleCredentials googleCredentials;
 
+    /**
+     *
+     * @param identity client email address
+     * @param credential could be private key or path to JSON file where the private resides
+     */
     @SneakyThrows
-    public GcpCredentialProvider(String pathToPrivateKey) {
-        if (pathToPrivateKey != null) {
-            this.credentials = getCredentialsFromJsonKeyFile(pathToPrivateKey);
+    public GcpCredentialProvider(String identity, String credential) {
+        if (identity != null && credential != null) {
+            // credential is a client email address
+            this.credentials = new Credentials(identity, credential);
+        } else if (credential != null) {
+            // credential is a path to private key JSON file
+            this.credentials = getCredentialsFromJsonKeyFile(credential);
         } else {
+            // use temporary credential provided by GCP
             this.googleCredentials = GoogleCredentials.getApplicationDefault();
         }
     }

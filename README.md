@@ -78,7 +78,24 @@ There are two types of credentials providers supported:
 
 #### User credentials
 
-You should set `storage.credential` to a path to private key JSON file. `storage.identity` may be empty.
+You should set `storage.credential` to a path to the private key JSON file and `storage.identity` must be unset.
+See example below:
+```
+{
+  "type": "service_account",
+  "project_id": "<your_project_id>",
+  "private_key_id": "<your_project_key_id>",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n<your_private_key>\n-----END PRIVATE KEY-----\n",
+  "client_email": "gcp-dial-core@<your_project_id>.iam.gserviceaccount.com",
+  "client_id": "<client_id>",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/gcp-dial-core.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+```
+Otherwise `storage.credential` is a private key in PEM format and `storage.identity` is a client email address.
 
 #### Temporary credentials
 
