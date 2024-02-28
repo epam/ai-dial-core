@@ -9,7 +9,7 @@ public class CredentialProviderFactory {
         StorageProvider provider = StorageProvider.from(providerName);
         return switch (provider) {
             case S3, AZURE_BLOB -> new DefaultCredentialProvider(identity, credential);
-            case GOOGLE_CLOUD_STORAGE -> new GcpCredentialProvider(identity, credential);
+            case GOOGLE_CLOUD_STORAGE -> new GcpCredentialProvider(credential);
             case FILESYSTEM -> new DefaultCredentialProvider("identity", "credential");
             case AWS_S3 -> new AwsCredentialProvider(identity, credential);
         };
