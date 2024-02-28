@@ -10,7 +10,6 @@ import org.jclouds.googlecloud.GoogleCredentialsFromJson;
 import java.io.File;
 import java.time.Instant;
 import java.util.Date;
-import java.util.Objects;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -22,9 +21,14 @@ public class GcpCredentialProvider implements CredentialProvider {
 
     private AccessToken accessToken;
 
+    private GoogleCredentials googleCredentials;
+
+    @SneakyThrows
     public GcpCredentialProvider(String pathToPrivateKey) {
         if (pathToPrivateKey != null) {
-            this.credentials = getCredentialsFromJsonKeyFile(Objects.requireNonNull(pathToPrivateKey, "Path to JSON key file must be provided"));
+            this.credentials = getCredentialsFromJsonKeyFile(pathToPrivateKey);
+        } else {
+            this.googleCredentials = GoogleCredentials.getApplicationDefault();
         }
     }
 
@@ -38,7 +42,6 @@ public class GcpCredentialProvider implements CredentialProvider {
 
     @SneakyThrows
     private synchronized Credentials getTemporaryCredentials() {
-        GoogleCredentials googleCredentials = GoogleCredentials.getApplicationDefault();
         Date expireAt = Date.from(Instant.ofEpochMilli(System.currentTimeMillis() - EXPIRATION_WINDOW_IN_MS));
         if (accessToken == null || expireAt.after(accessToken.getExpirationTime())) {
             accessToken = googleCredentials.refreshAccessToken();
