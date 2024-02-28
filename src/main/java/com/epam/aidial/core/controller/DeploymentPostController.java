@@ -249,17 +249,19 @@ public class DeploymentPostController {
         sendRequest();
     }
 
-    private void processAttachedFile(String url, ApiKeyData apiKeyData) {
+    private void processAttachedFile(String url) {
         ResourceDescription resource = getResourceDescription(url);
         if (resource == null) {
             return;
         }
         String resourceUrl = resource.getUrl();
+        ApiKeyData sourceApiKeyData = context.getApiKeyData();
+        ApiKeyData destApiKeyData = context.getProxyApiKeyData();
         AccessService accessService = proxy.getAccessService();
         if (accessService.hasWriteAccess(resource, context)
                 || accessService.isSharedResource(resource, context)
-                || apiKeyData.getAttachedFiles().contains(resourceUrl)) {
-            apiKeyData.getAttachedFiles().add(resourceUrl);
+                || sourceApiKeyData.getAttachedFiles().contains(resourceUrl)) {
+            destApiKeyData.getAttachedFiles().add(resourceUrl);
         } else {
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
         }
