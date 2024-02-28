@@ -115,7 +115,7 @@ public class ProxyUtil {
 
     @Nullable
     public static <T> T convertToObject(String payload, Class<T> clazz) {
-        if (payload == null) {
+        if (payload == null || payload.isEmpty()) {
             return null;
         }
         try {
