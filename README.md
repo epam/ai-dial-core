@@ -84,6 +84,17 @@ You should set `storage.credential` to a path to private key JSON file. `storage
 
 You should follow [instructions](https://cloud.google.com/kubernetes-engine/docs/concepts/workload-identity) to setup your pod in GKE.
 `storage.credential` and `storage.identity` must be unset.
+JClouds property `jclouds.oauth.credential-type` should be set `bearerTokenCredentials`, e.g.
+
+```
+{
+  "storage": {
+    "overrides": {
+      "jclouds.oauth.credential-type": "bearerTokenCredentials"
+    }
+  }
+}
+```
 
 ### Redis
 The Redis can be used as a cache with volatile-* eviction policies:
