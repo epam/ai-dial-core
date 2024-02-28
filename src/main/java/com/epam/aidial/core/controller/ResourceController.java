@@ -164,9 +164,11 @@ public class ResourceController extends AccessControlBaseController {
         return vertx.executeBlocking(() -> {
                     Set<ResourceLink> resourceLinks = new HashSet<>();
                     resourceLinks.add(new ResourceLink(descriptor.getUrl()));
-                    return lockService.underUserLock(proxy, context, () -> {
-                        invitationService.cleanUpResourceLinks(descriptor.getBucketName(), descriptor.getBucketLocation(), resourceLinks);
-                        shareService.revokeSharedAccess(descriptor.getBucketName(), descriptor.getBucketLocation(),
+                    String bucketName = descriptor.getBucketName();
+                    String bucketLocation = descriptor.getBucketLocation();
+                    return lockService.underBucketLock(proxy, bucketLocation, () -> {
+                        invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
+                        shareService.revokeSharedAccess(bucketName, bucketLocation,
                                 new ResourceLinkCollection(resourceLinks));
                         return service.deleteResource(descriptor);
                     });

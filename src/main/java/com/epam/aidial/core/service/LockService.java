@@ -1,7 +1,6 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.Proxy;
-import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
@@ -46,17 +45,13 @@ public class LockService {
         return () -> unlock(id, owner);
     }
 
-    public <T> T underUserLock(Proxy proxy, ProxyContext context, Supplier<T> function) {
-        String userBucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
-        String prefix = proxy.getStorage().getPrefix();
-        if (prefix != null) {
-            userBucketLocation = prefix + BlobStorageUtil.PATH_SEPARATOR + userBucketLocation;
-        }
-        return underUserLock(userBucketLocation, function);
+    public <T> T underBucketLock(Proxy proxy, String bucketLocation, Supplier<T> function) {
+        return underBucketLock(bucketLocation, proxy.getStorage().getPrefix(), function);
     }
 
-    private <T> T underUserLock(String userBucketLocation, Supplier<T> function) {
-        try (var ignored = lock(userBucketLocation)) {
+    private <T> T underBucketLock(String bucketLocation, @Nullable String prefix, Supplier<T> function) {
+        String key = BlobStorageUtil.toStoragePath(prefix, bucketLocation);
+        try (var ignored = lock(key)) {
             return function.get();
         }
     }

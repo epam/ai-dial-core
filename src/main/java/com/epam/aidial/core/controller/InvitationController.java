@@ -54,7 +54,7 @@ public class InvitationController {
                         if (invitationResource == null) {
                             throw new ResourceNotFoundException();
                         }
-                        return lockService.underUserLock(proxy, context, () -> {
+                        return lockService.underBucketLock(proxy, invitationResource.getBucketLocation(), () -> {
                             shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
                             return null;
                         });
@@ -88,7 +88,7 @@ public class InvitationController {
                 .executeBlocking(() -> {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
-                    return lockService.underUserLock(proxy, context, () -> {
+                    return lockService.underBucketLock(proxy, bucketLocation, () -> {
                         invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
                         return null;
                     });

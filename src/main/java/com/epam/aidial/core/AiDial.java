@@ -124,7 +124,7 @@ public class AiDial {
     private RedissonClient openRedis() throws IOException {
         JsonObject conf = settings("redis");
         if (conf.isEmpty()) {
-            throw new IllegalStateException("Redis configuration not found");
+            throw new IllegalArgumentException("Redis configuration not found");
         }
 
         ConfigSupport support = new ConfigSupport();

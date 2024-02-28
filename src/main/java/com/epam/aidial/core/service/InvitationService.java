@@ -131,7 +131,7 @@ public class InvitationService {
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
-                invitations = new InvitationsMap(new HashMap<>());
+                return null;
             }
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             List<Invitation> invitationsToRemove = new ArrayList<>();
@@ -154,7 +154,7 @@ public class InvitationService {
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
-                invitations = new InvitationsMap(new HashMap<>());
+                return null;
             }
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             idsToEvict.forEach(invitationMap::remove);

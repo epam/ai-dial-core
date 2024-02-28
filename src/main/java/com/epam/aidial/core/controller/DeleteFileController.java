@@ -40,17 +40,19 @@ public class DeleteFileController extends AccessControlBaseController {
 
         BlobStorage storage = proxy.getStorage();
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
+            String bucketName = resource.getBucketName();
+            String bucketLocation = resource.getBucketLocation();
             try {
                 Set<ResourceLink> resourceLinks = new HashSet<>();
                 resourceLinks.add(new ResourceLink(resource.getUrl()));
-                return lockService.underUserLock(proxy, context, () -> {
-                    invitationService.cleanUpResourceLinks(resource.getBucketName(), resource.getBucketLocation(), resourceLinks);
-                    shareService.revokeSharedAccess(resource.getBucketName(), resource.getBucketLocation(), new ResourceLinkCollection(resourceLinks));
+                return lockService.underBucketLock(proxy, bucketLocation, () -> {
+                    invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
+                    shareService.revokeSharedAccess(bucketName, bucketLocation, new ResourceLinkCollection(resourceLinks));
                     storage.delete(absoluteFilePath);
                     return null;
                 });
             } catch (Exception ex) {
-                log.error("Failed to delete file  %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()), ex);
+                log.error("Failed to delete file  %s/%s".formatted(bucketName, resource.getOriginalPath()), ex);
                 throw new RuntimeException(ex);
             }
         });

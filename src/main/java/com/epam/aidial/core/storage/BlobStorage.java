@@ -323,6 +323,6 @@ public class BlobStorage implements Closeable {
      * @return a full storage path
      */
     private String getStorageLocation(String absoluteFilePath) {
-        return prefix == null ? absoluteFilePath : prefix + BlobStorageUtil.PATH_SEPARATOR + absoluteFilePath;
+        return BlobStorageUtil.toStoragePath(prefix, absoluteFilePath);
     }
 }
