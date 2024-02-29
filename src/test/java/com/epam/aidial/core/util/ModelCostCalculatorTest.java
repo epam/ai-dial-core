@@ -132,12 +132,7 @@ public class ModelCostCalculatorTest {
         when(context.getDeployment()).thenReturn(model);
 
         String response = """
-                {
-                   "error": { "message": "error message" },
-                   "id": "fd3be95a-c208-4dca-90cf-67e5082a4e5b",
-                   "created": 1705319789,
-                   "object": "chat.completion"
-                 }
+                {"error": { "message": "message", "type": "type", "param": "param", "code": "code" } }
                 """;
         when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
 
@@ -229,7 +224,7 @@ public class ModelCostCalculatorTest {
                  
                  data:   {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"this"}}],"usage":null}
                  
-                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","error": { "message": "error message" },"usage":null}
+                 data: {"error": { "message": "message", "type": "type", "param": "param", "code": "code" } }
                  
                  
                  
