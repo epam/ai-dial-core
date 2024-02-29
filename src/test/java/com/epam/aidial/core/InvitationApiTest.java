@@ -60,7 +60,7 @@ public class InvitationApiTest extends ResourceBaseTest {
     @Test
     public void testInvitationsCleanedUpAfterResourceDeletion() {
         // create conversation
-        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201", "12345");
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201", CONVERSATION_BODY_1);
         verify(response, 200);
 
         response = send(HttpMethod.GET, "/v1/invitations", null, null);

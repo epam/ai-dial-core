@@ -28,6 +28,36 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ResourceBaseTest {
 
+    public static final String CONVERSATION_BODY_1 = """
+            {
+            "id": "conversation_id",
+            "name": "display_name",
+            "model": {"id": "model_id"},
+            "prompt": "system prompt",
+            "temperature": 1,
+            "folderId": "folder1",
+            "messages": [],
+            "selectedAddons": ["R", "T", "G"],
+            "assistantModelId": "assistantId",
+            "lastActivityDate": 4848683153
+            }
+            """;
+
+    public static final String CONVERSATION_BODY_2 = """
+            {
+            "id": "conversation_id2",
+            "name": "display_name2",
+            "model": {"id": "model_id2"},
+            "prompt": "system prompt2",
+            "temperature": 0,
+            "folderId": "folder1",
+            "messages": [],
+            "selectedAddons": [],
+            "assistantModelId": "assistantId2",
+            "lastActivityDate": 98746886446
+            }
+            """;
+
     RedisServer redis;
     AiDial dial;
     Path testDir;

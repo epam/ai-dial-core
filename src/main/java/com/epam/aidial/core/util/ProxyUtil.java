@@ -1,12 +1,11 @@
 package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
-import com.epam.aidial.core.config.ApiKeyData;
-import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.storage.ResourceDescription;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 @UtilityClass
@@ -56,15 +56,6 @@ public class ProxyUtil {
                 to.add(key, value);
             }
         }
-    }
-
-    public static String stripExtraLeadingSlashes(String uri) {
-        int index = 0;
-        while (index < uri.length() && uri.charAt(index) == '/') {
-            index++;
-        }
-
-        return (index <= 1) ? uri : uri.substring(index - 1);
     }
 
     public static int contentLength(HttpServerRequest request, int defaultValue) {
@@ -121,7 +112,14 @@ public class ProxyUtil {
         try {
             return MAPPER.readValue(payload, clazz);
         } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException(e);
+            log.error("Failed to convert payload to the object", e);
+            if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
+                String missingField = mismatchedInputException.getPath().stream()
+                        .map(JsonMappingException.Reference::getFieldName)
+                        .collect(Collectors.joining("."));
+                throw new IllegalArgumentException("Missing required property '%s'".formatted(missingField));
+            }
+            throw new IllegalArgumentException("Provided payload do not match required schema");
         }
     }
 

@@ -2,8 +2,11 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.Conversation;
+import com.epam.aidial.core.data.Prompt;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
@@ -137,6 +140,14 @@ public class ResourceController extends AccessControlBaseController {
                     }
 
                     String body = bytes.toString(StandardCharsets.UTF_8);
+
+                    ResourceType resourceType = descriptor.getType();
+                    switch (resourceType) {
+                        case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
+                        case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+                        default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
+                    }
+
                     return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite));
                 })
                 .onSuccess((metadata) -> {
@@ -149,6 +160,8 @@ public class ResourceController extends AccessControlBaseController {
                 .onFailure(error -> {
                     if (error instanceof HttpException exception) {
                         context.respond(exception.getStatus(), exception.getMessage());
+                    } else if (error instanceof IllegalArgumentException badRequest) {
+                        context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
                     } else {
                         log.warn("Can't put resource: {}", descriptor.getUrl(), error);
                         context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
