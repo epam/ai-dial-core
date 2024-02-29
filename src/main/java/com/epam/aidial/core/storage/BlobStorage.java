@@ -5,6 +5,8 @@ import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.storage.credential.CredentialProvider;
+import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
 import io.vertx.core.buffer.Buffer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -63,7 +65,7 @@ public class BlobStorage implements Closeable {
         if (overrides != null) {
             builder.overrides(overrides);
         }
-        CredentialProvider credentialProvider = getCredentialProvider(StorageProvider.from(provider), config.getIdentity(), config.getCredential());
+        CredentialProvider credentialProvider = CredentialProviderFactory.create(provider, config.getIdentity(), config.getCredential());
         builder.credentialsSupplier(credentialProvider::getCredentials);
         this.storeContext = builder.buildView(BlobStoreContext.class);
         this.blobStore = storeContext.getBlobStore();
@@ -300,14 +302,6 @@ public class BlobStorage implements Closeable {
                 .contentType(contentType)
                 .build();
         return BaseMutableContentMetadata.fromContentMetadata(contentMetadata);
-    }
-
-    private static CredentialProvider getCredentialProvider(StorageProvider provider, String identity, String credential) {
-        return switch (provider) {
-            case S3, AZURE_BLOB, GOOGLE_CLOUD_STORAGE -> new DefaultCredentialProvider(identity, credential);
-            case FILESYSTEM -> new DefaultCredentialProvider("identity", "credential");
-            case AWS_S3 -> new AwsCredentialProvider(identity, credential);
-        };
     }
 
     private void createBucketIfNeeded(Storage config) {
