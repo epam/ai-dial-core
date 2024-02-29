@@ -179,6 +179,6 @@ public class BlobWriteStream implements WriteStream<Buffer> {
             errorHandler.handle(ex);
         }
 
-        log.warn("Multipart upload aborted");
+        log.warn("Multipart upload aborted", ex);
     }
 }
