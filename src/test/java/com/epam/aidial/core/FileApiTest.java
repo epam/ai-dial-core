@@ -5,7 +5,6 @@ import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
-import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -18,14 +17,9 @@ import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
@@ -34,44 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 @ExtendWith(VertxExtension.class)
 @Slf4j
-public class FileApiTest {
+public class FileApiTest extends ResourceBaseTest {
 
     private static final String TEST_FILE_CONTENT = "Test file content";
-
-    private static AiDial dial;
-    private static int serverPort;
-    private static Path testDir;
-
-    private static ApiKeyStore apiKeyStore;
-
-    @BeforeAll
-    public static void init() throws Exception {
-        // initialize server
-        dial = new AiDial();
-        testDir = FileUtil.baseTestPath(FileApiTest.class);
-        dial.setStorage(FileUtil.buildFsBlobStorage(testDir));
-        dial.start();
-        serverPort = dial.getServer().actualPort();
-        apiKeyStore = dial.getProxy().getApiKeyStore();
-    }
-
-    @BeforeEach
-    public void setUp() {
-        // prepare test directory
-        FileUtil.createDir(testDir.resolve("test"));
-    }
-
-    @AfterEach
-    public void clean() {
-        // clean test directory
-        FileUtil.deleteDir(testDir);
-    }
-
-    @AfterAll
-    public static void destroy() {
-        // stop server
-        dial.stop();
-    }
 
     @Test
     public void testBucket(Vertx vertx, VertxTestContext context) {

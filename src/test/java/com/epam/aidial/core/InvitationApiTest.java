@@ -58,6 +58,61 @@ public class InvitationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testInvitationsCleanedUpAfterResourceDeletion() {
+        // create conversation
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201", "12345");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/invitations", null, null);
+        verifyJson(response, 200, """
+                {
+                  "invitations": []
+                }
+                """);
+
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        String[] elements = invitationLink.invitationLink().split(BlobStorageUtil.PATH_SEPARATOR);
+        String invitationId = elements[elements.length - 1];
+
+        // verify invitation can be listed
+        response = send(HttpMethod.GET, "/v1/invitations", null, null);
+        verifyNotExact(response, 200, "\"id\":\"" + invitationId + "\"");
+
+        // get invitation details by ID
+        response = send(HttpMethod.GET, "/v1/invitations/" + invitationId, null, null);
+        verifyNotExact(response, 200, "\"id\":\"" + invitationId + "\"");
+
+        // get invitation details by ID
+        response = send(HttpMethod.GET, "/v1/invitations/" + invitationId, null, null, "Api-key", "proxyKey2");
+        verifyNotExact(response, 200, "\"id\":\"" + invitationId + "\"");
+
+        // delete resource
+        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation%201", null);
+        verify(response, 200);
+
+        // verify invitations are empty
+        response = send(HttpMethod.GET, "/v1/invitations", null, null);
+        verifyJson(response, 200, """
+                {
+                  "invitations": []
+                }
+                """);
+    }
+
+    @Test
     public void testInvitationNotFound() {
         Response response = send(HttpMethod.GET, "/v1/invitations/asdasd", null, null);
         verify(response, 404);
