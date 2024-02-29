@@ -1,13 +1,10 @@
-name: Release version
+name: Release Workflow
 
 on:
   push:
     branches: [development, release-*]
 
-env:
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/publish_gradle_docker.yml@1.3.1
+    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@1.6.0
     secrets: inherit
