@@ -6,12 +6,11 @@ import com.azure.identity.DefaultAzureCredential;
 import com.azure.identity.DefaultAzureCredentialBuilder;
 import org.jclouds.domain.Credentials;
 
-import java.time.Instant;
 import java.time.OffsetDateTime;
 
 public class AzureCredentialProvider implements CredentialProvider {
 
-    private static final long MARGIN_EXPIRATION_IN_MS = 10_000;
+    private static final long MARGIN_EXPIRATION_IN_SEC = 10;
 
     private Credentials credentials;
 
@@ -19,11 +18,14 @@ public class AzureCredentialProvider implements CredentialProvider {
 
     private AccessToken accessToken;
 
+    private TokenRequestContext tokenRequestContext;
+
     public AzureCredentialProvider(String identity, String secret) {
         if (identity != null && secret != null) {
             this.credentials = new Credentials(identity, secret);
         } else {
             defaultCredential = new DefaultAzureCredentialBuilder().build();
+            tokenRequestContext = (new TokenRequestContext()).addScopes("https://storage.azure.com/.default");
         }
     }
 
@@ -36,9 +38,9 @@ public class AzureCredentialProvider implements CredentialProvider {
     }
 
     private synchronized Credentials getTemporaryCredentials() {
-        OffsetDateTime date = OffsetDateTime.from(Instant.ofEpochMilli(System.currentTimeMillis() - MARGIN_EXPIRATION_IN_MS));
+        OffsetDateTime date = OffsetDateTime.now().minusSeconds(MARGIN_EXPIRATION_IN_SEC);
         if (accessToken == null || date.isAfter(accessToken.getExpiresAt())) {
-            accessToken = defaultCredential.getTokenSync(new TokenRequestContext());
+            accessToken = defaultCredential.getTokenSync(tokenRequestContext);
         }
         return new Credentials("", accessToken.getToken());
     }

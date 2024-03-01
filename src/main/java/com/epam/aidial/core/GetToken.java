@@ -8,7 +8,7 @@ import com.azure.identity.DefaultAzureCredentialBuilder;
 public class GetToken {
     public static void main(String ...args) {
         DefaultAzureCredential defaultCredential = new DefaultAzureCredentialBuilder().build();
-        AccessToken accessToken = defaultCredential.getTokenSync(new TokenRequestContext());
+        AccessToken accessToken = defaultCredential.getTokenSync((new TokenRequestContext()).addScopes("https://storage.azure.com/.default"));
         System.out.println("token %s".formatted(accessToken.getToken()));
         System.out.println("expired at %s".formatted(accessToken.getExpiresAt()));
     }
