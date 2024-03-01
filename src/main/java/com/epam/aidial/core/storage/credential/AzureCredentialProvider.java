@@ -10,7 +10,7 @@ import java.time.OffsetDateTime;
 
 public class AzureCredentialProvider implements CredentialProvider {
 
-    private static final long MARGIN_EXPIRATION_IN_SEC = 10;
+    private static final long EXPIRATION_WINDOW_IN_SEC = 10;
 
     private Credentials credentials;
 
@@ -38,7 +38,7 @@ public class AzureCredentialProvider implements CredentialProvider {
     }
 
     private synchronized Credentials getTemporaryCredentials() {
-        OffsetDateTime date = OffsetDateTime.now().minusSeconds(MARGIN_EXPIRATION_IN_SEC);
+        OffsetDateTime date = OffsetDateTime.now().minusSeconds(EXPIRATION_WINDOW_IN_SEC);
         if (accessToken == null || date.isAfter(accessToken.getExpiresAt())) {
             accessToken = defaultCredential.getTokenSync(tokenRequestContext);
         }
