@@ -123,21 +123,6 @@ There are two types of credential providers supported:
 
 You should set `storage.credential` to service principle secret and `storage.identity` - service principle ID.
 
-The properties to be overridden are below:
-
-```
-{
-  "storage": {
-    "endpoint": "https://<Azure Blob storage account>.blob.core.windows.net"
-    "overrides": {
-      "jclouds.azureblob.auth": "azureAd",
-      "jclouds.azureblob.tenantId": "<tenant ID>",
-      "jclouds.azureblob.account: "<Azure Blob storage account>"
-    }
-  }
-}
-```
-
 #### Temporary credentials
 
 You should follow [instructions](https://azure.github.io/azure-workload-identity/docs/) to setup your pod in Azure k8s.
