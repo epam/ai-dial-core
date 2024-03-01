@@ -4,10 +4,12 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 
@@ -18,6 +20,7 @@ public class InvitationController {
     private final InvitationService invitationService;
     private final ShareService shareService;
     private final EncryptionService encryptionService;
+    private final LockService lockService;
 
     public InvitationController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
@@ -25,6 +28,7 @@ public class InvitationController {
         this.invitationService = proxy.getInvitationService();
         this.shareService = proxy.getShareService();
         this.encryptionService = proxy.getEncryptionService();
+        this.lockService = proxy.getLockService();
     }
 
     public Future<?> getInvitations() {
@@ -40,14 +44,20 @@ public class InvitationController {
     }
 
     public Future<?> getOrAcceptInvitation(String invitationId) {
-        String accept = context.getRequest().getParam("accept");
-        if (accept != null) {
+        boolean accept = Boolean.parseBoolean(context.getRequest().getParam("accept"));
+        if (accept) {
             proxy.getVertx()
                     .executeBlocking(() -> {
                         String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                         String bucket = encryptionService.encrypt(bucketLocation);
-                        shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
-                        return null;
+                        ResourceDescription invitationResource = invitationService.getInvitationResource(invitationId);
+                        if (invitationResource == null) {
+                            throw new ResourceNotFoundException();
+                        }
+                        return lockService.underBucketLock(proxy, invitationResource.getBucketLocation(), () -> {
+                            shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
+                            return null;
+                        });
                     })
                     .onSuccess(ignore -> context.respond(HttpStatus.OK))
                     .onFailure(error -> {
@@ -78,8 +88,10 @@ public class InvitationController {
                 .executeBlocking(() -> {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
-                    invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
-                    return null;
+                    return lockService.underBucketLock(proxy, bucketLocation, () -> {
+                        invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
+                        return null;
+                    });
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(error -> {

@@ -57,4 +57,12 @@ public class BlobStorageUtil {
     public boolean isFolder(String path) {
         return path.endsWith(PATH_SEPARATOR);
     }
+
+    public String toStoragePath(@Nullable String prefix, String absoluteResourcePath) {
+        if (prefix == null) {
+            return absoluteResourcePath;
+        }
+
+        return prefix + PATH_SEPARATOR + absoluteResourcePath;
+    }
 }

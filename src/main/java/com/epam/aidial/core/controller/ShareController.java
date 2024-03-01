@@ -6,6 +6,8 @@ import com.epam.aidial.core.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.data.ShareResourcesRequest;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.InvitationService;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.util.HttpException;
@@ -26,14 +28,17 @@ public class ShareController {
     private final ProxyContext context;
     private final ShareService shareService;
     private final EncryptionService encryptionService;
+    private final LockService lockService;
+    private final InvitationService invitationService;
 
     public ShareController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
         this.shareService = proxy.getShareService();
         this.encryptionService = proxy.getEncryptionService();
+        this.lockService = proxy.getLockService();
+        this.invitationService = proxy.getInvitationService();
     }
-
 
     public Future<?> handle(Operation operation) {
         switch (operation) {
@@ -122,10 +127,11 @@ public class ShareController {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return proxy.getVertx()
-                            .executeBlocking(() -> {
+                            .executeBlocking(() -> lockService.underBucketLock(proxy, bucketLocation, () -> {
+                                invitationService.cleanUpResourceLinks(bucket, bucketLocation, request.getResources());
                                 shareService.revokeSharedAccess(bucket, bucketLocation, request);
                                 return null;
-                            });
+                            }));
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);

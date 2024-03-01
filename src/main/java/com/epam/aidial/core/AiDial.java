@@ -69,8 +69,6 @@ public class AiDial {
 
     private BlobStorage storage;
     private ResourceService resourceService;
-    private InvitationService invitationService;
-    private ShareService shareService;
 
     @VisibleForTesting
     void start() throws Exception {
@@ -98,14 +96,10 @@ public class AiDial {
 
             redis = openRedis();
 
-            if (redis != null) {
-                LockService lockService = new LockService(redis);
-                resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
-                invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-                shareService = new ShareService(resourceService, invitationService, encryptionService);
-            } else {
-                log.warn("Redis config is not found, some features may be unavailable");
-            }
+            LockService lockService = new LockService(redis);
+            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
 
             AccessService accessService = new AccessService(encryptionService, shareService);
 
@@ -114,7 +108,7 @@ public class AiDial {
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, accessService);
+                    shareService, accessService, lockService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -130,7 +124,7 @@ public class AiDial {
     private RedissonClient openRedis() throws IOException {
         JsonObject conf = settings("redis");
         if (conf.isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("Redis configuration not found");
         }
 
         ConfigSupport support = new ConfigSupport();

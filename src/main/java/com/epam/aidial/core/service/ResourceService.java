@@ -437,10 +437,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     private String redisKey(ResourceDescription descriptor) {
-        String resourcePath = descriptor.getAbsoluteFilePath();
-        if (prefix != null) {
-            resourcePath = prefix + BlobStorageUtil.PATH_SEPARATOR + resourcePath;
-        }
+        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 

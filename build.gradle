@@ -50,6 +50,10 @@ dependencies {
     implementation 'org.redisson:redisson:3.27.0'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
+    implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
+    implementation group: 'com.azure', name: 'azure-identity', version: '1.11.2'
+
+
 
     runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.5'
 
