@@ -72,7 +72,7 @@ Static settings are used on startup and cannot be changed while application is r
 
 ### Google Cloud Storage
 
-There are two types of credentials providers supported:
+There are two types of credential providers supported:
  - User credentials. You can create a service account and authenticate using its private key obtained from Developer console
  - Temporary credentials. Application default credentials (ADC)
 
@@ -107,6 +107,35 @@ JClouds property `jclouds.oauth.credential-type` should be set `bearerTokenCrede
 {
   "storage": {
     "overrides": {
+      "jclouds.oauth.credential-type": "bearerTokenCredentials"
+    }
+  }
+}
+```
+
+### Azure Blob Store
+
+There are two types of credential providers supported:
+- User credentials. You can create a service principle and authenticate using its secret from Azure console
+- Temporary credentials with Azure AD Workload Identity
+
+#### User credentials
+
+You should set `storage.credential` to service principle secret and `storage.identity` - service principle ID.
+
+#### Temporary credentials
+
+You should follow [instructions](https://azure.github.io/azure-workload-identity/docs/) to setup your pod in Azure k8s.
+`storage.credential` and `storage.identity` must be unset.
+
+The properties to be overridden are below:
+
+```
+{
+  "storage": {
+    "endpoint": "https://<Azure Blob storage account>.blob.core.windows.net"
+    "overrides": {
+      "jclouds.azureblob.auth": "azureAd",
       "jclouds.oauth.credential-type": "bearerTokenCredentials"
     }
   }
