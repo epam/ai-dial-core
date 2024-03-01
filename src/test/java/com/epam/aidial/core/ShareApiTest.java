@@ -38,7 +38,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create conversation
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", "12345");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
 
         // initialize share request
@@ -70,7 +70,7 @@ public class ShareApiTest extends ResourceBaseTest {
 
         // verify user2 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
-        verify(response, 200, "12345");
+        verify(response, 200, CONVERSATION_BODY_1);
 
         // verify user1 has no shared_with_me resources
         response = operationRequest("/v1/ops/resource/share/list", """
@@ -168,7 +168,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create conversation
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", "12345");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
 
         // initialize share request
@@ -196,7 +196,7 @@ public class ShareApiTest extends ResourceBaseTest {
 
         // verify user2 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
-        verify(response, 200, "12345");
+        verify(response, 200, CONVERSATION_BODY_1);
 
         // revoke share access
         response = operationRequest("/v1/ops/resource/share/revoke", """
@@ -270,7 +270,7 @@ public class ShareApiTest extends ResourceBaseTest {
     @Test
     public void testRevokeOfNonSharedResource() {
         // create conversation
-        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         // initialize share request
@@ -298,7 +298,7 @@ public class ShareApiTest extends ResourceBaseTest {
 
         // verify user2 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
-        verify(response, 200, "12345");
+        verify(response, 200, CONVERSATION_BODY_1);
 
         // revoke share access of another resource that wasn't shared
         response = operationRequest("/v1/ops/resource/share/revoke", """
@@ -357,7 +357,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create conversation
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", "12345");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
 
         // initialize share request
@@ -385,7 +385,7 @@ public class ShareApiTest extends ResourceBaseTest {
 
         // verify user2 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation%40", null, "Api-key", "proxyKey2");
-        verify(response, 200, "12345");
+        verify(response, 200, CONVERSATION_BODY_1);
 
         // discard share access
         response = operationRequest("/v1/ops/resource/share/discard", """
@@ -466,7 +466,7 @@ public class ShareApiTest extends ResourceBaseTest {
     @Test
     public void testDiscardNonSharedResource() {
         // create conversation
-        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         // initialize share request
@@ -494,7 +494,7 @@ public class ShareApiTest extends ResourceBaseTest {
 
         // verify user2 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
-        verify(response, 200, "12345");
+        verify(response, 200, CONVERSATION_BODY_1);
 
         // discard share access of another resource that wasn't shared
         response = operationRequest("/v1/ops/resource/share/discard", """
@@ -527,7 +527,7 @@ public class ShareApiTest extends ResourceBaseTest {
     @Test
     public void testCleanUpShareAccessWhenOnResourceDeletion() {
         // create conversation
-        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         // initialize share request
@@ -555,14 +555,14 @@ public class ShareApiTest extends ResourceBaseTest {
 
         // verify user2 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation", null, "Api-key", "proxyKey2");
-        verify(response, 200, "12345");
+        verify(response, 200, CONVERSATION_BODY_1);
 
         // delete resource
         response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", null);
         verify(response, 200);
 
         // create resource with same name
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "987654");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         // verify user2 has no access to the conversation
@@ -573,7 +573,7 @@ public class ShareApiTest extends ResourceBaseTest {
     @Test
     public void testResourceDeletionWithoutSharingState() {
         // create conversation
-        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         // delete resource
@@ -581,12 +581,12 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // create resource with same name
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "987654");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         // download resource
         response = resourceRequest(HttpMethod.GET, "/folder/conversation", null);
-        verify(response, 200, "987654");
+        verify(response, 200, CONVERSATION_BODY_2);
     }
 
     @Test

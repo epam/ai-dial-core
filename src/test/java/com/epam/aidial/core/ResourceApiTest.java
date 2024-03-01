@@ -20,23 +20,23 @@ class ResourceApiTest extends ResourceBaseTest {
         response = metadata("/");
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/\"");
 
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         response = metadata("/?recursive=true");
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "12345", "if-none-match", "*");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1, "if-none-match", "*");
         verifyNotExact(response, 409, "Resource already exists: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation");
-        verify(response, 200, "12345");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
 
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", "123456");
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder");
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation");
-        verify(response, 200, "123456");
+        verifyJson(response, 200, CONVERSATION_BODY_2);
 
         response = metadata("/folder/");
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
@@ -81,8 +81,8 @@ class ResourceApiTest extends ResourceBaseTest {
         for (int i = 0; i < 1000; i++) {
             int type = random.nextInt(0, 3);
             int id = random.nextInt(0, 200);
-            int size = random.nextInt(0, 1024);
-            String body = "a".repeat(size);
+            int size = random.nextInt(0, 2);
+            String body = size == 0 ? CONVERSATION_BODY_1 : CONVERSATION_BODY_2;
             String path = "/folder1/folder2/conversation" + id;
             String notFound = "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST" + path;
 
@@ -104,7 +104,8 @@ class ResourceApiTest extends ResourceBaseTest {
             if (type == 2) {
                 Response response = resourceRequest(HttpMethod.GET, path);
                 if (response.status() == 200) {
-                    body = response.body() + body;
+                    // flip body
+                    body = size == 0 ? CONVERSATION_BODY_2 : CONVERSATION_BODY_1;
                     Response resource = resourceRequest(HttpMethod.PUT, path, body);
                     verifyNotExact(resource, 200, path);
 
