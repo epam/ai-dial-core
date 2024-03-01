@@ -28,7 +28,6 @@ public class Conversation {
      */
     String prompt;
     int temperature;
-    String assistantModelId;
     long lastActivityDate;
     ModelId model;
     Set<String> selectedAddons;
@@ -40,7 +39,6 @@ public class Conversation {
                         @JsonProperty(value = "name", required = true) String name,
                         @JsonProperty(value = "prompt", required = true) String prompt,
                         @JsonProperty(value = "temperature", required = true) int temperature,
-                        @JsonProperty(value = "assistantModelId", required = true) String assistantModelId,
                         @JsonProperty(value = "lastActivityDate", required = true) long lastActivityDate,
                         @JsonProperty(value = "model", required = true) ModelId model,
                         @JsonProperty(value = "selectedAddons", required = true) Set<String> selectedAddons,
@@ -50,7 +48,6 @@ public class Conversation {
         this.name = name;
         this.prompt = prompt;
         this.temperature = temperature;
-        this.assistantModelId = assistantModelId;
         this.lastActivityDate = lastActivityDate;
         this.model = model;
         this.selectedAddons = selectedAddons;
@@ -97,17 +94,14 @@ public class Conversation {
         String prompt;
         int temperature;
         Set<String> selectedAddons;
-        String assistantModelId;
 
         @JsonCreator
         public MessageSettings(@JsonProperty(value = "prompt", required = true) String prompt,
                                @JsonProperty(value = "temperature", required = true) int temperature,
-                               @JsonProperty(value = "selectedAddons", required = true) Set<String> selectedAddons,
-                               @JsonProperty(value = "assistantModelId", required = true) String assistantModelId) {
+                               @JsonProperty(value = "selectedAddons", required = true) Set<String> selectedAddons) {
             this.prompt = prompt;
             this.temperature = temperature;
             this.selectedAddons = selectedAddons;
-            this.assistantModelId = assistantModelId;
         }
     }
 }
