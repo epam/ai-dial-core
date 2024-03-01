@@ -79,8 +79,8 @@ public class Conversation {
         @JsonCreator
         public Message(@JsonProperty(value = "role", required = true) String role,
                        @JsonProperty(value = "content", required = true) String content,
-                       @JsonProperty(value = "model", required = true) ModelId model,
-                       @JsonProperty(value = "settings", required = true) MessageSettings settings) {
+                       @JsonProperty(value = "model", required = false) ModelId model,
+                       @JsonProperty(value = "settings", required = false) MessageSettings settings) {
             this.role = role;
             this.content = content;
             this.model = model;
