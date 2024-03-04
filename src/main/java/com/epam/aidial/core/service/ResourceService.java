@@ -282,6 +282,7 @@ public class ResourceService implements AutoCloseable {
             long now = time();
 
             for (String redisKey : set.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, syncBatch)) {
+                log.info("Redis key from queue {}", redisKey);
                 sync(redisKey);
             }
         } catch (Throwable e) {
@@ -431,6 +432,7 @@ public class ResourceService implements AutoCloseable {
         map.putAll(fields);
 
         if (result.synced) { // cleanup because it is already synced
+            log.info("RedisPut key removed from queue {}", key);
             map.expire(cacheExpiration);
             set.remove(key);
         }
@@ -442,6 +444,7 @@ public class ResourceService implements AutoCloseable {
         map.expire(cacheExpiration);
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        log.info("RedisSync key removed from queue {}", key);
         set.remove(key);
     }
 
