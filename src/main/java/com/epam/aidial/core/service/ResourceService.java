@@ -182,16 +182,20 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     public String getResource(ResourceDescription descriptor, boolean lock) {
+        String resourceUrl = descriptor.getUrl();
+        log.info("Downloading resource {}", resourceUrl);
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
         if (result == null) {
+            log.info("Resource not found in redis {}", resourceUrl);
             try (var ignore = lock ? lockService.lock(redisKey) : null) {
                 result = redisGet(redisKey, true);
 
                 if (result == null) {
                     String blobKey = blobKey(descriptor);
                     result = blobGet(blobKey, true);
+                    log.info("Resource loaded from storage {}, exists {}, is empty {}", resourceUrl, result.exists, result.body.isEmpty());
                     redisPut(redisKey, result);
                 }
             }
@@ -206,12 +210,15 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceItemMetadata putResource(ResourceDescription descriptor, String body,
                                             boolean overwrite, boolean lock) {
+        String resourceUrl = descriptor.getUrl();
+        log.info("Saving resource {}", resourceUrl);
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
             Result result = redisGet(redisKey, false);
             if (result == null) {
+                log.info("Resource {} not found in redis", resourceUrl);
                 result = blobGet(blobKey, false);
             }
 
@@ -222,9 +229,11 @@ public class ResourceService implements AutoCloseable {
             long updatedAt = time();
             long createdAt = result.exists ? result.createdAt : updatedAt;
             redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true));
+            log.info("Resource saved in redis {}", resourceUrl);
 
             if (!result.exists) {
                 blobPut(blobKey, "", createdAt, updatedAt); // create an empty object for listing
+                log.info("Resource with empty body saved on disc {}", resourceUrl);
             }
 
             return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
@@ -298,11 +307,11 @@ public class ResourceService implements AutoCloseable {
 
             String blobKey = blobKeyFromRedisKey(redisKey);
             if (result.exists) {
-                log.debug("Syncing resource: {}. Blob updating", redisKey);
+                log.info("Syncing resource: {}. Blob updating", redisKey);
                 result = redisGet(redisKey, true);
                 blobPut(blobKey, result.body, result.createdAt, result.updatedAt);
             } else {
-                log.debug("Syncing resource: {}. Blob deleting", redisKey);
+                log.info("Syncing resource: {}. Blob deleting", redisKey);
                 blobDelete(blobKey);
             }
 
