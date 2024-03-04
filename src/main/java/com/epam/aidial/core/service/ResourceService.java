@@ -278,7 +278,7 @@ public class ResourceService implements AutoCloseable {
     private Void sync() {
         log.debug("Syncing");
         try {
-            RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+            RScoredSortedSet<String> set = redis.getScoredSortedSet(getRedisQueue(), StringCodec.INSTANCE);
             long now = time();
 
             for (String redisKey : set.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, syncBatch)) {
@@ -302,7 +302,7 @@ public class ResourceService implements AutoCloseable {
             Result result = redisGet(redisKey, false);
             if (result == null || result.synced) {
                 redis.getMap(redisKey, StringCodec.INSTANCE).expireIfNotSet(cacheExpiration);
-                redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE).remove(redisKey);
+                redis.getScoredSortedSet(getRedisQueue(), StringCodec.INSTANCE).remove(redisKey);
                 return;
             }
 
@@ -413,7 +413,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void redisPut(String key, Result result) {
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(getRedisQueue(), StringCodec.INSTANCE);
         set.add(time() + syncDelay, key); // add resource to sync set before changing because calls below can fail
 
         RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
@@ -443,9 +443,13 @@ public class ResourceService implements AutoCloseable {
         map.put("synced", "true");
         map.expire(cacheExpiration);
 
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(getRedisQueue(), StringCodec.INSTANCE);
         log.info("RedisSync key removed from queue {}", key);
         set.remove(key);
+    }
+
+    private String getRedisQueue() {
+        return BlobStorageUtil.toStoragePath(prefix, REDIS_QUEUE);
     }
 
     private String redisKey(ResourceDescription descriptor) {
