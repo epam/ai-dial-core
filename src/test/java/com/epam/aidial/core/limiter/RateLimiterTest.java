@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.data.LimitStats;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
@@ -109,7 +110,7 @@ public class RateLimiterTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig));
+        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 
@@ -277,6 +278,65 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture);
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
+
+    }
+
+    @Test
+    public void testGetLimitStats_ApiKey() {
+        Key key = new Key();
+        key.setRole("role");
+        key.setKey("key");
+        key.setProject("api-key");
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setDay(10000);
+        limit.setMinute(100);
+        role.setLimits(Map.of("model", limit));
+        config.setRoles(Map.of("role", role));
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, null, "trace-id", "span-id");
+        Model model = new Model();
+        model.setName("model");
+        proxyContext.setDeployment(model);
+
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(90);
+        proxyContext.setTokenUsage(tokenUsage);
+
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        Future<LimitStats> limitStatsFuture = rateLimiter.getLimitStats(model.getName(), proxyContext);
+
+        assertNotNull(limitStatsFuture);
+        assertNotNull(limitStatsFuture.result());
+        LimitStats limitStats = limitStatsFuture.result();
+        assertEquals(10000, limitStats.getDayTokenStats().getTotal());
+        assertEquals(90, limitStats.getDayTokenStats().getUsed());
+        assertEquals(100, limitStats.getMinuteTokenStats().getTotal());
+        assertEquals(90, limitStats.getMinuteTokenStats().getUsed());
+
+        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        limitStatsFuture = rateLimiter.getLimitStats(model.getName(), proxyContext);
+
+        assertNotNull(limitStatsFuture);
+        assertNotNull(limitStatsFuture.result());
+        limitStats = limitStatsFuture.result();
+        assertEquals(10000, limitStats.getDayTokenStats().getTotal());
+        assertEquals(180, limitStats.getDayTokenStats().getUsed());
+        assertEquals(100, limitStats.getMinuteTokenStats().getTotal());
+        assertEquals(180, limitStats.getMinuteTokenStats().getUsed());
 
     }
 

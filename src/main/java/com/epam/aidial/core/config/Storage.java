@@ -17,15 +17,17 @@ public class Storage {
     @Nullable
     String endpoint;
     /**
-     * api key
+     * Api key. Optional for filesystem and aws-s3 (will try to get token from EC2 instance metadata)
      */
+    @Nullable
     String identity;
     /**
-     * secret key
+     * Secret key. Optional for filesystem and aws-s3 (will try to get token from EC2 instance metadata)
      */
+    @Nullable
     String credential;
     /**
-     * container name/root bucket
+     * Container name/root bucket
      */
     String bucket;
 
@@ -35,8 +37,14 @@ public class Storage {
     boolean createBucket;
 
     /**
-     * Optional. Collection of key-value pairs for overrides, for example: "jclouds.filesystem.basedir": "/tmp/data"
+     * Optional. Collection of key-value pairs for overrides, for example: "jclouds.filesystem.basedir": "data"
      */
     @Nullable
     Properties overrides;
+
+    /**
+     * Optional. Name of the root folder in a bucket, base folder for all resource. Must not contain path separators or any illegal chars
+     */
+    @Nullable
+    String prefix;
 }

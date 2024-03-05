@@ -4,6 +4,7 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import io.vertx.core.Vertx;
@@ -39,6 +40,8 @@ public class ResourceService implements AutoCloseable {
     private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists");
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists");
 
+    private static final Result BLOB_NOT_FOUND = new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false);
+
     private final Vertx vertx;
     private final RedissonClient redis;
     private final BlobStorage blobStore;
@@ -50,19 +53,22 @@ public class ResourceService implements AutoCloseable {
     private final int syncBatch;
     private final Duration cacheExpiration;
     private final int compressionMinSize;
+    private final String prefix;
 
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
-                           JsonObject settings) {
+                           JsonObject settings,
+                           String prefix) {
         this(vertx, redis, blobStore, lockService,
                 settings.getInteger("maxSize"),
                 settings.getLong("syncPeriod"),
                 settings.getLong("syncDelay"),
                 settings.getInteger("syncBatch"),
                 settings.getLong("cacheExpiration"),
-                settings.getInteger("compressionMinSize")
+                settings.getInteger("compressionMinSize"),
+                prefix
         );
     }
 
@@ -83,7 +89,8 @@ public class ResourceService implements AutoCloseable {
                            long syncDelay,
                            int syncBatch,
                            long cacheExpiration,
-                           int compressionMinSize) {
+                           int compressionMinSize,
+                           String prefix) {
         this.vertx = vertx;
         this.redis = redis;
         this.blobStore = blobStore;
@@ -93,6 +100,7 @@ public class ResourceService implements AutoCloseable {
         this.syncBatch = syncBatch;
         this.cacheExpiration = Duration.ofMillis(cacheExpiration);
         this.compressionMinSize = compressionMinSize;
+        this.prefix = prefix;
 
         // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
         this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
@@ -239,9 +247,14 @@ public class ResourceService implements AutoCloseable {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
-            String body = getResource(descriptor, false);
-            String updatedBody = fn.apply(body);
-            putResource(descriptor, updatedBody, true, false);
+            String oldBody = getResource(descriptor, false);
+            String newBody = fn.apply(oldBody);
+            if (newBody != null) {
+                // update resource only if body changed
+                if (!newBody.equals(oldBody)) {
+                    putResource(descriptor, newBody, true, false);
+                }
+            }
         }
     }
 
@@ -339,7 +352,7 @@ public class ResourceService implements AutoCloseable {
         }
 
         if (meta == null) {
-            return new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false);
+            return BLOB_NOT_FOUND;
         }
 
         long createdAt = Long.parseLong(meta.getUserMetadata().get("created_at"));
@@ -383,9 +396,11 @@ public class ResourceService implements AutoCloseable {
         return descriptor.isFolder() ? path : (path + BLOB_EXTENSION);
     }
 
-    private static String blobKeyFromRedisKey(String redisKey) {
-        int i = redisKey.indexOf(":");
-        return redisKey.substring(i + 1) + BLOB_EXTENSION;
+    private String blobKeyFromRedisKey(String redisKey) {
+        // redis key may have prefix, we need to subtract it, because BlobStore manage prefix on its own
+        int delimiterIndex = redisKey.indexOf(":");
+        int prefixChars = prefix != null ? prefix.length() + 1 : 0;
+        return redisKey.substring(prefixChars + delimiterIndex + 1) + BLOB_EXTENSION;
     }
 
     private static String fromBlobKey(String blobKey) {
@@ -444,8 +459,12 @@ public class ResourceService implements AutoCloseable {
         set.remove(key);
     }
 
-    private static String redisKey(ResourceDescription descriptor) {
-        return descriptor.getType().name().toLowerCase() + ":" + descriptor.getAbsoluteFilePath();
+    private String redisKey(ResourceDescription descriptor) {
+        String resourcePath = descriptor.getAbsoluteFilePath();
+        if (prefix != null) {
+            resourcePath = prefix + BlobStorageUtil.PATH_SEPARATOR + resourcePath;
+        }
+        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 
     private static long time() {

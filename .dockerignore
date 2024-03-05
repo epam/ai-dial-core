@@ -3,5 +3,6 @@
 .vscode/
 build/
 bin/
-data/
+.tmp/
 *.log
+Dockerfile

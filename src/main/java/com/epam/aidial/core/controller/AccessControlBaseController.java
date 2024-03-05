@@ -4,7 +4,6 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.service.PublicationService;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.UrlUtil;
@@ -33,10 +32,6 @@ public abstract class AccessControlBaseController {
             return Future.succeededFuture();
         }
 
-        // we should take a real user bucket not provided from resource
-        String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
-        String actualUserBucket = proxy.getEncryptionService().encrypt(actualUserLocation);
-
         ResourceDescription resource;
         try {
             resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
@@ -48,7 +43,7 @@ public abstract class AccessControlBaseController {
 
         return proxy.getVertx()
                 .executeBlocking(() -> {
-                    boolean hasWriteAccess = hasWriteAccess(path, decryptedBucket);
+                    boolean hasWriteAccess = proxy.getAccessService().hasWriteAccess(path, decryptedBucket, context);
                     if (hasWriteAccess) {
                         return true;
                     }
@@ -64,7 +59,7 @@ public abstract class AccessControlBaseController {
                             return true;
                         }
 
-                        return isSharedResource(resource, actualUserBucket, actualUserLocation);
+                        return proxy.getAccessService().isSharedResource(resource, context);
                     }
 
                     return false;
@@ -80,27 +75,5 @@ public abstract class AccessControlBaseController {
     }
 
     protected abstract Future<?> handle(ResourceDescription resource);
-
-    protected boolean isSharedResource(ResourceDescription resource, String userBucket, String userLocation) {
-        // resource was shared explicitly by share API
-        return (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
-    }
-
-    protected boolean isReviewResource(ResourceDescription resource, String userBucket, String userLocation) {
-        PublicationService service = proxy.getPublicationService();
-        return (service != null) && service.hasReviewAccess(resource, userBucket, userLocation);
-    }
-
-    protected boolean hasWriteAccess(String filePath, String decryptedBucket) {
-        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
-        if (expectedUserBucket.equals(decryptedBucket)) {
-            return true;
-        }
-        String expectedAppDataBucket = BlobStorageUtil.buildAppDataBucket(context);
-        if (expectedAppDataBucket != null && expectedAppDataBucket.equals(decryptedBucket)) {
-            return filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(context.getSourceDeployment())));
-        }
-        return false;
-    }
 
 }

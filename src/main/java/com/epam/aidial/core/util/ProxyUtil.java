@@ -2,6 +2,8 @@ package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,12 +17,15 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 @UtilityClass
+@Slf4j
 public class ProxyUtil {
 
     public static final JsonMapper MAPPER = JsonMapper.builder()
@@ -86,7 +91,7 @@ public class ProxyUtil {
         return defaultValue;
     }
 
-    public static void collectAttachedFiles(ObjectNode tree, ApiKeyData apiKeyData) {
+    public static void collectAttachedFiles(ObjectNode tree, Consumer<String> consumer) {
         ArrayNode messages = (ArrayNode) tree.get("messages");
         if (messages == null) {
             return;
@@ -105,7 +110,7 @@ public class ProxyUtil {
                 JsonNode attachment = attachments.get(j);
                 JsonNode url = attachment.get("url");
                 if (url != null) {
-                    apiKeyData.getAttachedFiles().add(url.textValue());
+                    consumer.accept(url.textValue());
                 }
             }
         }
@@ -134,7 +139,7 @@ public class ProxyUtil {
 
     @Nullable
     public static <T> T convertToObject(String payload, Class<T> clazz) {
-        if (payload == null) {
+        if (payload == null || payload.isEmpty()) {
             return null;
         }
         try {
