@@ -147,5 +147,9 @@ public class ResourceDescriptionTest {
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folde%2F/"));
         assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%2F.txt"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%7B.txt"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%7D.txt"));
     }
 }

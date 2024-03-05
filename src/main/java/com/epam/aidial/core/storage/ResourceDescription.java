@@ -11,12 +11,15 @@ import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 @Data
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
+
+    private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}');
 
     private static final int MAX_PATH_SIZE = 900;
 
@@ -171,7 +174,12 @@ public class ResourceDescription {
     }
 
     private static boolean isValidFilename(String value) {
-        return !value.contains(BlobStorageUtil.PATH_SEPARATOR);
+        for (char c : value.toCharArray()) {
+            if (INVALID_FILE_NAME_CHARS.contains(c)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void verify(boolean condition, String message) {
