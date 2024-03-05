@@ -122,6 +122,10 @@ public class DeploymentController {
             data.setSeed(features.getSeedSupported());
         }
 
+        if (features.getUrlAttachmentsSupported() != null) {
+            data.setUrlAttachments(features.getUrlAttachmentsSupported());
+        }
+
         return data;
     }
 }

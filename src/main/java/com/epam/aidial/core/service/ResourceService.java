@@ -34,8 +34,6 @@ import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
-
-    private static final String BLOB_EXTENSION = ".json";
     private static final String REDIS_QUEUE = "resource:queue";
     private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists");
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists");
@@ -128,7 +126,7 @@ public class ResourceService implements AutoCloseable {
 
         List<MetadataBase> resources = set.stream().map(meta -> {
             Map<String, String> metadata = meta.getUserMetadata();
-            String path = fromBlobKey(meta.getName());
+            String path = meta.getName();
             ResourceDescription description = ResourceDescription.fromDecoded(descriptor, path);
 
             if (meta.getType() != StorageType.BLOB) {
@@ -369,19 +367,14 @@ public class ResourceService implements AutoCloseable {
     }
 
     private static String blobKey(ResourceDescription descriptor) {
-        String path = descriptor.getAbsoluteFilePath();
-        return descriptor.isFolder() ? path : (path + BLOB_EXTENSION);
+        return descriptor.getAbsoluteFilePath();
     }
 
     private String blobKeyFromRedisKey(String redisKey) {
         // redis key may have prefix, we need to subtract it, because BlobStore manage prefix on its own
         int delimiterIndex = redisKey.indexOf(":");
         int prefixChars = prefix != null ? prefix.length() + 1 : 0;
-        return redisKey.substring(prefixChars + delimiterIndex + 1) + BLOB_EXTENSION;
-    }
-
-    private static String fromBlobKey(String blobKey) {
-        return blobKey.endsWith(BLOB_EXTENSION) ? blobKey.substring(0, blobKey.length() - BLOB_EXTENSION.length()) : blobKey;
+        return redisKey.substring(prefixChars + delimiterIndex + 1);
     }
 
     @Nullable
