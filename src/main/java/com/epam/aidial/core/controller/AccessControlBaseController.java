@@ -3,7 +3,6 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceType;
-import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.UrlUtil;
@@ -55,7 +54,7 @@ public abstract class AccessControlBaseController {
                             return true;
                         }
 
-                        if (isReviewResource(resource, actualUserBucket, actualUserLocation)) {
+                        if (proxy.getAccessService().isReviewResource(resource, context)) {
                             return true;
                         }
 
@@ -64,7 +63,7 @@ public abstract class AccessControlBaseController {
 
                     return false;
                 })
-                .map(hasAccess  -> {
+                .map(hasAccess -> {
                     if (hasAccess) {
                         handle(resource);
                     } else {

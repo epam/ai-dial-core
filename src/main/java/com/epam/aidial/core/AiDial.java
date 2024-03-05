@@ -116,8 +116,7 @@ public class AiDial {
                 log.warn("Redis config is not found, some features may be unavailable");
             }
 
-            AccessService accessService = new AccessService(encryptionService, shareService);
-
+            AccessService accessService = new AccessService(encryptionService, shareService, publicationService);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,

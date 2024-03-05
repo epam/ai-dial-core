@@ -1,6 +1,7 @@
 package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -11,8 +12,8 @@ import lombok.AllArgsConstructor;
 public class AccessService {
 
     private final EncryptionService encryptionService;
-
     private final ShareService shareService;
+    private final PublicationService publicationService;
 
     public boolean hasWriteAccess(String filePath, String decryptedBucket, ProxyContext context) {
         String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
@@ -43,4 +44,9 @@ public class AccessService {
         return shareService != null && shareService.hasReadAccess(actualUserBucket, actualUserLocation, resource);
     }
 
+    public boolean isReviewResource(ResourceDescription resource, ProxyContext context) {
+        String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String actualUserBucket = encryptionService.encrypt(actualUserLocation);
+        return publicationService != null && publicationService.hasReviewAccess(resource, actualUserBucket, actualUserLocation);
+    }
 }
