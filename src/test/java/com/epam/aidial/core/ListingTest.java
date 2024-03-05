@@ -50,6 +50,7 @@ public class ListingTest extends ResourceBaseTest {
         checkListing(vertx, context, "/openai/models", "embedding-ada", "features", new JsonObject("""
                     { "rate": false, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
+                    , "url_attachments": false
                     }
                 """));
     }
@@ -59,6 +60,7 @@ public class ListingTest extends ResourceBaseTest {
         checkListing(vertx, context, "/openai/models", "chat-gpt-35-turbo", "features", new JsonObject("""
                     { "rate": true, "tokenize": true, "truncate_prompt": true
                     , "system_prompt": true, "tools": true, "seed": true
+                    , "url_attachments": true
                     }
                 """));
     }
@@ -68,6 +70,7 @@ public class ListingTest extends ResourceBaseTest {
         checkListing(vertx, context, "/openai/applications", "app", "features", new JsonObject("""
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": false, "tools": false, "seed": false
+                    , "url_attachments": false
                     }
                 """));
     }
@@ -77,6 +80,7 @@ public class ListingTest extends ResourceBaseTest {
         checkListing(vertx, context, "/openai/assistants", "search-assistant", "features", new JsonObject("""
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
+                    , "url_attachments": false
                     }
                 """));
     }

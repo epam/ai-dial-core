@@ -16,4 +16,5 @@ public class FeaturesData {
     private boolean systemPrompt = true;
     private boolean tools = false;
     private boolean seed = false;
+    private boolean urlAttachments = false;
 }
