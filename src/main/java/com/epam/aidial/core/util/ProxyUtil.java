@@ -3,17 +3,20 @@ package com.epam.aidial.core.util;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import javax.annotation.Nullable;
 
@@ -105,6 +108,27 @@ public class ProxyUtil {
                     apiKeyData.getAttachedFiles().add(url.textValue());
                 }
             }
+        }
+    }
+
+    public static <T> T convertToObject(Buffer json, Class<T> clazz) {
+        try {
+            String text = json.toString(StandardCharsets.UTF_8);
+            return MAPPER.readValue(text, clazz);
+        } catch (Throwable e) {
+            throw new IllegalArgumentException("Failed to parse json: " + e.getMessage());
+        }
+    }
+
+    @Nullable
+    public static <T> T convertToObject(String payload, TypeReference<T> type) {
+        if (payload == null) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(payload, type);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(e);
         }
     }
 

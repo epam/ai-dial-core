@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
@@ -59,6 +60,10 @@ public abstract class AccessControlBaseController {
                             return true;
                         }
 
+                        if (isReviewResource(resource, actualUserBucket, actualUserLocation)) {
+                            return true;
+                        }
+
                         return isSharedResource(resource, actualUserBucket, actualUserLocation);
                     }
 
@@ -79,6 +84,11 @@ public abstract class AccessControlBaseController {
     protected boolean isSharedResource(ResourceDescription resource, String userBucket, String userLocation) {
         // resource was shared explicitly by share API
         return (proxy.getResourceService() != null && proxy.getShareService().hasReadAccess(userBucket, userLocation, resource));
+    }
+
+    protected boolean isReviewResource(ResourceDescription resource, String userBucket, String userLocation) {
+        PublicationService service = proxy.getPublicationService();
+        return (service != null) && service.hasReviewAccess(resource, userBucket, userLocation);
     }
 
     protected boolean hasWriteAccess(String filePath, String decryptedBucket) {

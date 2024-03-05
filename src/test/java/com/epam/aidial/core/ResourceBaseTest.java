@@ -2,6 +2,8 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -32,6 +34,8 @@ public class ResourceBaseTest {
     Path testDir;
     CloseableHttpClient client;
     String bucket;
+    long time = 0;
+    String id = "0123";
 
     @BeforeEach
     void init() throws Exception {
@@ -81,6 +85,8 @@ public class ResourceBaseTest {
 
             dial = new AiDial();
             dial.setSettings(settings);
+            dial.setGenerator(() -> id);
+            dial.setClock(() -> time);
             dial.start();
 
             Response response = send(HttpMethod.GET, "/v1/bucket", null, "");
@@ -114,6 +120,11 @@ public class ResourceBaseTest {
 
     static void verify(Response response, int status) {
         assertEquals(status, response.status());
+    }
+
+    static void verifyPretty(Response response, int status, String body) {
+        assertEquals(status, response.status());
+        assertEquals(body.trim(), pretty(response.body()));
     }
 
     static void verify(Response response, int status, String body) {
@@ -153,6 +164,10 @@ public class ResourceBaseTest {
         return send(HttpMethod.GET, "/v1/metadata/conversations/" + bucket + resource, null, "");
     }
 
+    Response send(HttpMethod method, String path) {
+        return send(method, path, null, "");
+    }
+
     @SneakyThrows
     Response send(HttpMethod method, String path, String queryParams, String body, String... headers) {
         String uri = "http://127.0.0.1:" + dial.getServer().actualPort() + path + (queryParams != null ? "?" + queryParams : "");
@@ -187,6 +202,13 @@ public class ResourceBaseTest {
             String answer = EntityUtils.toString(response.getEntity());
             return new Response(status, answer);
         }
+    }
+
+    @SneakyThrows
+    private static String pretty(String json) {
+        ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+        Object jsonObject = mapper.readValue(json, Object.class);
+        return mapper.writeValueAsString(jsonObject);
     }
 
     record Response(int status, String body) {

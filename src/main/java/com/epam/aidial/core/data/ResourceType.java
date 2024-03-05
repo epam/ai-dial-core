@@ -5,7 +5,8 @@ import lombok.Getter;
 @Getter
 public enum ResourceType {
     FILE("files"), CONVERSATION("conversations"), PROMPT("prompts"), LIMIT("limits"),
-    SHARED_WITH_ME("shared_with_me"), SHARED_BY_ME("shared_by_me"), INVITATION("invitations");
+    SHARED_WITH_ME("shared_with_me"), SHARED_BY_ME("shared_by_me"), INVITATION("invitations"),
+    PUBLICATION("publications");
 
     private final String group;
 
@@ -23,6 +24,7 @@ public enum ResourceType {
             case "conversations" -> CONVERSATION;
             case "prompts" -> PROMPT;
             case "invitations" -> INVITATION;
+            case "publications" -> PUBLICATION;
             default -> throw new IllegalArgumentException("Unsupported group: " + group);
         };
     }

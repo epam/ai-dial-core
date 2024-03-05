@@ -167,6 +167,18 @@ public class ResourceService implements AutoCloseable {
                 .setUpdatedAt(result.updatedAt);
     }
 
+    public boolean hasResource(ResourceDescription descriptor) {
+        String redisKey = redisKey(descriptor);
+        Result result = redisGet(redisKey, false);
+
+        if (result == null) {
+            String blobKey = blobKey(descriptor);
+            return blobExists(blobKey);
+        }
+
+        return result.exists;
+    }
+
     @Nullable
     public String getResource(ResourceDescription descriptor) {
         return getResource(descriptor, true);
@@ -251,6 +263,17 @@ public class ResourceService implements AutoCloseable {
 
             return true;
         }
+    }
+
+    public boolean copyResource(ResourceDescription from, ResourceDescription to) {
+        String body = getResource(from);
+
+        if (body == null) {
+            return false;
+        }
+
+        putResource(to, body, true);
+        return true;
     }
 
     private Void sync() {

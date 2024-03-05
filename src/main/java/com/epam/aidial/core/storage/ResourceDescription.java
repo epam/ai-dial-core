@@ -18,6 +18,9 @@ import javax.annotation.Nullable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
 
+    public static final String PUBLIC_BUCKET = "public";
+    public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + BlobStorageUtil.PATH_SEPARATOR;
+
     private static final int MAX_PATH_SIZE = 900;
 
     ResourceType type;
@@ -159,6 +162,30 @@ public class ResourceDescription {
 
         String resourcePath = link.substring(bucket.length() + parts[0].length() + 2);
         return fromEncoded(resourceType, bucket, location, resourcePath);
+    }
+
+    public static ResourceDescription fromBucketLink(String link, ResourceDescription bucket) {
+        return fromLink(link, bucket.getBucketName(), bucket.getBucketLocation());
+    }
+
+    public static ResourceDescription fromPublicLink(String link) {
+        return fromLink(link, PUBLIC_BUCKET, PUBLIC_LOCATION);
+    }
+
+    private static ResourceDescription fromLink(String link, String bucketEncoded, String bucketDecoded) {
+        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Invalid resource link provided " + link);
+        }
+
+        ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
+        String bucket = UrlUtil.decodePath(parts[1]);
+        if (!bucket.equals(bucketEncoded)) {
+            throw new IllegalArgumentException("Bucket does not match: " + bucket);
+        }
+
+        String relativePath = link.substring(parts[0].length() + parts[1].length() + 2);
+        return fromEncoded(resourceType, bucketEncoded, bucketDecoded, relativePath);
     }
 
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,

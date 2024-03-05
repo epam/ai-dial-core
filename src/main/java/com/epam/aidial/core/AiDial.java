@@ -12,6 +12,7 @@ import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
@@ -50,8 +51,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 @Slf4j
 @Setter
@@ -68,6 +72,9 @@ public class AiDial {
 
     private BlobStorage storage;
     private ResourceService resourceService;
+
+    private LongSupplier clock = System::currentTimeMillis;
+    private Supplier<String> generator = () -> UUID.randomUUID().toString().replace("-", "");
 
     @VisibleForTesting
     void start() throws Exception {
@@ -102,11 +109,13 @@ public class AiDial {
 
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
-                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService, shareService);
+                    storage, encryptionService, apiKeyStore, tokenStatsTracker,
+                    resourceService, invitationService, shareService, publicationService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

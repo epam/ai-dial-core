@@ -48,6 +48,7 @@ public class ControllerSelector {
     private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
+    private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publications/(list|get|create|delete)$");
 
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = context.getRequest().path();
@@ -248,6 +249,20 @@ public class ControllerSelector {
             return () -> controller.handle(op);
         }
 
+        match = match(PUBLICATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            PublicationController controller = new PublicationController(proxy, context);
+
+            return switch (operation) {
+                case "list" -> controller::listPublications;
+                case "get"-> controller::getPublication;
+                case "create"-> controller::createPublication;
+                case "delete"-> controller::deletePublication;
+                default -> null;
+            };
+        }
+
         return null;
     }
 
@@ -271,7 +286,7 @@ public class ControllerSelector {
 
         match = match(INVITATION, path);
         if (match != null) {
-            String invitationId =  UrlUtil.decodePath(match.group(1));
+            String invitationId = UrlUtil.decodePath(match.group(1));
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.deleteInvitation(invitationId);
         }
