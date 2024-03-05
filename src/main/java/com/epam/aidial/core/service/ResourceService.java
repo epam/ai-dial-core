@@ -99,7 +99,7 @@ public class ResourceService implements AutoCloseable {
         this.cacheExpiration = Duration.ofMillis(cacheExpiration);
         this.compressionMinSize = compressionMinSize;
         this.prefix = prefix;
-        this.resourceQueue = BlobStorageUtil.toStoragePath(prefix, "resource:queue");
+        this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
 
         // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
         this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
