@@ -106,15 +106,11 @@ public class AiDial {
 
             redis = openRedis();
 
-            if (redis != null) {
-                LockService lockService = new LockService(redis);
-                resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
-                invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-                shareService = new ShareService(resourceService, invitationService, encryptionService);
-                publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
-            } else {
-                log.warn("Redis config is not found, some features may be unavailable");
-            }
+            LockService lockService = new LockService(redis);
+            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
 
             AccessService accessService = new AccessService(encryptionService, shareService, publicationService);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
@@ -122,7 +118,7 @@ public class AiDial {
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, publicationService, accessService);
+                    shareService, publicationService, accessService, lockService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -138,7 +134,7 @@ public class AiDial {
     private RedissonClient openRedis() throws IOException {
         JsonObject conf = settings("redis");
         if (conf.isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("Redis configuration not found");
         }
 
         ConfigSupport support = new ConfigSupport();

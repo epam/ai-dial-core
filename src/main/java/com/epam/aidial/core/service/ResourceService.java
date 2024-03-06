@@ -34,9 +34,6 @@ import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
-
-    private static final String BLOB_EXTENSION = ".json";
-    private static final String REDIS_QUEUE = "resource:queue";
     private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists");
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists");
 
@@ -54,6 +51,7 @@ public class ResourceService implements AutoCloseable {
     private final Duration cacheExpiration;
     private final int compressionMinSize;
     private final String prefix;
+    private final String resourceQueue;
 
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
@@ -101,6 +99,7 @@ public class ResourceService implements AutoCloseable {
         this.cacheExpiration = Duration.ofMillis(cacheExpiration);
         this.compressionMinSize = compressionMinSize;
         this.prefix = prefix;
+        this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
 
         // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
         this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
@@ -128,7 +127,7 @@ public class ResourceService implements AutoCloseable {
 
         List<MetadataBase> resources = set.stream().map(meta -> {
             Map<String, String> metadata = meta.getUserMetadata();
-            String path = fromBlobKey(meta.getName());
+            String path = meta.getName();
             ResourceDescription description = ResourceDescription.fromDecoded(descriptor, path);
 
             if (meta.getType() != StorageType.BLOB) {
@@ -292,7 +291,7 @@ public class ResourceService implements AutoCloseable {
     private Void sync() {
         log.debug("Syncing");
         try {
-            RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+            RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
             long now = time();
 
             for (String redisKey : set.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, syncBatch)) {
@@ -315,7 +314,7 @@ public class ResourceService implements AutoCloseable {
             Result result = redisGet(redisKey, false);
             if (result == null || result.synced) {
                 redis.getMap(redisKey, StringCodec.INSTANCE).expireIfNotSet(cacheExpiration);
-                redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE).remove(redisKey);
+                redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
                 return;
             }
 
@@ -392,19 +391,14 @@ public class ResourceService implements AutoCloseable {
     }
 
     private static String blobKey(ResourceDescription descriptor) {
-        String path = descriptor.getAbsoluteFilePath();
-        return descriptor.isFolder() ? path : (path + BLOB_EXTENSION);
+        return descriptor.getAbsoluteFilePath();
     }
 
     private String blobKeyFromRedisKey(String redisKey) {
         // redis key may have prefix, we need to subtract it, because BlobStore manage prefix on its own
         int delimiterIndex = redisKey.indexOf(":");
         int prefixChars = prefix != null ? prefix.length() + 1 : 0;
-        return redisKey.substring(prefixChars + delimiterIndex + 1) + BLOB_EXTENSION;
-    }
-
-    private static String fromBlobKey(String blobKey) {
-        return blobKey.endsWith(BLOB_EXTENSION) ? blobKey.substring(0, blobKey.length() - BLOB_EXTENSION.length()) : blobKey;
+        return redisKey.substring(prefixChars + delimiterIndex + 1);
     }
 
     @Nullable
@@ -426,7 +420,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void redisPut(String key, Result result) {
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.add(time() + syncDelay, key); // add resource to sync set before changing because calls below can fail
 
         RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
@@ -455,15 +449,12 @@ public class ResourceService implements AutoCloseable {
         map.put("synced", "true");
         map.expire(cacheExpiration);
 
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.remove(key);
     }
 
     private String redisKey(ResourceDescription descriptor) {
-        String resourcePath = descriptor.getAbsoluteFilePath();
-        if (prefix != null) {
-            resourcePath = prefix + BlobStorageUtil.PATH_SEPARATOR + resourcePath;
-        }
+        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 

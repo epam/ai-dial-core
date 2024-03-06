@@ -11,4 +11,5 @@ public class Features {
     private Boolean systemPromptSupported;
     private Boolean toolsSupported;
     private Boolean seedSupported;
+    private Boolean urlAttachmentsSupported;
 }

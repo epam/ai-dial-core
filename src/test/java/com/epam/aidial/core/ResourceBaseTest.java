@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +30,36 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ResourceBaseTest {
 
+    public static final String CONVERSATION_BODY_1 = """
+            {
+            "id": "conversation_id",
+            "name": "display_name",
+            "model": {"id": "model_id"},
+            "prompt": "system prompt",
+            "temperature": 1,
+            "folderId": "folder1",
+            "messages": [],
+            "selectedAddons": ["R", "T", "G"],
+            "assistantModelId": "assistantId",
+            "lastActivityDate": 4848683153
+            }
+            """;
+
+    public static final String CONVERSATION_BODY_2 = """
+            {
+            "id": "conversation_id2",
+            "name": "display_name2",
+            "model": {"id": "model_id2"},
+            "prompt": "system prompt2",
+            "temperature": 0,
+            "folderId": "folder1",
+            "messages": [],
+            "selectedAddons": [],
+            "assistantModelId": "assistantId2",
+            "lastActivityDate": 98746886446
+            }
+            """;
+
     RedisServer redis;
     AiDial dial;
     Path testDir;
@@ -36,6 +67,9 @@ public class ResourceBaseTest {
     String bucket;
     long time = 0;
     String id = "0123";
+
+    int serverPort;
+    ApiKeyStore apiKeyStore;
 
     @BeforeEach
     void init() throws Exception {
@@ -89,6 +123,8 @@ public class ResourceBaseTest {
             dial.setGenerator(() -> id);
             dial.setClock(() -> time);
             dial.start();
+            serverPort = dial.getServer().actualPort();
+            apiKeyStore = dial.getProxy().getApiKeyStore();
 
             Response response = send(HttpMethod.GET, "/v1/bucket", null, "");
             assertEquals(response.status, 200);
@@ -171,7 +207,7 @@ public class ResourceBaseTest {
 
     @SneakyThrows
     Response send(HttpMethod method, String path, String queryParams, String body, String... headers) {
-        String uri = "http://127.0.0.1:" + dial.getServer().actualPort() + path + (queryParams != null ? "?" + queryParams : "");
+        String uri = "http://127.0.0.1:" + serverPort + path + (queryParams != null ? "?" + queryParams : "");
         HttpUriRequest request;
 
         if (method == HttpMethod.GET) {
