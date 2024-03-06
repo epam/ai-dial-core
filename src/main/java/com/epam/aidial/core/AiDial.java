@@ -73,9 +73,6 @@ public class AiDial {
 
     private BlobStorage storage;
     private ResourceService resourceService;
-    private InvitationService invitationService;
-    private ShareService shareService;
-    private PublicationService publicationService;
 
     private LongSupplier clock = System::currentTimeMillis;
     private Supplier<String> generator = () -> UUID.randomUUID().toString().replace("-", "");

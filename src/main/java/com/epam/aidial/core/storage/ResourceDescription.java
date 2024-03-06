@@ -19,9 +19,6 @@ import javax.annotation.Nullable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
 
-    public static final String PUBLIC_BUCKET = "public";
-    public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + BlobStorageUtil.PATH_SEPARATOR;
-
     private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}');
     private static final int MAX_PATH_SIZE = 900;
 
@@ -169,8 +166,17 @@ public class ResourceDescription {
 
     private static ResourceDescription fromLink(String link, String bucketEncoded, String bucketDecoded) {
         String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+
         if (parts.length < 2) {
             throw new IllegalArgumentException("Invalid resource link provided " + link);
+        }
+
+        if (link.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Link must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + link);
+        }
+
+        if (parts.length == 2 && !link.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Link must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + link);
         }
 
         ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
@@ -188,7 +194,7 @@ public class ResourceDescription {
     }
 
     public static ResourceDescription fromPublicLink(String link) {
-        return fromLink(link, PUBLIC_BUCKET, PUBLIC_LOCATION);
+        return fromLink(link, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION);
     }
 
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,

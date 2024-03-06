@@ -9,13 +9,14 @@ import javax.annotation.Nullable;
 @UtilityClass
 public class BlobStorageUtil {
 
-    public static final String APPDATA_PATTERN = "appdata/%s";
-
-    private static final String USER_BUCKET_PATTERN = "Users/%s/";
-
-    private static final String API_KEY_BUCKET_PATTERN = "Keys/%s/";
-
     public static final String PATH_SEPARATOR = "/";
+
+    public static final String PUBLIC_BUCKET = "public";
+    public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + PATH_SEPARATOR;
+
+    public static final String APPDATA_PATTERN = "appdata/%s";
+    private static final String USER_BUCKET_PATTERN = "Users/%s/";
+    private static final String API_KEY_BUCKET_PATTERN = "Keys/%s/";
 
     public String getContentType(String fileName) {
         String mimeType = MimeMapping.getMimeTypeForFilename(fileName);

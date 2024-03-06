@@ -236,13 +236,6 @@ public class ResourceBaseTest {
         }
     }
 
-    @SneakyThrows
-    private static String pretty(String json) {
-        ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-        Object jsonObject = mapper.readValue(json, Object.class);
-        return mapper.writeValueAsString(jsonObject);
-    }
-
     record Response(int status, String body) {
         public boolean ok() {
             return status() == 200;

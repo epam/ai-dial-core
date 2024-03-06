@@ -5,6 +5,7 @@ import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.ResourceUrl;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.UrlUtil;
@@ -23,7 +24,8 @@ import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
-import static com.epam.aidial.core.storage.ResourceDescription.PUBLIC_BUCKET;
+import static com.epam.aidial.core.storage.BlobStorageUtil.PUBLIC_BUCKET;
+import static com.epam.aidial.core.storage.BlobStorageUtil.PUBLIC_LOCATION;
 
 @RequiredArgsConstructor
 public class PublicationService {
@@ -33,7 +35,7 @@ public class PublicationService {
     };
 
     private static final ResourceDescription PUBLIC_PUBLICATIONS = ResourceDescription.fromDecoded(
-            ResourceType.PUBLICATION, PUBLIC_BUCKET, ResourceDescription.PUBLIC_LOCATION,
+            ResourceType.PUBLICATION, PUBLIC_BUCKET, PUBLIC_LOCATION,
             PUBLICATIONS_NAME);
 
     private final EncryptionService encryption;
