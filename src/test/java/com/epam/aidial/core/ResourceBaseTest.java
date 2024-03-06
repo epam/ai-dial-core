@@ -159,11 +159,6 @@ public class ResourceBaseTest {
         assertEquals(status, response.status());
     }
 
-    static void verifyPretty(Response response, int status, String body) {
-        assertEquals(status, response.status());
-        assertEquals(body.trim(), pretty(response.body()));
-    }
-
     static void verify(Response response, int status, String body) {
         assertEquals(status, response.status());
         assertEquals(body, response.body());

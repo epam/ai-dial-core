@@ -12,7 +12,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.mutable.MutableObject;
 
-import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -21,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
 import static com.epam.aidial.core.storage.ResourceDescription.PUBLIC_BUCKET;
@@ -35,7 +35,6 @@ public class PublicationService {
     private static final ResourceDescription PUBLIC_PUBLICATIONS = ResourceDescription.fromDecoded(
             ResourceType.PUBLICATION, PUBLIC_BUCKET, ResourceDescription.PUBLIC_LOCATION,
             PUBLICATIONS_NAME);
-
 
     private final EncryptionService encryption;
     private final ResourceService resources;

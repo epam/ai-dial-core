@@ -167,14 +167,6 @@ public class ResourceDescription {
         return fromEncoded(resourceType, bucket, location, resourcePath);
     }
 
-    public static ResourceDescription fromBucketLink(String link, ResourceDescription bucket) {
-        return fromLink(link, bucket.getBucketName(), bucket.getBucketLocation());
-    }
-
-    public static ResourceDescription fromPublicLink(String link) {
-        return fromLink(link, PUBLIC_BUCKET, PUBLIC_LOCATION);
-    }
-
     private static ResourceDescription fromLink(String link, String bucketEncoded, String bucketDecoded) {
         String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
         if (parts.length < 2) {
@@ -189,6 +181,14 @@ public class ResourceDescription {
 
         String relativePath = link.substring(parts[0].length() + parts[1].length() + 2);
         return fromEncoded(resourceType, bucketEncoded, bucketDecoded, relativePath);
+    }
+
+    public static ResourceDescription fromBucketLink(String link, ResourceDescription bucket) {
+        return fromLink(link, bucket.getBucketName(), bucket.getBucketLocation());
+    }
+
+    public static ResourceDescription fromPublicLink(String link) {
+        return fromLink(link, PUBLIC_BUCKET, PUBLIC_LOCATION);
     }
 
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,

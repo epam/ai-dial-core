@@ -7,7 +7,7 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void testPublicationCreation() {
-        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", "12345");
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publications/create", """
@@ -24,7 +24,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """.formatted(bucket, bucket, bucket));
 
-        verifyPretty(response, 200, """
+        verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                   "sourceUrl" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/",
@@ -40,7 +40,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        verifyPretty(response, 200, """
+        verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                   "sourceUrl" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/",
@@ -62,7 +62,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        verifyPretty(response, 200, """
+        verifyJson(response, 200, """
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
@@ -75,7 +75,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
 
         response = send(HttpMethod.GET,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
-        verify(response, 200, "12345");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
 
         response = send(HttpMethod.PUT,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 403);
@@ -86,7 +86,7 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void testPublicationDeletion() {
-        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", "12345");
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publications/create", """

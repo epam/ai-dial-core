@@ -265,9 +265,9 @@ public class ControllerSelector {
 
             return switch (operation) {
                 case "list" -> controller::listPublications;
-                case "get"-> controller::getPublication;
-                case "create"-> controller::createPublication;
-                case "delete"-> controller::deletePublication;
+                case "get" -> controller::getPublication;
+                case "create" -> controller::createPublication;
+                case "delete" -> controller::deletePublication;
                 default -> null;
             };
         }
