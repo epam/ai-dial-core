@@ -44,7 +44,7 @@ public class PublicationController {
                     return vertx.executeBlocking(() -> publicationService.listPublications(resource));
                 })
                 .onSuccess(publications -> context.respond(HttpStatus.OK, new Publications(publications)))
-                .onFailure(error -> respond("Can't list publications", error));
+                .onFailure(error -> respondError("Can't list publications", error));
 
         return Future.succeededFuture();
     }
@@ -65,7 +65,7 @@ public class PublicationController {
                         context.respond(HttpStatus.OK, publication);
                     }
                 })
-                .onFailure(error -> respond("Can't get publication", error));
+                .onFailure(error -> respondError("Can't get publication", error));
 
         return Future.succeededFuture();
     }
@@ -80,7 +80,7 @@ public class PublicationController {
                     return vertx.executeBlocking(() -> publicationService.createPublication(resource, publication));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
-                .onFailure(error -> respond("Can't create publication", error));
+                .onFailure(error -> respondError("Can't create publication", error));
 
         return Future.succeededFuture();
     }
@@ -95,12 +95,12 @@ public class PublicationController {
                     return vertx.executeBlocking(() -> publicationService.deletePublication(resource));
                 })
                 .onSuccess(deleted -> context.respond(deleted ? HttpStatus.OK : HttpStatus.NOT_FOUND))
-                .onFailure(error -> respond("Can't delete publication", error));
+                .onFailure(error -> respondError("Can't delete publication", error));
 
         return Future.succeededFuture();
     }
 
-    private void respond(String message, Throwable error) {
+    private void respondError(String message, Throwable error) {
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
         String body = null;
 
