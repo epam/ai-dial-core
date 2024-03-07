@@ -15,10 +15,6 @@ public class Publication {
      */
     String url;
     /**
-     * Source directory url without resource prefix to publish from: bucket/ or bucket/folder/.
-     */
-    String sourceUrl;
-    /**
      * Target directory url without resource prefix to publish to: public/ or public/folder/.
      */
     String targetUrl;
@@ -45,7 +41,6 @@ public class Publication {
          * Review resource url to review: files/review-bucket/folder/file.txt
          */
         String reviewUrl;
-        String version;
     }
 
     @Data

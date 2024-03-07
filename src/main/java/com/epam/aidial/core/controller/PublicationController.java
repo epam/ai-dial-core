@@ -114,7 +114,7 @@ public class PublicationController {
             log.warn(message, error);
         }
 
-        context.respond(status, body == null ? "" : body);
+        context.respond(status, body);
     }
 
     private ResourceDescription decodePublication(String path) {

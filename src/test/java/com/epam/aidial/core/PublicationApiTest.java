@@ -13,24 +13,27 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publications/create", """
                 {
                   "url": "publications/%s/",
-                  "sourceUrl": "%s/my/folder/",
                   "targetUrl": "public/folder/",
                   "resources": [
                     {
                       "sourceUrl": "conversations/%s/my/folder/conversation",
-                      "version": "1"
+                      "targetUrl": "conversations/public/folder/conversation"
                     }
                   ]
                 }
-                """.formatted(bucket, bucket, bucket));
+                """.formatted(bucket, bucket));
 
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "sourceUrl" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/",
                   "targetUrl" : "public/folder/",
                   "status" : "PENDING",
-                  "createdAt" : 0
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                  } ]
                 }
                 """);
 
@@ -43,15 +46,13 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "sourceUrl" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/",
                   "targetUrl" : "public/folder/",
                   "status" : "PENDING",
                   "createdAt" : 0,
                   "resources" : [ {
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
-                    "targetUrl" : "conversations/public/folder/conversation.1",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
-                    "version" : "1"
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                   } ]
                 }
                 """);
@@ -66,7 +67,6 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "sourceUrl" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/",
                     "targetUrl" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0
@@ -74,13 +74,13 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = send(HttpMethod.GET,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verifyJson(response, 200, CONVERSATION_BODY_1);
 
-        response = send(HttpMethod.PUT,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        response = send(HttpMethod.PUT, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 403);
 
-        response = send(HttpMethod.DELETE,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        response = send(HttpMethod.DELETE, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 403);
     }
 
@@ -92,19 +92,18 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publications/create", """
                 {
                   "url": "publications/%s/",
-                  "sourceUrl": "%s/my/folder/",
                   "targetUrl": "public/folder/",
                   "resources": [
                     {
                       "sourceUrl": "conversations/%s/my/folder/conversation",
-                      "version": "1"
+                      "targetUrl": "conversations/public/folder/conversation"
                     }
                   ]
                 }
-                """.formatted(bucket, bucket, bucket));
+                """.formatted(bucket, bucket));
         verify(response, 200);
 
-        response = send(HttpMethod.GET,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publications/delete", """
@@ -114,13 +113,13 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        response = send(HttpMethod.GET,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 404);
 
-        response = send(HttpMethod.PUT,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        response = send(HttpMethod.PUT, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 403);
 
-        response = send(HttpMethod.DELETE,  "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        response = send(HttpMethod.DELETE, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 403);
     }
 }

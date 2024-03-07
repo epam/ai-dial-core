@@ -5,7 +5,6 @@ import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.ResourceUrl;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorage;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.UrlUtil;
@@ -38,6 +37,8 @@ public class PublicationService {
             ResourceType.PUBLICATION, PUBLIC_BUCKET, PUBLIC_LOCATION,
             PUBLICATIONS_NAME);
 
+    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT);
+
     private final EncryptionService encryption;
     private final ResourceService resources;
     private final BlobStorage files;
@@ -58,7 +59,7 @@ public class PublicationService {
         Map<String, Publication> publications = decodePublications(resources.getResource(key));
 
         for (Publication publication : publications.values()) {
-            leaveDescription(publication);
+            leaveMetadata(publication);
         }
 
         return publications.values();
@@ -98,11 +99,10 @@ public class PublicationService {
             return encodePublications(publications);
         });
 
-        leaveDescription(publication);
         resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
 
-            if (publications.put(publication.getUrl(), publication) != null) {
+            if (publications.put(publication.getUrl(), newMetadata(publication)) != null) {
                 throw new IllegalStateException("Publication with such url already exists: " + publication.getUrl());
             }
 
@@ -151,10 +151,6 @@ public class PublicationService {
     }
 
     private void preparePublication(ResourceDescription bucket, Publication publication) {
-        if (publication.getSourceUrl() == null) {
-            throw new IllegalArgumentException("Publication \"sourceUrl\" is missing");
-        }
-
         if (publication.getTargetUrl() == null) {
             throw new IllegalArgumentException("Publication \"targetUrl\" is missing");
         }
@@ -167,13 +163,7 @@ public class PublicationService {
             throw new IllegalArgumentException("No resources and no rules in publication");
         }
 
-        ResourceUrl sourceFolder = ResourceUrl.parse(publication.getSourceUrl());
         ResourceUrl targetFolder = ResourceUrl.parse(publication.getTargetUrl());
-
-        if (!sourceFolder.startsWith(bucket.getBucketName()) || !sourceFolder.isFolder()) {
-            throw new IllegalArgumentException("Publication \"sourceUrl\" must start with: %s and ends with: %s"
-                    .formatted(bucket.getBucketName(), PATH_SEPARATOR));
-        }
 
         if (!targetFolder.startsWith(PUBLIC_BUCKET) || !targetFolder.isFolder()) {
             throw new IllegalArgumentException("Publication \"targetUrl\" must start with: %s and ends with: %s"
@@ -184,7 +174,6 @@ public class PublicationService {
         String reviewBucket = encodeReviewBucket(bucket, id);
 
         publication.setUrl(bucket.getUrl() + id);
-        publication.setSourceUrl(sourceFolder.getUrl());
         publication.setTargetUrl(targetFolder.getUrl());
         publication.setCreatedAt(clock.getAsLong());
         publication.setStatus(Publication.Status.PENDING);
@@ -193,39 +182,37 @@ public class PublicationService {
 
         for (Publication.Resource resource : publication.getResources()) {
             ResourceDescription source = ResourceDescription.fromBucketLink(resource.getSourceUrl(), bucket);
+            ResourceDescription target = ResourceDescription.fromPublicLink(resource.getTargetUrl());
+
             String sourceUrl = source.getUrl();
+            String targetUrl = target.getUrl();
 
             if (source.isFolder()) {
-                throw new IllegalArgumentException("Resource folder is not allowed: " + sourceUrl);
+                throw new IllegalArgumentException("Source resource is folder: " + sourceUrl);
             }
 
-            if (source.getType() != ResourceType.FILE && source.getType() != ResourceType.PROMPT && source.getType() != ResourceType.CONVERSATION) {
-                throw new IllegalArgumentException("Resource type is not supported: " + sourceUrl);
+            if (target.isFolder()) {
+                throw new IllegalArgumentException("Target resource is folder: " + targetUrl);
             }
 
-            String sourceSuffix = sourceUrl.substring(source.getType().getGroup().length() + 1);
-
-            if (!sourceSuffix.startsWith(publication.getSourceUrl())) {
-                throw new IllegalArgumentException("Resource folder does not match with source folder: " + publication.getSourceUrl());
+            if (!ALLOWED_RESOURCES.contains(source.getType())) {
+                throw new IllegalArgumentException("Source resource type is not supported: " + sourceUrl);
             }
 
-            String version = resource.getVersion();
-
-            if (version == null) {
-                throw new IllegalArgumentException("Resource version is missing: " + sourceUrl);
+            if (source.getType() != target.getType()) {
+                throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
             }
 
-            if (!version.equals(UrlUtil.decodePath(version))) {
-                throw new IllegalArgumentException("Resource version contains not allowed characters: " + version);
+            String targetSuffix = targetUrl.substring(source.getType().getGroup().length() + 1);
+
+            if (!targetSuffix.startsWith(publication.getTargetUrl())) {
+                throw new IllegalArgumentException("Target resource folder does not match with target folder: " + targetUrl);
+            } else {
+                targetSuffix = targetSuffix.substring(publication.getTargetUrl().length());
             }
-
-            sourceSuffix = sourceSuffix.substring(publication.getSourceUrl().length());
-
-            String targetUrl = source.getType().getGroup() + PATH_SEPARATOR
-                    + publication.getTargetUrl() + sourceSuffix + "." + version;
 
             String reviewUrl = source.getType().getGroup() + PATH_SEPARATOR
-                    + reviewBucket + PATH_SEPARATOR + sourceSuffix;
+                    + reviewBucket + PATH_SEPARATOR + targetSuffix;
 
             if (!urls.add(sourceUrl)) {
                 throw new IllegalArgumentException("Source resources have duplicate urls: " + sourceUrl);
@@ -337,8 +324,19 @@ public class PublicationService {
         return encryption.encrypt(path);
     }
 
-    private static void leaveDescription(Publication publication) {
-        publication.setResources(null).setResources(null);
+    /**
+     * Leaves only required fields for listing.
+     */
+    private static void leaveMetadata(Publication publication) {
+        publication.setResources(null).setRules(null);
+    }
+
+    private static Publication newMetadata(Publication publication) {
+        return new Publication()
+                .setUrl(publication.getUrl())
+                .setTargetUrl(publication.getTargetUrl())
+                .setStatus(publication.getStatus())
+                .setCreatedAt(publication.getCreatedAt());
     }
 
     private static ResourceDescription localPublications(ResourceDescription resource) {
