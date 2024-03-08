@@ -118,6 +118,10 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
+        if (!ResourceDescription.isValidResourcePath(descriptor)) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
+        }
+
         int contentLength = ProxyUtil.contentLength(context.getRequest(), 0);
         int contentLimit = service.getMaxSize();
 
