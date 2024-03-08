@@ -58,6 +58,21 @@ class ResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testFileUploadWithInvalidResourcePath() {
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation.", CONVERSATION_BODY_1);
+        verify(response, 400);
+
+        response = resourceRequest(HttpMethod.PUT, "/folder./conversation", CONVERSATION_BODY_1);
+        verify(response, 400);
+
+        response = resourceRequest(HttpMethod.GET, "/folder1/conversation.");
+        verify(response, 404);
+
+        response = resourceRequest(HttpMethod.GET, "/folder1./conversation");
+        verify(response, 404);
+    }
+
+    @Test
     void testMaxKeySize() {
         Response response = resourceRequest(HttpMethod.PUT, "/" + "1".repeat(900), "body");
         verify(response, 400, "Resource path exceeds max allowed size: 900");
