@@ -25,6 +25,10 @@ public class UploadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");
         }
 
+        if (!ResourceDescription.isValidResourcePath(resource)) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
+        }
+
         Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
