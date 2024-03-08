@@ -155,12 +155,8 @@ public class PublicationService {
             throw new IllegalArgumentException("Publication \"targetUrl\" is missing");
         }
 
-        if (publication.getResources() == null) {
-            publication.setResources(List.of());
-        }
-
-        if (publication.getResources().isEmpty() && publication.getRules() == null) {
-            throw new IllegalArgumentException("No resources and no rules in publication");
+        if (publication.getResources() == null || publication.getResources().isEmpty()) {
+            throw new IllegalArgumentException("Publication \"resources\" is missing");
         }
 
         ResourceUrl targetFolder = ResourceUrl.parse(publication.getTargetUrl());
