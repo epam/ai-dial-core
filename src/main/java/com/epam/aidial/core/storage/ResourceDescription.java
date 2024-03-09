@@ -93,6 +93,14 @@ public class ResourceDescription {
         return isFolder && name == null;
     }
 
+    public boolean isPublic() {
+        return bucketLocation.equals(BlobStorageUtil.PUBLIC_LOCATION);
+    }
+
+    public boolean isPrivate() {
+        return !isPublic();
+    }
+
     public String getParentPath() {
         return parentFolders.isEmpty() ? null : String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
     }
@@ -146,55 +154,68 @@ public class ResourceDescription {
         return fromDecoded(description.getType(), description.getBucketName(), description.getBucketLocation(), relativePath);
     }
 
-    public static ResourceDescription fromLink(String link, EncryptionService encryptionService) {
-        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
-
-        if (parts.length < 2) {
-            throw new IllegalArgumentException("Invalid resource link provided " + link);
-        }
-
-        ResourceType resourceType = ResourceType.of(parts[0]);
-        String bucket = parts[1];
-        String location = encryptionService.decrypt(bucket);
-        if (location == null) {
-            throw new IllegalArgumentException("Unknown bucket " + bucket);
-        }
-
-        String resourcePath = link.substring(bucket.length() + parts[0].length() + 2);
-        return fromEncoded(resourceType, bucket, location, resourcePath);
+    public static ResourceDescription fromPublicUrl(String url) {
+        return fromUrl(url, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
     }
 
-    private static ResourceDescription fromLink(String link, String bucketEncoded, String bucketDecoded) {
-        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+    public static ResourceDescription fromPrivateUrl(String url, ResourceDescription bucket) {
+        return fromUrl(url, bucket.getBucketName(), bucket.getBucketLocation(), null);
+    }
+
+    public static ResourceDescription fromPrivateUrl(String url, EncryptionService encryption) {
+        ResourceDescription description = fromAnyUrl(url, encryption);
+
+        if (description.isPublic()) {
+            throw new IllegalArgumentException("Not private url: " + url);
+        }
+
+        return description;
+    }
+
+    public static ResourceDescription fromAnyUrl(String url, EncryptionService encryption) {
+        return fromUrl(url, null, null, encryption);
+    }
+
+    private static ResourceDescription fromUrl(String url,
+                                               String expectedBucket,
+                                               String expectedLocation,
+                                               EncryptionService encryptionService) {
+        String[] parts = url.split(BlobStorageUtil.PATH_SEPARATOR);
 
         if (parts.length < 2) {
-            throw new IllegalArgumentException("Invalid resource link provided " + link);
+            throw new IllegalArgumentException("Url has less than two segments: " + url);
         }
 
-        if (link.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
-            throw new IllegalArgumentException("Link must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + link);
+        if (url.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Url must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + url);
         }
 
-        if (parts.length == 2 && !link.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
-            throw new IllegalArgumentException("Link must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + link);
+        if (parts.length == 2 && !url.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Url must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + url);
         }
 
         ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
         String bucket = UrlUtil.decodePath(parts[1]);
-        if (!bucket.equals(bucketEncoded)) {
-            throw new IllegalArgumentException("Bucket does not match: " + bucket);
+        String location = null;
+
+        if (bucket.equals(BlobStorageUtil.PUBLIC_BUCKET)) {
+            location = BlobStorageUtil.PUBLIC_LOCATION;
+        } else if (expectedBucket != null) {
+            location = expectedLocation;
+        } else if (encryptionService != null) {
+            location = encryptionService.decrypt(bucket);
         }
 
-        String relativePath = link.substring(parts[0].length() + parts[1].length() + 2);
-        return fromEncoded(resourceType, bucketEncoded, bucketDecoded, relativePath);
-    }
+        if (expectedBucket != null && !expectedBucket.equals(bucket)) {
+            throw new IllegalArgumentException("Url bucket does not match: " + url);
+        }
 
-    public static ResourceDescription fromBucketLink(String link, ResourceDescription bucket) {
-        return fromLink(link, bucket.getBucketName(), bucket.getBucketLocation());
-    }
+        if (location == null) {
+            throw new IllegalArgumentException("Url has invalid bucket: " + url);
+        }
 
-    public static ResourceDescription fromPublicLink(String link) {
-        return fromLink(link, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION);
+        String relativePath = url.substring(parts[0].length() + parts[1].length() + 2);
+        return fromEncoded(resourceType, bucket, location, relativePath);
     }
 
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,

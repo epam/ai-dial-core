@@ -1,10 +1,11 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -21,9 +22,11 @@ import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -70,6 +73,8 @@ public class ResourceBaseTest {
 
     int serverPort;
     ApiKeyStore apiKeyStore;
+
+    AccessTokenValidator validator = Mockito.mock(AccessTokenValidator.class);
 
     @BeforeEach
     void init() throws Exception {
@@ -118,10 +123,25 @@ public class ResourceBaseTest {
             JsonObject settings = AiDial.settings()
                     .mergeIn(new JsonObject(overrides), true);
 
+            Mockito.when(validator.extractClaims(Mockito.any()))
+                    .thenAnswer(invocation -> {
+                        String authorization = invocation.getArgument(0);
+                        if (authorization == null) {
+                            return Future.succeededFuture();
+                        }
+
+                        if (authorization.equals("user") || authorization.equals("admin")) {
+                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization), authorization));
+                        }
+
+                        return Future.failedFuture("Not authorized");
+                    });
+
             dial = new AiDial();
             dial.setSettings(settings);
             dial.setGenerator(() -> id);
             dial.setClock(() -> time);
+            dial.setAccessTokenValidator(validator);
             dial.start();
             serverPort = dial.getServer().actualPort();
             apiKeyStore = dial.getProxy().getApiKeyStore();
@@ -221,12 +241,17 @@ public class ResourceBaseTest {
             throw new IllegalArgumentException("Unsupported method: " + method);
         }
 
-        request.setHeader("api-key", "proxyKey1");
+        boolean isAuthorized = false;
 
         for (int i = 0; i < headers.length; i += 2) {
             String key = headers[i];
             String value = headers[i + 1];
             request.setHeader(key, value);
+            isAuthorized = key.equalsIgnoreCase("authorization") || key.equalsIgnoreCase("api-key");
+        }
+
+        if (!isAuthorized) {
+            request.setHeader("api-key", "proxyKey1");
         }
 
         try (CloseableHttpResponse response = client.execute(request)) {

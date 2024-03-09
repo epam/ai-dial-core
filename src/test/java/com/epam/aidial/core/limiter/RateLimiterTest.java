@@ -99,7 +99,7 @@ public class RateLimiterTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        LockService lockService = new LockService(redissonClient);
+        LockService lockService = new LockService(redissonClient, null);
         String resourceConfig = """
                   {
                     "maxSize" : 1048576,

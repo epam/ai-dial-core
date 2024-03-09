@@ -1,19 +1,33 @@
 package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.Rule;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.UrlUtil;
-import lombok.AllArgsConstructor;
+import io.vertx.core.json.JsonObject;
 
-@AllArgsConstructor
+import java.util.List;
+
 public class AccessService {
 
     private final EncryptionService encryptionService;
     private final ShareService shareService;
     private final PublicationService publicationService;
+    private final List<Rule> adminRules;
+
+    public AccessService(EncryptionService encryptionService,
+                         ShareService shareService,
+                         PublicationService publicationService,
+                         JsonObject settings) {
+        this.encryptionService = encryptionService;
+        this.shareService = shareService;
+        this.publicationService = publicationService;
+        this.adminRules = adminRules(settings);
+    }
 
     public boolean hasWriteAccess(String filePath, String decryptedBucket, ProxyContext context) {
         String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
@@ -41,12 +55,24 @@ public class AccessService {
     public boolean isSharedResource(ResourceDescription resource, ProxyContext context) {
         String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
         String actualUserBucket = encryptionService.encrypt(actualUserLocation);
-        return shareService != null && shareService.hasReadAccess(actualUserBucket, actualUserLocation, resource);
+        return shareService.hasReadAccess(actualUserBucket, actualUserLocation, resource);
     }
 
-    public boolean isReviewResource(ResourceDescription resource, ProxyContext context) {
-        String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
-        String actualUserBucket = encryptionService.encrypt(actualUserLocation);
-        return publicationService != null && publicationService.hasReviewAccess(resource, actualUserBucket, actualUserLocation);
+    public boolean hasReviewAccess(ResourceDescription resource, ProxyContext context) {
+        return publicationService.hasReviewAccess(context, resource);
+    }
+
+    public boolean hasPublicAccess(ResourceDescription resource, ProxyContext context) {
+        return publicationService.hasPublicAccess(context, resource);
+    }
+
+    public boolean hasAdminAccess(ProxyContext context) {
+        return RuleMatcher.match(context, adminRules);
+    }
+
+    private static List<Rule> adminRules(JsonObject settings) {
+        String rules = settings.getJsonObject("admin").getJsonArray("rules").toString();
+        List<Rule> list = ProxyUtil.convertToObject(rules, Rule.LIST_TYPE);
+        return (list == null) ? List.of() : list;
     }
 }

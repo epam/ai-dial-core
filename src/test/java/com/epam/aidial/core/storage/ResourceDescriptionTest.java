@@ -156,31 +156,31 @@ public class ResourceDescriptionTest {
     @Test
     public void testValidPublicLinks() {
         assertEquals(
-                ResourceDescription.fromPublicLink("publications/public/"),
+                ResourceDescription.fromPublicUrl("publications/public/"),
                 ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "")
         );
 
         assertEquals(
-                ResourceDescription.fromPublicLink("publications/public/file"),
+                ResourceDescription.fromPublicUrl("publications/public/file"),
                 ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "file")
         );
 
         assertEquals(
-                ResourceDescription.fromPublicLink("publications/public/folder/"),
+                ResourceDescription.fromPublicUrl("publications/public/folder/"),
                 ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "folder/")
         );
 
         assertEquals(
-                ResourceDescription.fromPublicLink("publications/public/%30").getName(),
+                ResourceDescription.fromPublicUrl("publications/public/%30").getName(),
                 "0"
         );
     }
 
     @Test
     public void testInvalidPublicLinks() {
-        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("/publications/public/"));
-        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("publications/public"));
-        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("publications/public"));
-        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("publications/private/"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("/publications/public/"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/public"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/public"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/private/"));
     }
 }

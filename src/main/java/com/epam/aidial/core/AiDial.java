@@ -71,6 +71,8 @@ public class AiDial {
     private RedissonClient redis;
     private Proxy proxy;
 
+    private AccessTokenValidator accessTokenValidator;
+
     private BlobStorage storage;
     private ResourceService resourceService;
 
@@ -93,7 +95,11 @@ public class AiDial {
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             LogStore logStore = new GfLogStore(vertx);
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
-            AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
+
+            if (accessTokenValidator == null) {
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
+            }
+
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
@@ -103,13 +109,13 @@ public class AiDial {
 
             redis = openRedis();
 
-            LockService lockService = new LockService(redis);
+            LockService lockService = new LockService(redis, storage);
             resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
 
-            AccessService accessService = new AccessService(encryptionService, shareService, publicationService);
+            AccessService accessService = new AccessService(encryptionService, shareService, publicationService, settings("access"));
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,

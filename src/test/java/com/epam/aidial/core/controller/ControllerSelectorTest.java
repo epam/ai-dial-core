@@ -185,13 +185,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(FileMetadataController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("file1", arg3);
+        assertEquals("/v1/metadata/files/bucket/file1", arg2);
     }
 
     @Test
@@ -202,13 +200,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(FileMetadataController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("fol%2Fder%201/", arg3);
+        assertEquals("/v1/metadata/files/bucket/fol%2Fder%201/", arg2);
     }
 
     @Test
@@ -219,13 +215,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(DownloadFileController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("folder1/file1.txt", arg3);
+        assertEquals("/v1/files/bucket/folder1/file1.txt", arg2);
     }
 
     @Test
@@ -236,13 +230,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(DownloadFileController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("fol%2Fder%201/file1%23.txt", arg3);
+        assertEquals("/v1/files/bucket/fol%2Fder%201/file1%23.txt", arg2);
     }
 
     @Test
@@ -270,13 +262,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(UploadFileController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("folder1/file1.txt", arg3);
+        assertEquals("/v1/files/bucket/folder1/file1.txt", arg2);
     }
 
     @Test
@@ -287,13 +277,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(UploadFileController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("fol%2Fder%201/file1%23.txt", arg3);
+        assertEquals("/v1/files/bucket/fol%2Fder%201/file1%23.txt", arg2);
     }
 
     @Test
@@ -304,13 +292,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(DeleteFileController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("folder1/file1.txt", arg3);
+        assertEquals("/v1/files/bucket/folder1/file1.txt", arg2);
     }
 
     @Test
@@ -321,13 +307,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(DeleteFileController.class, arg1);
-        assertEquals("bucket", arg2);
-        assertEquals("fol%2Fder%201/file1%23.txt", arg3);
+        assertEquals("/v1/files/bucket/fol%2Fder%201/file1%23.txt", arg2);
     }
 
     @Test

@@ -179,7 +179,7 @@ public class ResourceController extends AccessControlBaseController {
                     resourceLinks.add(new ResourceLink(descriptor.getUrl()));
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
-                    return lockService.underBucketLock(proxy, bucketLocation, () -> {
+                    return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
                         shareService.revokeSharedAccess(bucketName, bucketLocation,
                                 new ResourceLinkCollection(resourceLinks));

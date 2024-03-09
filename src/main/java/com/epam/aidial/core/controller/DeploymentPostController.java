@@ -277,7 +277,7 @@ public class DeploymentPostController {
             // skip public resource
             return null;
         }
-        return ResourceDescription.fromLink(url, proxy.getEncryptionService());
+        return ResourceDescription.fromPrivateUrl(url, proxy.getEncryptionService());
     }
 
     /**

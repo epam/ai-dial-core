@@ -1,6 +1,6 @@
 package com.epam.aidial.core.service;
 
-import com.epam.aidial.core.Proxy;
+import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
@@ -20,13 +20,15 @@ import javax.annotation.Nullable;
 @Slf4j
 public class LockService {
 
-    private static final long PERIOD = TimeUnit.SECONDS.toMicros(60);
+    private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
 
+    private final String prefix;
     private final RScript script;
 
-    public LockService(RedissonClient redis) {
+    public LockService(RedissonClient redis, @Nullable BlobStorage storage) {
+        this.prefix = (storage == null) ? null : storage.getPrefix();
         this.script = redis.getScript(StringCodec.INSTANCE);
     }
 
@@ -45,11 +47,7 @@ public class LockService {
         return () -> unlock(id, owner);
     }
 
-    public <T> T underBucketLock(Proxy proxy, String bucketLocation, Supplier<T> function) {
-        return underBucketLock(bucketLocation, proxy.getStorage().getPrefix(), function);
-    }
-
-    private <T> T underBucketLock(String bucketLocation, @Nullable String prefix, Supplier<T> function) {
+    public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
         String key = BlobStorageUtil.toStoragePath(prefix, bucketLocation);
         try (var ignored = lock(key)) {
             return function.get();
@@ -70,11 +68,11 @@ public class LockService {
                         local time = redis.call('time')
                         local now = time[1] * 1000000 + time[2]
                         local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
-                        
+                                                
                         if (deadline ~= nil and now < deadline) then
                           return deadline - now
                         end
-                        
+                                                
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
                         return 0
                         """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));

@@ -169,8 +169,8 @@ public class FileApiTest extends ResourceBaseTest {
                 .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
                         context.succeeding(response -> {
                             context.verify(() -> {
-                                assertEquals(403, response.statusCode());
-                                assertEquals("You don't have an access to the FILE testbucket/", response.body());
+                                assertEquals(400, response.statusCode());
+                                assertEquals("Url has invalid bucket: files/testbucket/", response.body());
                                 context.completeNow();
                             });
                         })
@@ -356,7 +356,7 @@ public class FileApiTest extends ResourceBaseTest {
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(403, response.statusCode());
-                                    assertEquals("You don't have an access to the FILE 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt",
+                                    assertEquals("You don't have an access to: files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt",
                                             response.body());
                                     checkpoint.flag();
                                     promise.complete();
@@ -427,7 +427,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(403, response.statusCode());
-                            assertEquals("You don't have an access to the FILE 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
+                            assertEquals("You don't have an access to: files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
