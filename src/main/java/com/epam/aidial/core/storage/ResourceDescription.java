@@ -218,6 +218,39 @@ public class ResourceDescription {
         return fromEncoded(resourceType, bucket, location, relativePath);
     }
 
+    private static ResourceDescription fromLink(String link, String bucketEncoded, String bucketDecoded) {
+        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Invalid resource link provided " + link);
+        }
+
+        if (link.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Link must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + link);
+        }
+
+        if (parts.length == 2 && !link.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Link must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + link);
+        }
+
+        ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
+        String bucket = UrlUtil.decodePath(parts[1]);
+        if (!bucket.equals(bucketEncoded)) {
+            throw new IllegalArgumentException("Bucket does not match: " + bucket);
+        }
+
+        String relativePath = link.substring(parts[0].length() + parts[1].length() + 2);
+        return fromEncoded(resourceType, bucketEncoded, bucketDecoded, relativePath);
+    }
+
+    public static ResourceDescription fromBucketLink(String link, ResourceDescription bucket) {
+        return fromLink(link, bucket.getBucketName(), bucket.getBucketLocation());
+    }
+
+    public static ResourceDescription fromPublicLink(String link) {
+        return fromLink(link, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION);
+    }
+
     /**
      * Azure blob storage do not support files with .(dot) (or sequence of dots) at the end of the file name or folder
      * <a href="https://learn.microsoft.com/en-us/rest/api/storageservices/Naming-and-Referencing-Containers--Blobs--and-Metadata?redirectedfrom=MSDN#blob-names">reference</a>
