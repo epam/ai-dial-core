@@ -3,6 +3,8 @@ package com.epam.aidial.core;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -63,6 +65,8 @@ public class ResourceBaseTest {
     Path testDir;
     CloseableHttpClient client;
     String bucket;
+    long time = 0;
+    String id = "0123";
 
     int serverPort;
     ApiKeyStore apiKeyStore;
@@ -116,6 +120,8 @@ public class ResourceBaseTest {
 
             dial = new AiDial();
             dial.setSettings(settings);
+            dial.setGenerator(() -> id);
+            dial.setClock(() -> time);
             dial.start();
             serverPort = dial.getServer().actualPort();
             apiKeyStore = dial.getProxy().getApiKeyStore();
@@ -188,6 +194,10 @@ public class ResourceBaseTest {
 
     Response metadata(String resource) {
         return send(HttpMethod.GET, "/v1/metadata/conversations/" + bucket + resource, null, "");
+    }
+
+    Response send(HttpMethod method, String path) {
+        return send(method, path, null, "");
     }
 
     @SneakyThrows

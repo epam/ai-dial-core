@@ -20,7 +20,6 @@ import javax.annotation.Nullable;
 public class ResourceDescription {
 
     private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}');
-
     private static final int MAX_PATH_SIZE = 900;
 
     ResourceType type;
@@ -163,6 +162,39 @@ public class ResourceDescription {
 
         String resourcePath = link.substring(bucket.length() + parts[0].length() + 2);
         return fromEncoded(resourceType, bucket, location, resourcePath);
+    }
+
+    private static ResourceDescription fromLink(String link, String bucketEncoded, String bucketDecoded) {
+        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Invalid resource link provided " + link);
+        }
+
+        if (link.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Link must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + link);
+        }
+
+        if (parts.length == 2 && !link.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Link must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + link);
+        }
+
+        ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
+        String bucket = UrlUtil.decodePath(parts[1]);
+        if (!bucket.equals(bucketEncoded)) {
+            throw new IllegalArgumentException("Bucket does not match: " + bucket);
+        }
+
+        String relativePath = link.substring(parts[0].length() + parts[1].length() + 2);
+        return fromEncoded(resourceType, bucketEncoded, bucketDecoded, relativePath);
+    }
+
+    public static ResourceDescription fromBucketLink(String link, ResourceDescription bucket) {
+        return fromLink(link, bucket.getBucketName(), bucket.getBucketLocation());
+    }
+
+    public static ResourceDescription fromPublicLink(String link) {
+        return fromLink(link, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION);
     }
 
     /**

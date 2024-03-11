@@ -152,4 +152,35 @@ public class ResourceDescriptionTest {
         assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%7D.txt"));
     }
+
+    @Test
+    public void testValidPublicLinks() {
+        assertEquals(
+                ResourceDescription.fromPublicLink("publications/public/"),
+                ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "")
+        );
+
+        assertEquals(
+                ResourceDescription.fromPublicLink("publications/public/file"),
+                ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "file")
+        );
+
+        assertEquals(
+                ResourceDescription.fromPublicLink("publications/public/folder/"),
+                ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "folder/")
+        );
+
+        assertEquals(
+                ResourceDescription.fromPublicLink("publications/public/%30").getName(),
+                "0"
+        );
+    }
+
+    @Test
+    public void testInvalidPublicLinks() {
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("/publications/public/"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("publications/public"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("publications/public"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicLink("publications/private/"));
+    }
 }

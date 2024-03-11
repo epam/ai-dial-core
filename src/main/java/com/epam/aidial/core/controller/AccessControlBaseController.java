@@ -54,12 +54,16 @@ public abstract class AccessControlBaseController {
                             return true;
                         }
 
+                        if (proxy.getAccessService().isReviewResource(resource, context)) {
+                            return true;
+                        }
+
                         return proxy.getAccessService().isSharedResource(resource, context);
                     }
 
                     return false;
                 })
-                .map(hasAccess  -> {
+                .map(hasAccess -> {
                     if (hasAccess) {
                         handle(resource);
                     } else {

@@ -23,6 +23,7 @@ import org.jclouds.blobstore.domain.Tier;
 import org.jclouds.blobstore.domain.internal.BlobMetadataImpl;
 import org.jclouds.blobstore.domain.internal.MutableStorageMetadataImpl;
 import org.jclouds.blobstore.domain.internal.PageSetImpl;
+import org.jclouds.blobstore.options.CopyOptions;
 import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.io.ContentMetadata;
@@ -189,6 +190,11 @@ public class BlobStorage implements Closeable {
     public void delete(String filePath) {
         String storageLocation = getStorageLocation(filePath);
         blobStore.removeBlob(bucketName, storageLocation);
+    }
+
+    public boolean copy(String fromPath, String toPath) {
+        blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), CopyOptions.NONE);
+        return true;
     }
 
     /**
