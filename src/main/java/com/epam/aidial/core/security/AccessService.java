@@ -1,6 +1,8 @@
 package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.Rule;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ShareService;
@@ -68,6 +70,13 @@ public class AccessService {
 
     public boolean hasAdminAccess(ProxyContext context) {
         return RuleMatcher.match(context, adminRules);
+    }
+
+    public void filterForbidden(ProxyContext context, ResourceDescription descriptor, MetadataBase metadata) {
+        if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
+            ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
+            publicationService.filterForbidden(context, descriptor, folder);
+        }
     }
 
     private static List<Rule> adminRules(JsonObject settings) {

@@ -16,6 +16,6 @@ public class Rule {
     List<String> targets;
 
     public enum Function {
-        EQUAL, CONTAIN, REGEX,
+        TRUE, FALSE, EQUAL, CONTAIN, REGEX,
     }
 }

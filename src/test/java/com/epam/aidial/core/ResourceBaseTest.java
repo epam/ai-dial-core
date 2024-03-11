@@ -5,6 +5,8 @@ import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
@@ -26,6 +28,8 @@ import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -69,7 +73,7 @@ public class ResourceBaseTest {
     CloseableHttpClient client;
     String bucket;
     long time = 0;
-    String id = "0123";
+    long id = 123;
 
     int serverPort;
     ApiKeyStore apiKeyStore;
@@ -139,7 +143,7 @@ public class ResourceBaseTest {
 
             dial = new AiDial();
             dial.setSettings(settings);
-            dial.setGenerator(() -> id);
+            dial.setGenerator(this::generate);
             dial.setClock(() -> time);
             dial.setAccessTokenValidator(validator);
             dial.start();
@@ -175,6 +179,10 @@ public class ResourceBaseTest {
         }
     }
 
+    protected String generate() {
+        return "0" + id++;
+    }
+
     static void verify(Response response, int status) {
         assertEquals(status, response.status());
     }
@@ -188,6 +196,20 @@ public class ResourceBaseTest {
         assertEquals(status, response.status());
         try {
             assertEquals(ProxyUtil.MAPPER.readTree(body).toPrettyString(), ProxyUtil.MAPPER.readTree(response.body()).toPrettyString());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    static void verifyJsonNotExact(Response response, int status, String body) {
+        assertEquals(status, response.status());
+        try {
+            JsonNode expected = ProxyUtil.MAPPER.readTree(body);
+            JsonNode actual = ProxyUtil.MAPPER.readTree(response.body());
+
+            if (new NotExactComparator().compare(expected, actual) != 0) {
+                Assertions.assertEquals(expected.toPrettyString(), actual.toPrettyString());
+            }
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
@@ -264,6 +286,62 @@ public class ResourceBaseTest {
     record Response(int status, String body) {
         public boolean ok() {
             return status() == 200;
+        }
+    }
+
+    private static class NotExactComparator implements Comparator<JsonNode> {
+
+        @Override
+        public int compare(JsonNode expected, JsonNode actual) {
+            if (expected.isTextual() && expected.asText().equals("@ignore")) {
+                return 0;
+            }
+
+            if (expected.isObject() && actual.isObject()) {
+                if (actual.size() != expected.size()) {
+                    return -1;
+                }
+
+                for (Iterator<String> iterator = actual.fieldNames(); iterator.hasNext();) {
+                    String name = iterator.next();
+                    JsonNode left = expected.get(name);
+                    JsonNode right = actual.get(name);
+
+                    if (compare(left, right) != 0) {
+                        return -1;
+                    }
+                }
+
+                return 0;
+            }
+
+            if (expected.isArray() && actual.isArray()) {
+                ArrayNode lefts = (ArrayNode) expected;
+                ArrayNode rights = (ArrayNode) actual;
+
+                if (lefts.size() != rights.size()) {
+                    return -1;
+                }
+
+                for (JsonNode left : lefts) {
+                    boolean equal = false;
+
+                    for (JsonNode right : rights) {
+                        if (compare(left, right) == 0) {
+                            equal = true;
+                            break;
+                        }
+                    }
+
+                    if (!equal) {
+                        return -1;
+                    }
+                }
+
+                return 0;
+            }
+
+            return expected.equals(actual) ? 0 : -1;
         }
     }
 }

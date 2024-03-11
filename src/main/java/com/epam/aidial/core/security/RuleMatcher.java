@@ -29,6 +29,8 @@ public class RuleMatcher {
 
             List<String> targets = rule.getTargets();
             boolean match = switch (rule.getFunction()) {
+                case TRUE -> true;
+                case FALSE -> false;
                 case EQUAL -> equal(roles, targets);
                 case CONTAIN -> contain(roles, targets);
                 case REGEX -> regex(roles, targets);
