@@ -49,8 +49,7 @@ public abstract class AccessControlBaseController {
 
                     if (!checkFullAccess) {
                         // some per-request API-keys may have access to the resources implicitly
-                        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
-                        if (isAutoShared) {
+                        if (proxy.getAccessService().isAutoSharedResource(resource, context)) {
                             return true;
                         }
 
