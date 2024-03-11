@@ -218,6 +218,29 @@ public class ResourceDescription {
         return fromEncoded(resourceType, bucket, location, relativePath);
     }
 
+    /**
+     * Azure blob storage do not support files with .(dot) (or sequence of dots) at the end of the file name or folder
+     * <a href="https://learn.microsoft.com/en-us/rest/api/storageservices/Naming-and-Referencing-Containers--Blobs--and-Metadata?redirectedfrom=MSDN#blob-names">reference</a>
+     *
+     * @param resourceToUpload resource to upload
+     * @return true if provided resource has valid path to store, otherwise - false
+     */
+    public static boolean isValidResourcePath(ResourceDescription resourceToUpload) {
+        String resourceName = resourceToUpload.getName();
+
+        if (resourceName.endsWith(".")) {
+            return false;
+        }
+
+        for (String element : resourceToUpload.getParentFolders()) {
+            if (element.endsWith(".")) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,
                                             String originalPath, List<String> paths, boolean isFolder) {
         boolean isEmptyElements = paths.isEmpty();

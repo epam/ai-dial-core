@@ -231,6 +231,55 @@ public class FileApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testFileUploadWithInvalidPath(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        Future.succeededFuture().compose(mapper -> {
+            Promise<Void> promise = Promise.promise();
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(400, response.statusCode());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+            return promise.future();
+        }).compose(mapper -> {
+            Promise<Void> promise = Promise.promise();
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1./file")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(400, response.statusCode());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+            return promise.future();
+        }).andThen(ignore -> {
+            // verify file with invalid path can be downloaded
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(404, response.statusCode());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
     public void testFileUpload(Vertx vertx, VertxTestContext context) {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
