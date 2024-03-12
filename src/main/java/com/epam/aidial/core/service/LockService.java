@@ -27,8 +27,8 @@ public class LockService {
     private final String prefix;
     private final RScript script;
 
-    public LockService(RedissonClient redis, @Nullable BlobStorage storage) {
-        this.prefix = (storage == null) ? null : storage.getPrefix();
+    public LockService(RedissonClient redis, @Nullable String prefix) {
+        this.prefix = prefix;
         this.script = redis.getScript(StringCodec.INSTANCE);
     }
 

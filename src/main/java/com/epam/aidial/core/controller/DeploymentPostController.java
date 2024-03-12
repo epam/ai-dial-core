@@ -258,9 +258,7 @@ public class DeploymentPostController {
         ApiKeyData sourceApiKeyData = context.getApiKeyData();
         ApiKeyData destApiKeyData = context.getProxyApiKeyData();
         AccessService accessService = proxy.getAccessService();
-        if (accessService.hasWriteAccess(resource, context)
-                || accessService.isSharedResource(resource, context)
-                || sourceApiKeyData.getAttachedFiles().contains(resourceUrl)) {
+        if (sourceApiKeyData.getAttachedFiles().contains(resourceUrl) || accessService.hasReadAccess(resource, context)) {
             destApiKeyData.getAttachedFiles().add(resourceUrl);
         } else {
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
@@ -277,7 +275,7 @@ public class DeploymentPostController {
             // skip public resource
             return null;
         }
-        return ResourceDescription.fromPrivateUrl(url, proxy.getEncryptionService());
+        return ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
     }
 
     /**

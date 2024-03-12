@@ -109,7 +109,7 @@ public class AiDial {
 
             redis = openRedis();
 
-            LockService lockService = new LockService(redis, storage);
+            LockService lockService = new LockService(redis, storage.getPrefix());
             resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);

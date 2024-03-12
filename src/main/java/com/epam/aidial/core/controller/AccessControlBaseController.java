@@ -13,7 +13,7 @@ public abstract class AccessControlBaseController {
 
     final Proxy proxy;
     final ProxyContext context;
-    final boolean checkFullAccess;
+    final boolean isWriteAccess;
 
     public Future<?> handle(String resourceUrl) {
         ResourceDescription resource;
@@ -28,34 +28,8 @@ public abstract class AccessControlBaseController {
 
         return proxy.getVertx()
                 .executeBlocking(() -> {
-                    AccessService accessService = proxy.getAccessService();
-                    if (accessService.hasAdminAccess(context)) {
-                        return true;
-                    }
-
-                    if (resource.isPrivate() && accessService.hasWriteAccess(resource, context)) {
-                        return true;
-                    }
-
-                    if (!checkFullAccess) {
-                        // some per-request API-keys may have access to the resources implicitly
-                        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
-                        if (isAutoShared) {
-                            return true;
-                        }
-
-                        if (accessService.hasReviewAccess(resource, context)) {
-                            return true;
-                        }
-
-                        if (accessService.hasPublicAccess(resource, context)) {
-                            return true;
-                        }
-
-                        return resource.isPrivate() && accessService.isSharedResource(resource, context);
-                    }
-
-                    return false;
+                    AccessService service = proxy.getAccessService();
+                    return isWriteAccess ? service.hasWriteAccess(resource, context) : service.hasReadAccess(resource, context);
                 })
                 .map(hasAccess -> {
                     if (hasAccess) {

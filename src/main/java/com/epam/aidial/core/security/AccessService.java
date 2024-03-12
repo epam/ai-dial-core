@@ -31,40 +31,70 @@ public class AccessService {
         this.adminRules = adminRules(settings);
     }
 
-    public boolean hasWriteAccess(String filePath, String decryptedBucket, ProxyContext context) {
-        String expectedUserBucket = BlobStorageUtil.buildUserBucket(context);
-        if (expectedUserBucket.equals(decryptedBucket)) {
+    public boolean hasReadAccess(ResourceDescription resource, ProxyContext context) {
+        if (hasAdminAccess(context)) {
             return true;
         }
-        String expectedAppDataBucket = BlobStorageUtil.buildAppDataBucket(context);
-        if (expectedAppDataBucket != null && expectedAppDataBucket.equals(decryptedBucket)) {
-            return filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(context.getSourceDeployment())));
+
+        if (isAutoShared(resource, context)) {
+            return true;
         }
-        return false;
+
+        if (resource.isPublic()) {
+            return hasPublicAccess(resource, context);
+        }
+
+        return isMyResource(resource, context) || isAppResource(resource, context)
+                || hasReviewAccess(resource, context) || isSharedResource(resource, context);
     }
 
-    public boolean hasWriteAccess(ResourceDescription resourceDescription, ProxyContext context) {
-        String parentPath = resourceDescription.getParentPath();
-        String filePath;
-        if (parentPath == null) {
-            filePath = resourceDescription.getName();
-        } else {
-            filePath = resourceDescription.getParentPath() + BlobStorageUtil.PATH_SEPARATOR + resourceDescription.getName();
+    public boolean hasWriteAccess(ResourceDescription resource, ProxyContext context) {
+        if (hasAdminAccess(context)) {
+            return true;
         }
-        return hasWriteAccess(filePath, resourceDescription.getBucketLocation(), context);
+
+        return resource.isPrivate() && (isMyResource(resource, context) || isAppResource(resource, context));
     }
 
-    public boolean isSharedResource(ResourceDescription resource, ProxyContext context) {
+    private static boolean isAutoShared(ResourceDescription resource, ProxyContext context) {
+        return context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
+    }
+
+    private static boolean isMyResource(ResourceDescription resource, ProxyContext context) {
+        String location = BlobStorageUtil.buildUserBucket(context);
+        return resource.getBucketLocation().equals(location);
+    }
+
+    private static boolean isAppResource(ResourceDescription resource, ProxyContext context) {
+        String deployment = context.getSourceDeployment();
+        if (deployment == null) {
+            return false;
+        }
+
+        String location = BlobStorageUtil.buildAppDataBucket(context);
+        if (!resource.getBucketLocation().equals(location)) {
+            return false;
+        }
+
+        String parentPath = resource.getParentPath();
+        String filePath = (parentPath == null)
+                ? resource.getName()
+                : resource.getParentPath() + BlobStorageUtil.PATH_SEPARATOR + resource.getName();
+
+        return filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment)));
+    }
+
+    private boolean isSharedResource(ResourceDescription resource, ProxyContext context) {
         String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
         String actualUserBucket = encryptionService.encrypt(actualUserLocation);
         return shareService.hasReadAccess(actualUserBucket, actualUserLocation, resource);
     }
 
-    public boolean hasReviewAccess(ResourceDescription resource, ProxyContext context) {
+    private boolean hasReviewAccess(ResourceDescription resource, ProxyContext context) {
         return publicationService.hasReviewAccess(context, resource);
     }
 
-    public boolean hasPublicAccess(ResourceDescription resource, ProxyContext context) {
+    private boolean hasPublicAccess(ResourceDescription resource, ProxyContext context) {
         return publicationService.hasPublicAccess(context, resource);
     }
 
