@@ -318,7 +318,7 @@ public class ShareService {
         // source and destination resource type might be different
         sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, destinationResourceType, bucket, location);
 
-        // copy user locations form source to destination
+        // copy user locations from source to destination
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
             if (dto == null) {

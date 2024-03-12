@@ -13,25 +13,23 @@ public class ResourceOperationService {
     private final InvitationService invitationService;
     private final ShareService shareService;
 
-    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription description, boolean overwriteIfExists) {
-        if (source.isFolder() || description.isFolder()) {
+    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
+        if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
 
         String sourceResourcePath = source.getAbsoluteFilePath();
         String sourceResourceUrl = source.getUrl();
-        String destinationResourcePath = description.getAbsoluteFilePath();
-        String destinationResourceUrl = description.getUrl();
+        String destinationResourcePath = destination.getAbsoluteFilePath();
+        String destinationResourceUrl = destination.getUrl();
 
         if (!storage.exists(sourceResourcePath)) {
             throw new IllegalArgumentException("Can't find resource %s".formatted(sourceResourceUrl));
         }
 
-        if (!overwriteIfExists) {
-            if (storage.exists(destinationResourcePath)) {
-                throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
-                        .formatted(sourceResourceUrl, destinationResourceUrl));
-            }
+        if (!overwriteIfExists && storage.exists(destinationResourcePath)) {
+            throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
+                    .formatted(sourceResourceUrl, destinationResourceUrl));
         }
 
         ResourceType resourceType = source.getType();
@@ -41,15 +39,15 @@ public class ResourceOperationService {
                 storage.delete(sourceResourcePath);
             }
             case CONVERSATION, PROMPT -> {
-                resourceService.copyResource(source, description);
+                resourceService.copyResource(source, destination);
                 resourceService.deleteResource(source);
             }
             default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
         }
         // move source links to destination if any
-        invitationService.moveResource(bucket, location, source, description);
+        invitationService.moveResource(bucket, location, source, destination);
         // move shared access if any
-        shareService.moveSharedAccess(bucket, location, source, description);
+        shareService.moveSharedAccess(bucket, location, source, destination);
     }
 
 }
