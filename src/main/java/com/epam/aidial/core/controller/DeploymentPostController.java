@@ -133,7 +133,10 @@ public class DeploymentPostController {
         proxy.getTokenStatsTracker().startSpan(context);
 
         context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
+                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    handleRequestBody(body);
+                    return null;
+                }))
                 .onFailure(this::handleRequestBodyError);
     }
 
@@ -250,6 +253,11 @@ public class DeploymentPostController {
     }
 
     private void processAttachedFile(String url) {
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
         ResourceDescription resource = getResourceDescription(url);
         if (resource == null) {
             return;
