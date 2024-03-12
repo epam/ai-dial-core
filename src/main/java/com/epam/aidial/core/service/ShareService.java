@@ -303,12 +303,66 @@ public class ShareService {
         }
     }
 
+    public void copySharedAccess(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        ResourceType sourceResourceType = source.getType();
+        ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, sourceResourceType, bucket, location);
+        SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(resourceService.getResource(sharedByMeResource), SharedByMeDto.class);
+        if (sharedByMeDto == null) {
+            return;
+        }
+
+        Set<String> userLocations = sharedByMeDto.getResourceToUsers().get(source.getUrl());
+
+        ResourceType destinationResourceType = destination.getType();
+        String destinationResourceLink = destination.getUrl();
+        // source and destination resource type might be different
+        sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, destinationResourceType, bucket, location);
+
+        // copy user locations form source to destination
+        resourceService.computeResource(sharedByMeResource, state -> {
+            SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
+            if (dto == null) {
+                dto = new SharedByMeDto(new HashMap<>());
+            }
+
+            // add shared access to the destination resource
+            dto.addUsersToResource(destinationResourceLink, userLocations);
+
+            return ProxyUtil.convertToString(dto);
+        });
+
+        // add each user shared access to the destination resource
+        for (String userLocation : userLocations) {
+            String userBucket = encryptionService.encrypt(userLocation);
+            addSharedResource(userBucket, userLocation, destinationResourceLink, destinationResourceType);
+        }
+    }
+
+    public void moveSharedAccess(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        // copy shared access from source to destination
+        copySharedAccess(bucket, location, source, destination);
+        // revoke shared access from source
+        revokeSharedAccess(bucket, location, new ResourceLinkCollection(Set.of(new ResourceLink(source.getUrl()))));
+    }
+
     private void removeSharedResource(String bucket, String location, String link, ResourceType resourceType) {
         ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
             ResourceLinkCollection sharedWithMe = ProxyUtil.convertToObject(state, ResourceLinkCollection.class);
             if (sharedWithMe != null) {
                 sharedWithMe.getResources().remove(new ResourceLink(link));
+            }
+
+            return ProxyUtil.convertToString(sharedWithMe);
+        });
+    }
+
+    private void addSharedResource(String bucket, String location, String link, ResourceType resourceType) {
+        ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
+        resourceService.computeResource(sharedByMeResource, state -> {
+            ResourceLinkCollection sharedWithMe = ProxyUtil.convertToObject(state, ResourceLinkCollection.class);
+            if (sharedWithMe != null) {
+                sharedWithMe.getResources().add(new ResourceLink(link));
             }
 
             return ProxyUtil.convertToString(sharedWithMe);

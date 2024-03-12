@@ -18,4 +18,9 @@ public class SharedByMeDto {
         Set<String> users = resourceToUsers.computeIfAbsent(url, k -> new HashSet<>());
         users.add(userLocation);
     }
+
+    public void addUsersToResource(String url, Set<String> userLocations) {
+        Set<String> users = resourceToUsers.computeIfAbsent(url, k -> new HashSet<>());
+        users.addAll(userLocations);
+    }
 }
