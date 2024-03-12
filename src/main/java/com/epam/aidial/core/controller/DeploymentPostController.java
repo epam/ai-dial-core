@@ -253,11 +253,6 @@ public class DeploymentPostController {
     }
 
     private void processAttachedFile(String url) {
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
         ResourceDescription resource = getResourceDescription(url);
         if (resource == null) {
             return;
