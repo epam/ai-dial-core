@@ -499,6 +499,75 @@ public class FileApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testDownloadFileWithinSharedFolder(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        // creating per-request API key with proxyKey2 as originator
+        // and proxyKey1 caller
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2");
+        ApiKeyData apiKeyData1 = new ApiKeyData();
+        apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
+        // set deployment ID for proxyKey1
+        apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
+        apiKeyData1.setAttachedFolders(List.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/"));
+        apiKeyStore.assignApiKey(apiKeyData1);
+
+        String apiKey1 = apiKeyData1.getPerRequestKey();
+
+        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain");
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // proxyKey2 uploads file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify caller can't download shared file with own api-key
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", "proxyKey1")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(403, response.statusCode());
+                            assertEquals("You don't have an access to the FILE 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify pre-request api key can download shared file
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", apiKey1)
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(TEST_FILE_CONTENT, response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
     public void testFileDownload(Vertx vertx, VertxTestContext context) {
         Checkpoint checkpoint = context.checkpoint(2);
         WebClient client = WebClient.create(vertx);

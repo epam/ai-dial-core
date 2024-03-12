@@ -8,6 +8,8 @@ import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.UrlUtil;
 import lombok.AllArgsConstructor;
 
+import java.util.List;
+
 @AllArgsConstructor
 public class AccessService {
 
@@ -48,5 +50,20 @@ public class AccessService {
         String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
         String actualUserBucket = encryptionService.encrypt(actualUserLocation);
         return publicationService != null && publicationService.hasReviewAccess(resource, actualUserBucket, actualUserLocation);
+    }
+
+    public boolean isAutoSharedResource(ResourceDescription resource, ProxyContext context) {
+        String resourceUrl = resource.getUrl();
+        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resourceUrl);
+        if (isAutoShared) {
+            return true;
+        }
+        List<String> attachedFolders = context.getApiKeyData().getAttachedFolders();
+        for (String folder : attachedFolders) {
+            if (resourceUrl.startsWith(folder)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

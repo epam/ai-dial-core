@@ -33,6 +33,7 @@ public class ApiKeyData {
     private String spanId;
     // list of attached file URLs collected from conversation history of the current request
     private Set<String> attachedFiles = new HashSet<>();
+    private List<String> attachedFolders = new ArrayList<>();
     // deployment name of the source(application/assistant/model) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request
