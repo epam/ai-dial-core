@@ -57,7 +57,18 @@ public class AccessService {
     }
 
     private static boolean isAutoShared(ResourceDescription resource, ProxyContext context) {
-        return context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
+        String resourceUrl = resource.getUrl();
+        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resourceUrl);
+        if (isAutoShared) {
+            return true;
+        }
+        List<String> attachedFolders = context.getApiKeyData().getAttachedFolders();
+        for (String folder : attachedFolders) {
+            if (resourceUrl.startsWith(folder)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isMyResource(ResourceDescription resource, ProxyContext context) {
