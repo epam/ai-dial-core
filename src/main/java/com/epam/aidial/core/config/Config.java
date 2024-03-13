@@ -20,7 +20,6 @@ public class Config {
     private Assistants assistant = new Assistants();
     private Map<String, Key> keys = new HashMap<>();
     private Map<String, Role> roles = new HashMap<>();
-    private Map<String, Role> userRoles = new HashMap<>();
 
 
     public Deployment selectDeployment(String deploymentId) {

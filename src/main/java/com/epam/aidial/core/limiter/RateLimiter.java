@@ -140,7 +140,7 @@ public class RateLimiter {
             return defaultUserLimit;
         }
         String deploymentName = context.getDeployment().getName();
-        Map<String, Role> userRoleToDeploymentLimits = context.getConfig().getUserRoles();
+        Map<String, Role> userRoleToDeploymentLimits = context.getConfig().getRoles();
         long minuteLimit = 0;
         long dayLimit = 0;
         for (String userRole : userRoles) {

@@ -90,9 +90,7 @@
                 "search_assistant": {},
                 "app": {}
             }
-        }
-    },
-    "userRoles": {
+        },
         "role1": {
             "limits": {
                 "chat-gpt-35-turbo": {

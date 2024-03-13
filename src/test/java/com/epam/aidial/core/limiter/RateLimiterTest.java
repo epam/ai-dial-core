@@ -14,7 +14,6 @@ import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
-import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
@@ -285,8 +284,8 @@ public class RateLimiterTest {
         limit.setMinute(200);
         role2.setLimits(Map.of("model", limit));
 
-        config.getUserRoles().put("role1", role1);
-        config.getUserRoles().put("role2", role2);
+        config.getRoles().put("role1", role1);
+        config.getRoles().put("role2", role2);
 
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash"), "trace-id", "span-id");
