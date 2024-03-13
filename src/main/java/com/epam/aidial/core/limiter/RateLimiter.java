@@ -192,11 +192,12 @@ public class RateLimiter {
             Limit candidate = getLimit(roles, userRole, deploymentName, null);
             if (candidate != null) {
                 if (limit == null) {
-                    limit = candidate;
-                } else {
-                    limit.setMinute(Math.max(candidate.getMinute(), limit.getMinute()));
-                    limit.setDay(Math.max(candidate.getDay(), limit.getDay()));
+                    limit = new Limit();
+                    limit.setMinute(0);
+                    limit.setDay(0);
                 }
+                limit.setMinute(Math.max(candidate.getMinute(), limit.getMinute()));
+                limit.setDay(Math.max(candidate.getDay(), limit.getDay()));
             }
         }
         return limit == null ? defaultUserLimit : limit;
