@@ -37,7 +37,7 @@ Static settings are used on startup and cannot be changed while application is r
 |--------------------------------------------|--------------------|-------------------------------------------------------------------------------------------------------------------
 | config.files                               | aidial.config.json | Config files with parts of the whole config.
 | config.reload                              | 60000              | Config reload interval in milliseconds.
-| identityProviders                          | -                  | List of identity providers. **Note**. At least one identity provider must be provided.
+| identityProviders                          | -                  | Map of identity providers. **Note**. At least one identity provider must be provided.
 | identityProviders.*.jwksUrl                | -                  | Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`
 | identityProviders.*.rolePath               | -                  | Path to the claim user roles in JWT token, e.g. `resource_access.chatbot-ui.roles` or just `roles`. **Required**.
 | identityProviders.*.loggingKey             | -                  | User information to search in claims of JWT token.
