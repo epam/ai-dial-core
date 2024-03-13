@@ -59,12 +59,12 @@ public class ResourceOperationController {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
 
-                    ResourceDescription sourceResource = ResourceDescription.fromLink(sourceUrl, encryptionService);
+                    ResourceDescription sourceResource = ResourceDescription.fromPrivateUrl(sourceUrl, encryptionService);
                     if (!sourceResource.getBucketName().equals(bucket)) {
                         throw new IllegalArgumentException("sourceUrl do not belong to the user");
                     }
 
-                    ResourceDescription destinationResource = ResourceDescription.fromLink(destinationUrl, encryptionService);
+                    ResourceDescription destinationResource = ResourceDescription.fromPrivateUrl(destinationUrl, encryptionService);
                     if (!destinationResource.getBucketName().equals(bucket)) {
                         throw new IllegalArgumentException("destinationUrl do not belong to the user");
                     }
@@ -73,8 +73,7 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
                     }
 
-
-                    return vertx.executeBlocking(() -> lockService.underBucketLock(proxy, bucketLocation, () -> {
+                    return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                         resourceOperationService.moveResource(bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
                         return null;
                     }));
