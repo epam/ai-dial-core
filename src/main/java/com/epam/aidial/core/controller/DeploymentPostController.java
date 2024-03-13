@@ -133,7 +133,10 @@ public class DeploymentPostController {
         proxy.getTokenStatsTracker().startSpan(context);
 
         context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
+                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    handleRequestBody(body);
+                    return null;
+                }))
                 .onFailure(this::handleRequestBodyError);
     }
 
@@ -261,7 +264,11 @@ public class DeploymentPostController {
         if (accessService.hasWriteAccess(resource, context)
                 || accessService.isSharedResource(resource, context)
                 || sourceApiKeyData.getAttachedFiles().contains(resourceUrl)) {
-            destApiKeyData.getAttachedFiles().add(resourceUrl);
+            if (resource.isFolder()) {
+                destApiKeyData.getAttachedFolders().add(resourceUrl);
+            } else {
+                destApiKeyData.getAttachedFiles().add(resourceUrl);
+            }
         } else {
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
         }
