@@ -23,11 +23,11 @@ public class ResourceOperationService {
         String destinationResourcePath = destination.getAbsoluteFilePath();
         String destinationResourceUrl = destination.getUrl();
 
-        if (!storage.exists(sourceResourcePath)) {
+        if (!resourceService.hasResource(source)) {
             throw new IllegalArgumentException("Can't find resource %s".formatted(sourceResourceUrl));
         }
 
-        if (!overwriteIfExists && storage.exists(destinationResourcePath)) {
+        if (!overwriteIfExists && resourceService.hasResource(destination)) {
             throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                     .formatted(sourceResourceUrl, destinationResourceUrl));
         }
