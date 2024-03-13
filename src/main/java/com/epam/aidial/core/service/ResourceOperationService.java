@@ -23,18 +23,17 @@ public class ResourceOperationService {
         String destinationResourcePath = destination.getAbsoluteFilePath();
         String destinationResourceUrl = destination.getUrl();
 
-        if (!resourceService.hasResource(source)) {
-            throw new IllegalArgumentException("Can't find resource %s".formatted(sourceResourceUrl));
-        }
-
-        if (!overwriteIfExists && resourceService.hasResource(destination)) {
-            throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
-                    .formatted(sourceResourceUrl, destinationResourceUrl));
+        if (!hasResource(source)) {
+            throw new IllegalArgumentException("Source resource %s do not exists".formatted(sourceResourceUrl));
         }
 
         ResourceType resourceType = source.getType();
         switch (resourceType) {
             case FILE -> {
+                if (!overwriteIfExists && storage.exists(destinationResourcePath)) {
+                    throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
+                            .formatted(sourceResourceUrl, destinationResourceUrl));
+                }
                 storage.copy(sourceResourcePath, destinationResourcePath);
                 storage.delete(sourceResourcePath);
             }
@@ -52,6 +51,14 @@ public class ResourceOperationService {
         invitationService.moveResource(bucket, location, source, destination);
         // move shared access if any
         shareService.moveSharedAccess(bucket, location, source, destination);
+    }
+
+    private boolean hasResource(ResourceDescription resource) {
+        return switch (resource.getType()) {
+            case FILE -> storage.exists(resource.getAbsoluteFilePath());
+            case CONVERSATION, PROMPT -> resourceService.hasResource(resource);
+            default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
+        };
     }
 
 }

@@ -288,8 +288,8 @@ public class ResourceService implements AutoCloseable {
             return false;
         }
 
-        putResource(to, body, overwrite);
-        return true;
+        ResourceItemMetadata metadata = putResource(to, body, overwrite);
+        return metadata != null;
     }
 
     private Void sync() {
