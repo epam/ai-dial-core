@@ -39,7 +39,11 @@ public class ResourceOperationService {
                 storage.delete(sourceResourcePath);
             }
             case CONVERSATION, PROMPT -> {
-                resourceService.copyResource(source, destination);
+                boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
+                if (!copied) {
+                    throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
+                            .formatted(sourceResourceUrl, destinationResourceUrl));
+                }
                 resourceService.deleteResource(source);
             }
             default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
