@@ -46,8 +46,8 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url);
-                    checkAccess(resource, resource.isPublic(), false);
+                    ResourceDescription resource = decodePublication(url, true);
+                    checkAccess(resource, resource.isPrivate());
                     return vertx.executeBlocking(() -> publicationService.listPublications(resource));
                 })
                 .onSuccess(publications -> context.respond(HttpStatus.OK, new Publications(publications)))
@@ -61,8 +61,8 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url);
-                    checkAccess(resource, false, true);
+                    ResourceDescription resource = decodePublication(url, false);
+                    checkAccess(resource, true);
                     return vertx.executeBlocking(() -> publicationService.getPublication(resource));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
@@ -76,8 +76,8 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     Publication publication = ProxyUtil.convertToObject(body, Publication.class);
-                    ResourceDescription resource = decodePublication(publication.getUrl());
-                    checkAccess(resource, false, true);
+                    ResourceDescription resource = decodePublication(publication.getUrl(), false);
+                    checkAccess(resource, true);
                     return vertx.executeBlocking(() -> publicationService.createPublication(resource, publication));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
@@ -91,8 +91,8 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url);
-                    checkAccess(resource, false, true);
+                    ResourceDescription resource = decodePublication(url, false);
+                    checkAccess(resource, true);
                     return vertx.executeBlocking(() -> publicationService.deletePublication(resource));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
@@ -106,8 +106,8 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url);
-                    checkAccess(resource, true, true);
+                    ResourceDescription resource = decodePublication(url, false);
+                    checkAccess(resource, false);
                     return vertx.executeBlocking(() ->
                             lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
                                     () -> publicationService.approvePublication(resource)));
@@ -123,8 +123,8 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url);
-                    checkAccess(resource, true, true);
+                    ResourceDescription resource = decodePublication(url, false);
+                    checkAccess(resource, false);
                     return vertx.executeBlocking(() -> publicationService.rejectPublication(resource));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
@@ -153,7 +153,7 @@ public class PublicationController {
         context.respond(status, body);
     }
 
-    private ResourceDescription decodePublication(String path) {
+    private ResourceDescription decodePublication(String path, boolean allowPublic) {
         ResourceDescription resource;
         try {
             resource = ResourceDescription.fromAnyUrl(path, encryptService);
@@ -165,19 +165,19 @@ public class PublicationController {
             throw new IllegalArgumentException("Invalid resource: " + path);
         }
 
+        if (!allowPublic && resource.isPublic()) {
+            throw new IllegalArgumentException("Invalid resource: " + path);
+        }
+
         return resource;
     }
 
-    private void checkAccess(ResourceDescription resource, boolean onlyAdmin, boolean onlyPrivate) {
+    private void checkAccess(ResourceDescription resource, boolean allowUser) {
         boolean hasAccess = accessService.hasAdminAccess(context);
 
-        if (!hasAccess && !onlyAdmin) {
+        if (!hasAccess && allowUser) {
             String bucket = BlobStorageUtil.buildInitiatorBucket(context);
             hasAccess = resource.getBucketLocation().equals(bucket);
-        }
-
-        if (onlyPrivate && resource.isPublic()) {
-            hasAccess = false;
         }
 
         if (!hasAccess) {

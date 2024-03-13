@@ -158,8 +158,12 @@ public class ResourceDescription {
         return fromUrl(url, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
     }
 
-    public static ResourceDescription fromPrivateUrl(String url, ResourceDescription bucket) {
-        return fromUrl(url, bucket.getBucketName(), bucket.getBucketLocation(), null);
+    /**
+     * @param url must contain the same bucket and location as resource.
+     * @param resource to take bucket and location from.
+     */
+    public static ResourceDescription fromPrivateUrl(String url, ResourceDescription resource) {
+        return fromUrl(url, resource.getBucketName(), resource.getBucketLocation(), null);
     }
 
     public static ResourceDescription fromPrivateUrl(String url, EncryptionService encryption) {
@@ -176,10 +180,17 @@ public class ResourceDescription {
         return fromUrl(url, null, null, encryption);
     }
 
+    /**
+     *
+     * @param url - resource url, e.g. files/bucket/folder/file.txt
+     * @param expectedBucket - matched against the url's bucket if provided.
+     * @param expectedLocation - used as bucket location if provided together with expected bucket.
+     * @param encryptionService - used to decrypt bucket location if provided.
+     */
     private static ResourceDescription fromUrl(String url,
-                                               String expectedBucket,
-                                               String expectedLocation,
-                                               EncryptionService encryptionService) {
+                                               @Nullable String expectedBucket,
+                                               @Nullable String expectedLocation,
+                                               @Nullable EncryptionService encryptionService) {
         String[] parts = url.split(BlobStorageUtil.PATH_SEPARATOR);
 
         if (parts.length < 2) {
