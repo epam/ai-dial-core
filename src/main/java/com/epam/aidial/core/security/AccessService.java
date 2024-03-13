@@ -32,28 +32,24 @@ public class AccessService {
     }
 
     public boolean hasReadAccess(ResourceDescription resource, ProxyContext context) {
-        if (hasAdminAccess(context)) {
-            return true;
-        }
-
         if (isAutoShared(resource, context)) {
             return true;
         }
 
         if (resource.isPublic()) {
-            return hasPublicAccess(resource, context);
+            return hasPublicAccess(resource, context, true);
         }
 
         return isMyResource(resource, context) || isAppResource(resource, context)
-                || hasReviewAccess(resource, context) || isSharedResource(resource, context);
+                || hasReviewAccess(resource, context, true) || isSharedResource(resource, context);
     }
 
     public boolean hasWriteAccess(ResourceDescription resource, ProxyContext context) {
-        if (hasAdminAccess(context)) {
-            return true;
+        if (resource.isPublic()) {
+            return hasPublicAccess(resource, context, false);
         }
 
-        return resource.isPrivate() && (isMyResource(resource, context) || isAppResource(resource, context));
+        return isMyResource(resource, context) || isAppResource(resource, context) || hasReviewAccess(resource, context, false);
     }
 
     private static boolean isAutoShared(ResourceDescription resource, ProxyContext context) {
@@ -101,12 +97,29 @@ public class AccessService {
         return shareService.hasReadAccess(actualUserBucket, actualUserLocation, resource);
     }
 
-    private boolean hasReviewAccess(ResourceDescription resource, ProxyContext context) {
-        return publicationService.hasReviewAccess(context, resource);
+    private boolean hasReviewAccess(ResourceDescription resource, ProxyContext context, boolean readOnly) {
+        if (!publicationService.isReviewResource(resource)) {
+            return false;
+        }
+
+        if (hasAdminAccess(context)) {
+            return true;
+        }
+
+        return readOnly && publicationService.hasReviewAccess(context, resource);
     }
 
-    private boolean hasPublicAccess(ResourceDescription resource, ProxyContext context) {
-        return publicationService.hasPublicAccess(context, resource);
+    private boolean hasPublicAccess(ResourceDescription resource, ProxyContext context, boolean readOnly) {
+        if (!resource.isPublic()) {
+            return false;
+        }
+
+        if (readOnly) {
+            return hasAdminAccess(context) || publicationService.hasPublicAccess(context, resource);
+        } else {
+            boolean isNotApplication = (context.getApiKeyData().getPerRequestKey() == null);
+            return isNotApplication && hasAdminAccess(context);
+        }
     }
 
     public boolean hasAdminAccess(ProxyContext context) {

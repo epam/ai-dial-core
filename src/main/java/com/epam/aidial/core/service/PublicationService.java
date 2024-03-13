@@ -59,8 +59,12 @@ public class PublicationService {
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
+    public boolean isReviewResource(ResourceDescription resource) {
+        return resource.isPrivate() && resource.getBucketLocation().contains(PUBLICATIONS_NAME);
+    }
+
     public boolean hasReviewAccess(ProxyContext context, ResourceDescription resource) {
-        if (resource.isPrivate() && resource.getBucketLocation().contains(PUBLICATIONS_NAME)) {
+        if (isReviewResource(resource)) {
             String location = BlobStorageUtil.buildInitiatorBucket(context);
             String reviewLocation = location + PUBLICATIONS_NAME + PATH_SEPARATOR;
             return resource.getBucketLocation().startsWith(reviewLocation);
