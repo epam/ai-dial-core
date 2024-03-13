@@ -4,6 +4,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.data.LimitStats;
 import com.epam.aidial.core.data.ResourceType;
@@ -20,9 +21,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 @Slf4j
 @RequiredArgsConstructor
 public class RateLimiter {
+
+    private static final Limit DEFAULT_LIMIT = new Limit();
 
     private final Vertx vertx;
 
@@ -34,10 +41,7 @@ public class RateLimiter {
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
-            Key key = context.getKey();
-            if (key == null) {
-                return Future.succeededFuture();
-            }
+
             Deployment deployment = context.getDeployment();
             TokenUsage usage = context.getTokenUsage();
 
@@ -62,8 +66,7 @@ public class RateLimiter {
             Deployment deployment = context.getDeployment();
             Limit limit;
             if (key == null) {
-                // don't support user limits yet
-                return Future.succeededFuture(RateLimitResult.SUCCESS);
+                limit = getLimitByUser(context);
             } else {
                 limit = getLimitByApiKey(context, deployment.getName());
             }
@@ -176,8 +179,38 @@ public class RateLimiter {
         return role.getLimits().get(deploymentName);
     }
 
+    private Limit getLimitByUser(ProxyContext context) {
+        List<String> userRoles = context.getUserRoles();
+        Limit defaultUserLimit = getDefaultUserLimit(context.getDeployment());
+        if (userRoles.isEmpty()) {
+            return defaultUserLimit;
+        }
+        String deploymentName = context.getDeployment().getName();
+        Map<String, Role> userRoleToDeploymentLimits = context.getConfig().getRoles();
+        long minuteLimit = 0;
+        long dayLimit = 0;
+        for (String userRole : userRoles) {
+            Limit limit = Optional.ofNullable(userRoleToDeploymentLimits.get(userRole))
+                    .map(role -> role.getLimits().get(deploymentName))
+                    .orElse(defaultUserLimit);
+            minuteLimit = Math.max(minuteLimit, limit.getMinute());
+            dayLimit = Math.max(dayLimit, limit.getDay());
+        }
+        Limit limit = new Limit();
+        limit.setMinute(minuteLimit);
+        limit.setDay(dayLimit);
+        return limit;
+    }
+
     private static String getPath(String deploymentName) {
         return String.format("%s/tokens", deploymentName);
+    }
+
+    private static Limit getDefaultUserLimit(Deployment deployment) {
+        if (deployment instanceof Model model) {
+            return model.getDefaultUserLimit() == null ? DEFAULT_LIMIT : model.getDefaultUserLimit();
+        }
+        return DEFAULT_LIMIT;
     }
 
 }

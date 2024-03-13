@@ -150,6 +150,27 @@ public class InvitationService {
         });
     }
 
+    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceLink sourceLink = new ResourceLink(source.getUrl());
+        ResourceLink destinationLink = new ResourceLink(destination.getUrl());
+        resourceService.computeResource(resource, state -> {
+            InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
+            if (invitations == null) {
+                return null;
+            }
+            Map<String, Invitation> invitationMap = invitations.getInvitations();
+            for (Invitation invitation : invitationMap.values()) {
+                Set<ResourceLink> invitationResourceLinks = invitation.getResources();
+                if (invitationResourceLinks.remove(sourceLink)) {
+                    invitationResourceLinks.add(destinationLink);
+                }
+            }
+
+            return ProxyUtil.convertToString(invitations);
+        });
+    }
+
     private void cleanUpExpiredInvitations(ResourceDescription resource, Collection<String> idsToEvict) {
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);

@@ -14,6 +14,7 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PublicationService;
+import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
@@ -114,6 +115,7 @@ public class AiDial {
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
+            ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, storage, invitationService, shareService);
 
             AccessService accessService = new AccessService(encryptionService, shareService, publicationService, settings("access"));
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
@@ -121,7 +123,7 @@ public class AiDial {
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, publicationService, accessService, lockService);
+                    shareService, publicationService, accessService, lockService, resourceOperationService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
