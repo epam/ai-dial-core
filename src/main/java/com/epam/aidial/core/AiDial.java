@@ -7,11 +7,15 @@ import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.GfLogStore;
 import com.epam.aidial.core.log.LogStore;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
@@ -48,8 +52,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 @Slf4j
 @Setter
@@ -66,6 +73,9 @@ public class AiDial {
 
     private BlobStorage storage;
     private ResourceService resourceService;
+
+    private LongSupplier clock = System::currentTimeMillis;
+    private Supplier<String> generator = () -> UUID.randomUUID().toString().replace("-", "");
 
     @VisibleForTesting
     void start() throws Exception {
@@ -93,23 +103,26 @@ public class AiDial {
 
             redis = openRedis();
 
-            if (redis != null) {
-                LockService lockService = new LockService(redis);
-                resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"));
-            }
+            LockService lockService = new LockService(redis);
+            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
 
+            AccessService accessService = new AccessService(encryptionService, shareService, publicationService);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
-                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService);
+                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
+                    shareService, publicationService, accessService, lockService);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
 
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {
-            log.warn("Proxy failed to start:", e);
+            log.error("Proxy failed to start:", e);
             stop();
             throw e;
         }
@@ -118,7 +131,7 @@ public class AiDial {
     private RedissonClient openRedis() throws IOException {
         JsonObject conf = settings("redis");
         if (conf.isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("Redis configuration not found");
         }
 
         ConfigSupport support = new ConfigSupport();
@@ -233,7 +246,11 @@ public class AiDial {
 
     public static void main(String[] args) throws Exception {
         AiDial dial = new AiDial();
-        dial.start();
+        try {
+            dial.start();
+        } catch (Throwable e) {
+            System.exit(-1);
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
     }
 

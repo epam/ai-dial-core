@@ -381,6 +381,36 @@ public class ControllerSelectorTest {
         assertInstanceOf(RouteController.class, controller);
     }
 
+    @Test
+    void testSelectDeploymentWithSpecialName() {
+        when(request.path()).thenReturn("/openai/deployments/deployment_x-y%2B%2F");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(DeploymentController.class, arg1);
+        assertEquals("deployment_x-y+/", arg2);
+    }
+
+    @Test
+    void testFailDeploymentWithSlash() {
+        when(request.path()).thenReturn("/openai/deployments/deployment/xy");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertInstanceOf(RouteController.class, controller);
+    }
+
+    @Test
+    void testFailDeploymentWithBadPrefix() {
+        when(request.path()).thenReturn("/prefix/openai/deployments/deployment");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertInstanceOf(RouteController.class, controller);
+    }
+
     @Nullable
     private static SerializedLambda getSerializedLambda(Serializable lambda) {
         for (Class<?> cl = lambda.getClass(); cl != null; cl = cl.getSuperclass()) {

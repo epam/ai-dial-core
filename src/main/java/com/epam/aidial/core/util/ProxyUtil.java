@@ -1,21 +1,31 @@
 package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
-import com.epam.aidial.core.config.ApiKeyData;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 
 @UtilityClass
+@Slf4j
 public class ProxyUtil {
 
     public static final JsonMapper MAPPER = JsonMapper.builder()
@@ -51,15 +61,6 @@ public class ProxyUtil {
         }
     }
 
-    public static String stripExtraLeadingSlashes(String uri) {
-        int index = 0;
-        while (index < uri.length() && uri.charAt(index) == '/') {
-            index++;
-        }
-
-        return (index <= 1) ? uri : uri.substring(index - 1);
-    }
-
     public static int contentLength(HttpServerRequest request, int defaultValue) {
         return contentLength(request.headers(), defaultValue);
     }
@@ -81,7 +82,7 @@ public class ProxyUtil {
         return defaultValue;
     }
 
-    public static void collectAttachedFiles(ObjectNode tree, ApiKeyData apiKeyData) {
+    public static void collectAttachedFiles(ObjectNode tree, Consumer<String> consumer) {
         ArrayNode messages = (ArrayNode) tree.get("messages");
         if (messages == null) {
             return;
@@ -100,9 +101,62 @@ public class ProxyUtil {
                 JsonNode attachment = attachments.get(j);
                 JsonNode url = attachment.get("url");
                 if (url != null) {
-                    apiKeyData.getAttachedFiles().add(url.textValue());
+                    consumer.accept(url.textValue());
                 }
             }
+        }
+    }
+
+    public static <T> T convertToObject(Buffer json, Class<T> clazz) {
+        try {
+            String text = json.toString(StandardCharsets.UTF_8);
+            return MAPPER.readValue(text, clazz);
+        } catch (Throwable e) {
+            throw new IllegalArgumentException("Failed to parse json: " + e.getMessage());
+        }
+    }
+
+    @Nullable
+    public static <T> T convertToObject(String payload, TypeReference<T> type) {
+        if (payload == null) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(payload, type);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+    @Nullable
+    public static <T> T convertToObject(String payload, Class<T> clazz) {
+        if (payload == null || payload.isEmpty()) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(payload, clazz);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to convert payload to the object", e);
+            if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
+                String missingField = mismatchedInputException.getPath().stream()
+                        .map(JsonMappingException.Reference::getFieldName)
+                        .collect(Collectors.joining("."));
+                throw new IllegalArgumentException("Missing required property '%s'".formatted(missingField));
+            }
+            throw new IllegalArgumentException("Provided payload do not match required schema");
+        }
+    }
+
+    @Nullable
+    public static String convertToString(Object data) {
+        if (data == null) {
+            return null;
+        }
+
+        try {
+            return MAPPER.writeValueAsString(data);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(e);
         }
     }
 }

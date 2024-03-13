@@ -2,17 +2,28 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.Conversation;
+import com.epam.aidial.core.data.Prompt;
+import com.epam.aidial.core.data.ResourceLink;
+import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.service.InvitationService;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -20,12 +31,19 @@ public class ResourceController extends AccessControlBaseController {
 
     private final Vertx vertx;
     private final ResourceService service;
+    private final ShareService shareService;
+    private final LockService lockService;
+    private final InvitationService invitationService;
     private final boolean metadata;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
-        super(proxy, context, true);
+        // PUT and DELETE require full access, GET - not
+        super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
+        this.shareService = proxy.getShareService();
+        this.lockService = proxy.getLockService();
+        this.invitationService = proxy.getInvitationService();
         this.metadata = metadata;
     }
 
@@ -49,18 +67,20 @@ public class ResourceController extends AccessControlBaseController {
     private Future<?> getMetadata(ResourceDescription descriptor) {
         String token;
         int limit;
+        boolean recursive;
 
         try {
             token = context.getRequest().getParam("token");
             limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
+            recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
             if (limit < 0 || limit > 1000) {
                 throw new IllegalArgumentException("Limit is out of allowed range");
             }
         } catch (Throwable error) {
-            return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range");
+            return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit))
+        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive))
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -98,12 +118,23 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
+        if (!ResourceDescription.isValidResourcePath(descriptor)) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
+        }
+
         int contentLength = ProxyUtil.contentLength(context.getRequest(), 0);
         int contentLimit = service.getMaxSize();
 
         if (contentLength > contentLimit) {
             String message = "Resource size: %s exceeds max limit: %s".formatted(contentLength, contentLimit);
             return context.respond(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
+        }
+
+        String ifNoneMatch = context.getRequest().getHeader(HttpHeaders.IF_NONE_MATCH);
+        boolean overwrite = (ifNoneMatch == null);
+
+        if (ifNoneMatch != null && !ifNoneMatch.equals("*")) {
+            return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
         }
 
         return context.getRequest().body().compose(bytes -> {
@@ -113,12 +144,28 @@ public class ResourceController extends AccessControlBaseController {
                     }
 
                     String body = bytes.toString(StandardCharsets.UTF_8);
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body));
+
+                    ResourceType resourceType = descriptor.getType();
+                    switch (resourceType) {
+                        case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
+                        case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+                        default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
+                    }
+
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite));
                 })
-                .onSuccess((metadata) -> context.respond(HttpStatus.OK, metadata))
+                .onSuccess((metadata) -> {
+                    if (metadata == null) {
+                        context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
+                    } else {
+                        context.respond(HttpStatus.OK, metadata);
+                    }
+                })
                 .onFailure(error -> {
                     if (error instanceof HttpException exception) {
                         context.respond(exception.getStatus(), exception.getMessage());
+                    } else if (error instanceof IllegalArgumentException badRequest) {
+                        context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
                     } else {
                         log.warn("Can't put resource: {}", descriptor.getUrl(), error);
                         context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -131,7 +178,18 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> service.deleteResource(descriptor))
+        return vertx.executeBlocking(() -> {
+                    Set<ResourceLink> resourceLinks = new HashSet<>();
+                    resourceLinks.add(new ResourceLink(descriptor.getUrl()));
+                    String bucketName = descriptor.getBucketName();
+                    String bucketLocation = descriptor.getBucketLocation();
+                    return lockService.underBucketLock(proxy, bucketLocation, () -> {
+                        invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
+                        shareService.revokeSharedAccess(bucketName, bucketLocation,
+                                new ResourceLinkCollection(resourceLinks));
+                        return service.deleteResource(descriptor);
+                    });
+                })
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);

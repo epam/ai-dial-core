@@ -37,7 +37,8 @@ public class DeploymentController {
         }
 
         DeploymentData data = createDeployment(model);
-        return context.respond(HttpStatus.OK, data);
+        context.respond(HttpStatus.OK, data);
+        return Future.succeededFuture();
     }
 
     public Future<?> getDeployments() {
@@ -54,7 +55,8 @@ public class DeploymentController {
         ListData<DeploymentData> list = new ListData<>();
         list.setData(deployments);
 
-        return context.respond(HttpStatus.OK, list);
+        context.respond(HttpStatus.OK, list);
+        return Future.succeededFuture();
     }
 
     public static boolean hasAccess(ProxyContext context, Deployment deployment) {
@@ -98,13 +100,32 @@ public class DeploymentController {
     }
 
     static FeaturesData createFeatures(Features features) {
-        if (features == null) {
-            return null;
-        }
         FeaturesData data = new FeaturesData();
+
+        if (features == null) {
+            return data;
+        }
+
         data.setRate(features.getRateEndpoint() != null);
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
+
+        if (features.getSystemPromptSupported() != null) {
+            data.setSystemPrompt(features.getSystemPromptSupported());
+        }
+
+        if (features.getToolsSupported() != null) {
+            data.setTools(features.getToolsSupported());
+        }
+
+        if (features.getSeedSupported() != null) {
+            data.setSeed(features.getSeedSupported());
+        }
+
+        if (features.getUrlAttachmentsSupported() != null) {
+            data.setUrlAttachments(features.getUrlAttachmentsSupported());
+        }
+
         return data;
     }
 }

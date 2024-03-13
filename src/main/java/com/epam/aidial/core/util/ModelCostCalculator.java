@@ -93,6 +93,10 @@ public class ModelCostCalculator {
                     }
                     ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(chunk);
                     ArrayNode choices = (ArrayNode) tree.get("choices");
+                    if (choices == null) {
+                        // skip error message
+                        continue;
+                    }
                     JsonNode contentNode = choices.get(0).get("delta").get("content");
                     if (contentNode != null) {
                         len += getLengthWithoutWhitespace(contentNode.textValue());
@@ -106,6 +110,10 @@ public class ModelCostCalculator {
             try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
                 ArrayNode choices = (ArrayNode) tree.get("choices");
+                if (choices == null) {
+                    // skip error message
+                    return 0;
+                }
                 JsonNode contentNode = choices.get(0).get("message").get("content");
                 return getLengthWithoutWhitespace(contentNode.textValue());
             } catch (Throwable e) {

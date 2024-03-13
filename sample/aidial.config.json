@@ -30,6 +30,8 @@
     "models": {
         "chat-gpt-35-turbo": {
             "type": "chat",
+            "displayName": "GPT-3.5",
+            "displayVersion": "Turbo",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
             "upstreams": [
                 {

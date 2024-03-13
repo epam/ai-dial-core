@@ -44,11 +44,18 @@
       "iconUrl": "http://localhost:7001/logo10k.png",
       "description": "Some description of the application for testing",
       "features": {
-        "rateEndpoint": "http://localhost:7001/openai/deployments/10k/rate_response"
+        "rateEndpoint": "http://localhost:7001/openai/deployments/10k/rate_response",
+        "systemPromptSupported": false
       }
     }
   },
   "models": {
+    "test-model-v1": {
+      "type": "chat",
+      "displayName": "Test Model",
+      "displayVersion": "1.0",
+      "endpoint" : "http://localhost:7001/openai/deployments/test-model-v1/chat/completions"
+    },
     "chat-gpt-35-turbo": {
       "type": "chat",
       "displayName": "GPT 3.5",
@@ -63,7 +70,10 @@
       "features": {
         "rateEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/rate_response",
         "tokenizeEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/tokenizer",
-        "truncatePromptEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/trim_history"
+        "truncatePromptEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/trim_history",
+        "toolsSupported": true,
+        "seedSupported": true,
+        "urlAttachmentsSupported": true
       }
     },
     "embedding-ada": {
@@ -87,6 +97,7 @@
   "roles": {
     "default": {
       "limits": {
+        "test-model-v1": {},
         "chat-gpt-35-turbo": {"minute": "100000", "day": "10000000"},
         "embedding-ada": {"minute": "100000", "day": "10000000"},
         "search": {},

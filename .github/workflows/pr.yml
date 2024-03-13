@@ -1,0 +1,10 @@
+name: PR Workflow
+
+on:
+  pull_request:
+    branches: [development, release-*]
+
+jobs:
+  run_tests:
+    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@1.6.0
+    secrets: inherit

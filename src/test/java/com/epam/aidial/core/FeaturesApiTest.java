@@ -1,7 +1,5 @@
 package com.epam.aidial.core;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.ext.web.client.WebClient;
@@ -9,58 +7,15 @@ import io.vertx.ext.web.codec.BodyCodec;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.SneakyThrows;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.net.URI;
-import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ExtendWith(VertxExtension.class)
-public class FeaturesApiTest {
-
-    private static AiDial dial;
-    private static int serverPort;
-
-    private static Path testDir;
-
-    @BeforeAll
-    public static void init() throws Exception {
-        // initialize server
-        dial = new AiDial();
-        testDir = FileUtil.baseTestPath(FeaturesApiTest.class);
-        dial.setStorage(FileUtil.buildFsBlobStorage(testDir));
-        dial.start();
-        serverPort = dial.getServer().actualPort();
-    }
-
-    @AfterAll
-    public static void destroy() {
-        // stop server
-        dial.stop();
-    }
-
-    private static String generateJwtToken(String user) {
-        Algorithm algorithm = Algorithm.HMAC256("secret_key");
-        return JWT.create().withClaim("sub", user).sign(algorithm);
-    }
-
-    @BeforeEach
-    public void setUp() {
-        // prepare test directory
-        FileUtil.createDir(testDir.resolve("test"));
-    }
-
-    @AfterEach
-    public void clean() {
-        // clean test directory
-        FileUtil.deleteDir(testDir);
-    }
+public class FeaturesApiTest extends ResourceBaseTest {
 
     @Test
     void testRateEndpointModel(Vertx vertx, VertxTestContext context) {

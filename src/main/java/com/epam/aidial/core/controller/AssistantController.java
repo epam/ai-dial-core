@@ -32,7 +32,8 @@ public class AssistantController {
         }
 
         AssistantData data = createAssistant(assistant);
-        return context.respond(HttpStatus.OK, data);
+        context.respond(HttpStatus.OK, data);
+        return Future.succeededFuture();
     }
 
     public Future<?> getAssistants() {
@@ -49,7 +50,8 @@ public class AssistantController {
         ListData<AssistantData> list = new ListData<>();
         list.setData(assistants);
 
-        return context.respond(HttpStatus.OK, list);
+        context.respond(HttpStatus.OK, list);
+        return Future.succeededFuture();
     }
 
     private static AssistantData createAssistant(Assistant assistant) {
@@ -57,6 +59,7 @@ public class AssistantController {
         data.setId(assistant.getName());
         data.setAssistant(assistant.getName());
         data.setDisplayName(assistant.getDisplayName());
+        data.setDisplayVersion(assistant.getDisplayVersion());
         data.setIconUrl(assistant.getIconUrl());
         data.setDescription(assistant.getDescription());
         data.setAddons(assistant.getAddons());

@@ -13,6 +13,8 @@ import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.limiter.RateLimitResult;
+import com.epam.aidial.core.security.AccessService;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
 import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
@@ -45,11 +47,13 @@ import org.apache.commons.lang3.StringUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -92,13 +96,14 @@ public class DeploymentPostController {
             rateLimitResultFuture = Future.succeededFuture(RateLimitResult.SUCCESS);
         }
 
-        return rateLimitResultFuture.onSuccess(result -> {
+        return rateLimitResultFuture.map((Function<RateLimitResult, Void>) result -> {
             if (result.status() == HttpStatus.OK) {
                 handleRateLimitSuccess(deploymentId);
             } else {
                 handleRateLimitHit(result);
             }
-        }).onFailure(this::handleRateLimitFailure);
+            return null;
+        });
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
@@ -128,7 +133,10 @@ public class DeploymentPostController {
         proxy.getTokenStatsTracker().startSpan(context);
 
         context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
+                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    handleRequestBody(body);
+                    return null;
+                }))
                 .onFailure(this::handleRequestBodyError);
     }
 
@@ -146,6 +154,12 @@ public class DeploymentPostController {
         log.warn("Failed to check limits. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
                 context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to check limits");
+    }
+
+    private void handleError(Throwable error) {
+        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(),  error);
+        respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @SneakyThrows
@@ -188,7 +202,12 @@ public class DeploymentPostController {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
 
             try {
-                ProxyUtil.collectAttachedFiles(tree, context.getProxyApiKeyData());
+                ProxyUtil.collectAttachedFiles(tree, this::processAttachedFile);
+            } catch (HttpException e) {
+                respond(e.getStatus(), e.getMessage());
+                log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
+                        context.getTraceId(), context.getSpanId(), e.getMessage());
+                return;
             } catch (Throwable e) {
                 context.respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
@@ -231,6 +250,41 @@ public class DeploymentPostController {
         }
 
         sendRequest();
+    }
+
+    private void processAttachedFile(String url) {
+        ResourceDescription resource = getResourceDescription(url);
+        if (resource == null) {
+            return;
+        }
+        String resourceUrl = resource.getUrl();
+        ApiKeyData sourceApiKeyData = context.getApiKeyData();
+        ApiKeyData destApiKeyData = context.getProxyApiKeyData();
+        AccessService accessService = proxy.getAccessService();
+        if (accessService.hasWriteAccess(resource, context)
+                || accessService.isSharedResource(resource, context)
+                || sourceApiKeyData.getAttachedFiles().contains(resourceUrl)) {
+            if (resource.isFolder()) {
+                destApiKeyData.getAttachedFolders().add(resourceUrl);
+            } else {
+                destApiKeyData.getAttachedFiles().add(resourceUrl);
+            }
+        } else {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
+        }
+    }
+
+    @SneakyThrows
+    private ResourceDescription getResourceDescription(String url) {
+        if (url == null) {
+            return null;
+        }
+        URI uri = new URI(url);
+        if (uri.isAbsolute()) {
+            // skip public resource
+            return null;
+        }
+        return ResourceDescription.fromLink(url, proxy.getEncryptionService());
     }
 
     /**

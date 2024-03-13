@@ -1,13 +1,10 @@
 package com.epam.aidial.core;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
-import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -20,14 +17,9 @@ import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
@@ -36,44 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 @ExtendWith(VertxExtension.class)
 @Slf4j
-public class FileApiTest {
+public class FileApiTest extends ResourceBaseTest {
 
     private static final String TEST_FILE_CONTENT = "Test file content";
-
-    private static AiDial dial;
-    private static int serverPort;
-    private static Path testDir;
-
-    private static ApiKeyStore apiKeyStore;
-
-    @BeforeAll
-    public static void init() throws Exception {
-        // initialize server
-        dial = new AiDial();
-        testDir = FileUtil.baseTestPath(FileApiTest.class);
-        dial.setStorage(FileUtil.buildFsBlobStorage(testDir));
-        dial.start();
-        serverPort = dial.getServer().actualPort();
-        apiKeyStore = dial.getProxy().getApiKeyStore();
-    }
-
-    @BeforeEach
-    public void setUp() {
-        // prepare test directory
-        FileUtil.createDir(testDir.resolve("test"));
-    }
-
-    @AfterEach
-    public void clean() {
-        // clean test directory
-        FileUtil.deleteDir(testDir);
-    }
-
-    @AfterAll
-    public static void destroy() {
-        // stop server
-        dial.stop();
-    }
 
     @Test
     public void testBucket(Vertx vertx, VertxTestContext context) {
@@ -213,7 +170,7 @@ public class FileApiTest {
                         context.succeeding(response -> {
                             context.verify(() -> {
                                 assertEquals(403, response.statusCode());
-                                assertEquals("You don't have an access to the bucket testbucket", response.body());
+                                assertEquals("You don't have an access to the FILE testbucket/", response.body());
                                 context.completeNow();
                             });
                         })
@@ -271,6 +228,55 @@ public class FileApiTest {
                             });
                         })
                 );
+    }
+
+    @Test
+    public void testFileUploadWithInvalidPath(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        Future.succeededFuture().compose(mapper -> {
+            Promise<Void> promise = Promise.promise();
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(400, response.statusCode());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+            return promise.future();
+        }).compose(mapper -> {
+            Promise<Void> promise = Promise.promise();
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1./file")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(400, response.statusCode());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+            return promise.future();
+        }).andThen(ignore -> {
+            // verify file with invalid path can be downloaded
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(404, response.statusCode());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
     }
 
     @Test
@@ -399,7 +405,8 @@ public class FileApiTest {
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(403, response.statusCode());
-                                    assertEquals("You don't have an access to the bucket 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST", response.body());
+                                    assertEquals("You don't have an access to the FILE 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt",
+                                            response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -469,7 +476,76 @@ public class FileApiTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(403, response.statusCode());
-                            assertEquals("You don't have an access to the bucket 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt", response.body());
+                            assertEquals("You don't have an access to the FILE 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify pre-request api key can download shared file
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", apiKey1)
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(TEST_FILE_CONTENT, response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
+    public void testDownloadFileWithinSharedFolder(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        // creating per-request API key with proxyKey2 as originator
+        // and proxyKey1 caller
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2");
+        ApiKeyData apiKeyData1 = new ApiKeyData();
+        apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
+        // set deployment ID for proxyKey1
+        apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
+        apiKeyData1.setAttachedFolders(List.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/"));
+        apiKeyStore.assignApiKey(apiKeyData1);
+
+        String apiKey1 = apiKeyData1.getPerRequestKey();
+
+        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain");
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // proxyKey2 uploads file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify caller can't download shared file with own api-key
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt")
+                    .putHeader("Api-key", "proxyKey1")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(403, response.statusCode());
+                            assertEquals("You don't have an access to the FILE 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
@@ -744,10 +820,5 @@ public class FileApiTest {
 
     private static MultipartForm generateMultipartForm(String fileName, String content, String contentType) {
         return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
-    }
-
-    private static String generateJwtToken(String user) {
-        Algorithm algorithm = Algorithm.HMAC256("secret_key");
-        return JWT.create().withClaim("iss", "issuer").withClaim("sub", user).sign(algorithm);
     }
 }

@@ -108,15 +108,11 @@ public final class FileConfigStore implements ConfigStore {
     }
 
     private Config loadConfig() throws Exception {
-        JsonNode tree = null;
+        JsonNode tree = ProxyUtil.MAPPER.createObjectNode();
 
         for (String path : paths) {
             try (InputStream stream = openStream(path)) {
-                if (tree == null) {
-                    tree = ProxyUtil.MAPPER.readTree(stream);
-                } else {
-                    tree = ProxyUtil.MAPPER.readerForUpdating(tree).readTree(stream);
-                }
+                tree = ProxyUtil.MAPPER.readerForUpdating(tree).readTree(stream);
             }
         }
 
@@ -150,6 +146,18 @@ public final class FileConfigStore implements ConfigStore {
         }
         if (modelFeatures.getTruncatePromptEndpoint() == null) {
             modelFeatures.setTruncatePromptEndpoint(features.getTruncatePromptEndpoint());
+        }
+        if (modelFeatures.getSystemPromptSupported() == null) {
+            modelFeatures.setSystemPromptSupported(features.getSystemPromptSupported());
+        }
+        if (modelFeatures.getToolsSupported() == null) {
+            modelFeatures.setToolsSupported(features.getToolsSupported());
+        }
+        if (modelFeatures.getSeedSupported() == null) {
+            modelFeatures.setSeedSupported(features.getSeedSupported());
+        }
+        if (modelFeatures.getUrlAttachmentsSupported() == null) {
+            modelFeatures.setUrlAttachmentsSupported(features.getUrlAttachmentsSupported());
         }
     }
 }

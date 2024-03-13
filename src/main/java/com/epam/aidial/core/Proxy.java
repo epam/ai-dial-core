@@ -7,11 +7,16 @@ import com.epam.aidial.core.controller.Controller;
 import com.epam.aidial.core.controller.ControllerSelector;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
+import com.epam.aidial.core.service.InvitationService;
+import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
@@ -29,6 +34,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URLDecoder;
@@ -69,6 +75,11 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ApiKeyStore apiKeyStore;
     private final TokenStatsTracker tokenStatsTracker;
     private final ResourceService resourceService;
+    private final InvitationService invitationService;
+    private final ShareService shareService;
+    private final PublicationService publicationService;
+    private final AccessService accessService;
+    private final LockService lockService;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -151,19 +162,9 @@ public class Proxy implements Handler<HttpServerRequest> {
         request.pause();
         Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization);
 
-        extractedClaims.onComplete(result -> {
-            try {
-                if (result.succeeded()) {
-                    onExtractClaimsSuccess(result.result(), config, request, apiKeyData, traceId, spanId);
-                } else {
-                    onExtractClaimsFailure(result.cause(), request);
-                }
-            } catch (Throwable e) {
-                handleError(e, request);
-            } finally {
-                request.resume();
-            }
-        });
+        extractedClaims.onFailure(error -> onExtractClaimsFailure(error, request))
+                .compose(claims -> onExtractClaimsSuccess(claims, config, request, apiKeyData, traceId, spanId))
+                .onComplete(ignore -> request.resume());
     }
 
     private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
@@ -171,11 +172,18 @@ public class Proxy implements Handler<HttpServerRequest> {
         respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
     }
 
-    private void onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
-                                        HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) throws Exception {
-        ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
-        Controller controller = ControllerSelector.select(this, context);
-        controller.handle();
+    @SneakyThrows
+    private Future<?> onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
+                                        HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
+        Future<?> future;
+        try {
+            ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
+            Controller controller = ControllerSelector.select(this, context);
+            future = controller.handle();
+        } catch (Exception t) {
+            future = Future.failedFuture(t);
+        }
+        return future.onFailure(error -> handleError(error, request));
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {
