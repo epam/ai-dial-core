@@ -545,7 +545,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(403, response.statusCode());
-                            assertEquals("You don't have an access to the FILE 7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
+                            assertEquals("You don't have an access to: files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
