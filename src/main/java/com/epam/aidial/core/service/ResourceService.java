@@ -278,14 +278,18 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean copyResource(ResourceDescription from, ResourceDescription to) {
+        return copyResource(from, to, true);
+    }
+
+    public boolean copyResource(ResourceDescription from, ResourceDescription to, boolean overwrite) {
         String body = getResource(from);
 
         if (body == null) {
             return false;
         }
 
-        putResource(to, body, true);
-        return true;
+        ResourceItemMetadata metadata = putResource(to, body, overwrite);
+        return metadata != null;
     }
 
     private Void sync() {

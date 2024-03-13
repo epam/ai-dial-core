@@ -50,6 +50,8 @@ public class ControllerSelector {
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
     private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publications/(list|get|create|delete)$");
 
+    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resources/(move)$");
+
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
 
     public Controller select(Proxy proxy, ProxyContext context) {
@@ -270,6 +272,12 @@ public class ControllerSelector {
                 case "delete" -> controller::deletePublication;
                 default -> null;
             };
+        }
+
+        match = match(RESOURCE_OPERATIONS, path);
+        if (match != null) {
+            ResourceOperationController controller = new ResourceOperationController(proxy, context);
+            return controller::move;
         }
 
         return null;
