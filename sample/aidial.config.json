@@ -46,7 +46,12 @@
                     "endpoint": "http://localhost:7003",
                     "key": "modelKey3"
                 }
-            ]
+            ],
+            "userRoles": ["role1", "role2"],
+            "defaultUserLimit": {
+                "minute": "100000",
+                "day": "10000000"
+            }
         },
         "embedding-ada": {
             "type": "embedding",
@@ -57,7 +62,8 @@
                     "key": "modelKey4"
                 }
             ]
-        }
+        },
+        "userRoles": ["role3"]
     },
     "keys": {
         "proxyKey1": {
@@ -85,6 +91,22 @@
                 "calculator": {},
                 "search_assistant": {},
                 "app": {}
+            }
+        },
+        "role1": {
+            "limits": {
+                "chat-gpt-35-turbo": {
+                    "minute": "200000",
+                    "day": "10000000"
+                }
+            }
+        },
+        "role2": {
+            "limits": {
+                "chat-gpt-35-turbo": {
+                    "minute": "100000",
+                    "day": "20000000"
+                }
             }
         }
     }
