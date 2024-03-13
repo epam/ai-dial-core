@@ -133,7 +133,10 @@ public class DeploymentPostController {
         proxy.getTokenStatsTracker().startSpan(context);
 
         context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
+                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    handleRequestBody(body);
+                    return null;
+                }))
                 .onFailure(this::handleRequestBodyError);
     }
 
