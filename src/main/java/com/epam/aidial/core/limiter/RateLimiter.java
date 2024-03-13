@@ -4,7 +4,6 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
-import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.data.LimitStats;
 import com.epam.aidial.core.data.ResourceType;
@@ -30,6 +29,7 @@ import java.util.Optional;
 public class RateLimiter {
 
     private static final Limit DEFAULT_LIMIT = new Limit();
+    private static final String DEFAULT_USER_ROLE = "default";
 
     private final Vertx vertx;
 
@@ -181,36 +181,35 @@ public class RateLimiter {
 
     private Limit getLimitByUser(ProxyContext context) {
         List<String> userRoles = context.getUserRoles();
-        Limit defaultUserLimit = getDefaultUserLimit(context.getDeployment());
+        String deploymentName = context.getDeployment().getName();
+        Map<String, Role> roles = context.getConfig().getRoles();
+        Limit defaultUserLimit = getLimit(roles, DEFAULT_USER_ROLE, deploymentName, DEFAULT_LIMIT);
         if (userRoles.isEmpty()) {
             return defaultUserLimit;
         }
-        String deploymentName = context.getDeployment().getName();
-        Map<String, Role> userRoleToDeploymentLimits = context.getConfig().getRoles();
-        long minuteLimit = 0;
-        long dayLimit = 0;
+        Limit limit = null;
         for (String userRole : userRoles) {
-            Limit limit = Optional.ofNullable(userRoleToDeploymentLimits.get(userRole))
-                    .map(role -> role.getLimits().get(deploymentName))
-                    .orElse(defaultUserLimit);
-            minuteLimit = Math.max(minuteLimit, limit.getMinute());
-            dayLimit = Math.max(dayLimit, limit.getDay());
+            Limit candidate = getLimit(roles, userRole, deploymentName, null);
+            if (candidate != null) {
+                if (limit == null) {
+                    limit = candidate;
+                } else {
+                    limit.setMinute(Math.max(candidate.getMinute(), limit.getMinute()));
+                    limit.setDay(Math.max(candidate.getDay(), limit.getDay()));
+                }
+            }
         }
-        Limit limit = new Limit();
-        limit.setMinute(minuteLimit);
-        limit.setDay(dayLimit);
-        return limit;
+        return limit == null ? defaultUserLimit : limit;
     }
 
     private static String getPath(String deploymentName) {
         return String.format("%s/tokens", deploymentName);
     }
 
-    private static Limit getDefaultUserLimit(Deployment deployment) {
-        if (deployment instanceof Model model) {
-            return model.getDefaultUserLimit() == null ? DEFAULT_LIMIT : model.getDefaultUserLimit();
-        }
-        return DEFAULT_LIMIT;
+    private static Limit getLimit(Map<String, Role> roles, String userRole, String deploymentName, Limit defaultLimit) {
+        return Optional.ofNullable(roles.get(userRole))
+                .map(role -> role.getLimits().get(deploymentName))
+                .orElse(defaultLimit);
     }
 
 }

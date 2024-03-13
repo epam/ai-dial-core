@@ -47,11 +47,7 @@
                     "key": "modelKey3"
                 }
             ],
-            "userRoles": ["role1", "role2"],
-            "defaultUserLimit": {
-                "minute": "100000",
-                "day": "10000000"
-            }
+            "userRoles": ["role1", "role2"]
         },
         "embedding-ada": {
             "type": "embedding",
