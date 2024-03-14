@@ -23,6 +23,7 @@ public class FileMetadataController extends AccessControlBaseController {
             try {
                 MetadataBase metadata = storage.listMetadata(resource);
                 if (metadata != null) {
+                    proxy.getAccessService().filterForbidden(context, resource, metadata);
                     context.respond(HttpStatus.OK, metadata);
                 } else {
                     context.respond(HttpStatus.NOT_FOUND);

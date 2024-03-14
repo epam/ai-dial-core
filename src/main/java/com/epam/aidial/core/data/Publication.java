@@ -42,15 +42,4 @@ public class Publication {
          */
         String reviewUrl;
     }
-
-    @Data
-    public static class Rule {
-        Function function;
-        String source;
-        List<String> targets;
-
-        public enum Function {
-            EQUAL, CONTAIN, REGEX,
-        }
-    }
 }

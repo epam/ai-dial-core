@@ -261,9 +261,7 @@ public class DeploymentPostController {
         ApiKeyData sourceApiKeyData = context.getApiKeyData();
         ApiKeyData destApiKeyData = context.getProxyApiKeyData();
         AccessService accessService = proxy.getAccessService();
-        if (accessService.hasWriteAccess(resource, context)
-                || accessService.isSharedResource(resource, context)
-                || sourceApiKeyData.getAttachedFiles().contains(resourceUrl)) {
+        if (sourceApiKeyData.getAttachedFiles().contains(resourceUrl) || accessService.hasReadAccess(resource, context)) {
             if (resource.isFolder()) {
                 destApiKeyData.getAttachedFolders().add(resourceUrl);
             } else {
@@ -284,7 +282,7 @@ public class DeploymentPostController {
             // skip public resource
             return null;
         }
-        return ResourceDescription.fromLink(url, proxy.getEncryptionService());
+        return ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
     }
 
     /**

@@ -31,7 +31,7 @@ class LockServiceTest {
             config.useSingleServer().setAddress("redis://localhost:16371");
 
             client = Redisson.create(config);
-            service = new LockService(client);
+            service = new LockService(client, null);
         } catch (Throwable e) {
             destroy();
             throw e;
