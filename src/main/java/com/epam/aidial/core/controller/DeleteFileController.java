@@ -45,7 +45,7 @@ public class DeleteFileController extends AccessControlBaseController {
             try {
                 Set<ResourceLink> resourceLinks = new HashSet<>();
                 resourceLinks.add(new ResourceLink(resource.getUrl()));
-                return lockService.underBucketLock(proxy, bucketLocation, () -> {
+                return lockService.underBucketLock(bucketLocation, () -> {
                     invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
                     shareService.revokeSharedAccess(bucketName, bucketLocation, new ResourceLinkCollection(resourceLinks));
                     storage.delete(absoluteFilePath);

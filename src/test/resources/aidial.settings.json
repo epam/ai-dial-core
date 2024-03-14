@@ -57,5 +57,10 @@
     "syncBatch": 4096,
     "cacheExpiration": 300000,
     "compressionMinSize": 256
+  },
+  "access": {
+    "admin": {
+      "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+    }
   }
 }

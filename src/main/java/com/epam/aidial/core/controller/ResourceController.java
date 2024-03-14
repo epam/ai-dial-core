@@ -85,6 +85,7 @@ public class ResourceController extends AccessControlBaseController {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
+                        proxy.getAccessService().filterForbidden(context, descriptor, result);
                         context.respond(HttpStatus.OK, result);
                     }
                 })
@@ -183,7 +184,7 @@ public class ResourceController extends AccessControlBaseController {
                     resourceLinks.add(new ResourceLink(descriptor.getUrl()));
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
-                    return lockService.underBucketLock(proxy, bucketLocation, () -> {
+                    return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
                         shareService.revokeSharedAccess(bucketName, bucketLocation,
                                 new ResourceLinkCollection(resourceLinks));

@@ -127,7 +127,7 @@ public class ShareController {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return proxy.getVertx()
-                            .executeBlocking(() -> lockService.underBucketLock(proxy, bucketLocation, () -> {
+                            .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                                 invitationService.cleanUpResourceLinks(bucket, bucketLocation, request.getResources());
                                 shareService.revokeSharedAccess(bucket, bucketLocation, request);
                                 return null;

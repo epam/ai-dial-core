@@ -1,10 +1,13 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -21,9 +24,13 @@ import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -66,10 +73,12 @@ public class ResourceBaseTest {
     CloseableHttpClient client;
     String bucket;
     long time = 0;
-    String id = "0123";
+    long id = 123;
 
     int serverPort;
     ApiKeyStore apiKeyStore;
+
+    AccessTokenValidator validator = Mockito.mock(AccessTokenValidator.class);
 
     @BeforeEach
     void init() throws Exception {
@@ -118,10 +127,25 @@ public class ResourceBaseTest {
             JsonObject settings = AiDial.settings()
                     .mergeIn(new JsonObject(overrides), true);
 
+            Mockito.when(validator.extractClaims(Mockito.any()))
+                    .thenAnswer(invocation -> {
+                        String authorization = invocation.getArgument(0);
+                        if (authorization == null) {
+                            return Future.succeededFuture();
+                        }
+
+                        if (authorization.equals("user") || authorization.equals("admin")) {
+                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization), authorization));
+                        }
+
+                        return Future.failedFuture("Not authorized");
+                    });
+
             dial = new AiDial();
             dial.setSettings(settings);
-            dial.setGenerator(() -> id);
+            dial.setGenerator(this::generate);
             dial.setClock(() -> time);
+            dial.setAccessTokenValidator(validator);
             dial.start();
             serverPort = dial.getServer().actualPort();
             apiKeyStore = dial.getProxy().getApiKeyStore();
@@ -155,6 +179,10 @@ public class ResourceBaseTest {
         }
     }
 
+    protected String generate() {
+        return "0" + id++;
+    }
+
     static void verify(Response response, int status) {
         assertEquals(status, response.status());
     }
@@ -168,6 +196,20 @@ public class ResourceBaseTest {
         assertEquals(status, response.status());
         try {
             assertEquals(ProxyUtil.MAPPER.readTree(body).toPrettyString(), ProxyUtil.MAPPER.readTree(response.body()).toPrettyString());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    static void verifyJsonNotExact(Response response, int status, String body) {
+        assertEquals(status, response.status());
+        try {
+            JsonNode expected = ProxyUtil.MAPPER.readTree(body);
+            JsonNode actual = ProxyUtil.MAPPER.readTree(response.body());
+
+            if (new NotExactComparator().compare(expected, actual) != 0) {
+                Assertions.assertEquals(expected.toPrettyString(), actual.toPrettyString());
+            }
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
@@ -221,12 +263,17 @@ public class ResourceBaseTest {
             throw new IllegalArgumentException("Unsupported method: " + method);
         }
 
-        request.setHeader("api-key", "proxyKey1");
+        boolean isAuthorized = false;
 
         for (int i = 0; i < headers.length; i += 2) {
             String key = headers[i];
             String value = headers[i + 1];
             request.setHeader(key, value);
+            isAuthorized = key.equalsIgnoreCase("authorization") || key.equalsIgnoreCase("api-key");
+        }
+
+        if (!isAuthorized) {
+            request.setHeader("api-key", "proxyKey1");
         }
 
         try (CloseableHttpResponse response = client.execute(request)) {
@@ -239,6 +286,62 @@ public class ResourceBaseTest {
     record Response(int status, String body) {
         public boolean ok() {
             return status() == 200;
+        }
+    }
+
+    private static class NotExactComparator implements Comparator<JsonNode> {
+
+        @Override
+        public int compare(JsonNode expected, JsonNode actual) {
+            if (expected.isTextual() && expected.asText().equals("@ignore")) {
+                return 0;
+            }
+
+            if (expected.isObject() && actual.isObject()) {
+                if (actual.size() != expected.size()) {
+                    return -1;
+                }
+
+                for (Iterator<String> iterator = actual.fieldNames(); iterator.hasNext();) {
+                    String name = iterator.next();
+                    JsonNode left = expected.get(name);
+                    JsonNode right = actual.get(name);
+
+                    if (compare(left, right) != 0) {
+                        return -1;
+                    }
+                }
+
+                return 0;
+            }
+
+            if (expected.isArray() && actual.isArray()) {
+                ArrayNode lefts = (ArrayNode) expected;
+                ArrayNode rights = (ArrayNode) actual;
+
+                if (lefts.size() != rights.size()) {
+                    return -1;
+                }
+
+                for (JsonNode left : lefts) {
+                    boolean equal = false;
+
+                    for (JsonNode right : rights) {
+                        if (compare(left, right) == 0) {
+                            equal = true;
+                            break;
+                        }
+                    }
+
+                    if (!equal) {
+                        return -1;
+                    }
+                }
+
+                return 0;
+            }
+
+            return expected.equals(actual) ? 0 : -1;
         }
     }
 }

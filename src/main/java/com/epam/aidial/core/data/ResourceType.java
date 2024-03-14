@@ -6,7 +6,7 @@ import lombok.Getter;
 public enum ResourceType {
     FILE("files"), CONVERSATION("conversations"), PROMPT("prompts"), LIMIT("limits"),
     SHARED_WITH_ME("shared_with_me"), SHARED_BY_ME("shared_by_me"), INVITATION("invitations"),
-    PUBLICATION("publications");
+    PUBLICATION("publications"), RULES("rules");
 
     private final String group;
 

@@ -141,7 +141,7 @@ public class ShareService {
         Set<ResourceLink> resourceLinks = invitation.getResources();
         for (ResourceLink link : resourceLinks) {
             String url = link.url();
-            if (ResourceDescription.fromLink(url, encryptionService).getBucketName().equals(bucket)) {
+            if (ResourceDescription.fromPrivateUrl(url, encryptionService).getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("Resource %s already belong to you".formatted(url));
             }
         }
@@ -371,7 +371,7 @@ public class ShareService {
 
     private List<MetadataBase> linksToMetadata(Stream<String> links) {
         return links
-                .map(link -> ResourceDescription.fromLink(link, encryptionService))
+                .map(link -> ResourceDescription.fromPrivateUrl(link, encryptionService))
                 .map(resource -> {
                     if (resource.isFolder()) {
                         return new ResourceFolderMetadata(resource);
@@ -383,7 +383,7 @@ public class ShareService {
 
     private ResourceDescription getResourceFromLink(String url) {
         try {
-            return ResourceDescription.fromLink(url, encryptionService);
+            return ResourceDescription.fromPrivateUrl(url, encryptionService);
         } catch (Exception e) {
             throw new IllegalArgumentException("Incorrect resource link provided " + url);
         }
