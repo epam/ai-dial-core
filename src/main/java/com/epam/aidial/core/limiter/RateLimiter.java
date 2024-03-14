@@ -5,9 +5,9 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.data.ItemLimitStats;
 import com.epam.aidial.core.data.LimitStats;
 import com.epam.aidial.core.data.ResourceType;
-import com.epam.aidial.core.data.ItemLimitStats;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -17,7 +17,6 @@ import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -50,7 +49,7 @@ public class RateLimiter {
 
             String tokensPath = getPathToTokens(context.getDeployment().getName());
             ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
-            return vertx.executeBlocking(() -> updateLimit(resourceDescription, usage.getTotalTokens()));
+            return vertx.executeBlocking(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -63,19 +62,19 @@ public class RateLimiter {
                 return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
             Key key = context.getKey();
-            Deployment deployment = context.getDeployment();
+            String deploymentName = context.getDeployment().getName();
             Limit limit;
             if (key == null) {
-                limit = getLimitByUser(context);
+                limit = getLimitByUser(context, deploymentName);
             } else {
-                limit = getLimitByApiKey(context, deployment.getName());
+                limit = getLimitByApiKey(context, deploymentName);
             }
 
             if (limit == null || !limit.isPositive()) {
                 if (limit == null) {
-                    log.warn("Limit is not found for deployment: {}", deployment.getName());
+                    log.warn("Limit is not found for deployment: {}", deploymentName);
                 } else {
-                    log.warn("Limit must be positive for deployment: {}", deployment.getName());
+                    log.warn("Limit must be positive for deployment: {}", deploymentName);
                 }
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
             }
@@ -95,30 +94,32 @@ public class RateLimiter {
             Key key = context.getKey();
             Limit limit;
             if (key == null) {
-                limit = getLimitByUser(context);
+                limit = getLimitByUser(context, deploymentName);
             } else {
                 limit = getLimitByApiKey(context, deploymentName);
             }
             if (limit == null) {
-                log.warn("Limit is not found. Trace: {}. Span: {}. Key: {}. User sub: {}. Deployment: {}", context.getTraceId(), context.getSpanId(), key == null ? null : key.getProject(), context.getUserSub(), deploymentName);
+                log.warn("Limit is not found. Trace: {}. Span: {}. Key: {}. User sub: {}. Deployment: {}",
+                        context.getTraceId(), context.getSpanId(), key == null ? null : key.getProject(),
+                        context.getUserSub(), deploymentName);
                 return Future.succeededFuture();
             }
-            return vertx.executeBlocking(() -> getLimitStats(context, limit));
+            return vertx.executeBlocking(() -> getLimitStats(context, limit, deploymentName));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
     }
 
-    private LimitStats getLimitStats(ProxyContext context, Limit limit) {
+    private LimitStats getLimitStats(ProxyContext context, Limit limit, String deploymentName) {
         LimitStats limitStats = create(limit);
         long timestamp = System.currentTimeMillis();
-        collectTokenLimitStats(context, limitStats, timestamp);
-        collectRequestLimitStats(context, limitStats, timestamp);
+        collectTokenLimitStats(context, limitStats, timestamp, deploymentName);
+        collectRequestLimitStats(context, limitStats, timestamp, deploymentName);
         return limitStats;
     }
 
-    private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp) {
-        String tokensPath = getPathToTokens(context.getDeployment().getName());
+    private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
+        String tokensPath = getPathToTokens(deploymentName);
         ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
         String json = resourceService.getResource(resourceDescription, true);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(json, TokenRateLimit.class);
@@ -128,8 +129,8 @@ public class RateLimiter {
         rateLimit.update(timestamp, limitStats);
     }
 
-    private void collectRequestLimitStats(ProxyContext context, LimitStats limitStats, long timestamp) {
-        String requestsPath = getPathToRequests(context.getDeployment().getName());
+    private void collectRequestLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
+        String requestsPath = getPathToRequests(deploymentName);
         ResourceDescription resourceDescription = getResourceDescription(context, requestsPath);
         String json = resourceService.getResource(resourceDescription, true);
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
@@ -189,21 +190,26 @@ public class RateLimiter {
     private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp) {
         String tokensPath = getPathToRequests(context.getDeployment().getName());
         ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
-        String prevValue = resourceService.getResource(resourceDescription);
-        RequestRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, RequestRateLimit.class);
-        if (rateLimit == null) {
-            return RateLimitResult.SUCCESS;
-        }
-        return rateLimit.check(timestamp, limit, 1);
+        RateLimitResult[] result = new RateLimitResult[1];
+        resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, limit, result));
+        return result[0];
     }
 
-    private Void updateLimit(ResourceDescription resourceDescription, long totalUsedTokens) {
-        resourceService.computeResource(resourceDescription, json -> updateLimit(json, totalUsedTokens));
+    private String updateRequestLimit(String json, long timestamp, Limit limit, RateLimitResult[] result) {
+        RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
+        if (rateLimit == null) {
+            rateLimit = new RequestRateLimit();
+        }
+        result[0] = rateLimit.check(timestamp, limit, 1);
+        return ProxyUtil.convertToString(rateLimit);
+    }
+
+    private Void updateTokenLimit(ResourceDescription resourceDescription, long totalUsedTokens) {
+        resourceService.computeResource(resourceDescription, json -> updateTokenLimit(json, totalUsedTokens));
         return null;
     }
 
-    @SneakyThrows
-    private String updateLimit(String json, long totalUsedTokens) {
+    private String updateTokenLimit(String json, long totalUsedTokens) {
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(json, TokenRateLimit.class);
         if (rateLimit == null) {
             rateLimit = new TokenRateLimit();
@@ -225,9 +231,8 @@ public class RateLimiter {
         return role.getLimits().get(deploymentName);
     }
 
-    private Limit getLimitByUser(ProxyContext context) {
+    private Limit getLimitByUser(ProxyContext context, String deploymentName) {
         List<String> userRoles = context.getUserRoles();
-        String deploymentName = context.getDeployment().getName();
         Map<String, Role> roles = context.getConfig().getRoles();
         Limit defaultUserLimit = getLimit(roles, DEFAULT_USER_ROLE, deploymentName, DEFAULT_LIMIT);
         if (userRoles.isEmpty()) {
@@ -240,10 +245,14 @@ public class RateLimiter {
                 if (limit == null) {
                     limit = new Limit();
                     limit.setMinute(candidate.getMinute());
+                    limit.setRequestHour(candidate.getRequestHour());
+                    limit.setRequestDay(candidate.getRequestDay());
                     limit.setDay(candidate.getDay());
                 } else {
                     limit.setMinute(Math.max(candidate.getMinute(), limit.getMinute()));
                     limit.setDay(Math.max(candidate.getDay(), limit.getDay()));
+                    limit.setRequestDay(Math.max(candidate.getRequestDay(), limit.getRequestDay()));
+                    limit.setRequestHour(Math.max(candidate.getRequestHour(), limit.getRequestHour()));
                 }
             }
         }

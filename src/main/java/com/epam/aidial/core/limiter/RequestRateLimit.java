@@ -14,12 +14,12 @@ public class RequestRateLimit {
         long hourTotal = hour.update(timestamp);
         long dayTotal = day.update(timestamp);
 
-        boolean result = hourTotal + count >= limit.getMinute() || dayTotal + count >= limit.getDay();
+        boolean result = hourTotal >= limit.getRequestHour() || dayTotal >= limit.getRequestDay();
         if (result) {
             String errorMsg = String.format("""
                             Hit request rate limit:
-                             - hour limit: %d / %d tokens
-                             - day limit: %d / %d tokens
+                             - hour limit: %d / %d requests
+                             - day limit: %d / %d requests
                             """,
                     hourTotal, limit.getRequestHour(), dayTotal, limit.getRequestDay());
             return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg);

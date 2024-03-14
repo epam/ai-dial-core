@@ -17,9 +17,17 @@ public class LimitApiTest extends ResourceBaseTest {
                   "dayTokenStats": {
                     "total": %d,
                     "used": %d
+                  },
+                  "hourRequestStats": {
+                    "total": %d,
+                    "used": %d
+                  },
+                  "dayRequestStats": {
+                    "total": %d,
+                    "used": %d
                   }
                 }
-                """.formatted(Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
+                """.formatted(Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
     }
 
     @Test
