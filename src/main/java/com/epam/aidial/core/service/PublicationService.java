@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -56,6 +57,9 @@ public class PublicationService {
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT);
 
+    /**
+     * Key is updated time from the metadata. Value is decoded map (folder path, list of rules).
+     */
     private final AtomicReference<Pair<Long, Map<String, List<Rule>>>> cachedRules = new AtomicReference<>();
     private final EncryptionService encryption;
     private final ResourceService resources;
@@ -103,6 +107,27 @@ public class PublicationService {
         }).toList();
 
         metadata.setItems(filtered);
+    }
+
+    public Map<String, List<Rule>> listRules(ResourceDescription resource) {
+        if (!resource.isFolder() || !resource.isPublic()) {
+            throw new IllegalArgumentException("Bad rule url: " + resource.getUrl());
+        }
+
+        Map<String, List<Rule>> rules = getCachedRules();
+        Map<String, List<Rule>> result = new TreeMap<>();
+
+        while (resource != null) {
+            String url = ruleUrl(resource);;
+            List<Rule> list = rules.get(url);
+            resource = resource.getParent();
+
+            if (list != null) {
+                result.put(url, list);
+            }
+        }
+
+        return result;
     }
 
     public Collection<Publication> listPublications(ResourceDescription resource) {
@@ -564,17 +589,7 @@ public class PublicationService {
 
     private static Map<String, List<Rule>> decodeRules(String json) {
         Map<String, List<Rule>> rules = ProxyUtil.convertToObject(json, RULES_TYPE);
-
-        if (rules == null) {
-            Rule rule = new Rule();
-            rule.setSource("roles");
-            rule.setFunction(Rule.Function.TRUE);
-            rule.setTargets(List.of());
-            rules = new LinkedHashMap<>();
-            rules.put(PUBLIC_LOCATION, List.of(rule));
-        }
-
-        return rules;
+        return (rules == null) ? new LinkedHashMap<>() : rules;
     }
 
     private static String encodeRules(Map<String, List<Rule>> rules) {

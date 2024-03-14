@@ -6,6 +6,7 @@ import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.Publications;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.data.Rules;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.LockService;
@@ -133,6 +134,21 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    public Future<?> listRules() {
+        context.getRequest()
+                .body()
+                .compose(body -> {
+                    String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
+                    ResourceDescription rule = decodeRule(url);
+                    checkRuleAccess(rule);
+                    return vertx.executeBlocking(() -> publicationService.listRules(rule));
+                })
+                .onSuccess(rules -> context.respond(HttpStatus.OK, new Rules(rules)))
+                .onFailure(error -> respondError("Can't list rules", error));
+
+        return Future.succeededFuture();
+    }
+
     private void respondError(String message, Throwable error) {
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
         String body = null;
@@ -172,6 +188,25 @@ public class PublicationController {
         return resource;
     }
 
+    private ResourceDescription decodeRule(String path) {
+        try {
+            if (!path.startsWith(BlobStorageUtil.PUBLIC_LOCATION)) {
+                throw new IllegalArgumentException();
+            }
+
+            String folder = path.substring(BlobStorageUtil.PUBLIC_LOCATION.length());
+            ResourceDescription resource = ResourceDescription.fromEncoded(ResourceType.RULES, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, folder);
+
+            if (!resource.isFolder()) {
+                throw new IllegalArgumentException();
+            }
+
+            return resource;
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid resource: " + path, e);
+        }
+    }
+
     private void checkAccess(ResourceDescription resource, boolean allowUser) {
         boolean hasAccess = accessService.hasAdminAccess(context);
 
@@ -182,6 +217,12 @@ public class PublicationController {
 
         if (!hasAccess) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + resource.getUrl());
+        }
+    }
+
+    private void checkRuleAccess(ResourceDescription rule) {
+        if (!accessService.hasReadAccess(rule, context)) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + rule.getUrl());
         }
     }
 }
