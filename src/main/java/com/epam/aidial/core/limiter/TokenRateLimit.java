@@ -6,7 +6,7 @@ import com.epam.aidial.core.util.HttpStatus;
 import lombok.Data;
 
 @Data
-public class RateLimit {
+public class TokenRateLimit {
 
     private final RateBucket minute = new RateBucket(RateWindow.MINUTE);
     private final RateBucket day = new RateBucket(RateWindow.DAY);

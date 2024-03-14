@@ -4,6 +4,8 @@ import lombok.Data;
 
 @Data
 public class LimitStats {
-    private TokenLimitStats minuteTokenStats;
-    private TokenLimitStats dayTokenStats;
+    private ItemLimitStats minuteTokenStats;
+    private ItemLimitStats dayTokenStats;
+    private ItemLimitStats hourRequestStats;
+    private ItemLimitStats dayRequestStats;
 }
