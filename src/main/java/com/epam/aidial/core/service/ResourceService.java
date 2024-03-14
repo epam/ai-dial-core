@@ -12,6 +12,7 @@ import io.vertx.core.json.JsonObject;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.PageSet;
@@ -114,7 +115,7 @@ public class ResourceService implements AutoCloseable {
     public MetadataBase getMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         return descriptor.isFolder()
                 ? getFolderMetadata(descriptor, token, limit, recursive)
-                : getItemMetadata(descriptor);
+                : getResourceMetadata(descriptor);
     }
 
     private ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
@@ -156,7 +157,11 @@ public class ResourceService implements AutoCloseable {
         return new ResourceFolderMetadata(descriptor, resources).setNextToken(set.getNextMarker());
     }
 
-    private ResourceItemMetadata getItemMetadata(ResourceDescription descriptor) {
+    public ResourceItemMetadata getResourceMetadata(ResourceDescription descriptor) {
+        if (descriptor.isFolder()) {
+            throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
+        }
+
         String redisKey = redisKey(descriptor);
         String blobKey = blobKey(descriptor);
         Result result = redisGet(redisKey, false);
@@ -187,12 +192,12 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public String getResource(ResourceDescription descriptor) {
-        return getResource(descriptor, true);
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor) {
+        return getResourceWithMetadata(descriptor, true);
     }
 
     @Nullable
-    public String getResource(ResourceDescription descriptor, boolean lock) {
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
@@ -208,7 +213,26 @@ public class ResourceService implements AutoCloseable {
             }
         }
 
-        return result.exists ? result.body : null;
+        if (result.exists) {
+            ResourceItemMetadata metadata = new ResourceItemMetadata(descriptor)
+                    .setCreatedAt(result.createdAt)
+                    .setUpdatedAt(result.updatedAt);
+
+            return Pair.of(metadata, result.body);
+        }
+
+        return null;
+    }
+
+    @Nullable
+    public String getResource(ResourceDescription descriptor) {
+        return getResource(descriptor, true);
+    }
+
+    @Nullable
+    public String getResource(ResourceDescription descriptor, boolean lock) {
+        Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, lock);
+        return (result == null) ? null : result.getRight();
     }
 
     public ResourceItemMetadata putResource(ResourceDescription descriptor, String body, boolean overwrite) {
