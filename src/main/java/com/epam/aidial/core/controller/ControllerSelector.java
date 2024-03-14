@@ -45,10 +45,11 @@ public class ControllerSelector {
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/([^/]+)/tokenize$");
     private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/([^/]+)/truncate_prompt$");
 
-    private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke)$");
+    private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
     private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publications/(list|get|create|delete|approve|reject)$");
+    private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publications/rules/list$");
 
     private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resources/(move)$");
 
@@ -261,9 +262,15 @@ public class ControllerSelector {
                 case "create" -> controller::createPublication;
                 case "delete" -> controller::deletePublication;
                 case "approve" -> controller::approvePublication;
-                case "reject" -> controller:: rejectPublication;
+                case "reject" -> controller::rejectPublication;
                 default -> null;
             };
+        }
+
+        match = match(PUBLICATION_RULES, path);
+        if (match != null) {
+            PublicationController controller = new PublicationController(proxy, context);
+            return controller::listRules;
         }
 
         match = match(RESOURCE_OPERATIONS, path);

@@ -4,6 +4,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
+import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.ResourceUrl;
 import com.epam.aidial.core.data.Rule;
@@ -17,6 +18,7 @@ import com.epam.aidial.core.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.mutable.MutableObject;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -25,6 +27,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
@@ -53,6 +57,10 @@ public class PublicationService {
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT);
 
+    /**
+     * Key is updated time from the metadata. Value is decoded map (folder path, list of rules).
+     */
+    private final AtomicReference<Pair<Long, Map<String, List<Rule>>>> cachedRules = new AtomicReference<>();
     private final EncryptionService encryption;
     private final ResourceService resources;
     private final BlobStorage files;
@@ -78,7 +86,7 @@ public class PublicationService {
             return false;
         }
 
-        Map<String, List<Rule>> rules = decodeRules(resources.getResource(PUBLIC_RULES));
+        Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
 
         return evaluate(context, resource, rules, cache);
@@ -89,7 +97,7 @@ public class PublicationService {
             return;
         }
 
-        Map<String, List<Rule>> rules = decodeRules(resources.getResource(PUBLIC_RULES));
+        Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
         cache.put(ruleUrl(folder), true);
 
@@ -99,6 +107,27 @@ public class PublicationService {
         }).toList();
 
         metadata.setItems(filtered);
+    }
+
+    public Map<String, List<Rule>> listRules(ResourceDescription resource) {
+        if (!resource.isFolder() || !resource.isPublic()) {
+            throw new IllegalArgumentException("Bad rule url: " + resource.getUrl());
+        }
+
+        Map<String, List<Rule>> rules = getCachedRules();
+        Map<String, List<Rule>> result = new TreeMap<>();
+
+        while (resource != null) {
+            String url = ruleUrl(resource);;
+            List<Rule> list = rules.get(url);
+            resource = resource.getParent();
+
+            if (list != null) {
+                result.put(url, list);
+            }
+        }
+
+        return result;
     }
 
     public Collection<Publication> listPublications(ResourceDescription resource) {
@@ -473,6 +502,24 @@ public class PublicationService {
         return encryption.encrypt(path);
     }
 
+    private Map<String, List<Rule>> getCachedRules() {
+        ResourceItemMetadata meta = resources.getResourceMetadata(PUBLIC_RULES);
+        long key = (meta == null) ? Long.MIN_VALUE : meta.getUpdatedAt();
+        Pair<Long, Map<String, List<Rule>>> current = cachedRules.get();
+
+        if (current == null || current.getKey() != key) {
+            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES);
+            Pair<Long, Map<String, List<Rule>>> next = (resource == null)
+                    ? Pair.of(Long.MIN_VALUE, decodeRules(null))
+                    : Pair.of(resource.getKey().getUpdatedAt(), decodeRules(resource.getValue()));
+
+            cachedRules.compareAndSet(current, next);
+            current = next;
+        }
+
+        return current.getValue();
+    }
+
     private static boolean evaluate(ProxyContext context,
                                     ResourceDescription resource,
                                     Map<String, List<Rule>> rules,
@@ -542,17 +589,7 @@ public class PublicationService {
 
     private static Map<String, List<Rule>> decodeRules(String json) {
         Map<String, List<Rule>> rules = ProxyUtil.convertToObject(json, RULES_TYPE);
-
-        if (rules == null) {
-            Rule rule = new Rule();
-            rule.setSource("roles");
-            rule.setFunction(Rule.Function.TRUE);
-            rule.setTargets(List.of());
-            rules = new LinkedHashMap<>();
-            rules.put(PUBLIC_LOCATION, List.of(rule));
-        }
-
-        return rules;
+        return (rules == null) ? new LinkedHashMap<>() : rules;
     }
 
     private static String encodeRules(Map<String, List<Rule>> rules) {
