@@ -190,6 +190,7 @@ public class RateLimiter {
     private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp) {
         String tokensPath = getPathToRequests(context.getDeployment().getName());
         ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
+        // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
         resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, limit, result));
         return result[0];
