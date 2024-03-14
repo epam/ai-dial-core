@@ -518,4 +518,89 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
     }
+
+    @Test
+    void listRules() {
+        Response response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": ""}
+                """);
+        verify(response, 400);
+
+        response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": "public"}
+                """);
+        verify(response, 400);
+
+        response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": "public/"}
+                """);
+        verifyJson(response, 200, """
+                {
+                  "rules" : { }
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": "public/"}
+                """, "authorization", "user");
+        verifyJson(response, 200, """
+                {
+                  "rules" : { }
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": "public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "rules" : { }
+                }
+                """);
+
+        response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publications/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publications/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+
+        response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": "public/folder/"}
+                """, "authorization", "user");
+        verifyJson(response, 200, """
+                {
+                  "rules" : {
+                    "public/folder/" : [ {
+                      "function" : "EQUAL",
+                      "source" : "roles",
+                      "targets" : [ "user" ]
+                    } ]
+                  }
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": "public/folder/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "rules" : {
+                    "public/folder/" : [ {
+                      "function" : "EQUAL",
+                      "source" : "roles",
+                      "targets" : [ "user" ]
+                    } ]
+                  }
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publications/rules/list", """
+                {"url": "public/folder/"}
+                """);
+        verify(response, 403);
+    }
 }
