@@ -3,6 +3,7 @@ package com.epam.aidial.core.service;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.ResourceUtil;
 import lombok.AllArgsConstructor;
 
 @AllArgsConstructor
@@ -35,7 +36,6 @@ public class ResourceOperationService {
                             .formatted(sourceResourceUrl, destinationResourceUrl));
                 }
                 storage.copy(sourceResourcePath, destinationResourcePath);
-                storage.delete(sourceResourcePath);
             }
             case CONVERSATION, PROMPT -> {
                 boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
@@ -43,7 +43,6 @@ public class ResourceOperationService {
                     throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                             .formatted(sourceResourceUrl, destinationResourceUrl));
                 }
-                resourceService.deleteResource(source);
             }
             default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
         }
@@ -51,14 +50,20 @@ public class ResourceOperationService {
         invitationService.moveResource(bucket, location, source, destination);
         // move shared access if any
         shareService.moveSharedAccess(bucket, location, source, destination);
+
+        deleteResource(source);
     }
 
     private boolean hasResource(ResourceDescription resource) {
-        return switch (resource.getType()) {
-            case FILE -> storage.exists(resource.getAbsoluteFilePath());
-            case CONVERSATION, PROMPT -> resourceService.hasResource(resource);
+        return ResourceUtil.hasResource(resource, resourceService, storage);
+    }
+
+    private void deleteResource(ResourceDescription resource) {
+        switch (resource.getType()) {
+            case FILE -> storage.delete(resource.getAbsoluteFilePath());
+            case CONVERSATION, PROMPT -> resourceService.deleteResource(resource);
             default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
-        };
+        }
     }
 
 }

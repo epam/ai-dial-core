@@ -2,17 +2,22 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.CopySharedAccessRequest;
 import com.epam.aidial.core.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.data.ShareResourcesRequest;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
+import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +35,8 @@ public class ShareController {
     private final EncryptionService encryptionService;
     private final LockService lockService;
     private final InvitationService invitationService;
+    private final ResourceService resourceService;
+    private final BlobStorage storage;
 
     public ShareController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
@@ -38,6 +45,8 @@ public class ShareController {
         this.encryptionService = proxy.getEncryptionService();
         this.lockService = proxy.getLockService();
         this.invitationService = proxy.getInvitationService();
+        this.resourceService = proxy.getResourceService();
+        this.storage = proxy.getStorage();
     }
 
     public Future<?> handle(Operation operation) {
@@ -46,6 +55,7 @@ public class ShareController {
             case CREATE -> createSharedResources();
             case REVOKE -> revokeSharedResources();
             case DISCARD -> discardSharedResources();
+            case COPY -> copySharedAccess();
             default ->
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Operation %s is not supported".formatted(operation));
         }
@@ -137,6 +147,49 @@ public class ShareController {
                 .onFailure(this::handleServiceError);
     }
 
+    public Future<?> copySharedAccess() {
+        return context.getRequest()
+                .body()
+                .compose(buffer -> {
+                    CopySharedAccessRequest request;
+                    try {
+                        request = ProxyUtil.convertToObject(buffer, CopySharedAccessRequest.class);
+                    } catch (Exception e) {
+                        log.error("Invalid request body provided", e);
+                        throw new IllegalArgumentException("Can't initiate copy shared access request. Incorrect body provided");
+                    }
+
+                    String sourceUrl = request.sourceUrl();
+                    if (sourceUrl == null) {
+                        throw new IllegalArgumentException("sourceUrl must be provided");
+                    }
+                    String destinationUrl = request.destinationUrl();
+                    if (destinationUrl == null) {
+                        throw new IllegalArgumentException("destinationUrl must be provided");
+                    }
+
+                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucket = encryptionService.encrypt(bucketLocation);
+
+                    ResourceDescription source = ResourceDescription.fromPrivateUrl(sourceUrl, encryptionService);
+                    if (!bucket.equals(source.getBucketName())) {
+                        throw new IllegalArgumentException("sourceUrl does not belong to the user");
+                    }
+                    ResourceDescription destination = ResourceDescription.fromPrivateUrl(destinationUrl, encryptionService);
+                    if (!bucket.equals(destination.getBucketName())) {
+                        throw new IllegalArgumentException("destinationUrl does not belong to the user");
+                    }
+
+                    return proxy.getVertx().executeBlocking(() ->
+                            lockService.underBucketLock(bucketLocation, () -> {
+                                shareService.copySharedAccess(bucket, bucketLocation, source, destination);
+                                return null;
+                            }));
+                })
+                .onSuccess(ignore -> context.respond(HttpStatus.OK))
+                .onFailure(this::handleServiceError);
+    }
+
     private void handleServiceError(Throwable error) {
         if (error instanceof IllegalArgumentException) {
             context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
@@ -157,7 +210,11 @@ public class ShareController {
         }
     }
 
+    private boolean hasResource(ResourceDescription resource) {
+        return ResourceUtil.hasResource(resource, resourceService, storage);
+    }
+
     public enum Operation {
-        CREATE, LIST, DISCARD, REVOKE
+        CREATE, LIST, DISCARD, REVOKE, COPY
     }
 }

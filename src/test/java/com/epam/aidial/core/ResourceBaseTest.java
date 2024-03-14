@@ -67,6 +67,15 @@ public class ResourceBaseTest {
             }
             """;
 
+    public static final String PROMPT_BODY = """
+                        {
+            "id": "prompt_id",
+            "name": "prompt",
+            "folderId": "folder",
+            "content": "content"
+            }
+            """;
+
     RedisServer redis;
     AiDial dial;
     Path testDir;
