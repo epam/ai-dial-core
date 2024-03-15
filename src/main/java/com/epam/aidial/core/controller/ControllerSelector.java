@@ -48,10 +48,10 @@ public class ControllerSelector {
     private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
-    private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publications/(list|get|create|delete|approve|reject)$");
-    private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publications/rules/list$");
+    private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
+    private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
-    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resources/(move)$");
+    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move)$");
 
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
 
