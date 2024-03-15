@@ -55,21 +55,21 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
         verifyJson(response, 200, PUBLICATION_RESPONSE);
 
 
-        response = operationRequest("/v1/ops/publications/get", PUBLICATION_URL);
+        response = operationRequest("/v1/ops/publication/get", PUBLICATION_URL);
         verifyJson(response, 200, PUBLICATION_RESPONSE);
 
-        response = operationRequest("/v1/ops/publications/get", PUBLICATION_URL, "authorization", "admin");
+        response = operationRequest("/v1/ops/publication/get", PUBLICATION_URL, "authorization", "admin");
         verifyJson(response, 200, PUBLICATION_RESPONSE);
 
-        response = operationRequest("/v1/ops/publications/get", PUBLICATION_URL, "authorization", "user");
+        response = operationRequest("/v1/ops/publication/get", PUBLICATION_URL, "authorization", "user");
         verify(response, 403);
 
 
-        response = operationRequest("/v1/ops/publications/list", """
+        response = operationRequest("/v1/ops/publication/list", """
                 {
                   "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
                 }
@@ -112,14 +112,14 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/delete", PUBLICATION_URL, "authorization", "user");
+        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL, "authorization", "user");
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/delete", PUBLICATION_URL);
+        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL);
         verify(response, 200);
 
 
@@ -138,17 +138,17 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/approve", PUBLICATION_URL);
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL);
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/approve", PUBLICATION_URL, "authorization", "user");
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "user");
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/approve", PUBLICATION_URL, "authorization", "admin");
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
@@ -207,17 +207,17 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/reject", PUBLICATION_URL);
+        response = operationRequest("/v1/ops/publication/reject", PUBLICATION_URL);
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/reject", PUBLICATION_URL, "authorization", "user");
+        response = operationRequest("/v1/ops/publication/reject", PUBLICATION_URL, "authorization", "user");
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/reject", PUBLICATION_URL, "authorization", "admin");
+        response = operationRequest("/v1/ops/publication/reject", PUBLICATION_URL, "authorization", "admin");
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
@@ -291,7 +291,7 @@ class PublicationApiTest extends ResourceBaseTest {
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/create", """
+        response = operationRequest("/v1/ops/publication/create", """
                 {
                   "url": "publications/%s/",
                   "targetUrl": "public/folder1/",
@@ -312,13 +312,13 @@ class PublicationApiTest extends ResourceBaseTest {
                 """.formatted(bucket, bucket));
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/approve", """
+        response = operationRequest("/v1/ops/publication/approve", """
                 {"url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123"}
                 """, "authorization", "admin");
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/create", """
+        response = operationRequest("/v1/ops/publication/create", """
                 {
                   "url": "publications/%s/",
                   "targetUrl": "public/folder2/",
@@ -339,7 +339,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 """.formatted(bucket, bucket));
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/approve", """
+        response = operationRequest("/v1/ops/publication/approve", """
                 {"url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"}
                 """, "authorization", "admin");
         verify(response, 200);
@@ -453,17 +453,17 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void testPublicationList() {
-        Response response = operationRequest("/v1/ops/publications/list", """
+        Response response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """);
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/list", """
+        response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """, "authorization", "user");
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/list", """
+        response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """, "authorization", "admin");
         verifyJson(response, 200, """
@@ -476,21 +476,21 @@ class PublicationApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/list", """
+        response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """);
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/list", """
+        response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """, "authorization", "user");
         verify(response, 403);
 
-        response = operationRequest("/v1/ops/publications/list", """
+        response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """, "authorization", "admin");
         verifyJson(response, 200, """
@@ -505,11 +505,11 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
 
 
-        response = operationRequest("/v1/ops/publications/approve", PUBLICATION_URL, "authorization", "admin");
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/list", """
+        response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """, "authorization", "admin");
         verifyJson(response, 200, """
@@ -521,17 +521,17 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void listRules() {
-        Response response = operationRequest("/v1/ops/publications/rules/list", """
+        Response response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": ""}
                 """);
         verify(response, 400);
 
-        response = operationRequest("/v1/ops/publications/rules/list", """
+        response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public"}
                 """);
         verify(response, 400);
 
-        response = operationRequest("/v1/ops/publications/rules/list", """
+        response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/"}
                 """);
         verifyJson(response, 200, """
@@ -540,7 +540,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = operationRequest("/v1/ops/publications/rules/list", """
+        response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/"}
                 """, "authorization", "user");
         verifyJson(response, 200, """
@@ -549,7 +549,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = operationRequest("/v1/ops/publications/rules/list", """
+        response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/"}
                 """, "authorization", "admin");
         verifyJson(response, 200, """
@@ -561,14 +561,14 @@ class PublicationApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publications/approve", PUBLICATION_URL, "authorization", "admin");
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verify(response, 200);
 
 
-        response = operationRequest("/v1/ops/publications/rules/list", """
+        response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/folder/"}
                 """, "authorization", "user");
         verifyJson(response, 200, """
@@ -583,7 +583,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = operationRequest("/v1/ops/publications/rules/list", """
+        response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/folder/"}
                 """, "authorization", "admin");
         verifyJson(response, 200, """
@@ -598,7 +598,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = operationRequest("/v1/ops/publications/rules/list", """
+        response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/folder/"}
                 """);
         verify(response, 403);
