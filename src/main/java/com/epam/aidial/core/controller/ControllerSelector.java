@@ -51,7 +51,7 @@ public class ControllerSelector {
     private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
     private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
-    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resources/(move)$");
+    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move)$");
 
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
 

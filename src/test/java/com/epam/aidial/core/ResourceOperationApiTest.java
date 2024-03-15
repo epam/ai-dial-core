@@ -20,7 +20,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, CONVERSATION_BODY_1);
 
         // verify move operation
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
@@ -54,7 +54,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, CONVERSATION_BODY_2);
 
         // verify move operation
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
@@ -69,7 +69,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.GET, "/folder2/conversation2");
         verifyJson(response, 200, CONVERSATION_BODY_2);
 
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2",
@@ -124,7 +124,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verify(response, 200, CONVERSATION_BODY_1);
 
         // verify move operation
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
@@ -210,7 +210,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
     @Test
     void testMoveOperationErrors() {
         // verify sourceUrl must be present
-        Response response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        Response response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
                 }
@@ -218,7 +218,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verify(response, 400);
 
         // verify destinationUrl must be present
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
                 }
@@ -226,7 +226,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verify(response, 400);
 
         // verify source and dest must be the same type
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
@@ -235,7 +235,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verify(response, 400);
 
         // verify source must belong to the user
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/conversation",
                    "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
@@ -244,7 +244,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verify(response, 400);
 
         // verify move do not support folders
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/",
                    "destinationUrl": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
@@ -253,7 +253,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verify(response, 400);
 
         // verify sourceUrl do not exists
-        response = send(HttpMethod.POST, "/v1/ops/resources/move", null, """
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
