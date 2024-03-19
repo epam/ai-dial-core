@@ -298,6 +298,11 @@ public class ShareService {
                     // if userLocations is NULL - this means that provided resource wasn't shared
                     if (userLocations != null) {
                         userLocations.remove(location);
+
+                        // clean up shared resource
+                        if (userLocations.isEmpty()) {
+                            sharedByMeDto.getResourceToUsers().remove(resourceUrl);
+                        }
                     }
                 }
 
