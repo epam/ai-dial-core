@@ -22,6 +22,7 @@ import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
+import io.micrometer.core.instrument.Clock;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
@@ -274,7 +275,7 @@ public class AiDial {
         }
 
         MicrometerMetricsOptions micrometer = new MicrometerMetricsOptions(metrics.toJson());
-        micrometer.setMicrometerRegistry(new OtlpMeterRegistry());
+        micrometer.setMicrometerRegistry(new OtlpMeterRegistry(oltp::getString, Clock.SYSTEM));
 
         options.setMetricsOptions(micrometer);
     }
