@@ -3,6 +3,8 @@ FROM gradle:8.2.0-jdk17-alpine as cache
 WORKDIR /home/gradle/src
 ENV GRADLE_USER_HOME /cache
 COPY build.gradle settings.gradle ./
+RUN ls -la /app/
+RUN ls -la
 RUN gradle --no-daemon build --stacktrace
 
 FROM gradle:8.2.0-jdk17-alpine as builder
