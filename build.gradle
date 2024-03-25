@@ -78,6 +78,7 @@ distributions {
     // write current version to the version file
     beforeEvaluate {
         def versionFile = file("$projectDir/src/main/resources/version")
+        versionFile.getParentFile().mkdirs()
         versionFile.createNewFile()
         versionFile.write(version)
     }
