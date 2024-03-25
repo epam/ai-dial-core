@@ -74,6 +74,13 @@ application {
     mainClass = 'com.epam.aidial.core.AiDial'
 }
 
+distributions {
+    // write current version to the version file
+    beforeEvaluate {
+        file("src/main/resources/version").write(version)
+    }
+}
+
 test {
     testLogging {
         events "passed", "skipped", "failed", "standardOut", "standardError"
