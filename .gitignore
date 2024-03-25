@@ -5,4 +5,7 @@ build/
 bin/
 /data/
 *.log
+# gradle distribution task will write a version from build.gradle to the version file.
+# since CI bumps version only in build.gradle and we are copying this value on fly we don't want to track version file changes
+# even if developer/user create own version file - distribution task overwrite it
 src/main/resources/version
