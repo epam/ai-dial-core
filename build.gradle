@@ -77,7 +77,7 @@ application {
 distributions {
     // write current version to the version file
     beforeEvaluate {
-        file("src/main/resources/version").write(version)
+        file("$projectDir/src/main/resources/version").write(version)
     }
 }
 
