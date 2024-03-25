@@ -17,7 +17,8 @@
         }
       },
       "oltpOptions": {
-        "enabled": false
+        "enabled": false,
+        "otlp.url": ""
       }
     }
   },
