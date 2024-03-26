@@ -50,6 +50,7 @@ import static com.epam.aidial.core.security.AccessTokenValidator.extractTokenFro
 public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
+    public static final String VERSION_PATH = "/version";
 
     public static final String HEADER_API_KEY = "API-KEY";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
@@ -82,6 +83,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AccessService accessService;
     private final LockService lockService;
     private final ResourceOperationService resourceOperationService;
+    private final String version;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -130,6 +132,11 @@ public class Proxy implements Handler<HttpServerRequest> {
         String path = URLDecoder.decode(request.path(), StandardCharsets.UTF_8);
         if (request.method() == HttpMethod.GET && path.equals(HEALTH_CHECK_PATH)) {
             respond(request, HttpStatus.OK);
+            return;
+        }
+
+        if (request.method() == HttpMethod.GET && path.equals(VERSION_PATH)) {
+            respond(request, HttpStatus.OK, version);
             return;
         }
 

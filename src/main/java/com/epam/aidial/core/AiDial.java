@@ -124,7 +124,7 @@ public class AiDial {
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, publicationService, accessService, lockService, resourceOperationService);
+                    shareService, publicationService, accessService, lockService, resourceOperationService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -185,6 +185,19 @@ public class AiDial {
             String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             return new JsonObject(json);
         }
+    }
+
+    private static String version() {
+        String filename = "version";
+        String version = "undefined";
+
+        try (InputStream stream = AiDial.class.getClassLoader().getResourceAsStream(filename)) {
+            Objects.requireNonNull(stream, "Version file not found");
+            version = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.warn("Failed to load version", e);
+        }
+        return version;
     }
 
     private static JsonObject fileSettings() throws IOException {
