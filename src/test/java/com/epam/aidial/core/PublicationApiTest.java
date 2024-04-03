@@ -603,4 +603,59 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 403);
     }
+
+    @Test
+    void testPublishedResourceList() {
+        // verify no published resource
+        Response response = operationRequest("/v1/ops/publication/resource/list", """
+                {"resourceTypes": ["CONVERSATION"]}
+                """);
+        verify(response, 200, "[]");
+
+        response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        // create publication request
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        verify(response, 200);
+
+        // verify admin can view publication request
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "publications" : [ {
+                    "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "targetUrl" : "public/folder/",
+                    "status" : "PENDING",
+                    "createdAt" : 0
+                  } ]
+                 }
+                """);
+
+        // verify no published resources (due to PENDING publication request)
+        response = operationRequest("/v1/ops/publication/resource/list", """
+                {"resourceTypes": ["CONVERSATION"]}
+                """);
+        verify(response, 200, "[]");
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        // verify published resource can be listed
+        response = operationRequest("/v1/ops/publication/resource/list", """
+                {"resourceTypes": ["CONVERSATION"]}
+                """);
+        verifyJson(response, 200, """
+                [ {
+                  "name" : "conversation",
+                  "parentPath" : "my/folder",
+                  "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                  "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                  "nodeType" : "ITEM",
+                  "resourceType" : "CONVERSATION"
+                } ]
+                """);
+    }
 }
