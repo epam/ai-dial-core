@@ -1,6 +1,7 @@
 package com.epam.aidial.core;
 
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.codec.BodyCodec;
@@ -42,7 +43,7 @@ public class FeaturesApiTest extends ResourceBaseTest {
     void testRateEndpointAssistantDefaultResponse(Vertx vertx, VertxTestContext context) {
         // The rate endpoint is unset. Checking the default empty response.
         String inboundPath = "/v1/assistant/rate";
-        checkResponse(vertx, context, inboundPath, null);
+        checkResponse(vertx, context, inboundPath, HttpMethod.POST, null);
     }
 
     @Test
@@ -59,8 +60,19 @@ public class FeaturesApiTest extends ResourceBaseTest {
         testUpstreamEndpoint(vertx, context, inboundPath, upstream);
     }
 
-    @SneakyThrows
+    @Test
+    void testConfigurationEndpointApplication(Vertx vertx, VertxTestContext context) {
+        String inboundPath = "/v1/deployments/app/configuration";
+        String upstream = "http://localhost:7001/openai/deployments/10k/config";
+        testUpstreamEndpoint(vertx, context, inboundPath, upstream, HttpMethod.GET);
+    }
+
     void testUpstreamEndpoint(Vertx vertx, VertxTestContext context, String inboundPath, String upstream) {
+        testUpstreamEndpoint(vertx, context, inboundPath, upstream, HttpMethod.POST);
+    }
+
+    @SneakyThrows
+    void testUpstreamEndpoint(Vertx vertx, VertxTestContext context, String inboundPath, String upstream, HttpMethod method) {
         URI upstreamUri = new URI(upstream);
 
         String response = "PONG";
@@ -78,12 +90,12 @@ public class FeaturesApiTest extends ResourceBaseTest {
                     }
                 })
                 .listen().onSuccess(server ->
-                    checkResponse(vertx, context, inboundPath, response));
+                    checkResponse(vertx, context, inboundPath, method, response));
     }
 
-    void checkResponse(Vertx vertx, VertxTestContext context, String uri, String expectedResponse) {
+    void checkResponse(Vertx vertx, VertxTestContext context, String uri, HttpMethod method, String expectedResponse) {
         WebClient client = WebClient.create(vertx);
-        client.post(serverPort, "localhost", uri)
+        client.request(method, serverPort, "localhost", uri)
                 .putHeader("Api-key", "proxyKey2")
                 .as(BodyCodec.string())
                 .send(context.succeeding(response -> {
