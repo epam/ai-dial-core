@@ -1,6 +1,7 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
@@ -31,6 +32,7 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
@@ -143,6 +145,39 @@ public class PublicationService {
         }
 
         return publications.values();
+    }
+
+    public Collection<MetadataBase> listPublishedResources(ListPublishedResourcesRequest request, String bucket, String location) {
+        ResourceDescription publicationResource = publications(bucket, location);
+        Map<String, Publication> publications = decodePublications(resources.getResource(publicationResource));
+
+        // get approved publications only
+        List<Publication> approvedPublications = publications.values()
+                .stream()
+                .filter(publication -> Publication.Status.APPROVED.equals(publication.getStatus()))
+                .toList();
+
+        Set<Publication.Resource> resourceSet = approvedPublications.stream()
+                .flatMap(publication -> publication.getResources().stream())
+                .collect(Collectors.toSet());
+        Set<ResourceType> requestedResourceTypes = request.getResourceTypes();
+
+        Set<MetadataBase> metadata = new HashSet<>();
+        for (Publication.Resource resource : resourceSet) {
+            ResourceDescription resourceDescription = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
+            // check if published resource match requested criteria
+            if (!requestedResourceTypes.contains(resourceDescription.getType())) {
+                continue;
+            }
+
+            if (resourceDescription.isFolder()) {
+                metadata.add(new ResourceFolderMetadata(resourceDescription));
+            } else {
+                metadata.add(new ResourceItemMetadata(resourceDescription));
+            }
+        }
+
+        return metadata;
     }
 
     public Publication getPublication(ResourceDescription resource) {
@@ -572,10 +607,12 @@ public class PublicationService {
     }
 
     private static ResourceDescription publications(ResourceDescription resource) {
+        return publications(resource.getBucketName(), resource.getBucketLocation());
+    }
+
+    private static ResourceDescription publications(String bucket, String location) {
         return ResourceDescription.fromDecoded(ResourceType.PUBLICATION,
-                resource.getBucketName(),
-                resource.getBucketLocation(),
-                PUBLICATIONS_NAME);
+                bucket, location, PUBLICATIONS_NAME);
     }
 
     private static Map<String, Publication> decodePublications(String json) {

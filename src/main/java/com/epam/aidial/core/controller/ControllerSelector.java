@@ -51,6 +51,7 @@ public class ControllerSelector {
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
     private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
+    private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
     private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
     private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move)$");
@@ -291,6 +292,12 @@ public class ControllerSelector {
         if (match != null) {
             ResourceOperationController controller = new ResourceOperationController(proxy, context);
             return controller::move;
+        }
+
+        match = match(PUBLISHED_RESOURCES, path);
+        if (match != null) {
+            PublicationController controller = new PublicationController(proxy, context);
+            return controller::listPublishedResources;
         }
 
         return null;

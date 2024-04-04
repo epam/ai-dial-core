@@ -2,6 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.Publications;
 import com.epam.aidial.core.data.ResourceLink;
@@ -145,6 +146,21 @@ public class PublicationController {
                 })
                 .onSuccess(rules -> context.respond(HttpStatus.OK, new Rules(rules)))
                 .onFailure(error -> respondError("Can't list rules", error));
+
+        return Future.succeededFuture();
+    }
+
+    public Future<?> listPublishedResources() {
+        context.getRequest()
+                .body()
+                .compose(body -> {
+                    ListPublishedResourcesRequest request = ProxyUtil.convertToObject(body, ListPublishedResourcesRequest.class);
+                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucket = encryptService.encrypt(bucketLocation);
+                    return vertx.executeBlocking(() -> publicationService.listPublishedResources(request, bucket, bucketLocation));
+                })
+                .onSuccess(metadata -> context.respond(HttpStatus.OK, metadata))
+                .onFailure(error -> respondError("Can't list published resources", error));
 
         return Future.succeededFuture();
     }
