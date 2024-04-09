@@ -95,7 +95,9 @@ public class PublicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() -> publicationService.deletePublication(resource));
+                    return vertx.executeBlocking(() ->
+                            lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
+                                    () -> publicationService.deletePublication(resource, isAdmin())));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete publication", error));
@@ -224,7 +226,7 @@ public class PublicationController {
     }
 
     private void checkAccess(ResourceDescription resource, boolean allowUser) {
-        boolean hasAccess = accessService.hasAdminAccess(context);
+        boolean hasAccess = isAdmin();
 
         if (!hasAccess && allowUser) {
             String bucket = BlobStorageUtil.buildInitiatorBucket(context);
@@ -234,6 +236,10 @@ public class PublicationController {
         if (!hasAccess) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + resource.getUrl());
         }
+    }
+
+    private boolean isAdmin() {
+        return accessService.hasAdminAccess(context);
     }
 
     private void checkRuleAccess(ResourceDescription rule) {
