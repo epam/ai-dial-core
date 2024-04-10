@@ -327,6 +327,8 @@ public class PublicationService {
             }
 
             reference.setValue(publication);
+            // if publication is PENDING - finalize status to REJECTED,
+            // if REQUESTED_FOR_DELETION - rollback to APPROVED state, because admin do to want to approve user's request
             publication.setStatus(isPending ? Publication.Status.REJECTED : Publication.Status.APPROVED);
             return encodePublications(publications);
         });
