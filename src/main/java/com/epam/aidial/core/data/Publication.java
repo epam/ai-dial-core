@@ -24,7 +24,7 @@ public class Publication {
     List<Rule> rules;
 
     public enum Status {
-        PENDING, APPROVED, REJECTED
+        PENDING, APPROVED, REJECTED, REQUESTED_FOR_DELETION
     }
 
     @Data
