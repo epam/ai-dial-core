@@ -11,7 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Pattern;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -19,7 +19,7 @@ import javax.annotation.Nullable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
 
-    private static final Pattern INVALID_FILE_NAME_CHARS_PATTERN = Pattern.compile(".*[\\x00-\\x1f/}{].*");
+    private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}');
     private static final int MAX_PATH_SIZE = 900;
 
     ResourceType type;
@@ -159,7 +159,7 @@ public class ResourceDescription {
     }
 
     /**
-     * @param url must contain the same bucket and location as resource.
+     * @param url      must contain the same bucket and location as resource.
      * @param resource to take bucket and location from.
      */
     public static ResourceDescription fromPrivateUrl(String url, ResourceDescription resource) {
@@ -261,7 +261,13 @@ public class ResourceDescription {
     }
 
     private static boolean isValidFilename(String value) {
-        return !INVALID_FILE_NAME_CHARS_PATTERN.matcher(value).matches();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c <= 0x1F || INVALID_FILE_NAME_CHARS.contains(c)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void verify(boolean condition, String message) {
