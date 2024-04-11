@@ -144,6 +144,10 @@ public class ResourceDescriptionTest {
     @Test
     public void testResourceWithInvalidFilename() {
         assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "%2F"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "%7D.txt"));
+        assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folde%2F/"));
         assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%2F.txt"));
@@ -151,6 +155,12 @@ public class ResourceDescriptionTest {
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%7B.txt"));
         assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%7D.txt"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%00"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "%1Ffolder1/file"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "fol%0Fder1"));
     }
 
     @Test
