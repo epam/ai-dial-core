@@ -18,4 +18,5 @@ public class FeaturesData {
     private boolean tools = false;
     private boolean seed = false;
     private boolean urlAttachments = false;
+    private boolean folderAttachments = false;
 }
