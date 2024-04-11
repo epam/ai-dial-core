@@ -159,5 +159,8 @@ public final class FileConfigStore implements ConfigStore {
         if (modelFeatures.getUrlAttachmentsSupported() == null) {
             modelFeatures.setUrlAttachmentsSupported(features.getUrlAttachmentsSupported());
         }
+        if (modelFeatures.getFolderAttachmentsSupported() == null) {
+            modelFeatures.setFolderAttachmentsSupported(features.getFolderAttachmentsSupported());
+        }
     }
 }
