@@ -19,6 +19,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -105,7 +106,7 @@ public class AccessTokenValidatorTest {
         when(provider1.match(any(DecodedJWT.class))).thenReturn(false);
         IdentityProvider provider2 = mock(IdentityProvider.class);
         when(provider2.match(any(DecodedJWT.class))).thenReturn(true);
-        when(provider2.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
+        when(provider2.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash", Map.of())));
         List<IdentityProvider> providerList = List.of(provider1, provider2);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -127,7 +128,7 @@ public class AccessTokenValidatorTest {
     public void testExtractClaims_06() throws NoSuchAlgorithmException {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
         IdentityProvider provider = mock(IdentityProvider.class);
-        when(provider.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
+        when(provider.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash", Map.of())));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
