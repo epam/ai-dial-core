@@ -93,8 +93,6 @@ public class AiDial {
             vertx = Vertx.vertx(vertxOptions);
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
-            ApiKeyStore apiKeyStore = new ApiKeyStore();
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             LogStore logStore = new GfLogStore(vertx);
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
@@ -120,6 +118,9 @@ public class AiDial {
 
             AccessService accessService = new AccessService(encryptionService, shareService, publicationService, settings("access"));
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
+
+            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, lockService);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,

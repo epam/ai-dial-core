@@ -142,38 +142,41 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         Config config = configStore.load();
         String apiKey = request.headers().get(HEADER_API_KEY);
-        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         SpanContext spanContext = Span.current().getSpanContext();
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
-        log.debug("Authorization header: {}", authorization);
-        ApiKeyData apiKeyData;
-        if (apiKey == null && authorization == null) {
-            respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
-            return;
-        } else if (apiKey != null && authorization != null && !apiKey.equals(extractTokenFromHeader(authorization))) {
-            respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
-            return;
-        } else if (apiKey != null) {
-            apiKeyData = apiKeyStore.getApiKeyData(apiKey);
-            // Special case handling. OpenAI client sends both API key and Auth headers even if a caller sets just API Key only
-            // Auth header is set to the same value as API Key header
-            // ignore auth header in this case
-            authorization = null;
-            if (apiKeyData == null) {
-                respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
-                return;
-            }
-        } else {
-            apiKeyData = new ApiKeyData();
-        }
-
         request.pause();
-        Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization);
+        vertx.executeBlocking(() -> {
+            ApiKeyData apiKeyData;
+            String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+            log.debug("Authorization header: {}", authorization);
+            if (apiKey == null && authorization == null) {
+                respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
+                return null;
+            } else if (apiKey != null && authorization != null && !apiKey.equals(extractTokenFromHeader(authorization))) {
+                respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
+                return null;
+            } else if (apiKey != null) {
+                apiKeyData = apiKeyStore.getApiKeyData(apiKey);
+                // Special case handling. OpenAI client sends both API key and Auth headers even if a caller sets just API Key only
+                // Auth header is set to the same value as API Key header
+                // ignore auth header in this case
+                authorization = null;
+                if (apiKeyData == null) {
+                    respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
+                    return null;
+                }
+            } else {
+                apiKeyData = new ApiKeyData();
+            }
 
-        extractedClaims.onFailure(error -> onExtractClaimsFailure(error, request))
-                .compose(claims -> onExtractClaimsSuccess(claims, config, request, apiKeyData, traceId, spanId))
-                .onComplete(ignore -> request.resume());
+            Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization);
+
+            extractedClaims.onFailure(error -> onExtractClaimsFailure(error, request))
+                    .compose(claims -> onExtractClaimsSuccess(claims, config, request, apiKeyData, traceId, spanId))
+                    .onComplete(ignore -> request.resume());
+            return null;
+        }).onFailure(error -> handleError(error, request));
     }
 
     private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {

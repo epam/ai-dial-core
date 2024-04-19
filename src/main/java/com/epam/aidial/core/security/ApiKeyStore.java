@@ -2,57 +2,109 @@ package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.ProxyUtil;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
+import javax.annotation.concurrent.GuardedBy;
 
 import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
+import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
 
 @Slf4j
+@AllArgsConstructor
 public class ApiKeyStore {
 
+    public static final String API_KEY_DATA_BUCKET = "api_key_data";
+    public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
+
+    private final ResourceService resourceService;
+
+    private final LockService lockService;
+
+    @GuardedBy("this")
     private final Map<String, ApiKeyData> keys = new HashMap<>();
 
     public synchronized void assignApiKey(ApiKeyData data) {
-        String apiKey = generateApiKey();
-        keys.put(apiKey, data);
-        data.setPerRequestKey(apiKey);
+        lockService.underBucketLock(API_KEY_DATA_LOCATION, () -> {
+            ResourceDescription resource = generateApiKey();
+            String apiKey = resource.getName();
+            data.setPerRequestKey(apiKey);
+            String json = ProxyUtil.convertToString(data);
+            if (resourceService.putResource(resource, json, false, false) == null) {
+                throw new IllegalStateException(String.format("API key %s already exists in the storage", apiKey));
+            }
+            return apiKey;
+        });
     }
 
     public synchronized ApiKeyData getApiKeyData(String key) {
-        return keys.get(key);
+        ApiKeyData apiKeyData = keys.get(key);
+        if (apiKeyData != null) {
+            return apiKeyData;
+        }
+        ResourceDescription resource = toResource(key);
+        return ProxyUtil.convertToObject(resourceService.getResource(resource), ApiKeyData.class);
     }
 
-    public synchronized void invalidateApiKey(ApiKeyData apiKeyData) {
-        if (apiKeyData.getPerRequestKey() != null) {
-            keys.remove(apiKeyData.getPerRequestKey());
+    public void invalidateApiKey(ApiKeyData apiKeyData) {
+        String apiKey = apiKeyData.getPerRequestKey();
+        if (apiKey != null) {
+            ResourceDescription resource = toResource(apiKey);
+            resourceService.deleteResource(resource);
         }
     }
 
     public synchronized void addProjectKeys(Map<String, Key> projectKeys) {
-        keys.values().removeIf(apiKeyData -> apiKeyData.getPerRequestKey() == null);
-        for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
-            String key = entry.getKey();
-            Key value = entry.getValue();
-            if (keys.containsKey(key)) {
-                key = generateApiKey();
+        keys.clear();
+        lockService.underBucketLock(API_KEY_DATA_LOCATION, () -> {
+            for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
+                String apiKey = entry.getKey();
+                Key value = entry.getValue();
+                ResourceDescription resource = toResource(apiKey);
+                if (resourceService.hasResource(resource)) {
+                    resource = generateApiKey();
+                    apiKey = resource.getName();
+                }
+                value.setKey(apiKey);
+                ApiKeyData apiKeyData = new ApiKeyData();
+                apiKeyData.setOriginalKey(value);
+                keys.put(apiKey, apiKeyData);
             }
-            value.setKey(key);
-            ApiKeyData apiKeyData = new ApiKeyData();
-            apiKeyData.setOriginalKey(value);
-            keys.put(key, apiKeyData);
-        }
+            return null;
+        });
     }
 
-    private String generateApiKey() {
+    public void updateApiKeyData(ApiKeyData apiKeyData) {
+        String apiKey = apiKeyData.getPerRequestKey();
+        if (apiKey == null) {
+            return;
+        }
+        String json = ProxyUtil.convertToString(apiKeyData);
+        ResourceDescription resource = toResource(apiKey);
+        resourceService.putResource(resource, json, true, false);
+    }
+
+    private ResourceDescription generateApiKey() {
         String apiKey = generateKey();
-        while (keys.containsKey(apiKey)) {
+        ResourceDescription resource = toResource(apiKey);
+        while (resourceService.hasResource(resource) || keys.containsKey(apiKey)) {
             log.warn("duplicate API key is found. Trying to generate a new one");
             apiKey = generateKey();
+            resource = toResource(apiKey);
         }
-        return apiKey;
+        return resource;
+    }
+
+    private static ResourceDescription toResource(String apiKey) {
+        return ResourceDescription.fromDecoded(
+                ResourceType.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
     }
 
 }

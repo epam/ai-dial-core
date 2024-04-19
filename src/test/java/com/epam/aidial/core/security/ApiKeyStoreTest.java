@@ -2,22 +2,96 @@ package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.storage.BlobStorage;
+import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.Redisson;
+import org.redisson.api.RKeys;
+import org.redisson.api.RedissonClient;
+import org.redisson.config.ConfigSupport;
+import redis.embedded.RedisServer;
 
+import java.io.IOException;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+@ExtendWith(MockitoExtension.class)
 public class ApiKeyStoreTest {
+
+    private static RedisServer redisServer;
+
+    private static RedissonClient redissonClient;
+
+    @Mock
+    private Vertx vertx;
+
+    @Mock
+    private BlobStorage blobStorage;
 
     private ApiKeyStore store;
 
+    @BeforeAll
+    public static void beforeAll() throws IOException {
+        redisServer = RedisServer.builder()
+                .port(16370)
+                .setting("bind 127.0.0.1")
+                .setting("maxmemory 16M")
+                .setting("maxmemory-policy volatile-lfu")
+                .build();
+        redisServer.start();
+        ConfigSupport configSupport = new ConfigSupport();
+        org.redisson.config.Config redisClientConfig = configSupport.fromJSON("""
+                {
+                  "singleServerConfig": {
+                     "address": "redis://localhost:16370"
+                  }
+                }
+                """, org.redisson.config.Config.class);
+
+        redissonClient = Redisson.create(redisClientConfig);
+    }
+
+    @AfterAll
+    public static void afterAll() {
+        if (redissonClient != null) {
+            redissonClient.shutdown();
+        }
+        if (redisServer != null) {
+            redisServer.stop();
+        }
+    }
+
     @BeforeEach
     public void beforeEach() {
-        store = new ApiKeyStore();
+        RKeys keys = redissonClient.getKeys();
+        for (String key : keys.getKeys()) {
+            keys.delete(key);
+        }
+        LockService lockService = new LockService(redissonClient, null);
+        String resourceConfig = """
+                  {
+                    "maxSize" : 1048576,
+                    "syncPeriod": 60000,
+                    "syncDelay": 120000,
+                    "syncBatch": 4096,
+                    "cacheExpiration": 300000,
+                    "compressionMinSize": 256
+                  }
+                """;
+        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        store = new ApiKeyStore(resourceService, lockService);
     }
 
     @Test

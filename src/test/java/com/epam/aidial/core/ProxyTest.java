@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
 
 import static com.epam.aidial.core.Proxy.FILES_REQUEST_BODY_MAX_SIZE_BYTES;
@@ -148,6 +149,11 @@ public class ProxyTest {
 
     @Test
     public void testHandle_MissingApiKeyAndToken() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -161,6 +167,11 @@ public class ProxyTest {
 
     @Test
     public void testHandle_BothApiKeyAndToken() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -178,6 +189,11 @@ public class ProxyTest {
 
     @Test
     public void testHandle_UnknownApiKey() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -197,6 +213,11 @@ public class ProxyTest {
 
     @Test
     public void testHandle_OpenAiRequestSuccess() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         when(request.path()).thenReturn("/foo");
@@ -231,6 +252,11 @@ public class ProxyTest {
 
     @Test
     public void testHandle_OpenAiRequestWrongApiKey() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
 
@@ -252,6 +278,11 @@ public class ProxyTest {
 
     @Test
     public void testHandle_SuccessApiKey() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -283,6 +314,11 @@ public class ProxyTest {
 
     @Test
     public void testHandle_InvalidToken() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);

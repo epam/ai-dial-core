@@ -125,19 +125,22 @@ public class DeploymentPostController {
             return;
         }
 
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
+        proxy.getVertx().executeBlocking(() -> {
+            ApiKeyData proxyApiKeyData = new ApiKeyData();
+            context.setProxyApiKeyData(proxyApiKeyData);
+            ApiKeyData.initFromContext(proxyApiKeyData, context);
+            proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
 
-        proxy.getTokenStatsTracker().startSpan(context);
+            proxy.getTokenStatsTracker().startSpan(context);
 
-        context.getRequest().body()
-                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                    handleRequestBody(body);
-                    return null;
-                }))
-                .onFailure(this::handleRequestBodyError);
+            context.getRequest().body()
+                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }))
+                    .onFailure(this::handleRequestBodyError);
+            return null;
+        });
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
@@ -203,6 +206,9 @@ public class DeploymentPostController {
 
             try {
                 ProxyUtil.collectAttachedFiles(tree, this::processAttachedFile);
+                // update api key data after processing attachments
+                ApiKeyData destApiKeyData = context.getProxyApiKeyData();
+                proxy.getApiKeyStore().updateApiKeyData(destApiKeyData);
             } catch (HttpException e) {
                 respond(e.getStatus(), e.getMessage());
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
@@ -620,7 +626,10 @@ public class DeploymentPostController {
     private void finalizeRequest() {
         proxy.getTokenStatsTracker().endSpan(context);
         if (context.getProxyApiKeyData() != null) {
-            proxy.getApiKeyStore().invalidateApiKey(context.getProxyApiKeyData());
+            proxy.getVertx().executeBlocking(() -> {
+                proxy.getApiKeyStore().invalidateApiKey(context.getProxyApiKeyData());
+                return null;
+            });
         }
     }
 }
