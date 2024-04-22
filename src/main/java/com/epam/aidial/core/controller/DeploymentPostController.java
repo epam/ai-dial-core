@@ -140,7 +140,7 @@ public class DeploymentPostController {
                     }))
                     .onFailure(this::handleRequestBodyError);
             return null;
-        });
+        }).onFailure(this::handleError);
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
@@ -625,11 +625,14 @@ public class DeploymentPostController {
 
     private void finalizeRequest() {
         proxy.getTokenStatsTracker().endSpan(context);
-        if (context.getProxyApiKeyData() != null) {
-            proxy.getVertx().executeBlocking(() -> {
-                proxy.getApiKeyStore().invalidateApiKey(context.getProxyApiKeyData());
-                return null;
-            });
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            proxy.getApiKeyStore().invalidateApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key: {}", error));
         }
     }
 }

@@ -7,6 +7,8 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
+import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +30,11 @@ public class ApiKeyStore {
 
     private final LockService lockService;
 
+    private final Vertx vertx;
+
+    /**
+     * API keys are captured from secure storage.
+     */
     @GuardedBy("this")
     private final Map<String, ApiKeyData> keys = new HashMap<>();
 
@@ -44,21 +51,22 @@ public class ApiKeyStore {
         });
     }
 
-    public synchronized ApiKeyData getApiKeyData(String key) {
+    public synchronized Future<ApiKeyData> getApiKeyData(String key) {
         ApiKeyData apiKeyData = keys.get(key);
         if (apiKeyData != null) {
-            return apiKeyData;
+            return Future.succeededFuture(apiKeyData);
         }
         ResourceDescription resource = toResource(key);
-        return ProxyUtil.convertToObject(resourceService.getResource(resource), ApiKeyData.class);
+        return vertx.executeBlocking(() -> ProxyUtil.convertToObject(resourceService.getResource(resource), ApiKeyData.class));
     }
 
-    public void invalidateApiKey(ApiKeyData apiKeyData) {
+    public Future<Boolean> invalidateApiKey(ApiKeyData apiKeyData) {
         String apiKey = apiKeyData.getPerRequestKey();
         if (apiKey != null) {
             ResourceDescription resource = toResource(apiKey);
-            resourceService.deleteResource(resource);
+            return vertx.executeBlocking(() -> resourceService.deleteResource(resource));
         }
+        return Future.succeededFuture(true);
     }
 
     public synchronized void addProjectKeys(Map<String, Key> projectKeys) {

@@ -51,7 +51,7 @@ public class FileApiTest extends ResourceBaseTest {
     public void testPerRequestBucket(Vertx vertx, VertxTestContext context) {
         // creating per-request API key with proxyKey1 as originator
         // and proxyKey2 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1");
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1").result();
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setOriginalKey(projectApiKeyData.getOriginalKey());
 
@@ -344,7 +344,7 @@ public class FileApiTest extends ResourceBaseTest {
     public void testFileUploadToAppdata(Vertx vertx, VertxTestContext context) {
         // creating per-request API key with proxyKey1 as originator
         // and proxyKey2 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1");
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1").result();
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey2
@@ -436,7 +436,7 @@ public class FileApiTest extends ResourceBaseTest {
 
         // creating per-request API key with proxyKey2 as originator
         // and proxyKey1 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2");
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2").result();
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1
@@ -505,7 +505,7 @@ public class FileApiTest extends ResourceBaseTest {
 
         // creating per-request API key with proxyKey2 as originator
         // and proxyKey1 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2");
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2").result();
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1

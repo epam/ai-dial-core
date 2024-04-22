@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
@@ -22,10 +23,13 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class ApiKeyStoreTest {
@@ -91,7 +95,7 @@ public class ApiKeyStoreTest {
                   }
                 """;
         ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
-        store = new ApiKeyStore(resourceService, lockService);
+        store = new ApiKeyStore(resourceService, lockService, vertx);
     }
 
     @Test
@@ -103,6 +107,10 @@ public class ApiKeyStoreTest {
 
     @Test
     public void testAddProjectKeys() {
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
 
         Key key1 = new Key();
         key1.setProject("prj1");
@@ -122,13 +130,13 @@ public class ApiKeyStoreTest {
         store.addProjectKeys(projectKeys2);
 
         // old key must be removed
-        assertNull(store.getApiKeyData("key1"));
+        assertNull(store.getApiKeyData("key1").result());
         // new key must be accessed
-        ApiKeyData res1 = store.getApiKeyData("key2");
-        assertNotNull(res1);
-        assertEquals(key2, res1.getOriginalKey());
+        Future<ApiKeyData> res1 = store.getApiKeyData("key2");
+        assertNotNull(res1.result());
+        assertEquals(key2, res1.result().getOriginalKey());
         // existing per request key must be accessed
-        assertNotNull(store.getApiKeyData(apiKeyData.getPerRequestKey()));
+        assertNotNull(store.getApiKeyData(apiKeyData.getPerRequestKey()).result());
 
     }
 
@@ -139,10 +147,16 @@ public class ApiKeyStoreTest {
 
         assertNotNull(apiKeyData.getPerRequestKey());
 
-        ApiKeyData res1  = store.getApiKeyData(apiKeyData.getPerRequestKey());
-        assertEquals(apiKeyData, res1);
+        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
 
-        assertNull(store.getApiKeyData("unknown-key"));
+        Future<ApiKeyData> res1  = store.getApiKeyData(apiKeyData.getPerRequestKey());
+        assertNotNull(res1);
+        assertEquals(apiKeyData, res1.result());
+
+        assertNull(store.getApiKeyData("unknown-key").result());
     }
 
     @Test
