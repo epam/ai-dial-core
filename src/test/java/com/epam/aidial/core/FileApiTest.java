@@ -57,7 +57,7 @@ public class FileApiTest extends ResourceBaseTest {
 
         // set deployment ID for proxyKey2
         apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
-        apiKeyStore.assignApiKey(apiKeyData2);
+        apiKeyStore.assignPerRequestApiKey(apiKeyData2);
 
         String apiKey2 = apiKeyData2.getPerRequestKey();
 
@@ -349,7 +349,7 @@ public class FileApiTest extends ResourceBaseTest {
         apiKeyData2.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey2
         apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
-        apiKeyStore.assignApiKey(apiKeyData2);
+        apiKeyStore.assignPerRequestApiKey(apiKeyData2);
 
         String apiKey2 = apiKeyData2.getPerRequestKey();
 
@@ -442,7 +442,7 @@ public class FileApiTest extends ResourceBaseTest {
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
         apiKeyData1.setAttachedFiles(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt"));
-        apiKeyStore.assignApiKey(apiKeyData1);
+        apiKeyStore.assignPerRequestApiKey(apiKeyData1);
 
         String apiKey1 = apiKeyData1.getPerRequestKey();
 
@@ -511,7 +511,7 @@ public class FileApiTest extends ResourceBaseTest {
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
         apiKeyData1.setAttachedFolders(List.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/"));
-        apiKeyStore.assignApiKey(apiKeyData1);
+        apiKeyStore.assignPerRequestApiKey(apiKeyData1);
 
         String apiKey1 = apiKeyData1.getPerRequestKey();
 

@@ -101,7 +101,7 @@ public class ApiKeyStoreTest {
     @Test
     public void testAssignApiKey() {
         ApiKeyData apiKeyData = new ApiKeyData();
-        store.assignApiKey(apiKeyData);
+        store.assignPerRequestApiKey(apiKeyData);
         assertNotNull(apiKeyData.getPerRequestKey());
     }
 
@@ -120,7 +120,7 @@ public class ApiKeyStoreTest {
         store.addProjectKeys(projectKeys1);
 
         ApiKeyData apiKeyData = new ApiKeyData();
-        store.assignApiKey(apiKeyData);
+        store.assignPerRequestApiKey(apiKeyData);
 
         Key key2 = new Key();
         key1.setProject("prj1");
@@ -143,7 +143,7 @@ public class ApiKeyStoreTest {
     @Test
     public void testGetApiKeyData() {
         ApiKeyData apiKeyData = new ApiKeyData();
-        store.assignApiKey(apiKeyData);
+        store.assignPerRequestApiKey(apiKeyData);
 
         assertNotNull(apiKeyData.getPerRequestKey());
 
@@ -162,11 +162,11 @@ public class ApiKeyStoreTest {
     @Test
     public void testInvalidateApiKey() {
         ApiKeyData apiKeyData = new ApiKeyData();
-        store.assignApiKey(apiKeyData);
+        store.assignPerRequestApiKey(apiKeyData);
 
         assertNotNull(apiKeyData.getPerRequestKey());
 
-        store.invalidateApiKey(apiKeyData);
+        store.invalidatePerRequestApiKey(apiKeyData);
 
         assertNull(store.getApiKeyData(apiKeyData.getPerRequestKey()));
     }
