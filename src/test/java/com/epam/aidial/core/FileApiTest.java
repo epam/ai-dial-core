@@ -3,6 +3,7 @@ package com.epam.aidial.core;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
+import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -17,6 +18,7 @@ import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -122,6 +124,28 @@ public class FileApiTest extends ResourceBaseTest {
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
                         assertEquals(200, response.statusCode());
+                        assertEquals("application/json", response.getHeader(HttpHeaders.CONTENT_TYPE));
+                        assertEquals(emptyBucketResponse, response.body());
+                        context.completeNow();
+                    });
+                }));
+    }
+
+    @Test
+    public void testMetadataContentType(Vertx vertx, VertxTestContext context) {
+        WebClient client = WebClient.create(vertx);
+
+        ResourceFolderMetadata emptyBucketResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of());
+
+        client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+                .putHeader("Api-key", "proxyKey2")
+                .putHeader(HttpHeaders.ACCEPT, MetadataBase.MIME_TYPE)
+                .as(BodyCodec.json(ResourceFolderMetadata.class))
+                .send(context.succeeding(response -> {
+                    context.verify(() -> {
+                        assertEquals(200, response.statusCode());
+                        assertEquals(MetadataBase.MIME_TYPE, response.getHeader(HttpHeaders.CONTENT_TYPE));
                         assertEquals(emptyBucketResponse, response.body());
                         context.completeNow();
                     });

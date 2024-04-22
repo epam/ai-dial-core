@@ -9,7 +9,6 @@ import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
-import com.epam.aidial.core.security.IdentityProvider;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import io.vertx.core.Future;
