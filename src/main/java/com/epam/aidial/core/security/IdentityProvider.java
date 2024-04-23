@@ -7,10 +7,17 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.HttpHeaders;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,6 +40,8 @@ public class IdentityProvider {
 
     private final JwkProvider jwkProvider;
 
+    private final URL userinfoUrl;
+
     // in memory cache store results obtained from JWK provider
     private final ConcurrentHashMap<String, Future<JwkResult>> cache = new ConcurrentHashMap<>();
 
@@ -48,6 +57,8 @@ public class IdentityProvider {
 
     private final Vertx vertx;
 
+    private final HttpClient client;
+
     // the duration is how many milliseconds success JWK result should be stored in the cache
     private final long positiveCacheExpirationMs;
 
@@ -60,11 +71,12 @@ public class IdentityProvider {
     // the flag disables JWT verification
     private final boolean disableJwtVerification;
 
-    public IdentityProvider(JsonObject settings, Vertx vertx, Function<String, JwkProvider> jwkProviderSupplier) {
+    public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
         }
         this.vertx = vertx;
+        this.client = client;
         positiveCacheExpirationMs = settings.getLong("positiveCacheExpirationMs", TimeUnit.MINUTES.toMillis(10));
         negativeCacheExpirationMs = settings.getLong("negativeCacheExpirationMs", TimeUnit.SECONDS.toMillis(10));
 
@@ -74,6 +86,17 @@ public class IdentityProvider {
         } else {
             String jwksUrl = Objects.requireNonNull(settings.getString("jwksUrl"), "jwksUrl is missed");
             jwkProvider = jwkProviderSupplier.apply(jwksUrl);
+        }
+
+        try {
+            String userinfoEndpoint = settings.getString("userinfoEndpoint");
+            if (userinfoEndpoint != null) {
+                userinfoUrl = new URL(userinfoEndpoint);
+            } else {
+                userinfoUrl = null;
+            }
+        } catch (MalformedURLException e) {
+            throw new IllegalArgumentException(e);
         }
 
         rolePath = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed").split("\\.");
@@ -143,6 +166,29 @@ public class IdentityProvider {
         return EMPTY_LIST;
     }
 
+    @SuppressWarnings("unchecked")
+    private List<String> extractUserRoles(JsonObject userInfo) {
+        Map<String, Object> map = userInfo.getMap();
+        for (int i = 0; i < rolePath.length; i++) {
+            Object next = map.get(rolePath[i]);
+            if (next == null) {
+                return EMPTY_LIST;
+            }
+            if (i == rolePath.length - 1) {
+                if (next instanceof List) {
+                    return (List<String>) next;
+                }
+            } else {
+                if (next instanceof Map) {
+                    map = (Map<String, Object>) next;
+                } else {
+                    return EMPTY_LIST;
+                }
+            }
+        }
+        return EMPTY_LIST;
+    }
+
     public static DecodedJWT decodeJwtToken(String encodedToken) {
         return JWT.decode(encodedToken);
     }
@@ -184,8 +230,11 @@ public class IdentityProvider {
         return decodedJwt.getClaim("sub").asString();
     }
 
-    private String extractUserHash(DecodedJWT decodedJwt) {
-        String keyClaim = decodedJwt.getClaim(loggingKey).asString();
+    private static String extractUserSub(JsonObject userInfo) {
+        return userInfo.getString("sub");
+    }
+
+    private String extractUserHash(String keyClaim) {
         if (keyClaim != null && obfuscateUserEmail) {
             String keyClaimWithSalt = loggingSalt + keyClaim;
             byte[] hash = sha256Digest.digest(keyClaimWithSalt.getBytes(StandardCharsets.UTF_8));
@@ -211,8 +260,32 @@ public class IdentityProvider {
         return verifyJwt(decodedJwt).map(this::from);
     }
 
+    Future<ExtractedClaims> extractClaims(String accessToken) {
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(userinfoUrl)
+                .setMethod(HttpMethod.GET);
+        Promise<ExtractedClaims> promise = Promise.promise();
+        client.request(options).onFailure(promise::fail).onSuccess(request -> {
+            request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer %s".formatted(accessToken));
+            request.send().onFailure(promise::fail).onSuccess(response -> {
+                response.body().onSuccess(body -> {
+                    JsonObject json = body.toJsonObject();
+                    ExtractedClaims claims = from(json);
+                    promise.complete(claims);
+                }).onFailure(promise::fail);
+            });
+        });
+        return promise.future();
+    }
+
     private ExtractedClaims from(DecodedJWT jwt) {
-        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(jwt));
+        String userKey = jwt.getClaim(loggingKey).asString();
+        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(userKey));
+    }
+
+    private ExtractedClaims from(JsonObject userInfo) {
+        String userKey = userInfo.getString(loggingKey);
+        return new ExtractedClaims(extractUserSub(userInfo), extractUserRoles(userInfo), extractUserHash(userKey));
     }
 
     boolean match(DecodedJWT jwt) {
@@ -221,6 +294,10 @@ public class IdentityProvider {
         }
         String issuer = jwt.getIssuer();
         return issuerPattern.matcher(issuer).matches();
+    }
+
+    boolean hasUserinfoUrl() {
+        return userinfoUrl != null;
     }
 
     private record JwkResult(Jwk jwk, Exception error, long expirationTime) {

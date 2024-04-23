@@ -97,7 +97,7 @@ public class AiDial {
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
             if (accessTokenValidator == null) {
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
             }
 
             if (storage == null) {

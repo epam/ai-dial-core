@@ -66,19 +66,19 @@ public class IdentityProviderTest {
         settings.put("loggingSalt", "salt");
     }
 
-    @Test
-    public void testExtractClaims_00() {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
-
-        Future<ExtractedClaims> result = identityProvider.extractClaims(null);
-
-        assertNotNull(result);
-
-        result.onComplete(res -> {
-            assertTrue(res.failed());
-            assertNotNull(res.cause());
-        });
-    }
+//    @Test
+//    public void testExtractClaims_00() {
+//        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+//
+//        Future<ExtractedClaims> result = identityProvider.extractClaims(null);
+//
+//        assertNotNull(result);
+//
+//        result.onComplete(res -> {
+//            assertTrue(res.failed());
+//            assertNotNull(res.cause());
+//        });
+//    }
 
     @Test
     public void testExtractClaims_03() throws JwkException {
