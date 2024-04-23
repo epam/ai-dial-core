@@ -104,8 +104,13 @@ public class ProxyContext {
 
     @SneakyThrows
     public Future<Void> respond(HttpStatus status, Object object) {
+        return respond(status, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON, object);
+    }
+
+    @SneakyThrows
+    public Future<Void> respond(HttpStatus status, String contentType, Object object) {
         String json = ProxyUtil.MAPPER.writeValueAsString(object);
-        response.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        response.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
         return respond(status, json);
     }
 
