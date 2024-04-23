@@ -61,7 +61,13 @@
   },
   "access": {
     "admin": {
-      "rules": []
+      "rules": [
+        {
+          "function": "CONTAIN",
+          "source": "roles",
+          "targets": ["admin"]
+        }
+      ]
     }
   }
 }
