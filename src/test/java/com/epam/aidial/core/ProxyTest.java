@@ -42,8 +42,8 @@ import static com.epam.aidial.core.util.HttpStatus.METHOD_NOT_ALLOWED;
 import static com.epam.aidial.core.util.HttpStatus.OK;
 import static com.epam.aidial.core.util.HttpStatus.REQUEST_ENTITY_TOO_LARGE;
 import static com.epam.aidial.core.util.HttpStatus.UNAUTHORIZED;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -188,6 +188,7 @@ public class ProxyTest {
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
         when(configStore.load()).thenReturn(config);
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture());
 
         proxy.handle(request);
 
@@ -208,6 +209,7 @@ public class ProxyTest {
         when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer key1");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
+
         Config config = new Config();
         Route route = new Route();
         route.setMethods(Set.of(HttpMethod.GET));
@@ -218,14 +220,11 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
-
-        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture());
+        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(new ApiKeyData()));
 
         proxy.handle(request);
 
         verify(response).setStatusCode(OK.getCode());
-        verify(accessTokenValidator).extractClaims(null);
     }
 
     @Test
@@ -243,6 +242,7 @@ public class ProxyTest {
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
         when(configStore.load()).thenReturn(config);
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture());
 
         proxy.handle(request);
 
@@ -271,9 +271,7 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData("key1")).thenReturn(new ApiKeyData());
-
-        when(accessTokenValidator.extractClaims(any())).thenReturn(Future.succeededFuture());
+        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(new ApiKeyData()));
 
         proxy.handle(request);
 
