@@ -125,19 +125,26 @@ public class DeploymentPostController {
             return;
         }
 
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        proxy.getApiKeyStore().assignApiKey(proxyApiKeyData);
-
         proxy.getTokenStatsTracker().startSpan(context);
 
         context.getRequest().body()
                 .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    // run setting up api key data in the worker thread
+                    setupProxyApiKeyData();
                     handleRequestBody(body);
                     return null;
-                }))
+                }).onFailure(this::handleError))
                 .onFailure(this::handleRequestBodyError);
+    }
+
+    /**
+     * The method uses blocking calls and should not be used in the event loop thread.
+     */
+    private void setupProxyApiKeyData() {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
@@ -203,6 +210,9 @@ public class DeploymentPostController {
 
             try {
                 ProxyUtil.collectAttachedFiles(tree, this::processAttachedFile);
+                // update api key data after processing attachments
+                ApiKeyData destApiKeyData = context.getProxyApiKeyData();
+                proxy.getApiKeyStore().updatePerRequestApiKeyData(destApiKeyData);
             } catch (HttpException e) {
                 respond(e.getStatus(), e.getMessage());
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
@@ -619,8 +629,14 @@ public class DeploymentPostController {
 
     private void finalizeRequest() {
         proxy.getTokenStatsTracker().endSpan(context);
-        if (context.getProxyApiKeyData() != null) {
-            proxy.getApiKeyStore().invalidateApiKey(context.getProxyApiKeyData());
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
         }
     }
 }
