@@ -202,7 +202,7 @@ public class ResourceDescription {
         }
 
         if (parts.length == 2 && !url.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
-            throw new IllegalArgumentException("Url must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + url);
+            throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
         }
 
         ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));

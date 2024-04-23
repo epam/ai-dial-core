@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.Conversation;
+import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceLinkCollection;
@@ -64,6 +65,13 @@ public class ResourceController extends AccessControlBaseController {
         return context.respond(HttpStatus.BAD_GATEWAY, "No route");
     }
 
+    private String getContentType() {
+        String acceptType = context.getRequest().getHeader(HttpHeaders.ACCEPT);
+        return acceptType != null && metadata && acceptType.contains(MetadataBase.MIME_TYPE)
+                ? MetadataBase.MIME_TYPE
+                : "application/json";
+    }
+
     private Future<?> getMetadata(ResourceDescription descriptor) {
         String token;
         int limit;
@@ -86,7 +94,7 @@ public class ResourceController extends AccessControlBaseController {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
                         proxy.getAccessService().filterForbidden(context, descriptor, result);
-                        context.respond(HttpStatus.OK, result);
+                        context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
                 .onFailure(error -> {

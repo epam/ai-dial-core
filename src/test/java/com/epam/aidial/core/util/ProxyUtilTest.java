@@ -88,6 +88,11 @@ public class ProxyUtilTest {
                             "type": "binary/octet-stream",
                             "title": "Dockerfile",
                             "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile"
+                          },
+                          {
+                            "type": "application/vnd.dial.metadata+json",
+                            "title": ".dockerignore",
+                            "url": "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
                           }
                         ]
                       }
@@ -101,9 +106,46 @@ public class ProxyUtilTest {
         ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
 
         assertEquals(
-                Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE"),
+                Set.of(
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile",
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE",
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
+                ),
                 apiKeyData.getAttachedFiles()
         );
+    }
+
+    @Test
+    public void testCollectAttachedFiles_Fail() throws IOException {
+        String content = """
+                {
+                  "modelId": "model",
+                  "messages": [
+                    {
+                      "content": "test",
+                      "role": "user",
+                      "custom_content": {
+                        "attachments": [
+                          {
+                            "type": "application/vnd.dial.metadata+json",
+                            "title": ".dockerignore",
+                            "url": "metadatata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "id": "id"
+                }
+                """;
+
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
+        ApiKeyData apiKeyData = new ApiKeyData();
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link)));
+
+        assertEquals("Url of metadata attachment must start with metadata/: metadatata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore", error.getMessage());
     }
 
     @Test

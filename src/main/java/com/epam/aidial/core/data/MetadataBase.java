@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 public abstract class MetadataBase {
+    public static final String MIME_TYPE = "application/vnd.dial.metadata+json";
+
     private String name;
     private String parentPath;
     private String bucket;

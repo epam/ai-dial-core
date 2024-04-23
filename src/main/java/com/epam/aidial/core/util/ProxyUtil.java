@@ -1,6 +1,7 @@
 package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
+import com.epam.aidial.core.data.MetadataBase;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -99,12 +100,29 @@ public class ProxyUtil {
             }
             for (int j = 0; j < attachments.size(); j++) {
                 JsonNode attachment = attachments.get(j);
-                JsonNode url = attachment.get("url");
-                if (url != null) {
-                    consumer.accept(url.textValue());
-                }
+                collectAttachedFile(attachment, consumer);
             }
         }
+    }
+
+    private static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
+        JsonNode urlNode = attachment.get("url");
+        if (urlNode == null) {
+            return;
+        }
+
+        String url = urlNode.textValue();
+
+        JsonNode typeNode = attachment.get("type");
+        if (typeNode != null && typeNode.textValue().equals(MetadataBase.MIME_TYPE)) {
+            String prefix = "metadata/";
+            if (!url.startsWith(prefix)) {
+                throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
+            }
+            url = url.substring(prefix.length());
+        }
+
+        consumer.accept(url);
     }
 
     public static <T> T convertToObject(Buffer json, Class<T> clazz) {
