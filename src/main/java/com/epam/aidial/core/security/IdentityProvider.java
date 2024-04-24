@@ -250,7 +250,7 @@ public class IdentityProvider {
         return keyClaim;
     }
 
-    Future<ExtractedClaims> extractClaims(DecodedJWT decodedJwt) {
+    Future<ExtractedClaims> extractClaimsFromJwt(DecodedJWT decodedJwt) {
         if (decodedJwt == null) {
             return Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null"));
         }
@@ -260,7 +260,7 @@ public class IdentityProvider {
         return verifyJwt(decodedJwt).map(this::from);
     }
 
-    Future<ExtractedClaims> extractClaims(String accessToken) {
+    Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(userinfoUrl)
                 .setMethod(HttpMethod.GET);

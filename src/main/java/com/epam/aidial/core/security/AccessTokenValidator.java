@@ -78,11 +78,11 @@ public class AccessTokenValidator {
 
     private Future<ExtractedClaims> extractClaimsFromJwt(DecodedJWT jwt) {
         if (providers.size() == 1) {
-            return providers.get(0).extractClaims(jwt);
+            return providers.get(0).extractClaimsFromJwt(jwt);
         }
         for (IdentityProvider idp : providers) {
             if (idp.match(jwt)) {
-                return idp.extractClaims(jwt);
+                return idp.extractClaimsFromJwt(jwt);
             }
         }
         return Future.failedFuture(new IllegalArgumentException("Unknown Identity Provider"));
@@ -94,7 +94,7 @@ public class AccessTokenValidator {
             List<Future<ExtractedClaims>> futures = new ArrayList<>();
             for (IdentityProvider idp : providers) {
                 if (idp.hasUserinfoUrl()) {
-                    futures.add(idp.extractClaims(accessToken));
+                    futures.add(idp.extractClaimsFromUserInfo(accessToken));
                 }
             }
             Future.any(futures).onSuccess(compositeFuture -> {
@@ -102,19 +102,15 @@ public class AccessTokenValidator {
                 for (int i = 0; i < size; i++) {
                     if (compositeFuture.succeeded(i)) {
                         ExtractedClaims claims = compositeFuture.resultAt(i);
-                        promise.complete(new UserInfoResult(k, claims, null, System.currentTimeMillis() + USER_INFO_EXP_PERIOD_MS));
+                        promise.complete(new UserInfoResult(claims, System.currentTimeMillis() + USER_INFO_EXP_PERIOD_MS));
                         break;
                     }
                 }
-            }).onFailure(error -> promise.complete(new UserInfoResult(k,null, error, 0)));
+            }).onFailure(promise::fail);
             return promise.future();
-        }).compose(res -> {
-            if (res.error() != null) {
-                // we don't need to keep the failed response any longer
-                userInfoCache.remove(res.token);
-                return Future.failedFuture(res.error());
-            }
-            return Future.succeededFuture(res.claims());
+        }).map(UserInfoResult::claims).onFailure(error -> {
+            /* we don't need to keep the failed response any longer */
+            userInfoCache.remove(accessToken);
         });
     }
 
@@ -135,6 +131,6 @@ public class AccessTokenValidator {
         this.providers.addAll(providers);
     }
 
-    private record UserInfoResult(String token, ExtractedClaims claims, Throwable error, long expirationTime) {
+    private record UserInfoResult(ExtractedClaims claims, long expirationTime) {
     }
 }

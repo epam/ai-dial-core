@@ -5,6 +5,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,9 @@ public class AccessTokenValidatorTest {
     @Mock
     private Vertx vertx;
 
+    @Mock
+    private HttpClient client;
+
     private JsonObject idpConfig;
 
     @BeforeEach
@@ -47,7 +51,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_01() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
         Future<ExtractedClaims> future = validator.extractClaims(null);
         assertNotNull(future);
         future.onComplete(res -> {
@@ -58,7 +62,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_02() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
         Future<ExtractedClaims> future = validator.extractClaims("bad-auth-header");
         assertNotNull(future);
         future.onComplete(res -> {
@@ -69,7 +73,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_03() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
         Future<ExtractedClaims> future = validator.extractClaims("bearer bad-token");
         assertNotNull(future);
         future.onComplete(res -> {
@@ -80,7 +84,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_04() throws NoSuchAlgorithmException {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
         IdentityProvider provider1 = mock(IdentityProvider.class);
         when(provider1.match(any(DecodedJWT.class))).thenReturn(false);
         IdentityProvider provider2 = mock(IdentityProvider.class);
@@ -100,12 +104,12 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_05() throws NoSuchAlgorithmException {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
         IdentityProvider provider1 = mock(IdentityProvider.class);
         when(provider1.match(any(DecodedJWT.class))).thenReturn(false);
         IdentityProvider provider2 = mock(IdentityProvider.class);
         when(provider2.match(any(DecodedJWT.class))).thenReturn(true);
-        when(provider2.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
+        when(provider2.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
         List<IdentityProvider> providerList = List.of(provider1, provider2);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -125,9 +129,9 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_06() throws NoSuchAlgorithmException {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
         IdentityProvider provider = mock(IdentityProvider.class);
-        when(provider.extractClaims(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
+        when(provider.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash")));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
