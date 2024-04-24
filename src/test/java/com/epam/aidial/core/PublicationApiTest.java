@@ -42,6 +42,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 "targetUrl" : "conversations/public/folder/conversation",
                 "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                } ],
+              "resourceTypes" : [ "CONVERSATION" ],
               "rules" : [ {
                 "function" : "EQUAL",
                 "source" : "roles",
@@ -81,7 +82,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl" : "public/folder/",
                     "status" : "PENDING",
-                    "createdAt" : 0
+                    "createdAt" : 0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                 }
                 """);
@@ -153,6 +155,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [ {
                      "function" : "EQUAL",
                      "source" : "roles",
@@ -174,7 +177,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl":"public/folder/",
                     "status":"APPROVED",
-                    "createdAt":0
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -195,7 +199,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl":"public/folder/",
                     "status":"REQUESTED_FOR_DELETION",
-                    "createdAt":0
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -220,7 +225,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl":"public/folder/",
                     "status":"REQUESTED_FOR_DELETION",
-                    "createdAt":0
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -270,12 +276,12 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [ {
                      "function" : "EQUAL",
                      "source" : "roles",
                      "targets" : [ "user" ]
                    } ]
-                  
                 }
                 """);
 
@@ -291,7 +297,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl":"public/folder/",
                     "status":"APPROVED",
-                    "createdAt":0
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -312,7 +319,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl":"public/folder/",
                     "status":"REQUESTED_FOR_DELETION",
-                    "createdAt":0
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -337,7 +345,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl":"public/folder/",
                     "status":"REQUESTED_FOR_DELETION",
-                    "createdAt":0
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -368,7 +377,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl":"public/folder/",
                     "status":"APPROVED",
-                    "createdAt":0
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -411,6 +421,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [ {
                      "function" : "EQUAL",
                      "source" : "roles",
@@ -480,6 +491,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                   } ],
+                  "resourceTypes" : [ "CONVERSATION" ],
                   "rules" : [ {
                     "function" : "EQUAL",
                     "source" : "roles",
@@ -750,7 +762,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl" : "public/folder/",
                     "status" : "PENDING",
-                    "createdAt" : 0
+                    "createdAt" : 0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                  }
                 """);
@@ -880,7 +893,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl" : "public/folder/",
                     "status" : "PENDING",
-                    "createdAt" : 0
+                    "createdAt" : 0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                  }
                 """);
