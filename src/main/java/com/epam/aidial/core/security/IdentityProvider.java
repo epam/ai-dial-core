@@ -268,6 +268,10 @@ public class IdentityProvider {
         client.request(options).onFailure(promise::fail).onSuccess(request -> {
             request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer %s".formatted(accessToken));
             request.send().onFailure(promise::fail).onSuccess(response -> {
+                if (response.statusCode() != 200) {
+                    promise.fail(String.format("Request failed with http code %d", response.statusCode()));
+                    return;
+                }
                 response.body().map(body -> {
                     JsonObject json = body.toJsonObject();
                     ExtractedClaims claims = from(json);
