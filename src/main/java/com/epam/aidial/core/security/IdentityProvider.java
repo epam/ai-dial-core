@@ -268,10 +268,11 @@ public class IdentityProvider {
         client.request(options).onFailure(promise::fail).onSuccess(request -> {
             request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer %s".formatted(accessToken));
             request.send().onFailure(promise::fail).onSuccess(response -> {
-                response.body().onSuccess(body -> {
+                response.body().map(body -> {
                     JsonObject json = body.toJsonObject();
                     ExtractedClaims claims = from(json);
                     promise.complete(claims);
+                    return null;
                 }).onFailure(promise::fail);
             });
         });
@@ -284,7 +285,7 @@ public class IdentityProvider {
     }
 
     private ExtractedClaims from(JsonObject userInfo) {
-        String userKey = userInfo.getString(loggingKey);
+        String userKey = loggingKey == null ? null : userInfo.getString(loggingKey);
         return new ExtractedClaims(extractUserSub(userInfo), extractUserRoles(userInfo), extractUserHash(userKey));
     }
 

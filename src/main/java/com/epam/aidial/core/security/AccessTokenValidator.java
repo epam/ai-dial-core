@@ -103,9 +103,10 @@ public class AccessTokenValidator {
                     if (compositeFuture.succeeded(i)) {
                         ExtractedClaims claims = compositeFuture.resultAt(i);
                         promise.complete(new UserInfoResult(claims, System.currentTimeMillis() + USER_INFO_EXP_PERIOD_MS));
-                        break;
+                        return;
                     }
                 }
+                promise.fail("Idp is not found to support user info endpoint");
             }).onFailure(promise::fail);
             return promise.future();
         }).map(UserInfoResult::claims).onFailure(error -> {
