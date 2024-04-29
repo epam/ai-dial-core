@@ -29,6 +29,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -325,6 +326,50 @@ public class IdentityProviderTest {
             assertEquals(List.of("role"), claims.userRoles());
             assertEquals("sub", claims.sub());
             assertNotNull(claims.userHash());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_13() {
+        settings.put("disableJwtVerification", Boolean.TRUE);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("role"))
+                .withClaim("email", "test@email.com")
+                .withClaim("id", 15)
+                .withClaim("title", "title")
+                .withClaim("access", List.of("read", "write"))
+                .withClaim("expire", new Date(1713355825858L))
+                .withClaim("numberList", List.of(15, 17, 34))
+                .withClaim("map", Map.of("a", List.of("b")))
+                .withClaim("sub", "sub").sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        verifyNoInteractions(jwkProvider);
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("role"), claims.userRoles());
+            assertEquals("sub", claims.sub());
+            assertNotNull(claims.userHash());
+            Map<String, List<String>> userClaims = claims.userClaims();
+            // assert user claim
+            assertEquals(9, userClaims.size());
+            assertEquals(List.of("sub"), userClaims.get("sub"));
+            assertEquals(List.of("read", "write"), userClaims.get("access"));
+            assertEquals(List.of("role"), userClaims.get("roles"));
+            assertEquals(List.of(), userClaims.get("expire"));
+            assertEquals(List.of("15", "17", "34"), userClaims.get("numberList"));
+            assertEquals(List.of(), userClaims.get("id"));
+            assertEquals(List.of("title"), userClaims.get("title"));
+            assertEquals(List.of(), userClaims.get("map"));
+            assertEquals(List.of("test@email.com"), userClaims.get("email"));
         });
     }
 

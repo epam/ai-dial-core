@@ -5,6 +5,7 @@ import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -12,6 +13,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
@@ -22,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -250,6 +253,50 @@ public class IdentityProvider {
         return keyClaim;
     }
 
+    /**
+     * Extracts user claims from decoded JWT. Currently only strings or list of strings/primitives supported.
+     * If any other type provided - claim value will not be extracted, see IdentityProviderTest.testExtractClaims_13()
+     *
+     * @param decodedJwt - decoded JWT
+     * @return map of extracted user claims
+     */
+    private Map<String, List<String>> extractUserClaims(DecodedJWT decodedJwt) {
+        Map<String, List<String>> userClaims = new HashMap<>();
+        for (Map.Entry<String, Claim> entry : decodedJwt.getClaims().entrySet()) {
+            String claimName = entry.getKey();
+            Claim claimValue = entry.getValue();
+            if (claimValue.asString() != null) {
+                userClaims.put(claimName, List.of(claimValue.asString()));
+            } else if (claimValue.asList(String.class) != null) {
+                userClaims.put(claimName, claimValue.asList(String.class));
+            } else {
+                // if claim value doesn't match supported type - add claim with empty value
+                userClaims.put(claimName, List.of());
+            }
+        }
+
+        return userClaims;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, List<String>> extractUserClaims(JsonObject userInfo) {
+        Map<String, List<String>> userClaims = new HashMap<>();
+        for (Map.Entry<String, Object> entry : userInfo.getMap().entrySet()) {
+            String claimName = entry.getKey();
+            Object claimValue = entry.getValue();
+            if (claimValue instanceof String) {
+                userClaims.put(claimName, List.of((String) claimValue));
+            } else if (claimValue instanceof List && ((List<?>) claimValue).get(0) instanceof String) {
+                userClaims.put(claimName, (List<String>) claimValue);
+            } else {
+                // if claim value doesn't match supported type - add claim with empty value
+                userClaims.put(claimName, List.of());
+            }
+        }
+
+        return userClaims;
+    }
+
     Future<ExtractedClaims> extractClaimsFromJwt(DecodedJWT decodedJwt) {
         if (decodedJwt == null) {
             return Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null"));
@@ -285,12 +332,12 @@ public class IdentityProvider {
 
     private ExtractedClaims from(DecodedJWT jwt) {
         String userKey = jwt.getClaim(loggingKey).asString();
-        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(userKey));
+        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(userKey), extractUserClaims(jwt));
     }
 
     private ExtractedClaims from(JsonObject userInfo) {
         String userKey = loggingKey == null ? null : userInfo.getString(loggingKey);
-        return new ExtractedClaims(extractUserSub(userInfo), extractUserRoles(userInfo), extractUserHash(userKey));
+        return new ExtractedClaims(extractUserSub(userInfo), extractUserRoles(userInfo), extractUserHash(userKey), extractUserClaims(userInfo));
     }
 
     boolean match(DecodedJWT jwt) {

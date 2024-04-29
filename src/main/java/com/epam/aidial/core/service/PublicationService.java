@@ -666,6 +666,7 @@ public class PublicationService {
                 .setUrl(publication.getUrl())
                 .setTargetUrl(publication.getTargetUrl())
                 .setStatus(publication.getStatus())
+                .setResourceTypes(publication.getResourceTypes())
                 .setCreatedAt(publication.getCreatedAt());
     }
 
