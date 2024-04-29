@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Data
 @Accessors(chain = true)
@@ -21,6 +23,7 @@ public class Publication {
     Status status;
     Long createdAt;
     List<Resource> resources;
+    Set<ResourceType> resourceTypes;
     List<Rule> rules;
 
     public enum Status {
@@ -41,5 +44,22 @@ public class Publication {
          * Review resource url to review: files/review-bucket/folder/file.txt
          */
         String reviewUrl;
+    }
+
+    public Set<ResourceType> getResourceTypes() {
+        if (resourceTypes != null) {
+            return resourceTypes;
+        }
+        if (resources == null) {
+            return Set.of();
+        }
+        Set<ResourceType> resourceTypes = new HashSet<>();
+        for (Resource resource : resources) {
+            String sourceUrl = resource.getSourceUrl();
+            String resourceType = sourceUrl.substring(0, sourceUrl.indexOf('/'));
+            resourceTypes.add(ResourceType.of(resourceType));
+        }
+
+        return resourceTypes;
     }
 }
