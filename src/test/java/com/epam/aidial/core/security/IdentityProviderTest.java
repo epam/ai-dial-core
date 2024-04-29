@@ -10,7 +10,11 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -319,6 +323,72 @@ public class IdentityProviderTest {
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
             assertEquals(List.of("role"), claims.userRoles());
+            assertEquals("sub", claims.sub());
+            assertNotNull(claims.userHash());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_FromUserInfo_01() {
+        settings.put("userinfoEndpoint", "http://host/userinfo");
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+
+        String token = "opaqueToken";
+        HttpClientRequest request = mock(HttpClientRequest.class);
+        when(client.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(request));
+        HttpClientResponse response = mock(HttpClientResponse.class);
+        when(request.send()).thenReturn(Future.succeededFuture(response));
+        Buffer buffer = Buffer.buffer("""
+                {
+                  "sub": "sub",
+                  "email": "email",
+                  "roles": ["role1"]
+                }
+                """);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromUserInfo(token);
+
+        verifyNoInteractions(jwkProvider);
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.failed());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_FromUserInfo_02() {
+        settings.put("userinfoEndpoint", "http://host/userinfo");
+        settings.put("rolePath", "app.roles");
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+
+        String token = "opaqueToken";
+        HttpClientRequest request = mock(HttpClientRequest.class);
+        when(client.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(request));
+        HttpClientResponse response = mock(HttpClientResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(request.send()).thenReturn(Future.succeededFuture(response));
+        Buffer buffer = Buffer.buffer("""
+                {
+                  "sub": "sub",
+                  "email": "email",
+                  "app" : {
+                    "roles": ["role1"]
+                  }
+                }
+                """);
+        when(response.body()).thenReturn(Future.succeededFuture(buffer));
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromUserInfo(token);
+
+        verifyNoInteractions(jwkProvider);
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("role1"), claims.userRoles());
             assertEquals("sub", claims.sub());
             assertNotNull(claims.userHash());
         });

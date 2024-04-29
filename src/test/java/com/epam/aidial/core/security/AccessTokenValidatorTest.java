@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -147,6 +148,38 @@ public class AccessTokenValidatorTest {
             assertEquals(Collections.emptyList(), claims.userRoles());
             assertEquals("hash", claims.userHash());
             verify(provider, never()).match(any(DecodedJWT.class));
+        });
+    }
+
+    @Test
+    public void testExtractClaims_07() {
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        IdentityProvider provider = mock(IdentityProvider.class);
+        List<IdentityProvider> providerList = List.of(provider);
+        validator.setProviders(providerList);
+        String opaqueToken = "token";
+        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(opaqueToken));
+        assertNotNull(future);
+        future.onComplete(res -> {
+            assertTrue(res.failed());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_08() {
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        IdentityProvider provider = mock(IdentityProvider.class);
+        when(provider.hasUserinfoUrl()).thenReturn(true);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash");
+        when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
+        List<IdentityProvider> providerList = List.of(provider);
+        validator.setProviders(providerList);
+        String opaqueToken = "token";
+        Future<ExtractedClaims> future = validator.extractClaims(getBearerHeaderValue(opaqueToken));
+        assertNotNull(future);
+        future.onComplete(res -> {
+            assertTrue(res.succeeded());
+            assertEquals(extractedClaims, res.result());
         });
     }
 
