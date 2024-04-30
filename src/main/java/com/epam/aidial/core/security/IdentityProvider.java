@@ -137,38 +137,7 @@ public class IdentityProvider {
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> extractUserRoles(DecodedJWT token) {
-        if (rolePath.length == 1) {
-            List<String> roles = token.getClaim(rolePath[0]).asList(String.class);
-            return roles == null ? EMPTY_LIST : roles;
-        }
-        Map<String, Object> claim = token.getClaim(rolePath[0]).asMap();
-        if (claim == null) {
-            return EMPTY_LIST;
-        }
-        for (int i = 1; i < rolePath.length; i++) {
-            Object next = claim.get(rolePath[i]);
-            if (next == null) {
-                return EMPTY_LIST;
-            }
-            if (i == rolePath.length - 1) {
-                if (next instanceof List) {
-                    return (List<String>) next;
-                }
-            } else {
-                if (next instanceof Map) {
-                    claim = (Map<String, Object>) next;
-                } else {
-                    return EMPTY_LIST;
-                }
-            }
-        }
-        return EMPTY_LIST;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> extractUserRoles(JsonObject userInfo) {
-        Map<String, Object> map = userInfo.getMap();
+    private List<String> extractUserRoles(Map<String, Object> map) {
         for (int i = 0; i < rolePath.length; i++) {
             Object next = map.get(rolePath[i]);
             if (next == null) {
@@ -226,12 +195,8 @@ public class IdentityProvider {
         }
     }
 
-    private static String extractUserSub(DecodedJWT decodedJwt) {
-        return decodedJwt.getClaim("sub").asString();
-    }
-
-    private static String extractUserSub(JsonObject userInfo) {
-        return userInfo.getString("sub");
+    private static String extractUserSub(Map<String, Object> userContext) {
+        return (String) userContext.get("sub");
     }
 
     private String extractUserHash(String keyClaim) {
@@ -251,34 +216,16 @@ public class IdentityProvider {
     }
 
     /**
-     * Extracts user claims from decoded JWT. Currently only strings or list of strings/primitives supported.
+     * Extracts user claims from user context. Currently only strings or list of strings/primitives supported.
      * If any other type provided - claim value will not be extracted, see IdentityProviderTest.testExtractClaims_13()
      *
-     * @param decodedJwt - decoded JWT
+     * @param map - user context
      * @return map of extracted user claims
      */
-    private Map<String, List<String>> extractUserClaims(DecodedJWT decodedJwt) {
-        Map<String, List<String>> userClaims = new HashMap<>();
-        for (Map.Entry<String, Claim> entry : decodedJwt.getClaims().entrySet()) {
-            String claimName = entry.getKey();
-            Claim claimValue = entry.getValue();
-            if (claimValue.asString() != null) {
-                userClaims.put(claimName, List.of(claimValue.asString()));
-            } else if (claimValue.asList(String.class) != null) {
-                userClaims.put(claimName, claimValue.asList(String.class));
-            } else {
-                // if claim value doesn't match supported type - add claim with empty value
-                userClaims.put(claimName, List.of());
-            }
-        }
-
-        return userClaims;
-    }
-
     @SuppressWarnings("unchecked")
-    private Map<String, List<String>> extractUserClaims(JsonObject userInfo) {
+    private Map<String, List<String>> extractUserClaims(Map<String, Object> map) {
         Map<String, List<String>> userClaims = new HashMap<>();
-        for (Map.Entry<String, Object> entry : userInfo.getMap().entrySet()) {
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
             String claimName = entry.getKey();
             Object claimValue = entry.getValue();
             if (claimValue instanceof String stringClaimValue) {
@@ -329,12 +276,17 @@ public class IdentityProvider {
 
     private ExtractedClaims from(DecodedJWT jwt) {
         String userKey = jwt.getClaim(loggingKey).asString();
-        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(userKey), extractUserClaims(jwt));
+        Map<String, Object> map = new HashMap<>();
+        for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
+            map.put(e.getKey(), e.getValue().as(Object.class));
+        }
+        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map));
     }
 
     private ExtractedClaims from(JsonObject userInfo) {
         String userKey = loggingKey == null ? null : userInfo.getString(loggingKey);
-        return new ExtractedClaims(extractUserSub(userInfo), extractUserRoles(userInfo), extractUserHash(userKey), extractUserClaims(userInfo));
+        Map<String, Object> map = userInfo.getMap();
+        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map));
     }
 
     boolean match(DecodedJWT jwt) {

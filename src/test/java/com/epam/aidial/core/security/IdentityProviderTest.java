@@ -342,7 +342,7 @@ public class IdentityProviderTest {
                 .withClaim("title", "title")
                 .withClaim("access", List.of("read", "write"))
                 .withClaim("expire", new Date(1713355825858L))
-                .withClaim("numberList", List.of(15, 17, 34))
+                .withClaim("numberList", List.of("15", "17", "34"))
                 .withClaim("map", Map.of("a", List.of("b")))
                 .withClaim("sub", "sub").sign(algorithm);
 
