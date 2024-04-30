@@ -375,7 +375,8 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_FromUserInfo_01() {
-        settings.put("userinfoEndpoint", "http://host/userinfo");
+        settings.remove("jwksUrl");
+        settings.put("userInfoEndpoint", "http://host/userinfo");
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
 
         String token = "opaqueToken";
@@ -403,7 +404,8 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_FromUserInfo_02() {
-        settings.put("userinfoEndpoint", "http://host/userinfo");
+        settings.remove("jwksUrl");
+        settings.put("userInfoEndpoint", "http://host/userinfo");
         settings.put("rolePath", "app.roles");
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
 

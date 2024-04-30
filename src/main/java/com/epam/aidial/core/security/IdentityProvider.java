@@ -13,7 +13,6 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
-import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
@@ -41,9 +40,9 @@ public class IdentityProvider {
     // path to the claim of user roles in JWT
     private final String[] rolePath;
 
-    private final JwkProvider jwkProvider;
+    private JwkProvider jwkProvider;
 
-    private final URL userinfoUrl;
+    private URL userInfoUrl;
 
     // in memory cache store results obtained from JWK provider
     private final ConcurrentHashMap<String, Future<JwkResult>> cache = new ConcurrentHashMap<>();
@@ -69,10 +68,10 @@ public class IdentityProvider {
     private final long negativeCacheExpirationMs;
 
     // the pattern is used to match if the given JWT can be verified by the current provider
-    private final Pattern issuerPattern;
+    private Pattern issuerPattern;
 
     // the flag disables JWT verification
-    private final boolean disableJwtVerification;
+    private boolean disableJwtVerification;
 
     public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client, Function<String, JwkProvider> jwkProviderSupplier) {
         if (settings == null) {
@@ -84,22 +83,27 @@ public class IdentityProvider {
         negativeCacheExpirationMs = settings.getLong("negativeCacheExpirationMs", TimeUnit.SECONDS.toMillis(10));
 
         disableJwtVerification = settings.getBoolean("disableJwtVerification", false);
-        if (disableJwtVerification) {
-            jwkProvider = null;
-        } else {
-            String jwksUrl = Objects.requireNonNull(settings.getString("jwksUrl"), "jwksUrl is missed");
-            jwkProvider = jwkProviderSupplier.apply(jwksUrl);
-        }
+        String jwksUrl = settings.getString("jwksUrl");
+        String userinfoEndpoint = settings.getString("userInfoEndpoint");
+        boolean supportJwt = jwksUrl != null || disableJwtVerification;
+        boolean supportUserInfo = userinfoEndpoint != null;
 
-        try {
-            String userinfoEndpoint = settings.getString("userinfoEndpoint");
-            if (userinfoEndpoint != null) {
-                userinfoUrl = new URL(userinfoEndpoint);
-            } else {
-                userinfoUrl = null;
+        if ((!supportJwt && !supportUserInfo) || (supportJwt && supportUserInfo)) {
+            throw new IllegalArgumentException("Either jwksUrl or userinfoEndpoint must be provided or disableJwtVerification is set to true");
+        } else if (supportJwt) {
+            if (jwksUrl != null) {
+                jwkProvider = jwkProviderSupplier.apply(jwksUrl);
             }
-        } catch (MalformedURLException e) {
-            throw new IllegalArgumentException(e);
+            String issuerPatternStr = settings.getString("issuerPattern");
+            if (issuerPatternStr != null) {
+                issuerPattern = Pattern.compile(issuerPatternStr);
+            }
+        } else {
+            try {
+                userInfoUrl = new URL(userinfoEndpoint);
+            } catch (MalformedURLException e) {
+                throw new IllegalArgumentException(e);
+            }
         }
 
         rolePath = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed").split("\\.");
@@ -117,13 +121,6 @@ public class IdentityProvider {
             throw new IllegalArgumentException(e);
         }
         obfuscateUserEmail = settings.getBoolean("obfuscateUserEmail", true);
-
-        String issuerPatternStr = settings.getString("issuerPattern");
-        if (issuerPatternStr != null) {
-            issuerPattern = Pattern.compile(issuerPatternStr);
-        } else {
-            issuerPattern = null;
-        }
 
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
@@ -284,8 +281,8 @@ public class IdentityProvider {
         for (Map.Entry<String, Object> entry : userInfo.getMap().entrySet()) {
             String claimName = entry.getKey();
             Object claimValue = entry.getValue();
-            if (claimValue instanceof String) {
-                userClaims.put(claimName, List.of((String) claimValue));
+            if (claimValue instanceof String stringClaimValue) {
+                userClaims.put(claimName, List.of(stringClaimValue));
             } else if (claimValue instanceof List && ((List<?>) claimValue).get(0) instanceof String) {
                 userClaims.put(claimName, (List<String>) claimValue);
             } else {
@@ -309,11 +306,11 @@ public class IdentityProvider {
 
     Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken) {
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(userinfoUrl)
+                .setAbsoluteURI(userInfoUrl)
                 .setMethod(HttpMethod.GET);
         Promise<ExtractedClaims> promise = Promise.promise();
         client.request(options).onFailure(promise::fail).onSuccess(request -> {
-            request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer %s".formatted(accessToken));
+            request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
             request.send().onFailure(promise::fail).onSuccess(response -> {
                 if (response.statusCode() != 200) {
                     promise.fail(String.format("Request failed with http code %d", response.statusCode()));
@@ -349,7 +346,7 @@ public class IdentityProvider {
     }
 
     boolean hasUserinfoUrl() {
-        return userinfoUrl != null;
+        return userInfoUrl != null;
     }
 
     private record JwkResult(Jwk jwk, Exception error, long expirationTime) {

@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 public class AccessTokenValidator {
 
@@ -48,8 +49,8 @@ public class AccessTokenValidator {
     private void evictExpiredUserInfo() {
         long currentTime = System.currentTimeMillis();
         for (Map.Entry<String, Future<UserInfoResult>> entry : userInfoCache.entrySet()) {
-            Future<UserInfoResult> future = entry.getValue();
-            if (future.result() != null && future.result().expirationTime() <= currentTime) {
+            UserInfoResult result = entry.getValue().result();
+            if (result != null && result.expirationTime() <= currentTime) {
                 userInfoCache.remove(entry.getKey());
             }
         }
@@ -62,24 +63,30 @@ public class AccessTokenValidator {
                 return Future.succeededFuture();
             }
             accessToken = Objects.requireNonNull(extractTokenFromHeader(authHeader), "Can't extract access token from header");
+            if (providers.size() == 1) {
+                IdentityProvider provider =  providers.get(0);
+                return extractClaims(accessToken, provider);
+            }
             DecodedJWT jwt = IdentityProvider.decodeJwtToken(accessToken);
             return extractClaimsFromJwt(jwt);
         } catch (JWTDecodeException e) {
             // access token is not JWT. let's try to extract claims from user info
-            try {
-                return extractClaimsFromUserInfo(accessToken);
-            } catch (Throwable exp) {
-                return Future.failedFuture(exp);
-            }
+            return extractClaimsFromUserInfo(accessToken);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
     }
 
-    private Future<ExtractedClaims> extractClaimsFromJwt(DecodedJWT jwt) {
-        if (providers.size() == 1) {
-            return providers.get(0).extractClaimsFromJwt(jwt);
+    private Future<ExtractedClaims> extractClaims(String accessToken, IdentityProvider provider) {
+        if (provider.hasUserinfoUrl()) {
+            return extractClaimsFromUserInfo(accessToken, () -> createUserInfoResultFuture(accessToken, provider));
+        } else {
+            DecodedJWT jwt = IdentityProvider.decodeJwtToken(accessToken);
+            return provider.extractClaimsFromJwt(jwt);
         }
+    }
+
+    private Future<ExtractedClaims> extractClaimsFromJwt(DecodedJWT jwt) {
         for (IdentityProvider idp : providers) {
             if (idp.match(jwt)) {
                 return idp.extractClaimsFromJwt(jwt);
@@ -89,30 +96,57 @@ public class AccessTokenValidator {
     }
 
     private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken) {
-        return userInfoCache.computeIfAbsent(accessToken, k -> {
-            Promise<UserInfoResult> promise = Promise.promise();
-            List<Future<ExtractedClaims>> futures = new ArrayList<>();
-            for (IdentityProvider idp : providers) {
-                if (idp.hasUserinfoUrl()) {
-                    futures.add(idp.extractClaimsFromUserInfo(accessToken));
+        try {
+            return extractClaimsFromUserInfo(accessToken, () -> createUserInfoResultFuture(accessToken));
+        } catch (Throwable exp) {
+            return Future.failedFuture(exp);
+        }
+    }
+
+    private Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken, Supplier<Future<UserInfoResult>> fn) {
+
+        return userInfoCache.computeIfAbsent(accessToken, k -> fn.get())
+                .map(UserInfoResult::claims).onFailure(error -> {
+                    /* we don't need to keep the failed response any longer */
+                    userInfoCache.remove(accessToken);
+                });
+    }
+
+    private Future<UserInfoResult> createUserInfoResultFuture(String accessToken, IdentityProvider idp) {
+        Promise<UserInfoResult> promise = Promise.promise();
+        idp.extractClaimsFromUserInfo(accessToken).map(claims -> {
+            UserInfoResult result = to(claims);
+            promise.complete(result);
+            return null;
+        }).onFailure(promise::fail);
+        return promise.future();
+    }
+
+    private Future<UserInfoResult> createUserInfoResultFuture(String accessToken) {
+        Promise<UserInfoResult> promise = Promise.promise();
+        List<Future<ExtractedClaims>> futures = new ArrayList<>();
+        for (IdentityProvider idp : providers) {
+            if (idp.hasUserinfoUrl()) {
+                futures.add(idp.extractClaimsFromUserInfo(accessToken));
+            }
+        }
+        Future.any(futures).map(compositeFuture -> {
+            int size = compositeFuture.size();
+            for (int i = 0; i < size; i++) {
+                if (compositeFuture.succeeded(i)) {
+                    ExtractedClaims claims = compositeFuture.resultAt(i);
+                    promise.complete(to(claims));
+                    return null;
                 }
             }
-            Future.any(futures).onSuccess(compositeFuture -> {
-                int size = compositeFuture.size();
-                for (int i = 0; i < size; i++) {
-                    if (compositeFuture.succeeded(i)) {
-                        ExtractedClaims claims = compositeFuture.resultAt(i);
-                        promise.complete(new UserInfoResult(claims, System.currentTimeMillis() + USER_INFO_EXP_PERIOD_MS));
-                        return;
-                    }
-                }
-                promise.fail("Idp is not found to support user info endpoint");
-            }).onFailure(promise::fail);
-            return promise.future();
-        }).map(UserInfoResult::claims).onFailure(error -> {
-            /* we don't need to keep the failed response any longer */
-            userInfoCache.remove(accessToken);
-        });
+            promise.fail("Idp is not found to support user info endpoint");
+            return null;
+        }).onFailure(promise::fail);
+        return promise.future();
+    }
+
+    private UserInfoResult to(ExtractedClaims claims) {
+        return new UserInfoResult(claims, System.currentTimeMillis() + USER_INFO_EXP_PERIOD_MS);
     }
 
     public static String extractTokenFromHeader(String authHeader) {

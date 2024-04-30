@@ -133,6 +133,7 @@ public class AccessTokenValidatorTest {
     public void testExtractClaims_06() throws NoSuchAlgorithmException {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
         IdentityProvider provider = mock(IdentityProvider.class);
+        when(provider.hasUserinfoUrl()).thenReturn(false);
         when(provider.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future.succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash", Map.of())));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
