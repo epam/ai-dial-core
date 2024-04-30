@@ -196,7 +196,7 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication createPublication(ResourceDescription bucket, Publication publication) {
+    public Publication createPublication(ProxyContext context, ResourceDescription bucket, Publication publication) {
         if (bucket.getType() != ResourceType.PUBLICATION || bucket.isPublic() || !bucket.isRootFolder()) {
             throw new IllegalArgumentException("Bad publication bucket: " + bucket.getUrl());
         }
@@ -205,6 +205,12 @@ public class PublicationService {
 
         checkSourceResources(publication);
         checkTargetResources(publication);
+
+        // check target location access
+        boolean hasAccess = hasPublicAccess(context, ResourceDescription.fromPublicUrl(publication.getResources().get(0).getTargetUrl()));
+        if (!hasAccess) {
+            throw new PermissionDeniedException("You don't have access to the target folder: " + publication.getTargetUrl());
+        }
 
         copySourceToReviewResources(publication);
 

@@ -784,6 +784,93 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPublicationToForbiddenFolder() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "url": "publications/%s/",
+                  "targetUrl": "public/folder/",
+                  "resources": [
+                    {
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket, bucket));
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                  "resourceTypes" : [ "CONVERSATION" ],
+                  "rules" : [ {
+                    "function" : "CONTAIN",
+                    "source" : "title",
+                    "targets" : [ "Engineer" ]
+                  } ]
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
+                   "rules" : [ {
+                    "function" : "CONTAIN",
+                    "source" : "title",
+                    "targets" : [ "Engineer" ]
+                   } ]
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "url": "publications/%s/",
+                  "targetUrl": "public/folder/folder2/",
+                  "resources": [
+                    {
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/folder2/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket, bucket));
+        verify(response, 403);
+    }
+
+    @Test
     void listRules() {
         Response response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": ""}
