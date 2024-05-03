@@ -157,7 +157,6 @@ public class ResourceService implements AutoCloseable {
         return new ResourceFolderMetadata(descriptor, resources).setNextToken(set.getNextMarker());
     }
 
-    @Nullable
     public ResourceItemMetadata getResourceMetadata(ResourceDescription descriptor) {
         if (descriptor.isFolder()) {
             throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());

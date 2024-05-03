@@ -53,13 +53,13 @@ public class FileApiTest extends ResourceBaseTest {
     public void testPerRequestBucket(Vertx vertx, VertxTestContext context) {
         // creating per-request API key with proxyKey1 as originator
         // and proxyKey2 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1").result();
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1");
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setOriginalKey(projectApiKeyData.getOriginalKey());
 
         // set deployment ID for proxyKey2
         apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
-        apiKeyStore.assignPerRequestApiKey(apiKeyData2);
+        apiKeyStore.assignApiKey(apiKeyData2);
 
         String apiKey2 = apiKeyData2.getPerRequestKey();
 
@@ -368,12 +368,12 @@ public class FileApiTest extends ResourceBaseTest {
     public void testFileUploadToAppdata(Vertx vertx, VertxTestContext context) {
         // creating per-request API key with proxyKey1 as originator
         // and proxyKey2 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1").result();
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey1");
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey2
         apiKeyData2.setSourceDeployment("EPM-RTC-RAIL");
-        apiKeyStore.assignPerRequestApiKey(apiKeyData2);
+        apiKeyStore.assignApiKey(apiKeyData2);
 
         String apiKey2 = apiKeyData2.getPerRequestKey();
 
@@ -460,13 +460,13 @@ public class FileApiTest extends ResourceBaseTest {
 
         // creating per-request API key with proxyKey2 as originator
         // and proxyKey1 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2").result();
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2");
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
         apiKeyData1.setAttachedFiles(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt"));
-        apiKeyStore.assignPerRequestApiKey(apiKeyData1);
+        apiKeyStore.assignApiKey(apiKeyData1);
 
         String apiKey1 = apiKeyData1.getPerRequestKey();
 
@@ -529,13 +529,13 @@ public class FileApiTest extends ResourceBaseTest {
 
         // creating per-request API key with proxyKey2 as originator
         // and proxyKey1 caller
-        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2").result();
+        ApiKeyData projectApiKeyData = apiKeyStore.getApiKeyData("proxyKey2");
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
         apiKeyData1.setAttachedFolders(List.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/"));
-        apiKeyStore.assignPerRequestApiKey(apiKeyData1);
+        apiKeyStore.assignApiKey(apiKeyData1);
 
         String apiKey1 = apiKeyData1.getPerRequestKey();
 
