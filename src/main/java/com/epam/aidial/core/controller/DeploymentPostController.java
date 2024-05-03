@@ -144,11 +144,10 @@ public class DeploymentPostController {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
-        log.info("Start assigning per request api key. Trace: {}. Span: {}. Key: {}. Deployment: {}",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName());
+        long start = System.currentTimeMillis();
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
-        log.info("Complete assigning per request api key. Trace: {}. Span: {}. Key: {}. Deployment: {}",
+        log.info("Complete assigning per request api key for {} ms. Trace: {}. Span: {}. Key: {}. Deployment: {}",
+                System.currentTimeMillis() - start,
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName());
     }
