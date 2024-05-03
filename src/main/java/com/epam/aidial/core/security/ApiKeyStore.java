@@ -50,7 +50,6 @@ public class ApiKeyStore {
      * </p>
      */
     public synchronized void assignPerRequestApiKey(ApiKeyData data) {
-//        lockService.underBucketLock(API_KEY_DATA_LOCATION, () -> {
         ResourceDescription resource = generateApiKey();
         String apiKey = resource.getName();
         data.setPerRequestKey(apiKey);
@@ -58,8 +57,6 @@ public class ApiKeyStore {
         if (resourceService.putResource(resource, json, false, false) == null) {
             throw new IllegalStateException(String.format("API key %s already exists in the storage", apiKey));
         }
-//            return apiKey;
-//        });
     }
 
     /**
