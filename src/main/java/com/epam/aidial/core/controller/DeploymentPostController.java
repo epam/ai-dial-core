@@ -144,7 +144,13 @@ public class DeploymentPostController {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
+        log.info("Start assigning per request api key. Trace: {}. Span: {}. Key: {}. Deployment: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName());
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+        log.info("Complete assigning per request api key. Trace: {}. Span: {}. Key: {}. Deployment: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName());
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
