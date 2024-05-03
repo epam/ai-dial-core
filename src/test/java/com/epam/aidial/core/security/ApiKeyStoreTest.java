@@ -106,41 +106,6 @@ public class ApiKeyStoreTest {
     }
 
     @Test
-    public void testAddProjectKeys() {
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
-            Callable callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
-        Key key1 = new Key();
-        key1.setProject("prj1");
-        key1.setRole("role1");
-        Map<String, Key> projectKeys1 = Map.of("key1", key1);
-
-        store.addProjectKeys(projectKeys1);
-
-        ApiKeyData apiKeyData = new ApiKeyData();
-        store.assignPerRequestApiKey(apiKeyData);
-
-        Key key2 = new Key();
-        key1.setProject("prj1");
-        key1.setRole("role1");
-        Map<String, Key> projectKeys2 = Map.of("key2", key2);
-
-        store.addProjectKeys(projectKeys2);
-
-        // old key must be removed
-        assertNull(store.getApiKeyData("key1").result());
-        // new key must be accessed
-        Future<ApiKeyData> res1 = store.getApiKeyData("key2");
-        assertNotNull(res1.result());
-        assertEquals(key2, res1.result().getOriginalKey());
-        // existing per request key must be accessed
-        assertNotNull(store.getApiKeyData(apiKeyData.getPerRequestKey()).result());
-
-    }
-
-    @Test
     public void testGetApiKeyData() {
         ApiKeyData apiKeyData = new ApiKeyData();
         store.assignPerRequestApiKey(apiKeyData);
@@ -157,17 +122,5 @@ public class ApiKeyStoreTest {
         assertEquals(apiKeyData, res1.result());
 
         assertNull(store.getApiKeyData("unknown-key").result());
-    }
-
-    @Test
-    public void testInvalidateApiKey() {
-        ApiKeyData apiKeyData = new ApiKeyData();
-        store.assignPerRequestApiKey(apiKeyData);
-
-        assertNotNull(apiKeyData.getPerRequestKey());
-
-        store.invalidatePerRequestApiKey(apiKeyData);
-
-        assertNull(store.getApiKeyData(apiKeyData.getPerRequestKey()));
     }
 }

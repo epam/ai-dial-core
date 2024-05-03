@@ -50,13 +50,9 @@ public class ApiKeyStore {
      * </p>
      */
     public synchronized void assignPerRequestApiKey(ApiKeyData data) {
-        ResourceDescription resource = generateApiKey();
-        String apiKey = resource.getName();
+        String apiKey = generateApiKey();
+        keys.put(apiKey, data);
         data.setPerRequestKey(apiKey);
-        String json = ProxyUtil.convertToString(data);
-        if (resourceService.putResource(resource, json, false, false) == null) {
-            throw new IllegalStateException(String.format("API key %s already exists in the storage", apiKey));
-        }
     }
 
     /**
@@ -106,8 +102,7 @@ public class ApiKeyStore {
                 Key value = entry.getValue();
                 ResourceDescription resource = toResource(apiKey);
                 if (resourceService.hasResource(resource)) {
-                    resource = generateApiKey();
-                    apiKey = resource.getName();
+                    apiKey = generateApiKey();
                 }
                 value.setKey(apiKey);
                 ApiKeyData apiKeyData = new ApiKeyData();
@@ -134,15 +129,13 @@ public class ApiKeyStore {
         resourceService.putResource(resource, json, true, false);
     }
 
-    private ResourceDescription generateApiKey() {
+    private String generateApiKey() {
         String apiKey = generateKey();
-        ResourceDescription resource = toResource(apiKey);
-        while (resourceService.hasResource(resource) || keys.containsKey(apiKey)) {
+        while (keys.containsKey(apiKey)) {
             log.warn("duplicate API key is found. Trying to generate a new one");
             apiKey = generateKey();
-            resource = toResource(apiKey);
         }
-        return resource;
+        return apiKey;
     }
 
     private static ResourceDescription toResource(String apiKey) {
