@@ -49,7 +49,7 @@ public class RateLimiter {
 
             String tokensPath = getPathToTokens(context.getDeployment().getName());
             ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
-            return vertx.executeBlocking(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()));
+            return vertx.executeBlocking(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()), false);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -79,7 +79,7 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
             }
 
-            return vertx.executeBlocking(() -> checkLimit(context, limit));
+            return vertx.executeBlocking(() -> checkLimit(context, limit), false);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -104,7 +104,7 @@ public class RateLimiter {
                         context.getUserSub(), deploymentName);
                 return Future.succeededFuture();
             }
-            return vertx.executeBlocking(() -> getLimitStats(context, limit, deploymentName));
+            return vertx.executeBlocking(() -> getLimitStats(context, limit, deploymentName), false);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
