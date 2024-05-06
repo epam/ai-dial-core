@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -95,7 +96,7 @@ public class ApiKeyStoreTest {
                   }
                 """;
         ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
-        store = new ApiKeyStore(resourceService, lockService, vertx);
+        store = new ApiKeyStore(resourceService, vertx);
     }
 
     @Test
@@ -107,7 +108,7 @@ public class ApiKeyStoreTest {
 
     @Test
     public void testAddProjectKeys() {
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -147,7 +148,7 @@ public class ApiKeyStoreTest {
 
         assertNotNull(apiKeyData.getPerRequestKey());
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });

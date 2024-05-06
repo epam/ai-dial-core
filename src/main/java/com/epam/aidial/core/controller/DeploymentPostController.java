@@ -125,15 +125,14 @@ public class DeploymentPostController {
             return;
         }
 
+        setupProxyApiKeyData();
         proxy.getTokenStatsTracker().startSpan(context);
 
         context.getRequest().body()
                 .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                    // run setting up api key data in the worker thread
-                    setupProxyApiKeyData();
                     handleRequestBody(body);
                     return null;
-                }).onFailure(this::handleError))
+                }, false).onFailure(this::handleError))
                 .onFailure(this::handleRequestBodyError);
     }
 
@@ -144,7 +143,6 @@ public class DeploymentPostController {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
@@ -210,9 +208,9 @@ public class DeploymentPostController {
 
             try {
                 ProxyUtil.collectAttachedFiles(tree, this::processAttachedFile);
-                // update api key data after processing attachments
+                // assign api key data after processing attachments
                 ApiKeyData destApiKeyData = context.getProxyApiKeyData();
-                proxy.getApiKeyStore().updatePerRequestApiKeyData(destApiKeyData);
+                proxy.getApiKeyStore().assignPerRequestApiKey(destApiKeyData);
             } catch (HttpException e) {
                 respond(e.getStatus(), e.getMessage());
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",

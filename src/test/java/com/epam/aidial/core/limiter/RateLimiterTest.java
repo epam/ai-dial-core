@@ -41,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -192,7 +193,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -224,7 +225,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -277,7 +278,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -351,7 +352,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -393,7 +394,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -449,7 +450,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
