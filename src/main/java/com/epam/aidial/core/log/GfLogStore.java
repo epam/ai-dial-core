@@ -3,7 +3,6 @@ package com.epam.aidial.core.log;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.token.TokenUsage;
-import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
@@ -40,10 +39,10 @@ public class GfLogStore implements LogStore {
             return;
         }
 
-        vertx.executeBlocking(event -> doSave(context), false);
+        vertx.executeBlocking(() -> doSave(context));
     }
 
-    private void doSave(ProxyContext context) {
+    private Void doSave(ProxyContext context) {
         LogEntry entry = LOGGER.log(LogLevel.INFO);
 
         try {
@@ -53,6 +52,7 @@ public class GfLogStore implements LogStore {
             entry.abort();
             log.warn("Can't save log: {}", e.getMessage());
         }
+        return null;
     }
 
     private void append(ProxyContext context, LogEntry entry) throws JsonProcessingException {
