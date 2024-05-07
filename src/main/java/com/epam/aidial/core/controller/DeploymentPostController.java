@@ -210,12 +210,7 @@ public class DeploymentPostController {
                 ProxyUtil.collectAttachedFiles(tree, this::processAttachedFile);
                 // assign api key data after processing attachments
                 ApiKeyData destApiKeyData = context.getProxyApiKeyData();
-                long startTime = System.currentTimeMillis();
                 proxy.getApiKeyStore().assignPerRequestApiKey(destApiKeyData);
-                log.info("assignPerRequestApiKey for {} ms. Trace: {}. Span: {}. Key: {}. Deployment: {}",
-                        System.currentTimeMillis() - startTime,
-                        context.getTraceId(), context.getSpanId(),
-                        context.getProject(), deployment.getName());
             } catch (HttpException e) {
                 respond(e.getStatus(), e.getMessage());
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
