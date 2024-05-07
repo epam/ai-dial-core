@@ -104,7 +104,7 @@ public class InputStreamReader implements ReadStream<Buffer> {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }, false);
         fetchResult.onSuccess(buf -> {
             if (queue.write(buf) && buf.length() > 0) {
                 // load more data

@@ -40,7 +40,7 @@ public class GfLogStore implements LogStore {
             return;
         }
 
-        vertx.executeBlocking(event -> doSave(context));
+        vertx.executeBlocking(event -> doSave(context), false);
     }
 
     private void doSave(ProxyContext context) {

@@ -116,7 +116,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
                 return null;
             }
-        });
+        }, false);
         result.onSuccess(success -> {
             if (handler != null) {
                 handler.handle(Future.succeededFuture());
@@ -161,7 +161,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
             }
             return null;
-        });
+        }, false);
 
         return this;
     }
