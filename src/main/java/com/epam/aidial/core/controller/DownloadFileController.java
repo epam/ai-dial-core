@@ -30,7 +30,7 @@ public class DownloadFileController extends AccessControlBaseController {
         }
 
         Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() ->
-                proxy.getStorage().load(resource.getAbsoluteFilePath()));
+                proxy.getStorage().load(resource.getAbsoluteFilePath()), false);
 
         Promise<Void> result = Promise.promise();
         blobFuture.onSuccess(blob -> {

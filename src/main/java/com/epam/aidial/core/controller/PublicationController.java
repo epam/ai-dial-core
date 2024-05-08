@@ -50,7 +50,7 @@ public class PublicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodePublication(url, true);
                     checkAccess(resource, resource.isPrivate());
-                    return vertx.executeBlocking(() -> publicationService.listPublications(resource));
+                    return vertx.executeBlocking(() -> publicationService.listPublications(resource), false);
                 })
                 .onSuccess(publications -> context.respond(HttpStatus.OK, new Publications(publications)))
                 .onFailure(error -> respondError("Can't list publications", error));
@@ -65,7 +65,7 @@ public class PublicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() -> publicationService.getPublication(resource));
+                    return vertx.executeBlocking(() -> publicationService.getPublication(resource), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't get publication", error));
@@ -80,7 +80,7 @@ public class PublicationController {
                     Publication publication = ProxyUtil.convertToObject(body, Publication.class);
                     ResourceDescription resource = decodePublication(publication.getUrl(), false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() -> publicationService.createPublication(resource, publication));
+                    return vertx.executeBlocking(() -> publicationService.createPublication(resource, publication), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't create publication", error));
@@ -97,7 +97,7 @@ public class PublicationController {
                     checkAccess(resource, true);
                     return vertx.executeBlocking(() ->
                             lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.deletePublication(resource, isAdmin())));
+                                    () -> publicationService.deletePublication(resource, isAdmin())), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete publication", error));
@@ -114,7 +114,7 @@ public class PublicationController {
                     checkAccess(resource, false);
                     return vertx.executeBlocking(() ->
                             lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.approvePublication(resource)));
+                                    () -> publicationService.approvePublication(resource)), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't approve publication", error));
@@ -129,7 +129,7 @@ public class PublicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, false);
-                    return vertx.executeBlocking(() -> publicationService.rejectPublication(resource));
+                    return vertx.executeBlocking(() -> publicationService.rejectPublication(resource), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't reject publication", error));
@@ -144,7 +144,7 @@ public class PublicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription rule = decodeRule(url);
                     checkRuleAccess(rule);
-                    return vertx.executeBlocking(() -> publicationService.listRules(rule));
+                    return vertx.executeBlocking(() -> publicationService.listRules(rule), false);
                 })
                 .onSuccess(rules -> context.respond(HttpStatus.OK, new Rules(rules)))
                 .onFailure(error -> respondError("Can't list rules", error));
@@ -159,7 +159,7 @@ public class PublicationController {
                     ListPublishedResourcesRequest request = ProxyUtil.convertToObject(body, ListPublishedResourcesRequest.class);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptService.encrypt(bucketLocation);
-                    return vertx.executeBlocking(() -> publicationService.listPublishedResources(request, bucket, bucketLocation));
+                    return vertx.executeBlocking(() -> publicationService.listPublishedResources(request, bucket, bucketLocation), false);
                 })
                 .onSuccess(metadata -> context.respond(HttpStatus.OK, metadata))
                 .onFailure(error -> respondError("Can't list published resources", error));

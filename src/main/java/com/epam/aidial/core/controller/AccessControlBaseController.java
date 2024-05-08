@@ -30,7 +30,7 @@ public abstract class AccessControlBaseController {
                 .executeBlocking(() -> {
                     AccessService service = proxy.getAccessService();
                     return isWriteAccess ? service.hasWriteAccess(resource, context) : service.hasReadAccess(resource, context);
-                })
+                }, false)
                 .map(hasAccess -> {
                     if (hasAccess) {
                         handle(resource);
