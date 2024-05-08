@@ -76,7 +76,7 @@ public class ResourceOperationController {
                     return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                         resourceOperationService.moveResource(bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
                         return null;
-                    }));
+                    }), false);
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);

@@ -88,7 +88,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive))
+        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -108,7 +108,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> service.getResource(descriptor))
+        return vertx.executeBlocking(() -> service.getResource(descriptor), false)
                 .onSuccess(body -> {
                     if (body == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -161,7 +161,7 @@ public class ResourceController extends AccessControlBaseController {
                         default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
                     }
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite));
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {
@@ -198,7 +198,7 @@ public class ResourceController extends AccessControlBaseController {
                                 new ResourceLinkCollection(resourceLinks));
                         return service.deleteResource(descriptor);
                     });
-                })
+                }, false)
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);

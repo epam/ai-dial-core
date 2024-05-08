@@ -43,6 +43,6 @@ public class FileMetadataController extends AccessControlBaseController {
             }
 
             return null;
-        });
+        }, false);
     }
 }

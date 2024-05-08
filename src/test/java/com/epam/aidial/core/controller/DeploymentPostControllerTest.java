@@ -173,6 +173,7 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         controller.handle("app1", "chat/completions");
 
