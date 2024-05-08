@@ -93,12 +93,10 @@ public class PublicationController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url, false);
+                    Publication publication = ProxyUtil.convertToObject(body, Publication.class);
+                    ResourceDescription resource = decodePublication(publication.getUrl(), false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() ->
-                            lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.deletePublication(resource, isAdmin())));
+                    return vertx.executeBlocking(() -> publicationService.deletePublication(context, resource, publication));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete publication", error));

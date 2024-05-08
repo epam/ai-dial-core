@@ -27,7 +27,7 @@ public class Publication {
     List<Rule> rules;
 
     public enum Status {
-        PENDING, APPROVED, REJECTED, REQUESTED_FOR_DELETION
+        PENDING, APPROVED, REJECTED, REQUESTED_FOR_DELETION, DELETED
     }
 
     @Data
@@ -55,8 +55,8 @@ public class Publication {
         }
         Set<ResourceType> resourceTypes = new HashSet<>();
         for (Resource resource : resources) {
-            String sourceUrl = resource.getSourceUrl();
-            String resourceType = sourceUrl.substring(0, sourceUrl.indexOf('/'));
+            String resourceUrl = resource.getTargetUrl();
+            String resourceType = resourceUrl.substring(0, resourceUrl.indexOf('/'));
             resourceTypes.add(ResourceType.of(resourceType));
         }
 
