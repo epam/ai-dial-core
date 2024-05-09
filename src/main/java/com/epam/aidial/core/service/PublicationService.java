@@ -84,14 +84,31 @@ public class PublicationService {
     }
 
     public boolean hasPublicAccess(ProxyContext context, ResourceDescription resource) {
-        if (!resource.isPublic()) {
-            return false;
+        return hasPublicAccess(context, List.of(resource));
+    }
+
+    public boolean hasPublicAccess(ProxyContext context, List<ResourceDescription> resources) {
+        if (resources.isEmpty()) {
+            return true;
+        }
+
+        for (ResourceDescription resource : resources) {
+            if (!resource.isPublic()) {
+                return false;
+            }
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
+        boolean hasAccess = false;
+        for (ResourceDescription resource : resources) {
+            hasAccess = evaluate(context, resource, rules, cache);
+            if (!hasAccess) {
+                return false;
+            }
+        }
 
-        return evaluate(context, resource, rules, cache);
+        return hasAccess;
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {
@@ -120,7 +137,7 @@ public class PublicationService {
         Map<String, List<Rule>> result = new TreeMap<>();
 
         while (resource != null) {
-            String url = ruleUrl(resource);;
+            String url = ruleUrl(resource);
             List<Rule> list = rules.get(url);
             resource = resource.getParent();
 
@@ -207,10 +224,7 @@ public class PublicationService {
         checkTargetResources(publication);
 
         // check target location access
-        boolean hasAccess = hasPublicAccess(context, ResourceDescription.fromPublicUrl(publication.getResources().get(0).getTargetUrl()));
-        if (!hasAccess) {
-            throw new PermissionDeniedException("You don't have access to the target folder: " + publication.getTargetUrl());
-        }
+        checkTargetResourceAccess(context, publication);
 
         copySourceToReviewResources(publication);
 
@@ -510,11 +524,7 @@ public class PublicationService {
     private void checkReviewResources(Publication publication) {
         for (Publication.Resource resource : publication.getResources()) {
             String url = resource.getReviewUrl();
-            if (url == null) {
-                continue;
-            }
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-
             if (!checkResource(descriptor)) {
                 throw new IllegalArgumentException("Review resource does not exist: " + descriptor.getUrl());
             }
@@ -544,11 +554,12 @@ public class PublicationService {
     }
 
     private void checkTargetResourceAccess(ProxyContext context, Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
-            String url = resource.getTargetUrl();
-            if (!hasPublicAccess(context, ResourceDescription.fromPublicUrl(url))) {
-                throw new PermissionDeniedException("You don't have access to the resource: " + url);
-            }
+        List<ResourceDescription> resources = publication.getResources().stream()
+                .map(resource -> ResourceDescription.fromPublicUrl(resource.getTargetUrl()))
+                .toList();
+        boolean hasAccess = hasPublicAccess(context, resources);
+        if (!hasAccess) {
+            throw new PermissionDeniedException("You don't have permission to the provided resources");
         }
     }
 
