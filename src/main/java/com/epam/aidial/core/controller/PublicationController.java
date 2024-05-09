@@ -11,6 +11,7 @@ import com.epam.aidial.core.data.Rules;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.storage.BlobStorageUtil;
@@ -80,7 +81,7 @@ public class PublicationController {
                     Publication publication = ProxyUtil.convertToObject(body, Publication.class);
                     ResourceDescription resource = decodePublication(publication.getUrl(), false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() -> publicationService.createPublication(resource, publication), false);
+                    return vertx.executeBlocking(() -> publicationService.createPublication(context, resource, publication), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't create publication", error));
@@ -92,12 +93,10 @@ public class PublicationController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url, false);
+                    Publication publication = ProxyUtil.convertToObject(body, Publication.class);
+                    ResourceDescription resource = decodePublication(publication.getUrl(), false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() ->
-                            lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.deletePublication(resource, isAdmin())), false);
+                    return vertx.executeBlocking(() -> publicationService.deletePublication(context, resource, publication), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete publication", error));
@@ -179,6 +178,9 @@ public class PublicationController {
             body = error.getMessage();
         } else if (error instanceof IllegalArgumentException e) {
             status = HttpStatus.BAD_REQUEST;
+            body = e.getMessage();
+        } else if (error instanceof PermissionDeniedException e) {
+            status = HttpStatus.FORBIDDEN;
             body = e.getMessage();
         } else {
             log.warn(message, error);

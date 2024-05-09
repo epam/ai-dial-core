@@ -110,37 +110,23 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPublicationDeletion() {
-        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
-        verify(response, 200);
-
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
-        verify(response, 200);
-
-
-        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL, "authorization", "user");
-        verify(response, 403);
-
-        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL);
-        verify(response, 200);
-
-
-        response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
-        verify(response, 404);
-
-        response = send(HttpMethod.PUT, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
-        verify(response, 403);
-
-        response = send(HttpMethod.DELETE, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
-        verify(response, 403);
-    }
-
-    @Test
     void testDeleteApprovedPublicationWorkflow() {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+              "targetUrl": "public/folder/",
+              "resources": [
+                {
+                  "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                  "targetUrl": "conversations/public/folder/conversation"
+                }
+              ],
+              "rules": []
+            }
+            """);
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
@@ -156,12 +142,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
-                   "rules" : [ {
-                     "function" : "EQUAL",
-                     "source" : "roles",
-                     "targets" : [ "user" ]
-                   } ]
-                  
+                   "rules" : []
                 }
                 """);
 
@@ -184,10 +165,19 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
 
         // initialize delete request by user (publication owner)
-        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL);
+        response = operationRequest("/v1/ops/publication/delete", """
+                {
+                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+                    "resources": [
+                        {
+                        "targetUrl": "conversations/public/folder/conversation"
+                        }
+                    ]
+                }
+                """);
         verify(response, 200);
 
-        // verify publication has status REQUESTED_FOR_DELETION
+        // verify new publication request has status REQUESTED_FOR_DELETION
         response = operationRequest("/v1/ops/publication/list", """
                 {
                   "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
@@ -196,12 +186,19 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "publications": [{
-                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl":"public/folder/",
-                    "status":"REQUESTED_FOR_DELETION",
-                    "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ]
-                    }]
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "REQUESTED_FOR_DELETION",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
                 }
                 """);
 
@@ -222,8 +219,7 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "publications": [{
-                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl":"public/folder/",
+                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                     "status":"REQUESTED_FOR_DELETION",
                     "createdAt":0,
                     "resourceTypes" : [ "CONVERSATION" ]
@@ -232,7 +228,11 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
 
         // delete publication by admin
-        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL, "authorization", "admin");
+        response = operationRequest("/v1/ops/publication/approve", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+                }
+                """, "authorization", "admin");
         verify(response, 200);
 
         // verify no pending/requested_for_deletion publication remain
@@ -254,6 +254,31 @@ class PublicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
                 null, null, "authorization", "user");
         verify(response, 404);
+
+        // verify both requests in finalized status
+        response = operationRequest("/v1/ops/publication/list", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "DELETED",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
+                }
+                """);
     }
 
     @Test
@@ -261,7 +286,19 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+              "targetUrl": "public/folder/",
+              "resources": [
+                {
+                  "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                  "targetUrl": "conversations/public/folder/conversation"
+                }
+              ],
+              "rules": []
+            }
+            """);
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
@@ -277,11 +314,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
-                   "rules" : [ {
-                     "function" : "EQUAL",
-                     "source" : "roles",
-                     "targets" : [ "user" ]
-                   } ]
+                   "rules" : []
                 }
                 """);
 
@@ -304,7 +337,16 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
 
         // initialize delete request by user (publication owner)
-        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL);
+        response = operationRequest("/v1/ops/publication/delete", """
+                {
+                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+                    "resources": [
+                        {
+                        "targetUrl": "conversations/public/folder/conversation"
+                        }
+                    ]
+                }
+                """);
         verify(response, 200);
 
         // verify publication has status REQUESTED_FOR_DELETION
@@ -316,12 +358,19 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "publications": [{
-                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl":"public/folder/",
-                    "status":"REQUESTED_FOR_DELETION",
-                    "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ]
-                    }]
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "REQUESTED_FOR_DELETION",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
                 }
                 """);
 
@@ -342,8 +391,7 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "publications": [{
-                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl":"public/folder/",
+                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                     "status":"REQUESTED_FOR_DELETION",
                     "createdAt":0,
                     "resourceTypes" : [ "CONVERSATION" ]
@@ -352,7 +400,11 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
 
         // reject deletion request by admin
-        response = operationRequest("/v1/ops/publication/reject", PUBLICATION_URL, "authorization", "admin");
+        response = operationRequest("/v1/ops/publication/reject", """
+                {
+                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+                }
+                """, "authorization", "admin");
         verify(response, 200);
 
         // verify no pending/requested_for_deletion publication remain
@@ -365,7 +417,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        // verify publication rolled back to status APPROVED
+        // verify deletion request rejected
         response = operationRequest("/v1/ops/publication/list", """
                 {
                   "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
@@ -374,12 +426,19 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "publications": [{
-                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl":"public/folder/",
-                    "status":"APPROVED",
-                    "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ]
-                    }]
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "REJECTED",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
                 }
                 """);
 
@@ -781,6 +840,93 @@ class PublicationApiTest extends ResourceBaseTest {
                   "publications" : [ ]
                 }
                 """);
+    }
+
+    @Test
+    void testPublicationToForbiddenFolder() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "url": "publications/%s/",
+                  "targetUrl": "public/folder/",
+                  "resources": [
+                    {
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket, bucket));
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                  "resourceTypes" : [ "CONVERSATION" ],
+                  "rules" : [ {
+                    "function" : "CONTAIN",
+                    "source" : "title",
+                    "targets" : [ "Engineer" ]
+                  } ]
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
+                   "rules" : [ {
+                    "function" : "CONTAIN",
+                    "source" : "title",
+                    "targets" : [ "Engineer" ]
+                   } ]
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "url": "publications/%s/",
+                  "targetUrl": "public/folder/folder2/",
+                  "resources": [
+                    {
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/folder2/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket, bucket));
+        verify(response, 403);
     }
 
     @Test
