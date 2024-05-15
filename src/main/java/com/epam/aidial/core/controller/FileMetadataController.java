@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -14,6 +15,13 @@ public class FileMetadataController extends AccessControlBaseController {
 
     public FileMetadataController(Proxy proxy, ProxyContext context) {
         super(proxy, context, false);
+    }
+
+    private String getContentType() {
+        String acceptType = context.getRequest().getHeader(HttpHeaders.ACCEPT);
+        return acceptType != null && acceptType.contains(MetadataBase.MIME_TYPE)
+                ? MetadataBase.MIME_TYPE
+                : "application/json";
     }
 
     @Override
@@ -24,7 +32,7 @@ public class FileMetadataController extends AccessControlBaseController {
                 MetadataBase metadata = storage.listMetadata(resource);
                 if (metadata != null) {
                     proxy.getAccessService().filterForbidden(context, resource, metadata);
-                    context.respond(HttpStatus.OK, metadata);
+                    context.respond(HttpStatus.OK, getContentType(), metadata);
                 } else {
                     context.respond(HttpStatus.NOT_FOUND);
                 }
@@ -35,6 +43,6 @@ public class FileMetadataController extends AccessControlBaseController {
             }
 
             return null;
-        });
+        }, false);
     }
 }

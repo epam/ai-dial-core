@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'com.epam.aidial'
-version = "0.9.0-rc"
+version = "0.10.0-rc"
 
 java {
     toolchain {
@@ -72,6 +72,16 @@ dependencies {
 
 application {
     mainClass = 'com.epam.aidial.core.AiDial'
+}
+
+distributions {
+    // write current version to the version file
+    beforeEvaluate {
+        def versionFile = file("$projectDir/src/main/resources/version")
+        versionFile.getParentFile().mkdirs()
+        versionFile.createNewFile()
+        versionFile.write(version)
+    }
 }
 
 test {

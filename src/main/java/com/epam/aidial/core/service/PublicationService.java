@@ -1,6 +1,7 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
@@ -31,6 +32,7 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
@@ -82,14 +84,31 @@ public class PublicationService {
     }
 
     public boolean hasPublicAccess(ProxyContext context, ResourceDescription resource) {
-        if (!resource.isPublic()) {
-            return false;
+        return hasPublicAccess(context, List.of(resource));
+    }
+
+    public boolean hasPublicAccess(ProxyContext context, List<ResourceDescription> resources) {
+        if (resources.isEmpty()) {
+            return true;
+        }
+
+        for (ResourceDescription resource : resources) {
+            if (!resource.isPublic()) {
+                return false;
+            }
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
+        boolean hasAccess = false;
+        for (ResourceDescription resource : resources) {
+            hasAccess = evaluate(context, resource, rules, cache);
+            if (!hasAccess) {
+                return false;
+            }
+        }
 
-        return evaluate(context, resource, rules, cache);
+        return hasAccess;
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {
@@ -118,7 +137,7 @@ public class PublicationService {
         Map<String, List<Rule>> result = new TreeMap<>();
 
         while (resource != null) {
-            String url = ruleUrl(resource);;
+            String url = ruleUrl(resource);
             List<Rule> list = rules.get(url);
             resource = resource.getParent();
 
@@ -145,6 +164,39 @@ public class PublicationService {
         return publications.values();
     }
 
+    public Collection<MetadataBase> listPublishedResources(ListPublishedResourcesRequest request, String bucket, String location) {
+        ResourceDescription publicationResource = publications(bucket, location);
+        Map<String, Publication> publications = decodePublications(resources.getResource(publicationResource));
+
+        // get approved publications only
+        List<Publication> approvedPublications = publications.values()
+                .stream()
+                .filter(publication -> Publication.Status.APPROVED.equals(publication.getStatus()))
+                .toList();
+
+        Set<Publication.Resource> resourceSet = approvedPublications.stream()
+                .flatMap(publication -> publication.getResources().stream())
+                .collect(Collectors.toSet());
+        Set<ResourceType> requestedResourceTypes = request.getResourceTypes();
+
+        Set<MetadataBase> metadata = new HashSet<>();
+        for (Publication.Resource resource : resourceSet) {
+            ResourceDescription resourceDescription = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
+            // check if published resource match requested criteria
+            if (!requestedResourceTypes.contains(resourceDescription.getType())) {
+                continue;
+            }
+
+            if (resourceDescription.isFolder()) {
+                metadata.add(new ResourceFolderMetadata(resourceDescription));
+            } else {
+                metadata.add(new ResourceItemMetadata(resourceDescription));
+            }
+        }
+
+        return metadata;
+    }
+
     public Publication getPublication(ResourceDescription resource) {
         if (resource.getType() != ResourceType.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
@@ -161,7 +213,7 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication createPublication(ResourceDescription bucket, Publication publication) {
+    public Publication createPublication(ProxyContext context, ResourceDescription bucket, Publication publication) {
         if (bucket.getType() != ResourceType.PUBLICATION || bucket.isPublic() || !bucket.isRootFolder()) {
             throw new IllegalArgumentException("Bad publication bucket: " + bucket.getUrl());
         }
@@ -171,37 +223,62 @@ public class PublicationService {
         checkSourceResources(publication);
         checkTargetResources(publication);
 
+        // check target location access
+        checkTargetResourceAccess(context, publication);
+
         copySourceToReviewResources(publication);
 
-        resources.computeResource(publications(bucket), body -> {
-            Map<String, Publication> publications = decodePublications(body);
-
-            if (publications.put(publication.getUrl(), publication) != null) {
-                throw new IllegalStateException("Publication with such url already exists: " + publication.getUrl());
-            }
-
-            return encodePublications(publications);
-        });
-
-        resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
-            Map<String, Publication> publications = decodePublications(body);
-
-            if (publications.put(publication.getUrl(), newMetadata(publication)) != null) {
-                throw new IllegalStateException("Publication with such url already exists: " + publication.getUrl());
-            }
-
-            return encodePublications(publications);
-        });
-
-        return publication;
+        return storePublication(bucket, publication);
     }
 
-    public Publication deletePublication(ResourceDescription resource) {
-        if (resource.getType() != ResourceType.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
+    public Publication deletePublication(ProxyContext context, ResourceDescription bucket, Publication publication) {
+        if (bucket.getType() != ResourceType.PUBLICATION || bucket.isPublic() || !bucket.isFolder()) {
+            throw new IllegalArgumentException("Bad publication url: " + bucket.getUrl());
+        }
+
+        preparePublicationForDeletion(bucket, publication);
+        checkTargetResourcesExists(publication);
+        checkTargetResourceAccess(context, publication);
+
+        return storePublication(bucket, publication);
+    }
+
+    @Nullable
+    public Publication approvePublication(ResourceDescription resource) {
+        Publication publication = getPublication(resource);
+        Publication.Status status = publication.getStatus();
+
+        return switch (status) {
+            case PENDING -> approvePendingPublication(resource, publication);
+            case REQUESTED_FOR_DELETION -> approveDeletionPublication(resource, publication);
+            default -> throw new IllegalArgumentException("Bad publication status: " + status);
+        };
+    }
+
+    @Nullable
+    public Publication rejectPublication(ResourceDescription resource) {
+        if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
 
         MutableObject<Publication> reference = new MutableObject<>();
+        resources.computeResource(publications(resource), body -> {
+            Map<String, Publication> publications = decodePublications(body);
+            Publication publication = publications.get(resource.getUrl());
+
+            if (publication == null) {
+                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
+            }
+
+            Publication.Status status = publication.getStatus();
+            if (status != Publication.Status.PENDING && status != Publication.Status.REQUESTED_FOR_DELETION) {
+                throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
+            }
+
+            reference.setValue(publication);
+            publication.setStatus(Publication.Status.REJECTED);
+            return encodePublications(publications);
+        });
 
         resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
@@ -209,30 +286,12 @@ public class PublicationService {
             return (publication == null) ? body : encodePublications(publications);
         });
 
-        resources.computeResource(publications(resource), body -> {
-            Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.remove(resource.getUrl());
-
-            if (publication == null) {
-                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
-            }
-
-            reference.setValue(publication);
-            return encodePublications(publications);
-        });
-
         Publication publication = reference.getValue();
-
-        if (publication.getStatus() == Publication.Status.PENDING) {
-            deleteReviewResources(publication);
-        }
-
+        deleteReviewResources(publication);
         return publication;
     }
 
-    @Nullable
-    public Publication approvePublication(ResourceDescription resource) {
-        Publication publication = getPublication(resource);
+    private Publication approvePendingPublication(ResourceDescription resource, Publication publication) {
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
@@ -272,38 +331,57 @@ public class PublicationService {
         return publication;
     }
 
-    @Nullable
-    public Publication rejectPublication(ResourceDescription resource) {
-        if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
-            throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
+    private Publication approveDeletionPublication(ResourceDescription resource, Publication publication) {
+        if (publication.getStatus() != Publication.Status.REQUESTED_FOR_DELETION) {
+            throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
 
-        MutableObject<Publication> reference = new MutableObject<>();
+        checkTargetResourcesExists(publication);
+
         resources.computeResource(publications(resource), body -> {
             Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.get(resource.getUrl());
+            Publication previous = publications.put(resource.getUrl(), publication);
 
-            if (publication == null) {
-                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
+            if (!publication.equals(previous)) {
+                throw new ResourceNotFoundException("Publication changed during approving: " + resource.getUrl());
             }
 
-            if (publication.getStatus() != Publication.Status.PENDING) {
-                throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
-            }
-
-            reference.setValue(publication);
-            publication.setStatus(Publication.Status.REJECTED);
+            publication.setStatus(Publication.Status.DELETED);
             return encodePublications(publications);
         });
 
         resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.remove(resource.getUrl());
-            return (publication == null) ? body : encodePublications(publications);
+            Publication removed = publications.remove(resource.getUrl());
+            return (removed == null) ? body : encodePublications(publications);
         });
 
-        Publication publication = reference.getValue();
-        deleteReviewResources(publication);
+        deletePublicResources(publication);
+
+        return publication;
+    }
+
+    private Publication storePublication(ResourceDescription bucket, Publication publication) {
+        resources.computeResource(publications(bucket), body -> {
+            Map<String, Publication> publications = decodePublications(body);
+
+            if (publications.put(publication.getUrl(), publication) != null) {
+                throw new IllegalStateException("Publication with such url already exists: " + publication.getUrl());
+            }
+
+            return encodePublications(publications);
+        });
+
+        resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
+            Map<String, Publication> publications = decodePublications(body);
+
+            if (publications.put(publication.getUrl(), newMetadata(publication)) != null) {
+                throw new IllegalStateException("Publication with such url already exists: " + publication.getUrl());
+            }
+
+            return encodePublications(publications);
+        });
+
         return publication;
     }
 
@@ -401,6 +479,37 @@ public class PublicationService {
         }
     }
 
+    private void preparePublicationForDeletion(ResourceDescription bucket, Publication publication) {
+        if (publication.getResources() == null || publication.getResources().isEmpty()) {
+            throw new IllegalArgumentException("Publication \"resources\" is missing");
+        }
+
+        String id = UrlUtil.encodePath(ids.get());
+        publication.setUrl(bucket.getUrl() + id);
+        publication.setCreatedAt(clock.getAsLong());
+        publication.setStatus(Publication.Status.REQUESTED_FOR_DELETION);
+        // clean up rules
+        publication.setRules(null);
+
+        Set<String> urls = new HashSet<>();
+
+        for (Publication.Resource resource : publication.getResources()) {
+            ResourceDescription target = ResourceDescription.fromPublicUrl(resource.getTargetUrl());
+
+            String targetUrl = target.getUrl();
+
+            if (target.isFolder()) {
+                throw new IllegalArgumentException("Target resource is folder: " + targetUrl);
+            }
+
+            if (!urls.add(targetUrl)) {
+                throw new IllegalArgumentException("Target resources have duplicate urls: " + targetUrl);
+            }
+
+            resource.setTargetUrl(targetUrl);
+        }
+    }
+
     private void checkSourceResources(Publication publication) {
         for (Publication.Resource resource : publication.getResources()) {
             String url = resource.getSourceUrl();
@@ -416,7 +525,6 @@ public class PublicationService {
         for (Publication.Resource resource : publication.getResources()) {
             String url = resource.getReviewUrl();
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-
             if (!checkResource(descriptor)) {
                 throw new IllegalArgumentException("Review resource does not exist: " + descriptor.getUrl());
             }
@@ -431,6 +539,27 @@ public class PublicationService {
             if (checkResource(descriptor)) {
                 throw new IllegalArgumentException("Target resource already exists: " + descriptor.getUrl());
             }
+        }
+    }
+
+    private void checkTargetResourcesExists(Publication publication) {
+        for (Publication.Resource resource : publication.getResources()) {
+            String url = resource.getTargetUrl();
+            ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
+
+            if (!checkResource(descriptor)) {
+                throw new IllegalArgumentException("Target resource does not exist: " + descriptor.getUrl());
+            }
+        }
+    }
+
+    private void checkTargetResourceAccess(ProxyContext context, Publication publication) {
+        List<ResourceDescription> resources = publication.getResources().stream()
+                .map(resource -> ResourceDescription.fromPublicUrl(resource.getTargetUrl()))
+                .toList();
+        boolean hasAccess = hasPublicAccess(context, resources);
+        if (!hasAccess) {
+            throw new PermissionDeniedException("You don't have permission to the provided resources");
         }
     }
 
@@ -465,7 +594,18 @@ public class PublicationService {
     private void deleteReviewResources(Publication publication) {
         for (Publication.Resource resource : publication.getResources()) {
             String url = resource.getReviewUrl();
+            if (url == null) {
+                continue;
+            }
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
+            deleteResource(descriptor);
+        }
+    }
+
+    private void deletePublicResources(Publication publication) {
+        for (Publication.Resource resource : publication.getResources()) {
+            String url = resource.getTargetUrl();
+            ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
             deleteResource(descriptor);
         }
     }
@@ -568,14 +708,17 @@ public class PublicationService {
                 .setUrl(publication.getUrl())
                 .setTargetUrl(publication.getTargetUrl())
                 .setStatus(publication.getStatus())
+                .setResourceTypes(publication.getResourceTypes())
                 .setCreatedAt(publication.getCreatedAt());
     }
 
     private static ResourceDescription publications(ResourceDescription resource) {
+        return publications(resource.getBucketName(), resource.getBucketLocation());
+    }
+
+    private static ResourceDescription publications(String bucket, String location) {
         return ResourceDescription.fromDecoded(ResourceType.PUBLICATION,
-                resource.getBucketName(),
-                resource.getBucketLocation(),
-                PUBLICATIONS_NAME);
+                bucket, location, PUBLICATIONS_NAME);
     }
 
     private static Map<String, Publication> decodePublications(String json) {

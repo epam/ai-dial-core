@@ -159,7 +159,7 @@ public class ResourceDescription {
     }
 
     /**
-     * @param url must contain the same bucket and location as resource.
+     * @param url      must contain the same bucket and location as resource.
      * @param resource to take bucket and location from.
      */
     public static ResourceDescription fromPrivateUrl(String url, ResourceDescription resource) {
@@ -202,7 +202,7 @@ public class ResourceDescription {
         }
 
         if (parts.length == 2 && !url.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
-            throw new IllegalArgumentException("Url must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + url);
+            throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
         }
 
         ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
@@ -261,8 +261,9 @@ public class ResourceDescription {
     }
 
     private static boolean isValidFilename(String value) {
-        for (char c : value.toCharArray()) {
-            if (INVALID_FILE_NAME_CHARS.contains(c)) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c <= 0x1F || INVALID_FILE_NAME_CHARS.contains(c)) {
                 return false;
             }
         }

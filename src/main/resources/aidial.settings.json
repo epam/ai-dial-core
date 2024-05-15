@@ -3,6 +3,7 @@
     "workerPoolSize": 32,
     "metricsOptions": {
       "enabled": true,
+      "disabledMetricsCategories": ["http.server"],
       "jvmMetricsEnabled": true,
       "labels": [
         "HTTP_METHOD",
@@ -17,7 +18,8 @@
         }
       },
       "oltpOptions": {
-        "enabled": false
+        "enabled": false,
+        "otlp.url": ""
       }
     }
   },
@@ -59,7 +61,13 @@
   },
   "access": {
     "admin": {
-      "rules": []
+      "rules": [
+        {
+          "function": "CONTAIN",
+          "source": "roles",
+          "targets": ["admin"]
+        }
+      ]
     }
   }
 }

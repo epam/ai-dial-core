@@ -37,7 +37,7 @@ public class InvitationController {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return invitationService.getMyInvitations(bucket, bucketLocation);
-                })
+                }, false)
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
         return Future.succeededFuture();
@@ -58,7 +58,7 @@ public class InvitationController {
                             shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
                             return null;
                         });
-                    })
+                    }, false)
                     .onSuccess(ignore -> context.respond(HttpStatus.OK))
                     .onFailure(error -> {
                         if (error instanceof ResourceNotFoundException) {
@@ -71,7 +71,7 @@ public class InvitationController {
                     });
         } else {
             proxy.getVertx()
-                    .executeBlocking(() -> invitationService.getInvitation(invitationId))
+                    .executeBlocking(() -> invitationService.getInvitation(invitationId), false)
                     .onSuccess(invitation -> {
                         if (invitation == null) {
                             context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
@@ -92,7 +92,7 @@ public class InvitationController {
                         invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
                         return null;
                     });
-                })
+                }, false)
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(error -> {
                     String errorMessage = error.getMessage();

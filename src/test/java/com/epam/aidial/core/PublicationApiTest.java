@@ -42,6 +42,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 "targetUrl" : "conversations/public/folder/conversation",
                 "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                } ],
+              "resourceTypes" : [ "CONVERSATION" ],
               "rules" : [ {
                 "function" : "EQUAL",
                 "source" : "roles",
@@ -81,7 +82,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl" : "public/folder/",
                     "status" : "PENDING",
-                    "createdAt" : 0
+                    "createdAt" : 0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                 }
                 """);
@@ -108,29 +110,347 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPublicationDeletion() {
+    void testDeleteApprovedPublicationWorkflow() {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+              "targetUrl": "public/folder/",
+              "resources": [
+                {
+                  "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                  "targetUrl": "conversations/public/folder/conversation"
+                }
+              ],
+              "rules": []
+            }
+            """);
         verify(response, 200);
 
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
+                   "rules" : []
+                }
+                """);
 
-        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL, "authorization", "user");
-        verify(response, 403);
+        // verify publication can be listed and has approved status
+        response = operationRequest("/v1/ops/publication/list", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "targetUrl":"public/folder/",
+                    "status":"APPROVED",
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
+                    }]
+                }
+                """);
 
-        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL);
+        // initialize delete request by user (publication owner)
+        response = operationRequest("/v1/ops/publication/delete", """
+                {
+                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+                    "resources": [
+                        {
+                        "targetUrl": "conversations/public/folder/conversation"
+                        }
+                    ]
+                }
+                """);
         verify(response, 200);
 
+        // verify new publication request has status REQUESTED_FOR_DELETION
+        response = operationRequest("/v1/ops/publication/list", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "REQUESTED_FOR_DELETION",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
+                }
+                """);
 
-        response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        // verify published resource accessible by admin
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "admin");
+        verify(response, 200);
+
+        // verify published resource accessible by user
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "user");
+        verify(response, 200);
+
+        // verify admin can list requested for deletion publications
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                    "status":"REQUESTED_FOR_DELETION",
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
+                    }]
+                }
+                """);
+
+        // delete publication by admin
+        response = operationRequest("/v1/ops/publication/approve", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        // verify no pending/requested_for_deletion publication remain
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "publications": []
+                }
+                """);
+
+        // verify published resource is not accessible by admin
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "admin");
         verify(response, 404);
 
-        response = send(HttpMethod.PUT, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
-        verify(response, 403);
+        // verify published resource is not accessible by user
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "user");
+        verify(response, 404);
 
-        response = send(HttpMethod.DELETE, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
-        verify(response, 403);
+        // verify both requests in finalized status
+        response = operationRequest("/v1/ops/publication/list", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "DELETED",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
+                }
+                """);
+    }
+
+    @Test
+    void testRejectUserDeletionRequestWorkflow() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+              "targetUrl": "public/folder/",
+              "resources": [
+                {
+                  "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                  "targetUrl": "conversations/public/folder/conversation"
+                }
+              ],
+              "rules": []
+            }
+            """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
+                   "rules" : []
+                }
+                """);
+
+        // verify publication can be listed and has approved status
+        response = operationRequest("/v1/ops/publication/list", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "targetUrl":"public/folder/",
+                    "status":"APPROVED",
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
+                    }]
+                }
+                """);
+
+        // initialize delete request by user (publication owner)
+        response = operationRequest("/v1/ops/publication/delete", """
+                {
+                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+                    "resources": [
+                        {
+                        "targetUrl": "conversations/public/folder/conversation"
+                        }
+                    ]
+                }
+                """);
+        verify(response, 200);
+
+        // verify publication has status REQUESTED_FOR_DELETION
+        response = operationRequest("/v1/ops/publication/list", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "REQUESTED_FOR_DELETION",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
+                }
+                """);
+
+        // verify published resource accessible by admin
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "admin");
+        verify(response, 200);
+
+        // verify published resource accessible by user
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "user");
+        verify(response, 200);
+
+        // verify admin can list requested for deletion publications
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                    "status":"REQUESTED_FOR_DELETION",
+                    "createdAt":0,
+                    "resourceTypes" : [ "CONVERSATION" ]
+                    }]
+                }
+                """);
+
+        // reject deletion request by admin
+        response = operationRequest("/v1/ops/publication/reject", """
+                {
+                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        // verify no pending/requested_for_deletion publication remain
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "publications": []
+                }
+                """);
+
+        // verify deletion request rejected
+        response = operationRequest("/v1/ops/publication/list", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "publications": [{
+                        "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                        "targetUrl":"public/folder/",
+                        "status":"APPROVED",
+                        "createdAt":0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                    },
+                    {
+                        "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "status" : "REJECTED",
+                        "createdAt" : 0,
+                        "resourceTypes" : [ "CONVERSATION" ]
+                      }
+                    ]
+                }
+                """);
+
+        // verify published resource accessible by admin
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "admin");
+        verify(response, 200);
+
+        // verify published resource accessible by user
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "user");
+        verify(response, 200);
     }
 
     @Test
@@ -160,6 +480,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [ {
                      "function" : "EQUAL",
                      "source" : "roles",
@@ -229,6 +550,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                   } ],
+                  "resourceTypes" : [ "CONVERSATION" ],
                   "rules" : [ {
                     "function" : "EQUAL",
                     "source" : "roles",
@@ -499,7 +821,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                     "targetUrl" : "public/folder/",
                     "status" : "PENDING",
-                    "createdAt" : 0
+                    "createdAt" : 0,
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                  }
                 """);
@@ -517,6 +840,93 @@ class PublicationApiTest extends ResourceBaseTest {
                   "publications" : [ ]
                 }
                 """);
+    }
+
+    @Test
+    void testPublicationToForbiddenFolder() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "url": "publications/%s/",
+                  "targetUrl": "public/folder/",
+                  "resources": [
+                    {
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket, bucket));
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                  "resourceTypes" : [ "CONVERSATION" ],
+                  "rules" : [ {
+                    "function" : "CONTAIN",
+                    "source" : "title",
+                    "targets" : [ "Engineer" ]
+                  } ]
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetUrl" : "public/folder/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                   } ],
+                   "resourceTypes" : [ "CONVERSATION" ],
+                   "rules" : [ {
+                    "function" : "CONTAIN",
+                    "source" : "title",
+                    "targets" : [ "Engineer" ]
+                   } ]
+                }
+                """);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "url": "publications/%s/",
+                  "targetUrl": "public/folder/folder2/",
+                  "resources": [
+                    {
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/folder2/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket, bucket));
+        verify(response, 403);
     }
 
     @Test
@@ -602,5 +1012,61 @@ class PublicationApiTest extends ResourceBaseTest {
                 {"url": "public/folder/"}
                 """);
         verify(response, 403);
+    }
+
+    @Test
+    void testPublishedResourceList() {
+        // verify no published resource
+        Response response = operationRequest("/v1/ops/publication/resource/list", """
+                {"resourceTypes": ["CONVERSATION"]}
+                """);
+        verify(response, 200, "[]");
+
+        response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        // create publication request
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        verify(response, 200);
+
+        // verify admin can view publication request
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "publications" : [ {
+                    "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "targetUrl" : "public/folder/",
+                    "status" : "PENDING",
+                    "createdAt" : 0,
+                    "resourceTypes" : [ "CONVERSATION" ]
+                  } ]
+                 }
+                """);
+
+        // verify no published resources (due to PENDING publication request)
+        response = operationRequest("/v1/ops/publication/resource/list", """
+                {"resourceTypes": ["CONVERSATION"]}
+                """);
+        verify(response, 200, "[]");
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        // verify published resource can be listed
+        response = operationRequest("/v1/ops/publication/resource/list", """
+                {"resourceTypes": ["CONVERSATION"]}
+                """);
+        verifyJson(response, 200, """
+                [ {
+                  "name" : "conversation",
+                  "parentPath" : "my/folder",
+                  "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                  "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                  "nodeType" : "ITEM",
+                  "resourceType" : "CONVERSATION"
+                } ]
+                """);
     }
 }

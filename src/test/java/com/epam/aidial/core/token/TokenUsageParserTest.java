@@ -139,6 +139,22 @@ class TokenUsageParserTest {
                 """, 10, 20, 30);
     }
 
+    @Test
+    void testValidStreamResponseWithMultipleUsages() {
+        valid("""
+                data: {"id":"eb69ae53-055b-4182-af8f-47f5f3ce810c","object":"chat.completion.chunk","created":1714665540,"model":"dbrx-instruct-032724","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}],"usage":{"prompt_tokens":226,"completion_tokens":1,"total_tokens":227}}
+                                
+                data: {"id":"eb69ae53-055b-4182-af8f-47f5f3ce810c","object":"chat.completion.chunk","created":1714665540,"model":"dbrx-instruct-032724","choices":[{"index":0,"delta":{"role":"assistant","content":" today"},"finish_reason":null}],"usage":{"prompt_tokens":226,"completion_tokens":25,"total_tokens":251}}
+                                
+                data: {"id":"eb69ae53-055b-4182-af8f-47f5f3ce810c","object":"chat.completion.chunk","created":1714665540,"model":"dbrx-instruct-032724","choices":[{"index":0,"delta":{"role":"assistant","content":"."},"finish_reason":null}],"usage":{"prompt_tokens":226,"completion_tokens":26,"total_tokens":252}}
+                                
+                data: {"id":"eb69ae53-055b-4182-af8f-47f5f3ce810c","object":"chat.completion.chunk","created":1714665540,"model":"dbrx-instruct-032724","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":226,"completion_tokens":26,"total_tokens":252}}
+                                
+                data: [DONE]
+                 
+                """, 26, 226, 252);
+    }
+
     private void valid(String body, long completion, long prompt, long total) {
         TokenUsage usage = TokenUsageParser.parse(Buffer.buffer(body));
         Assertions.assertNotNull(usage);

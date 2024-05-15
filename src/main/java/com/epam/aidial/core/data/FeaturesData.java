@@ -12,9 +12,11 @@ public class FeaturesData {
     private boolean rate = false;
     private boolean tokenize = false;
     private boolean truncatePrompt = false;
+    private boolean configuration = false;
 
     private boolean systemPrompt = true;
     private boolean tools = false;
     private boolean seed = false;
     private boolean urlAttachments = false;
+    private boolean folderAttachments = false;
 }

@@ -429,7 +429,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        // verify user1 has shared_by_me resource
+        // verify user1 has no shared_by_me resource
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
                   "resourceTypes": ["CONVERSATION"],
@@ -438,14 +438,151 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
         verifyJson(response, 200, """
                 {
-                  "resources" : [ {
-                    "name" : "conversation@",
-                    "parentPath" : "folder",
-                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
-                    } ]
+                  "resources" : []
+                }
+                """);
+
+        // verify user2 has no shared_by_me resources
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+    }
+
+    @Test
+    public void testDiscardSharedFolderAccess() {
+        // check no conversations shared with me
+        Response response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // check no conversations shared by me
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // create conversation1
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation1", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation1\"");
+
+        // create conversation2
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation2", CONVERSATION_BODY_2);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2\"");
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // verify user2 do not have access to the conversation1
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation1", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user2 do not have access to the conversation2
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation2", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 has access to the conversation1
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation1", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_1);
+
+        // verify user2 has access to the conversation2
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation2", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_2);
+
+        // discard share access
+        response = operationRequest("/v1/ops/resource/share/discard", """
+                {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/"
+                    }
+                  ]
+                }
+                """, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 do not have access to the conversation1
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation1", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user2 do not have access to the conversation2
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation2", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user1 has no shared_with_me resources
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // verify user2 has no shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources" : []
+                }
+                """);
+
+        // verify user1 has no shared_by_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources" : []
                 }
                 """);
 

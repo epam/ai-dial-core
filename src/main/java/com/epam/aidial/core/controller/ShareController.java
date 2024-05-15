@@ -85,7 +85,7 @@ public class ShareController {
                         } else {
                             return shareService.listSharedWithMe(bucket, bucketLocation, request);
                         }
-                    });
+                    }, false);
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(this::handleServiceError);
@@ -106,7 +106,7 @@ public class ShareController {
 
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
-                    return proxy.getVertx().executeBlocking(() -> shareService.initializeShare(bucket, bucketLocation, request));
+                    return proxy.getVertx().executeBlocking(() -> shareService.initializeShare(bucket, bucketLocation, request), false);
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(this::handleServiceError);
@@ -123,7 +123,7 @@ public class ShareController {
                             .executeBlocking(() -> {
                                 shareService.discardSharedAccess(bucket, bucketLocation, request);
                                 return null;
-                            });
+                            }, false);
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
@@ -141,7 +141,7 @@ public class ShareController {
                                 invitationService.cleanUpResourceLinks(bucket, bucketLocation, request.getResources());
                                 shareService.revokeSharedAccess(bucket, bucketLocation, request);
                                 return null;
-                            }));
+                            }), false);
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
@@ -184,7 +184,7 @@ public class ShareController {
                             lockService.underBucketLock(bucketLocation, () -> {
                                 shareService.copySharedAccess(bucket, bucketLocation, source, destination);
                                 return null;
-                            }));
+                            }), false);
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);

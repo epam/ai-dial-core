@@ -45,10 +45,13 @@ public class ControllerSelector {
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/([^/]+)/tokenize$");
     private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/([^/]+)/truncate_prompt$");
 
+    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/([^/]+)/configuration$");
+
     private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
     private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
+    private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
     private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
     private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move)$");
@@ -191,6 +194,18 @@ public class ControllerSelector {
             return () -> controller.getLimits(deploymentId);
         }
 
+        match = match(PATTERN_CONFIGURATION, path);
+        if (match != null) {
+            String deploymentId = UrlUtil.decodePath(match.group(1));
+            Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
+                    .map(Deployment::getFeatures)
+                    .map(Features::getConfigurationEndpoint)
+                    .orElse(null);
+
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, false);
+        }
+
         return null;
     }
 
@@ -277,6 +292,12 @@ public class ControllerSelector {
         if (match != null) {
             ResourceOperationController controller = new ResourceOperationController(proxy, context);
             return controller::move;
+        }
+
+        match = match(PUBLISHED_RESOURCES, path);
+        if (match != null) {
+            PublicationController controller = new PublicationController(proxy, context);
+            return controller::listPublishedResources;
         }
 
         return null;

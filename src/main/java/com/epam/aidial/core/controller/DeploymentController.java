@@ -109,6 +109,7 @@ public class DeploymentController {
         data.setRate(features.getRateEndpoint() != null);
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
+        data.setConfiguration(features.getConfigurationEndpoint() != null);
 
         if (features.getSystemPromptSupported() != null) {
             data.setSystemPrompt(features.getSystemPromptSupported());
@@ -124,6 +125,10 @@ public class DeploymentController {
 
         if (features.getUrlAttachmentsSupported() != null) {
             data.setUrlAttachments(features.getUrlAttachmentsSupported());
+        }
+
+        if (features.getFolderAttachmentsSupported() != null) {
+            data.setFolderAttachments(features.getFolderAttachmentsSupported());
         }
 
         return data;

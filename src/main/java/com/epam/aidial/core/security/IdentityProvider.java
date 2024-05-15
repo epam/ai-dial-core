@@ -5,6 +5,7 @@ import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -148,7 +150,7 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        return cache.computeIfAbsent(kid, key -> vertx.executeBlocking(event -> {
+        return cache.computeIfAbsent(kid, key -> vertx.executeBlocking(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();
             try {
@@ -157,8 +159,8 @@ public class IdentityProvider {
             } catch (Exception e) {
                 jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
             }
-            event.complete(jwkResult);
-        }));
+            return jwkResult;
+        }, false));
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {
@@ -201,6 +203,31 @@ public class IdentityProvider {
         return keyClaim;
     }
 
+    /**
+     * Extracts user claims from decoded JWT. Currently only strings or list of strings/primitives supported.
+     * If any other type provided - claim value will not be extracted, see IdentityProviderTest.testExtractClaims_13()
+     *
+     * @param decodedJwt - decoded JWT
+     * @return map of extracted user claims
+     */
+    private Map<String, List<String>> extractUserClaims(DecodedJWT decodedJwt) {
+        Map<String, List<String>> userClaims = new HashMap<>();
+        for (Map.Entry<String, Claim> entry : decodedJwt.getClaims().entrySet()) {
+            String claimName = entry.getKey();
+            Claim claimValue = entry.getValue();
+            if (claimValue.asString() != null) {
+                userClaims.put(claimName, List.of(claimValue.asString()));
+            } else if (claimValue.asList(String.class) != null) {
+                userClaims.put(claimName, claimValue.asList(String.class));
+            } else {
+                // if claim value doesn't match supported type - add claim with empty value
+                userClaims.put(claimName, List.of());
+            }
+        }
+
+        return userClaims;
+    }
+
     Future<ExtractedClaims> extractClaims(DecodedJWT decodedJwt) {
         if (decodedJwt == null) {
             return Future.failedFuture(new IllegalArgumentException("decoded JWT must not be null"));
@@ -212,7 +239,7 @@ public class IdentityProvider {
     }
 
     private ExtractedClaims from(DecodedJWT jwt) {
-        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(jwt));
+        return new ExtractedClaims(extractUserSub(jwt), extractUserRoles(jwt), extractUserHash(jwt), extractUserClaims(jwt));
     }
 
     boolean match(DecodedJWT jwt) {

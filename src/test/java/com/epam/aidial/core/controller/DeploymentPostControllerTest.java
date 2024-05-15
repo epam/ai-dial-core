@@ -174,12 +174,10 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
 
         controller.handle("app1", "chat/completions");
 
         verify(tokenStatsTracker).startSpan(eq(context));
-        verify(apiKeyStore).assignApiKey(any(ApiKeyData.class));
     }
 
     @Test
@@ -225,6 +223,7 @@ public class DeploymentPostControllerTest {
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
 
         Model model = new Model();
         model.setName("name");
@@ -261,6 +260,7 @@ public class DeploymentPostControllerTest {
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
 
         Model model = new Model();
         model.setName("name");

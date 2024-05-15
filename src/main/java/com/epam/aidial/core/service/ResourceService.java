@@ -157,6 +157,7 @@ public class ResourceService implements AutoCloseable {
         return new ResourceFolderMetadata(descriptor, resources).setNextToken(set.getNextMarker());
     }
 
+    @Nullable
     public ResourceItemMetadata getResourceMetadata(ResourceDescription descriptor) {
         if (descriptor.isFolder()) {
             throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
@@ -390,8 +391,11 @@ public class ResourceService implements AutoCloseable {
         if (blob != null) {
             String encoding = meta.getContentMetadata().getContentEncoding();
             try (InputStream stream = blob.getPayload().openStream()) {
-                byte[] bytes = (encoding == null) ? stream.readAllBytes() : Compression.decompress(encoding, stream);
-                body = new String(bytes, StandardCharsets.UTF_8);
+                byte[] payload = stream.readAllBytes();
+                if (encoding != null) {
+                    payload = Compression.decompress(encoding, payload);
+                }
+                body = new String(payload, StandardCharsets.UTF_8);
             }
         }
 

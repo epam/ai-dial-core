@@ -24,8 +24,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -89,11 +91,9 @@ public class IdentityProviderTest {
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
 
         Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token));
@@ -116,11 +116,9 @@ public class IdentityProviderTest {
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
         Map<String, Object> claim = Map.of("some", "val", "k1", 12, "p1", Map.of("p2", Map.of("p3", List.of("r1", "r2"))));
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("p0", claim).sign(algorithm);
@@ -145,11 +143,9 @@ public class IdentityProviderTest {
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
         Map<String, Object> claim = Map.of("some", "val", "k1", 12, "p1", List.of("r1", "r2"));
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("p0", claim).sign(algorithm);
@@ -173,11 +169,9 @@ public class IdentityProviderTest {
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
         Map<String, Object> claim = Map.of("some", "val", "k1", 12, "p1", Map.of("p2", List.of("p3", List.of("r1", "r2"))));
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("p0", claim).sign(algorithm);
@@ -200,11 +194,9 @@ public class IdentityProviderTest {
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
 
@@ -224,11 +216,9 @@ public class IdentityProviderTest {
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         when(jwkProvider.get(eq("kid1"))).thenThrow(new JwkException("no key found by kid1"));
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
 
@@ -250,11 +240,9 @@ public class IdentityProviderTest {
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
 
@@ -275,11 +263,9 @@ public class IdentityProviderTest {
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
-        when(vertx.executeBlocking(any(Handler.class))).thenAnswer(invocation -> {
-            Handler<Promise<?>> h = invocation.getArgument(0);
-            Promise<?> p = Promise.promise();
-            h.handle(p);
-            return p.future();
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
         });
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("some", "val").sign(algorithm);
 
@@ -317,6 +303,50 @@ public class IdentityProviderTest {
             assertEquals(List.of("role"), claims.userRoles());
             assertEquals("sub", claims.sub());
             assertNotNull(claims.userHash());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_13() {
+        settings.put("disableJwtVerification", Boolean.TRUE);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, url -> jwkProvider);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("role"))
+                .withClaim("email", "test@email.com")
+                .withClaim("id", 15)
+                .withClaim("title", "title")
+                .withClaim("access", List.of("read", "write"))
+                .withClaim("expire", new Date(1713355825858L))
+                .withClaim("numberList", List.of(15, 17, 34))
+                .withClaim("map", Map.of("a", List.of("b")))
+                .withClaim("sub", "sub").sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaims(JWT.decode(token));
+
+        verifyNoInteractions(jwkProvider);
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("role"), claims.userRoles());
+            assertEquals("sub", claims.sub());
+            assertNotNull(claims.userHash());
+            Map<String, List<String>> userClaims = claims.userClaims();
+            // assert user claim
+            assertEquals(9, userClaims.size());
+            assertEquals(List.of("sub"), userClaims.get("sub"));
+            assertEquals(List.of("read", "write"), userClaims.get("access"));
+            assertEquals(List.of("role"), userClaims.get("roles"));
+            assertEquals(List.of(), userClaims.get("expire"));
+            assertEquals(List.of("15", "17", "34"), userClaims.get("numberList"));
+            assertEquals(List.of(), userClaims.get("id"));
+            assertEquals(List.of("title"), userClaims.get("title"));
+            assertEquals(List.of(), userClaims.get("map"));
+            assertEquals(List.of("test@email.com"), userClaims.get("email"));
         });
     }
 
