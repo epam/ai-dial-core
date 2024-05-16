@@ -1,5 +1,7 @@
 package com.epam.aidial.core.util;
 
+import com.google.common.escape.Escaper;
+import com.google.common.net.UrlEscapers;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.codec.net.PercentCodec;
@@ -11,11 +13,12 @@ import java.nio.charset.Charset;
 @UtilityClass
 public class UrlUtil {
 
-    private static final PercentCodec CODEC = new PercentCodec(" ?/#".getBytes(Charset.defaultCharset()), false);
+    private static final PercentCodec DECODER = new PercentCodec();
+    private static final Escaper ENCODER = UrlEscapers.urlPathSegmentEscaper();
 
     @SneakyThrows
     public String encodePath(String path) {
-        return new String(CODEC.encode(path.getBytes(Charset.defaultCharset())));
+        return ENCODER.escape(path);
     }
 
     public String decodePath(String path) {
@@ -34,6 +37,6 @@ public class UrlUtil {
                 throw new RuntimeException(e);
             }
         }
-        return new String(CODEC.decode(path.getBytes(Charset.defaultCharset())));
+        return new String(DECODER.decode(path.getBytes(Charset.defaultCharset())));
     }
 }

@@ -13,6 +13,9 @@ public class UrlUtilTest {
         assertEquals("folder%20%23", UrlUtil.encodePath("folder #"));
         assertEquals("%D1%84%D0%B0%D0%B9%D0%BB.txt", UrlUtil.encodePath("файл.txt"));
         assertEquals("fo$l+=d,e%23r%201", UrlUtil.encodePath("fo$l+=d,e#r 1"));
+        assertEquals("%5BPlayback%5D", UrlUtil.encodePath("[Playback]"));
+        assertEquals("%E2%98%BB%E2%98%BB%E2%98%B9%CF%A1%E2%8D%A3%EF%BD%BC", UrlUtil.encodePath("☻☻☹ϡ⍣ｼ"));
+        assertEquals("gpt-35-turbo__(%60~!@%23$%5E*-_+%5B%5D'%7C%3C%3E.%3F%22)", UrlUtil.encodePath("gpt-35-turbo__(`~!@#$^*-_+[]'|<>.?\")"));
     }
 
     @Test
