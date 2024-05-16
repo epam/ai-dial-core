@@ -56,6 +56,30 @@ public class ResourceDescription {
         return builder.toString();
     }
 
+    public String getDecodedUrl() {
+        StringBuilder builder = new StringBuilder();
+        builder.append(type.getGroup())
+                .append(BlobStorageUtil.PATH_SEPARATOR)
+                .append(bucketName)
+                .append(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (!parentFolders.isEmpty()) {
+            String parentPath = String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
+            builder.append(parentPath)
+                    .append(BlobStorageUtil.PATH_SEPARATOR);
+        }
+
+        if (name != null) {
+            builder.append(name);
+
+            if (isFolder) {
+                builder.append(BlobStorageUtil.PATH_SEPARATOR);
+            }
+        }
+
+        return builder.toString();
+    }
+
     public String getAbsoluteFilePath() {
         StringBuilder builder = new StringBuilder();
         builder.append(bucketLocation)

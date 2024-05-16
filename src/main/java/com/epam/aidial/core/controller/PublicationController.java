@@ -14,6 +14,7 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceNotFoundException;
+import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
@@ -33,6 +34,7 @@ public class PublicationController {
     private final AccessService accessService;
     private final EncryptionService encryptService;
     private final PublicationService publicationService;
+    private final RuleService ruleService;
     private final ProxyContext context;
 
     public PublicationController(Proxy proxy, ProxyContext context) {
@@ -41,6 +43,7 @@ public class PublicationController {
         this.accessService = proxy.getAccessService();
         this.encryptService = proxy.getEncryptionService();
         this.publicationService = proxy.getPublicationService();
+        this.ruleService = proxy.getRuleService();
         this.context = context;
     }
 
@@ -79,9 +82,7 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     Publication publication = ProxyUtil.convertToObject(body, Publication.class);
-                    ResourceDescription resource = decodePublication(publication.getUrl(), false);
-                    checkAccess(resource, true);
-                    return vertx.executeBlocking(() -> publicationService.createPublication(context, resource, publication), false);
+                    return vertx.executeBlocking(() -> publicationService.createPublication(context, publication), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't create publication", error));
@@ -93,10 +94,10 @@ public class PublicationController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    Publication publication = ProxyUtil.convertToObject(body, Publication.class);
-                    ResourceDescription resource = decodePublication(publication.getUrl(), false);
+                    String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
+                    ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() -> publicationService.deletePublication(context, resource, publication), false);
+                    return vertx.executeBlocking(() -> publicationService.deletePublication(resource), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete publication", error));
@@ -143,7 +144,7 @@ public class PublicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription rule = decodeRule(url);
                     checkRuleAccess(rule);
-                    return vertx.executeBlocking(() -> publicationService.listRules(rule), false);
+                    return vertx.executeBlocking(() -> ruleService.listRules(rule), false);
                 })
                 .onSuccess(rules -> context.respond(HttpStatus.OK, new Rules(rules)))
                 .onFailure(error -> respondError("Can't list rules", error));
