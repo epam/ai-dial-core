@@ -119,7 +119,7 @@ public class AiDial {
             AccessService accessService = new AccessService(encryptionService, shareService, publicationService, settings("access"));
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
-            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, lockService, vertx);
+            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
 
             proxy = new Proxy(vertx, client, configStore, logStore,

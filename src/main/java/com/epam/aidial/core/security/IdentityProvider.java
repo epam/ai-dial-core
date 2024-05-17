@@ -163,7 +163,7 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        return cache.computeIfAbsent(kid, key -> vertx.executeBlocking(event -> {
+        return cache.computeIfAbsent(kid, key -> vertx.executeBlocking(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();
             try {
@@ -172,8 +172,8 @@ public class IdentityProvider {
             } catch (Exception e) {
                 jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
             }
-            event.complete(jwkResult);
-        }));
+            return jwkResult;
+        }, false));
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {

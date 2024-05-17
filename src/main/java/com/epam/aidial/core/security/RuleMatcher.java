@@ -17,6 +17,11 @@ public class RuleMatcher {
      * @return true if any of the provided rule matched (OR condition behaviour), otherwise - false
      */
     public boolean match(ProxyContext context, Collection<Rule> rules) {
+        // if no rules provided - resource is available to everybody
+        if (rules.isEmpty()) {
+            return true;
+        }
+
         ExtractedClaims claims = context.getExtractedClaims();
         if (claims == null) {
             return false;
