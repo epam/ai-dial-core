@@ -7,10 +7,10 @@ class PublicationApiTest extends ResourceBaseTest {
 
     private static final String PUBLICATION_REQUEST = """
             {
-              "url": "publications/%s/",
-              "targetUrl": "public/folder/",
+              "targetFolder": "public/folder/",
               "resources": [
                 {
+                  "action": "ADD",
                   "sourceUrl": "conversations/%s/my/folder/conversation",
                   "targetUrl": "conversations/public/folder/conversation"
                 }
@@ -34,10 +34,11 @@ class PublicationApiTest extends ResourceBaseTest {
     private static final String PUBLICATION_RESPONSE = """
             {
               "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-              "targetUrl" : "public/folder/",
+              "targetFolder" : "public/folder/",
               "status" : "PENDING",
               "createdAt" : 0,
               "resources" : [ {
+                "action": "ADD",
                 "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                 "targetUrl" : "conversations/public/folder/conversation",
                 "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
@@ -56,7 +57,7 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
         verifyJson(response, 200, PUBLICATION_RESPONSE);
 
 
@@ -80,7 +81,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl" : "public/folder/",
+                    "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
                     "resourceTypes" : [ "CONVERSATION" ]
@@ -90,7 +91,20 @@ class PublicationApiTest extends ResourceBaseTest {
 
 
         response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
-        verifyJson(response, 200, CONVERSATION_BODY_1);
+        verifyJson(response, 200, """
+                {
+                    "id": "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                    "name": "display_name",
+                    "model": {"id": "model_id"},
+                    "prompt": "system prompt",
+                    "temperature": 1,
+                    "folderId": "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo",
+                    "messages": [],
+                    "selectedAddons": ["R", "T", "G"],
+                    "assistantModelId": "assistantId",
+                    "lastActivityDate": 4848683153
+                }
+                """);
 
         response = send(HttpMethod.PUT, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
         verify(response, 403);
@@ -116,27 +130,29 @@ class PublicationApiTest extends ResourceBaseTest {
 
         response = operationRequest("/v1/ops/publication/create", """
                 {
-              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
-              "targetUrl": "public/folder/",
-              "resources": [
-                {
-                  "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
-                  "targetUrl": "conversations/public/folder/conversation"
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+                  "targetFolder": "public/folder/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": []
                 }
-              ],
-              "rules": []
-            }
-            """);
+                """);
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "targetUrl" : "public/folder/",
+                  "targetFolder" : "public/folder/",
                   "status" : "APPROVED",
                   "createdAt" : 0,
                   "resources" : [ {
+                    "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
@@ -156,7 +172,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl":"public/folder/",
+                    "targetFolder":"public/folder/",
                     "status":"APPROVED",
                     "createdAt":0,
                     "resourceTypes" : [ "CONVERSATION" ]
@@ -164,12 +180,13 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        // initialize delete request by user (publication owner)
-        response = operationRequest("/v1/ops/publication/delete", """
+        // initialize delete request by user
+        response = operationRequest("/v1/ops/publication/create", """
                 {
-                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
+                    "targetFolder":"public/folder/",
                     "resources": [
                         {
+                        "action": "DELETE",
                         "targetUrl": "conversations/public/folder/conversation"
                         }
                     ]
@@ -187,14 +204,15 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                         "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                        "targetUrl":"public/folder/",
+                        "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
                         "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
-                        "status" : "REQUESTED_FOR_DELETION",
+                         "targetFolder":"public/folder/",
+                        "status" : "PENDING",
                         "createdAt" : 0,
                         "resourceTypes" : [ "CONVERSATION" ]
                       }
@@ -220,7 +238,8 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
-                    "status":"REQUESTED_FOR_DELETION",
+                    "targetFolder":"public/folder/",
+                    "status":"PENDING",
                     "createdAt":0,
                     "resourceTypes" : [ "CONVERSATION" ]
                     }]
@@ -265,14 +284,15 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                         "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                        "targetUrl":"public/folder/",
+                        "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
                         "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
-                        "status" : "DELETED",
+                        "targetFolder":"public/folder/",
+                        "status":"APPROVED",
                         "createdAt" : 0,
                         "resourceTypes" : [ "CONVERSATION" ]
                       }
@@ -282,33 +302,61 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPublicationDeletion() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
+        verify(response, 200);
+
+
+        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL, "authorization", "user");
+        verify(response, 403);
+
+        response = operationRequest("/v1/ops/publication/delete", PUBLICATION_URL);
+        verify(response, 200);
+
+
+        response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        verify(response, 404);
+
+        response = send(HttpMethod.PUT, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        verify(response, 403);
+
+        response = send(HttpMethod.DELETE, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation");
+        verify(response, 403);
+    }
+
+
+    @Test
     void testRejectUserDeletionRequestWorkflow() {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/create", """
                 {
-              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
-              "targetUrl": "public/folder/",
-              "resources": [
-                {
-                  "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
-                  "targetUrl": "conversations/public/folder/conversation"
+                  "targetFolder": "public/folder/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": []
                 }
-              ],
-              "rules": []
-            }
-            """);
+                """);
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "targetUrl" : "public/folder/",
+                  "targetFolder" : "public/folder/",
                   "status" : "APPROVED",
                   "createdAt" : 0,
                   "resources" : [ {
+                    "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
@@ -328,7 +376,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl":"public/folder/",
+                    "targetFolder":"public/folder/",
                     "status":"APPROVED",
                     "createdAt":0,
                     "resourceTypes" : [ "CONVERSATION" ]
@@ -337,14 +385,16 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
 
         // initialize delete request by user (publication owner)
-        response = operationRequest("/v1/ops/publication/delete", """
+        response = operationRequest("/v1/ops/publication/create", """
                 {
-                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/",
-                    "resources": [
-                        {
-                        "targetUrl": "conversations/public/folder/conversation"
-                        }
-                    ]
+                  "targetFolder": "public/folder/",
+                  "resources": [
+                    {
+                      "action": "DELETE",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": []
                 }
                 """);
         verify(response, 200);
@@ -359,14 +409,15 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                         "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                        "targetUrl":"public/folder/",
+                        "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
                         "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
-                        "status" : "REQUESTED_FOR_DELETION",
+                        "targetFolder":"public/folder/",
+                        "status" : "PENDING",
                         "createdAt" : 0,
                         "resourceTypes" : [ "CONVERSATION" ]
                       }
@@ -392,7 +443,8 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                     "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
-                    "status":"REQUESTED_FOR_DELETION",
+                    "targetFolder" : "public/folder/",
+                    "status":"PENDING",
                     "createdAt":0,
                     "resourceTypes" : [ "CONVERSATION" ]
                     }]
@@ -427,13 +479,14 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications": [{
                         "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                        "targetUrl":"public/folder/",
+                        "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
                         "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                        "targetFolder" : "public/folder/",
                         "status" : "REJECTED",
                         "createdAt" : 0,
                         "resourceTypes" : [ "CONVERSATION" ]
@@ -458,7 +511,7 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
         verify(response, 200);
 
 
@@ -472,10 +525,11 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "targetUrl" : "public/folder/",
+                  "targetFolder" : "public/folder/",
                   "status" : "APPROVED",
                   "createdAt" : 0,
                   "resources" : [ {
+                    "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
@@ -486,7 +540,6 @@ class PublicationApiTest extends ResourceBaseTest {
                      "source" : "roles",
                      "targets" : [ "user" ]
                    } ]
-                  
                 }
                 """);
 
@@ -528,7 +581,7 @@ class PublicationApiTest extends ResourceBaseTest {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
         verify(response, 200);
 
 
@@ -542,10 +595,11 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "targetUrl" : "public/folder/",
+                  "targetFolder" : "public/folder/",
                   "status" : "REJECTED",
                   "createdAt" : 0,
                   "resources" : [ {
+                    "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
@@ -615,10 +669,10 @@ class PublicationApiTest extends ResourceBaseTest {
 
         response = operationRequest("/v1/ops/publication/create", """
                 {
-                  "url": "publications/%s/",
-                  "targetUrl": "public/folder1/",
+                  "targetFolder": "public/folder1/",
                   "resources": [
                     {
+                      "action": "ADD",
                       "sourceUrl": "conversations/%s/my/folder1/conversation1",
                       "targetUrl": "conversations/public/folder1/conversation1"
                     }
@@ -631,7 +685,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     }
                   ]
                 }
-                """.formatted(bucket, bucket));
+                """.formatted(bucket));
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", """
@@ -642,10 +696,10 @@ class PublicationApiTest extends ResourceBaseTest {
 
         response = operationRequest("/v1/ops/publication/create", """
                 {
-                  "url": "publications/%s/",
-                  "targetUrl": "public/folder2/",
+                  "targetFolder": "public/folder2/",
                   "resources": [
                     {
+                      "action": "ADD",
                       "sourceUrl": "conversations/%s/my/folder2/conversation2",
                       "targetUrl": "conversations/public/folder2/conversation2"
                     }
@@ -658,7 +712,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     }
                   ]
                 }
-                """.formatted(bucket, bucket));
+                """.formatted(bucket));
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", """
@@ -798,7 +852,7 @@ class PublicationApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
         verify(response, 200);
 
 
@@ -819,7 +873,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl" : "public/folder/",
+                    "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
                     "resourceTypes" : [ "CONVERSATION" ]
@@ -849,10 +903,10 @@ class PublicationApiTest extends ResourceBaseTest {
 
         response = operationRequest("/v1/ops/publication/create", """
                 {
-                  "url": "publications/%s/",
-                  "targetUrl": "public/folder/",
+                  "targetFolder": "public/folder/",
                   "resources": [
                     {
+                      "action": "ADD",
                       "sourceUrl": "conversations/%s/my/folder/conversation",
                       "targetUrl": "conversations/public/folder/conversation"
                     }
@@ -865,14 +919,15 @@ class PublicationApiTest extends ResourceBaseTest {
                     }
                   ]
                 }
-                """.formatted(bucket, bucket));
+                """.formatted(bucket));
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "targetUrl" : "public/folder/",
+                  "targetFolder" : "public/folder/",
                   "status" : "PENDING",
                   "createdAt" : 0,
                   "resources" : [ {
+                    "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
@@ -890,10 +945,11 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                  "targetUrl" : "public/folder/",
+                  "targetFolder" : "public/folder/",
                   "status" : "APPROVED",
                   "createdAt" : 0,
                   "resources" : [ {
+                    "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
@@ -909,10 +965,10 @@ class PublicationApiTest extends ResourceBaseTest {
 
         response = operationRequest("/v1/ops/publication/create", """
                 {
-                  "url": "publications/%s/",
-                  "targetUrl": "public/folder/folder2/",
+                  "targetFolder": "public/folder/folder2/",
                   "resources": [
                     {
+                      "action": "ADD",
                       "sourceUrl": "conversations/%s/my/folder/conversation",
                       "targetUrl": "conversations/public/folder/folder2/conversation"
                     }
@@ -925,7 +981,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     }
                   ]
                 }
-                """.formatted(bucket, bucket));
+                """.formatted(bucket));
         verify(response, 403);
     }
 
@@ -971,7 +1027,7 @@ class PublicationApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
@@ -1026,7 +1082,7 @@ class PublicationApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // create publication request
-        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket, bucket));
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
         verify(response, 200);
 
         // verify admin can view publication request
@@ -1037,7 +1093,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
-                    "targetUrl" : "public/folder/",
+                    "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
                     "resourceTypes" : [ "CONVERSATION" ]
@@ -1068,5 +1124,126 @@ class PublicationApiTest extends ResourceBaseTest {
                   "resourceType" : "CONVERSATION"
                 } ]
                 """);
+    }
+
+    @Test
+    void testPublicationInRootFolderWithRules() {
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(response, 400);
+    }
+
+    @Test
+    void testPublicationWithRulesOnly() {
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/folder/",
+                  "resources": [],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetFolder" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources": [],
+                  "resourceTypes" : [ ],
+                  "rules": [
+                    {
+                      "function": "CONTAIN",
+                      "source": "title",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """);
+    }
+
+    @Test
+    void testPublicationWithDuplicateResources() {
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/folder/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/%s/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    },
+                    {
+                      "action": "DELETE",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(response, 400);
+    }
+
+    @Test
+    void testPublicationWithForbiddenResource() {
+        Response response = send(HttpMethod.PUT, "/v1/conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/conversation",
+                null, CONVERSATION_BODY_1, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/my/folder/conversation",
+                      "targetUrl": "conversations/public/conversation"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 403);
+    }
+
+    @Test
+    void testPublicationWithoutResourcesAndRules() {
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": []
+                }
+                """);
+        verify(response, 400);
     }
 }

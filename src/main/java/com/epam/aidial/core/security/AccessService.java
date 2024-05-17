@@ -5,6 +5,7 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.Rule;
 import com.epam.aidial.core.service.PublicationService;
+import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -18,16 +19,16 @@ public class AccessService {
 
     private final EncryptionService encryptionService;
     private final ShareService shareService;
-    private final PublicationService publicationService;
+    private final RuleService ruleService;
     private final List<Rule> adminRules;
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
-                         PublicationService publicationService,
+                         RuleService ruleService,
                          JsonObject settings) {
         this.encryptionService = encryptionService;
         this.shareService = shareService;
-        this.publicationService = publicationService;
+        this.ruleService = ruleService;
         this.adminRules = adminRules(settings);
     }
 
@@ -37,7 +38,7 @@ public class AccessService {
         }
 
         if (resource.isPublic()) {
-            return hasPublicAccess(resource, context, true);
+            return hasPublicAccess(List.of(resource), context, true);
         }
 
         return isMyResource(resource, context) || isAppResource(resource, context)
@@ -46,10 +47,45 @@ public class AccessService {
 
     public boolean hasWriteAccess(ResourceDescription resource, ProxyContext context) {
         if (resource.isPublic()) {
-            return hasPublicAccess(resource, context, false);
+            return hasPublicAccess(List.of(resource), context, false);
         }
 
         return isMyResource(resource, context) || isAppResource(resource, context) || hasReviewAccess(resource, context, false);
+    }
+
+    /**
+     * Checks if USER has public access to the provided resources.
+     * This method also checks admin privileges.
+     *
+     * @param resources - public resources
+     * @param context - context
+     * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
+     */
+    public boolean hasPublicAccess(List<ResourceDescription> resources, ProxyContext context) {
+        return hasPublicAccess(resources, context, true);
+    }
+
+    /**
+     * Checks if USER has public access to the provided resources.
+     * This method also checks admin privileges.
+     *
+     * @param resources - public resources
+     * @param context - context
+     * @param readOnly - true to check read only access, false to check write access as well
+     * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
+     */
+    private boolean hasPublicAccess(List<ResourceDescription> resources, ProxyContext context, boolean readOnly) {
+        boolean isAllPublic = resources.stream().allMatch(ResourceDescription::isPublic);
+        if (!isAllPublic) {
+            return false;
+        }
+
+        if (readOnly) {
+            return hasAdminAccess(context) || ruleService.hasPublicAccess(context, resources);
+        } else {
+            boolean isNotApplication = (context.getApiKeyData().getPerRequestKey() == null);
+            return isNotApplication && hasAdminAccess(context);
+        }
     }
 
     private static boolean isAutoShared(ResourceDescription resource, ProxyContext context) {
@@ -98,7 +134,7 @@ public class AccessService {
     }
 
     private boolean hasReviewAccess(ResourceDescription resource, ProxyContext context, boolean readOnly) {
-        if (!publicationService.isReviewResource(resource)) {
+        if (!PublicationService.isReviewResource(resource)) {
             return false;
         }
 
@@ -106,20 +142,7 @@ public class AccessService {
             return true;
         }
 
-        return readOnly && publicationService.hasReviewAccess(context, resource);
-    }
-
-    private boolean hasPublicAccess(ResourceDescription resource, ProxyContext context, boolean readOnly) {
-        if (!resource.isPublic()) {
-            return false;
-        }
-
-        if (readOnly) {
-            return hasAdminAccess(context) || publicationService.hasPublicAccess(context, resource);
-        } else {
-            boolean isNotApplication = (context.getApiKeyData().getPerRequestKey() == null);
-            return isNotApplication && hasAdminAccess(context);
-        }
+        return readOnly && PublicationService.hasReviewAccess(context, resource);
     }
 
     public boolean hasAdminAccess(ProxyContext context) {
@@ -129,7 +152,7 @@ public class AccessService {
     public void filterForbidden(ProxyContext context, ResourceDescription descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
-            publicationService.filterForbidden(context, descriptor, folder);
+            ruleService.filterForbidden(context, descriptor, folder);
         }
     }
 
