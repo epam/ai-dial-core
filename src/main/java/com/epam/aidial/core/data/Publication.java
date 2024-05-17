@@ -17,7 +17,7 @@ public class Publication {
      */
     String url;
     /**
-     * Target directory url without resource prefix to publish to: public/ or public/folder/.
+     * Target directory prefix to publish; for example: public/ or public/folder/.
      */
     String targetFolder;
     Status status;

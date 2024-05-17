@@ -13,6 +13,16 @@ public class PublicationUtil {
 
     private static final String METADATA_PREFIX = "metadata/";
 
+    /**
+     * Replaces conversation identity and attachment links after it has been copied from one location to another.
+     * Replacing `id` and `folderId` - chat specific and may not be suitable for generic use-case.
+     * Typical use-case: replace attachment links in conversation after publishing.
+     *
+     * @param conversationBody - source conversation body
+     * @param targetResource - target resource link
+     * @param attachmentsMapping - attachments map (sourceUrl -> targetUrl) to replace
+     * @return conversation body after replacement
+     */
     public String replaceLinks(String conversationBody, ResourceDescription targetResource, Map<String, String> attachmentsMapping) {
         JsonObject conversation = replaceConversationIdentity(conversationBody, targetResource);
 

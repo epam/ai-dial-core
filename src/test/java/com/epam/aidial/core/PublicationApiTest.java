@@ -1125,4 +1125,125 @@ class PublicationApiTest extends ResourceBaseTest {
                 } ]
                 """);
     }
+
+    @Test
+    void testPublicationInRootFolderWithRules() {
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(response, 400);
+    }
+
+    @Test
+    void testPublicationWithRulesOnly() {
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/folder/",
+                  "resources": [],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetFolder" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources": [],
+                  "resourceTypes" : [ ],
+                  "rules": [
+                    {
+                      "function": "CONTAIN",
+                      "source": "title",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """);
+    }
+
+    @Test
+    void testPublicationWithDuplicateResources() {
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/folder/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/%s/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    },
+                    {
+                      "action": "DELETE",
+                      "targetUrl": "conversations/public/folder/conversation"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "source": "title",
+                      "function": "CONTAIN",
+                      "targets": ["Engineer"]
+                    }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(response, 400);
+    }
+
+    @Test
+    void testPublicationWithForbiddenResource() {
+        Response response = send(HttpMethod.PUT, "/v1/conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/conversation",
+                null, CONVERSATION_BODY_1, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/my/folder/conversation",
+                      "targetUrl": "conversations/public/conversation"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 403);
+    }
+
+    @Test
+    void testPublicationWithoutResourcesAndRules() {
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": []
+                }
+                """);
+        verify(response, 400);
+    }
 }

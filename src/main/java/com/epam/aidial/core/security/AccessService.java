@@ -38,7 +38,7 @@ public class AccessService {
         }
 
         if (resource.isPublic()) {
-            return hasPublicAccess(resource, context, true);
+            return hasPublicAccess(List.of(resource), context, true);
         }
 
         return isMyResource(resource, context) || isAppResource(resource, context)
@@ -47,28 +47,41 @@ public class AccessService {
 
     public boolean hasWriteAccess(ResourceDescription resource, ProxyContext context) {
         if (resource.isPublic()) {
-            return hasPublicAccess(resource, context, false);
+            return hasPublicAccess(List.of(resource), context, false);
         }
 
         return isMyResource(resource, context) || isAppResource(resource, context) || hasReviewAccess(resource, context, false);
     }
 
+    /**
+     * Checks if USER has public access to the provided resources.
+     * This method also checks admin privileges.
+     *
+     * @param resources - public resources
+     * @param context - context
+     * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
+     */
     public boolean hasPublicAccess(List<ResourceDescription> resources, ProxyContext context) {
-        boolean isAllPublic = resources.stream().allMatch(ResourceDescription::isPublic);
-        if (!isAllPublic) {
-            throw new IllegalArgumentException("Provided resources must be public");
-        }
-
-        return ruleService.hasPublicAccess(context, resources);
+        return hasPublicAccess(resources, context, true);
     }
 
-    private boolean hasPublicAccess(ResourceDescription resource, ProxyContext context, boolean readOnly) {
-        if (!resource.isPublic()) {
+    /**
+     * Checks if USER has public access to the provided resources.
+     * This method also checks admin privileges.
+     *
+     * @param resources - public resources
+     * @param context - context
+     * @param readOnly - true to check read only access, false to check write access as well
+     * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
+     */
+    private boolean hasPublicAccess(List<ResourceDescription> resources, ProxyContext context, boolean readOnly) {
+        boolean isAllPublic = resources.stream().allMatch(ResourceDescription::isPublic);
+        if (!isAllPublic) {
             return false;
         }
 
         if (readOnly) {
-            return hasAdminAccess(context) || ruleService.hasPublicAccess(context, resource);
+            return hasAdminAccess(context) || ruleService.hasPublicAccess(context, resources);
         } else {
             boolean isNotApplication = (context.getApiKeyData().getPerRequestKey() == null);
             return isNotApplication && hasAdminAccess(context);
