@@ -16,6 +16,7 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
@@ -113,10 +114,10 @@ public class AiDial {
             resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, storage);
-            PublicationService publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
             ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, storage, invitationService, shareService);
-
-            AccessService accessService = new AccessService(encryptionService, shareService, publicationService, settings("access"));
+            RuleService ruleService = new RuleService(resourceService);
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService, ruleService, storage, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
@@ -125,7 +126,7 @@ public class AiDial {
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, publicationService, accessService, lockService, resourceOperationService, version());
+                    shareService, publicationService, accessService, lockService, resourceOperationService, ruleService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

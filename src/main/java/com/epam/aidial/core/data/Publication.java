@@ -17,9 +17,9 @@ public class Publication {
      */
     String url;
     /**
-     * Target directory url without resource prefix to publish to: public/ or public/folder/.
+     * Target directory prefix to publish; for example: public/ or public/folder/.
      */
-    String targetUrl;
+    String targetFolder;
     Status status;
     Long createdAt;
     List<Resource> resources;
@@ -27,11 +27,12 @@ public class Publication {
     List<Rule> rules;
 
     public enum Status {
-        PENDING, APPROVED, REJECTED, REQUESTED_FOR_DELETION, DELETED
+        PENDING, APPROVED, REJECTED
     }
 
     @Data
     public static class Resource {
+        ResourceAction action;
         /**
          * Source resource url to publish from: files/bucket/folder/file.txt.
          */
@@ -44,6 +45,10 @@ public class Publication {
          * Review resource url to review: files/review-bucket/folder/file.txt
          */
         String reviewUrl;
+    }
+
+    public enum ResourceAction {
+        ADD, DELETE
     }
 
     public Set<ResourceType> getResourceTypes() {
