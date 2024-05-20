@@ -40,7 +40,7 @@ Static settings are used on startup and cannot be changed while application is r
 | identityProviders                          | -                  | Map of identity providers. **Note**. At least one identity provider must be provided.
 | identityProviders.*.jwksUrl                | -                  | Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.
 | identityProviders.*.userInfoEndpoint       | -                  | Url to user info endpoint. **Required**. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.  
-| identityProviders.*.rolePath               | -                  | Path to the claim user roles in JWT token, e.g. `resource_access.chatbot-ui.roles` or just `roles`. **Required**.
+| identityProviders.*.rolePath               | -                  | Path to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`. **Required**.
 | identityProviders.*.loggingKey             | -                  | User information to search in claims of JWT token.
 | identityProviders.*.loggingSalt            | -                  | Salt to hash user information for logging.
 | identityProviders.*.cacheSize              | 10                 | How many JWT tokens to cache.
@@ -71,6 +71,11 @@ Static settings are used on startup and cannot be changed while application is r
 | redis.clusterServersConfig.nodeAddresses   | -                  | Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]
 | invitations.ttlInSeconds                   | 259200             | Invitation time to live in seconds
 | access.admin.rules                         | -                  | Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
+
+#### Google IdP
+
+The setting `identityProviders.*.rolePath` should be set `fn:getGoogleWorkspaceGroups`.
+
 ### Google Cloud Storage
 
 There are two types of credential providers supported:

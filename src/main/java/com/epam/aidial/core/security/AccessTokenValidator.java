@@ -34,6 +34,7 @@ public class AccessTokenValidator {
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
         }
+        GetUserRoleFunctionFactory factory = new GetUserRoleFunctionFactory(client);
         for (String idpKey : idpConfig.fieldNames()) {
             providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, client, jwksUrl -> {
                 try {
@@ -41,7 +42,7 @@ public class AccessTokenValidator {
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }
-            }));
+            }, factory));
         }
         vertx.setPeriodic(0, USER_INFO_EXP_PERIOD_MS, event -> evictExpiredUserInfo());
     }

@@ -40,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -56,6 +57,9 @@ public class IdentityProviderTest {
 
     @Mock
     private HttpClient client;
+
+    @Mock
+    private GetUserRoleFunctionFactory factory;
 
     private JsonObject settings;
 
@@ -78,7 +82,7 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_00() {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
 
         Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(null);
 
@@ -92,7 +96,7 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_03() throws JwkException {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 
         String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("manager")).sign(algorithm);
@@ -118,7 +122,7 @@ public class IdentityProviderTest {
     @Test
     public void testExtractClaims_04() throws JwkException {
         settings.put("rolePath", "p0.p1.p2.p3");
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 
         Jwk jwk = mock(Jwk.class);
@@ -145,7 +149,7 @@ public class IdentityProviderTest {
     @Test
     public void testExtractClaims_05() throws JwkException {
         settings.put("rolePath", "p0.p1");
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 
         Jwk jwk = mock(Jwk.class);
@@ -172,7 +176,7 @@ public class IdentityProviderTest {
     @Test
     public void testExtractClaims_06() throws JwkException {
         settings.put("rolePath", "p0.p1.p2.p3");
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
@@ -197,7 +201,7 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_07() throws JwkException {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
@@ -221,7 +225,7 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_08() throws JwkException {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         when(jwkProvider.get(eq("kid1"))).thenThrow(new JwkException("no key found by kid1"));
         when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
@@ -242,7 +246,7 @@ public class IdentityProviderTest {
 
     @Test
     public void testExtractClaims_10() throws JwkException, NoSuchAlgorithmException {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         KeyPair wrongKeyPair = generateRsa256Pair();
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) wrongKeyPair.getPublic(), (RSAPrivateKey) wrongKeyPair.getPrivate());
         Jwk jwk = mock(Jwk.class);
@@ -266,7 +270,7 @@ public class IdentityProviderTest {
     @Test
     public void testExtractClaims_11() throws JwkException {
         settings.put("rolePath", "p0.p1.p2.p3");
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
@@ -291,7 +295,7 @@ public class IdentityProviderTest {
     @Test
     public void testExtractClaims_12() {
         settings.put("disableJwtVerification", Boolean.TRUE);
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 
         String token = JWT.create().withHeader(Map.of("kid", "kid1"))
@@ -317,7 +321,7 @@ public class IdentityProviderTest {
     @Test
     public void testExtractClaims_13() {
         settings.put("disableJwtVerification", Boolean.TRUE);
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 
         String token = JWT.create().withHeader(Map.of("kid", "kid1"))
@@ -362,7 +366,7 @@ public class IdentityProviderTest {
     public void testExtractClaims_FromUserInfo_01() {
         settings.remove("jwksUrl");
         settings.put("userInfoEndpoint", "http://host/userinfo");
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
 
         String token = "opaqueToken";
         HttpClientRequest request = mock(HttpClientRequest.class);
@@ -392,7 +396,7 @@ public class IdentityProviderTest {
         settings.remove("jwksUrl");
         settings.put("userInfoEndpoint", "http://host/userinfo");
         settings.put("rolePath", "app.roles");
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
 
         String token = "opaqueToken";
         HttpClientRequest request = mock(HttpClientRequest.class);
@@ -427,8 +431,48 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testExtractClaims_FromUserInfo_03() {
+        settings.remove("jwksUrl");
+        settings.put("userInfoEndpoint", "http://host/userinfo");
+        settings.put("rolePath", "fn:getGoogleWorkspaceGroups");
+        GetUserRoleFn fn = mock(GetUserRoleFn.class);
+        when(factory.getUserRoleFn(eq("fn:getGoogleWorkspaceGroups"))).thenReturn(fn);
+
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
+
+        String token = "opaqueToken";
+        HttpClientRequest request = mock(HttpClientRequest.class);
+        when(client.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(request));
+        HttpClientResponse response = mock(HttpClientResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(request.send()).thenReturn(Future.succeededFuture(response));
+        Buffer buffer = Buffer.buffer("""
+                {
+                  "sub": "sub",
+                  "email": "email"
+                }
+                """);
+        when(response.body()).thenReturn(Future.succeededFuture(buffer));
+        when(fn.apply(eq(token), anyMap())).thenReturn(Future.succeededFuture(List.of("role1")));
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromUserInfo(token);
+
+        verifyNoInteractions(jwkProvider);
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("role1"), claims.userRoles());
+            assertEquals("sub", claims.sub());
+            assertNotNull(claims.userHash());
+        });
+    }
+
+    @Test
     public void testMatch_Failure() {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         String token = JWT.create().withClaim("iss", "bad-iss").sign(algorithm);
         DecodedJWT jwt = JWT.decode(token);
@@ -438,7 +482,7 @@ public class IdentityProviderTest {
 
     @Test
     public void testMatch_Success() {
-        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
         String token = JWT.create().withClaim("iss", "issuer").sign(algorithm);
         DecodedJWT jwt = JWT.decode(token);

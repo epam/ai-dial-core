@@ -71,14 +71,18 @@ public class IdentityProvider {
     private Pattern issuerPattern;
 
     // the flag disables JWT verification
-    private boolean disableJwtVerification;
+    private final boolean disableJwtVerification;
 
-    public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client, Function<String, JwkProvider> jwkProviderSupplier) {
+    private final GetUserRoleFn getUserRoleFn;
+
+    public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client,
+                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
         }
         this.vertx = vertx;
         this.client = client;
+
         positiveCacheExpirationMs = settings.getLong("positiveCacheExpirationMs", TimeUnit.MINUTES.toMillis(10));
         negativeCacheExpirationMs = settings.getLong("negativeCacheExpirationMs", TimeUnit.SECONDS.toMillis(10));
 
@@ -106,7 +110,9 @@ public class IdentityProvider {
             }
         }
 
-        rolePath = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed").split("\\.");
+        String rolePathStr = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed");
+        getUserRoleFn = factory.getUserRoleFn(rolePathStr);
+        rolePath = rolePathStr.split("\\.");
 
         loggingKey = settings.getString("loggingKey");
         if (loggingKey != null) {
@@ -264,9 +270,12 @@ public class IdentityProvider {
                     return;
                 }
                 response.body().map(body -> {
-                    JsonObject json = body.toJsonObject();
-                    ExtractedClaims claims = from(json);
-                    promise.complete(claims);
+                    try {
+                        JsonObject json = body.toJsonObject();
+                        from(accessToken, json, promise);
+                    } catch (Throwable e) {
+                        promise.fail(e);
+                    }
                     return null;
                 }).onFailure(promise::fail);
             });
@@ -283,10 +292,20 @@ public class IdentityProvider {
         return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map));
     }
 
-    private ExtractedClaims from(JsonObject userInfo) {
+    private void from(String accessToken, JsonObject userInfo, Promise<ExtractedClaims> promise) {
         String userKey = loggingKey == null ? null : userInfo.getString(loggingKey);
         Map<String, Object> map = userInfo.getMap();
-        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map));
+        if (getUserRoleFn != null) {
+            getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
+                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles,
+                        extractUserHash(userKey), extractUserClaims(map));
+                promise.complete(extractedClaims);
+            });
+        } else {
+            ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), extractUserRoles(map),
+                    extractUserHash(userKey), extractUserClaims(map));
+            promise.complete(extractedClaims);
+        }
     }
 
     boolean match(DecodedJWT jwt) {
