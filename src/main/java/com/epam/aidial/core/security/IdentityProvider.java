@@ -236,7 +236,7 @@ public class IdentityProvider {
             Object claimValue = entry.getValue();
             if (claimValue instanceof String stringClaimValue) {
                 userClaims.put(claimName, List.of(stringClaimValue));
-            } else if (claimValue instanceof List && ((List<?>) claimValue).get(0) instanceof String) {
+            } else if (claimValue instanceof List<?> list && (list.isEmpty() || list.get(0) instanceof String)) {
                 userClaims.put(claimName, (List<String>) claimValue);
             } else {
                 // if claim value doesn't match supported type - add claim with empty value
