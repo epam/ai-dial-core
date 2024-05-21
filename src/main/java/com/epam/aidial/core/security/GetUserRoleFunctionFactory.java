@@ -34,33 +34,31 @@ class GetUserRoleFunctionFactory {
         String userEmail = (String) claims.get("email");
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(GOOGLE_IAM_GROUPS_ENDPOINT.formatted(userEmail))
+                .addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .setMethod(HttpMethod.GET);
         Promise<List<String>> promise = Promise.promise();
-        client.request(options).onFailure(promise::fail).onSuccess(request -> {
-            request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
-            request.send().onFailure(promise::fail).onSuccess(response -> {
-                if (response.statusCode() != 200) {
-                    promise.fail(String.format("Request getGoogleWorkspaceGroups failed with http code %d", response.statusCode()));
-                    return;
-                }
-                response.body().map(body -> {
-                    try {
-                        JsonObject json = body.toJsonObject();
-                        JsonArray memberships = json.getJsonArray("memberships");
-                        List<String> groups = new ArrayList<>();
-                        for (int i = 0; i < memberships.size(); i++) {
-                            JsonObject membership = memberships.getJsonObject(i);
-                            String group = membership.getJsonObject("groupKey").getString("id");
-                            groups.add(group);
-                        }
-                        promise.complete(groups);
-                    } catch (Throwable e) {
-                        promise.fail(e);
+        client.request(options).onFailure(promise::fail).onSuccess(request -> request.send().onFailure(promise::fail).onSuccess(response -> {
+            if (response.statusCode() != 200) {
+                promise.fail(String.format("Request getGoogleWorkspaceGroups failed with http code %d", response.statusCode()));
+                return;
+            }
+            response.body().map(body -> {
+                try {
+                    JsonObject json = body.toJsonObject();
+                    JsonArray memberships = json.getJsonArray("memberships");
+                    List<String> groups = new ArrayList<>();
+                    for (int i = 0; i < memberships.size(); i++) {
+                        JsonObject membership = memberships.getJsonObject(i);
+                        String group = membership.getJsonObject("groupKey").getString("id");
+                        groups.add(group);
                     }
-                    return null;
-                }).onFailure(promise::fail);
-            });
-        });
+                    promise.complete(groups);
+                } catch (Throwable e) {
+                    promise.fail(e);
+                }
+                return null;
+            }).onFailure(promise::fail);
+        }));
         return promise.future();
     }
 }
