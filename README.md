@@ -76,6 +76,8 @@ Static settings are used on startup and cannot be changed while application is r
 
 The setting `identityProviders.*.rolePath` should be set `fn:getGoogleWorkspaceGroups`.
 
+<!-- Do we want to add AWS storge example?-->
+
 ### Google Cloud Storage
 
 There are two types of credential providers supported:
