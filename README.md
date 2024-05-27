@@ -53,8 +53,8 @@ Static settings are used on startup and cannot be changed while application is r
 | client.*                                   | -                  | No|Vertx HTTP client settings for outbound requests.
 | storage.provider                           | -                  | No|Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem
 | storage.endpoint                           | -                  | No|Optional. Specifies endpoint url for s3 compatible storages
-| storage.identity                           | -                  | No|Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
-| storage.credential                         | -                  | No|Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
+| storage.identity                           | -                  | Optional|Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
+| storage.credential                         | -                  | Optional|Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
 | storage.bucket                             | -                  | No|Blob storage bucket
 | storage.overrides.*                        | -                  | No|Key-value pairs to override storage settings
 | storage.createBucket                       | false              | No|Indicates whether bucket should be created on start-up
