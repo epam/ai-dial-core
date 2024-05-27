@@ -1,6 +1,7 @@
 {
   "config": {
-    "files": ["/app/config/aidial.config.json"]
+    "files": ["/app/config/aidial.config.json"],
+    "reload": 60000
   },
   "redis": {
     "singleServerConfig": {
@@ -17,6 +18,32 @@
       "jwksUrl": "https://host.com/realms/your/protocol/openid-connect/certs",
       "rolePath": "resource_access.your.roles",
       "issuerPattern": "^https:\\/\\/some-keycloak.com.+$"
+    },
+    "google": {
+      "rolePath": "fn:getGoogleWorkspaceGroups",
+      "userInfoEndpoint": "https://openidconnect.googleapis.com/v1/userinfo",
+      "loggingKey": "email",
+      "loggingSalt": "salt"
+    },
+    "cognito": {
+      "loggingKey": "email",
+      "issuerPattern": "^https:\\/\\/cognito-idp\\.eu-north-1\\.amazonaws\\.com.+$",
+      "aidial.identityProviders.cognito.rolePath": "roles",
+      "jwksUrl": "https://cognito-idp.eu-north-1.amazonaws.com/eu-north-1_PWSAjo4OY/.well-known/jwks.json",
+      "loggingSalt": "loggingSalt"
+    },
+    "gitlab": {
+      "rolePath": "groups",
+      "userInfoEndpoint": "https://gitlab.com/oauth/userinfo",
+      "loggingKey": "email",
+      "loggingSalt": "salt"
+    },
+    "auth0": {
+      "loggingKey": "email",
+      "issuerPattern": "^https:\\/\\/chatbot-ui-staging\\.eu\\.auth0\\.com.+$",
+      "aidial.identityProviders.cognito.rolePath": "dial_roles",
+      "jwksUrl": "https://<your_domain>.auth0.com/.well-known/jwks.json",
+      "loggingSalt": "loggingSalt"
     },
     "test": {
       "disableJwtVerification": true,
