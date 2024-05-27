@@ -25,6 +25,8 @@ Or run com.epam.aidial.core.AIDial class from your favorite IDE.
 
 ## Configuration
 
+<!--Mention that there is a Dynamic configuration an well and give a link -->
+
 ### Static settings
 
 Static settings are used on startup and cannot be changed while application is running. Priority order:
@@ -160,6 +162,8 @@ maxmemory-policy volatile-lfu
 Note: Redis will be strictly required in the upcoming releases 0.8+.
 
 ### Dynamic settings
+
+<!--Provide a link to an example-->
 
 Dynamic settings are stored in JSON files, specified via "config.files" static setting, and reloaded at interval,
 specified via "config.reload" static setting.
