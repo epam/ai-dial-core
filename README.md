@@ -33,44 +33,44 @@ Static settings are used on startup and cannot be changed while application is r
 * File specified in "AIDIAL_SETTINGS" environment variable.
 * Default resource file: src/main/resources/aidial.settings.json.
 
-| Setting                                    | Default            | Description
-|--------------------------------------------|--------------------|-------------------------------------------------------------------------------------------------------------------
-| config.files                               | aidial.config.json | Config files with parts of the whole config.
-| config.reload                              | 60000              | Config reload interval in milliseconds.
-| identityProviders                          | -                  | Map of identity providers. **Note**. At least one identity provider must be provided.
-| identityProviders.*.jwksUrl                | -                  | Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.
-| identityProviders.*.userInfoEndpoint       | -                  | Url to user info endpoint. **Required**. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.  
-| identityProviders.*.rolePath               | -                  | Path to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`. **Required**.
-| identityProviders.*.loggingKey             | -                  | User information to search in claims of JWT token.
-| identityProviders.*.loggingSalt            | -                  | Salt to hash user information for logging.
-| identityProviders.*.cacheSize              | 10                 | How many JWT tokens to cache.
-| identityProviders.*.cacheExpiration        | 10                 | How long to retain JWT token in cache.
-| identityProviders.*.cacheExpirationUnit    | MINUTES            | Unit of cache expiration.
-| identityProviders.*.issuerPattern          | -                  | Regexp to match the claim "iss" to identity provider
-| identityProviders.*.disableJwtVerification | false              | The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.
-| vertx.*                                    | -                  | Vertx settings.
-| server.*                                   | -                  | Vertx HTTP server settings for incoming requests.
-| client.*                                   | -                  | Vertx HTTP client settings for outbound requests.
-| storage.provider                           | -                  | Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem
-| storage.endpoint                           | -                  | Optional. Specifies endpoint url for s3 compatible storages
-| storage.identity                           | -                  | Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
-| storage.credential                         | -                  | Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
-| storage.bucket                             | -                  | Blob storage bucket
-| storage.overrides.*                        | -                  | Key-value pairs to override storage settings
-| storage.createBucket                       | false              | Indicates whether bucket should be created on start-up
-| storage.prefix                             | -                  | Base prefix for all stored resources. Must not contain path separators or any invalid chars
-| encryption.password                        | -                  | Password used for AES encryption
-| encryption.salt                            | -                  | Salt used for AES encryption
-| resources.maxSize                          | 1048576            | Max allowed size in bytes for a resource
-| resources.syncPeriod                       | 60000              | Period in milliseconds, how frequently check for resources to sync
-| resources.syncDelay                        | 120000             | Delay in milliseconds for a resource to be written back in object storage after last modification
-| resources.syncBatch                        | 4096               | How many resources to sync in one go
-| resources.cacheExpiration                  | 300000             | Expiration in milliseconds for synced resources in Redis
-| resources.compressionMinSize               | 256                | Compress a resource with gzip if its size in bytes more or equal to this value
-| redis.singleServerConfig.address           | -                  | Redis single server addresses, e.g. "redis://host:port"
-| redis.clusterServersConfig.nodeAddresses   | -                  | Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]
-| invitations.ttlInSeconds                   | 259200             | Invitation time to live in seconds
-| access.admin.rules                         | -                  | Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
+| Setting                                    | Default            |Required| Description
+|--------------------------------------------|--------------------|--------|-----------------------------------------------------------------------------------------------------------
+| config.files                               | aidial.config.json | No|Config files with parts of the whole config.
+| config.reload                              | 60000              | No|Config reload interval in milliseconds.
+| identityProviders                          | -                  | No|Map of identity providers. **Note**. At least one identity provider must be provided.
+| identityProviders.*.jwksUrl                | -                  | Optional|Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.
+| identityProviders.*.userInfoEndpoint       | -                  | Yes|Url to user info endpoint. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.  
+| identityProviders.*.rolePath               | -                  | Yes|Path to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`.
+| identityProviders.*.loggingKey             | -                  | No|User information to search in claims of JWT token.
+| identityProviders.*.loggingSalt            | -                  | No|Salt to hash user information for logging.
+| identityProviders.*.cacheSize              | 10                 | No|How many JWT tokens to cache.
+| identityProviders.*.cacheExpiration        | 10                 | No| How long to retain JWT token in cache.
+| identityProviders.*.cacheExpirationUnit    | MINUTES            | No|Unit of cache expiration.
+| identityProviders.*.issuerPattern          | -                  | No|Regexp to match the claim "iss" to identity provider
+| identityProviders.*.disableJwtVerification | false              | No|The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.
+| vertx.*                                    | -                  | No|Vertx settings.
+| server.*                                   | -                  | No|Vertx HTTP server settings for incoming requests.
+| client.*                                   | -                  | No|Vertx HTTP client settings for outbound requests.
+| storage.provider                           | -                  | No|Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem
+| storage.endpoint                           | -                  | No|Optional. Specifies endpoint url for s3 compatible storages
+| storage.identity                           | -                  | No|Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
+| storage.credential                         | -                  | No|Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
+| storage.bucket                             | -                  | No|Blob storage bucket
+| storage.overrides.*                        | -                  | No|Key-value pairs to override storage settings
+| storage.createBucket                       | false              | No|Indicates whether bucket should be created on start-up
+| storage.prefix                             | -                  | No|Base prefix for all stored resources. Must not contain path separators or any invalid chars
+| encryption.password                        | -                  | No|Password used for AES encryption
+| encryption.salt                            | -                  | No|Salt used for AES encryption
+| resources.maxSize                          | 1048576            | No|Max allowed size in bytes for a resource
+| resources.syncPeriod                       | 60000              | No|Period in milliseconds, how frequently check for resources to sync
+| resources.syncDelay                        | 120000             | No|Delay in milliseconds for a resource to be written back in object storage after last modification
+| resources.syncBatch                        | 4096               | No|How many resources to sync in one go
+| resources.cacheExpiration                  | 300000             | No|Expiration in milliseconds for synced resources in Redis
+| resources.compressionMinSize               | 256                | No|Compress a resource with gzip if its size in bytes more or equal to this value
+| redis.singleServerConfig.address           | -                  | No|Redis single server addresses, e.g. "redis://host:port"
+| redis.clusterServersConfig.nodeAddresses   | -                  | No|Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]
+| invitations.ttlInSeconds                   | 259200             | No|Invitation time to live in seconds
+| access.admin.rules                         | -                  | No|Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
 
 #### Google IdP
 
