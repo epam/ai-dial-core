@@ -39,7 +39,7 @@ Static settings are used on startup and cannot be changed while application is r
 | config.reload                              | 60000              | No|Config reload interval in milliseconds.
 | identityProviders                          | -                  | No|Map of identity providers. **Note**. At least one identity provider must be provided.
 | identityProviders.*.jwksUrl                | -                  | Optional|Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.
-| identityProviders.*.userInfoEndpoint       | -                  | Yes|Url to user info endpoint. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.  
+| identityProviders.*.userInfoEndpoint       | -                  | Optional|Url to user info endpoint. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.  
 | identityProviders.*.rolePath               | -                  | Yes|Path to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`.
 | identityProviders.*.loggingKey             | -                  | No|User information to search in claims of JWT token.
 | identityProviders.*.loggingSalt            | -                  | No|Salt to hash user information for logging.
