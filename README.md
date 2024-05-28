@@ -34,14 +34,14 @@ Static settings are used on startup and cannot be changed while application is r
 * Default resource file: src/main/resources/aidial.settings.json.
 
 | Setting     | Default           | Required | Description
-|--------------------------------------------|-------------------|----------|-----------------------------------------------------------------------------------------------------------|
+|------------------|:-----------:|:----------:|-------------------------------------------------|
 | config.files| aidial.config.json | No       |List of paths to dynamic settings. See [example](sample/aidial.config.json) of the file with dynamic settings.|
 | config.reload                              | 60000             | No       |Config reload interval in milliseconds.
-| identityProviders                          | -                 | Yes      |Map of identity providers. **Note**. At least one identity provider must be provided. See [examples](sample/aidial.settings.json) of available providers.
-| identityProviders.*.jwksUrl                | -                 | Optional |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.
+| identityProviders                          | -                 | Yes      |Map of identity providers. **Note**: At least one identity provider must be provided. See [examples](sample/aidial.settings.json) of available providers.
+| identityProviders.*.jwksUrl                | -                 | Optional |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided.
 | identityProviders.*.userInfoEndpoint       | -                 | Optional |Url to user info endpoint. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided or `disableJwtVerification` is unset. See [Google example](sample/aidial.settings.json). 
 | identityProviders.*.rolePath               | -                 | Yes      |Path to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`. 
-| identityProviders.*.loggingKey             | -                 | No       |User information to search in claims of JWT token. `email` or `sub` should be sufficient in most cases. **Note**. `email` might be unavailable for some IdPs. Please check your IdP documentation in this case.
+| identityProviders.*.loggingKey             | -                 | No       |User information to search in claims of JWT token. `email` or `sub` should be sufficient in most cases. **Note**: `email` might be unavailable for some IdPs. Please check your IdP documentation in this case.
 | identityProviders.*.loggingSalt            | -                 | No       |Salt to hash user information for logging.
 | identityProviders.*.positiveCacheExpirationMs        | 600000            | No       | How long to retain JWKS response in the cache in case of successfull response.
 | identityProviders.*.negativeCacheExpirationMs    | 10000             | No       |How long to retain JWKS response in the cache in case of failed response.
@@ -51,7 +51,7 @@ Static settings are used on startup and cannot be changed while application is r
 | server.*    | -                 | No       |Vertx HTTP server settings for incoming requests.
 | client.*    | -                 | No       |Vertx HTTP client settings for outbound requests.
 | storage.provider                           | filesystem                  | Yes      |Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem. See examples in the sections below.
-| storage.endpoint                           | -                 | No       |Optional. Specifies endpoint url for s3 compatible storages. **Note**. The setting might be required. That depends on a concrete provider.
+| storage.endpoint                           | -                 | No       |Optional. Specifies endpoint url for s3 compatible storages. **Note**: The setting might be required. That depends on a concrete provider.
 | storage.identity                           | -                 | Optional |Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
 | storage.credential                         | -                 | Optional |Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
 | storage.bucket                             | -                 | No       |Blob storage bucket
