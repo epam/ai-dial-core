@@ -25,6 +25,9 @@ Or run com.epam.aidial.core.AIDial class from your favorite IDE.
 
 ## Configuration
 
+* [Stattic settings](#static-settings)
+* [Dynaminc settings](#dynamic-settings)
+
 ### Static settings
 
 Static settings are used on startup and cannot be changed while application is running. See [example](sample/aidial.settings.json). Priority order:
@@ -45,7 +48,7 @@ Static settings are used on startup and cannot be changed while application is r
 | identityProviders.*.loggingSalt            | -                 | No       |Salt to hash user information for logging.
 | identityProviders.*.positiveCacheExpirationMs        | 600000            | No       | How long to retain JWKS response in the cache in case of successfull response.
 | identityProviders.*.negativeCacheExpirationMs    | 10000             | No       |How long to retain JWKS response in the cache in case of failed response.
-| identityProviders.*.issuerPattern          | -                 | No       |Regexp to match the claim "iss" to identity provider
+| identityProviders.*.issuerPattern          | -                 | No       |Regexp to match the claim "iss" to identity provider.
 | identityProviders.*.disableJwtVerification | false             | No       |The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.
 | vertx.*     | -                 | No       |Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.
 | server.*    | -                 | No       |Vertx HTTP server settings for incoming requests.
@@ -53,22 +56,22 @@ Static settings are used on startup and cannot be changed while application is r
 | storage.provider                           | filesystem                  | Yes      |Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem. See examples in the sections below.
 | storage.endpoint                           | -                 | Optional |Specifies endpoint url for s3 compatible storages. **Note**: The setting might be required. That depends on a concrete provider.
 | storage.identity                           | -                 | Optional |Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers. Refer to [sections in this document](#aws-s3-blob-store) dedicated to specific storage providers.
-| storage.credential                         | -                 | Optional |Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
-| storage.bucket                             | -                 | No       |Blob storage bucket
+| storage.credential                         | -                 | Optional |Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers.
+| storage.bucket                             | -                 | No       |Blob storage bucket.
 | storage.overrides.*                        | -                 | No       |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. See [examples](#temporary-credentials-1) in the sections below. 
-| storage.createBucket                       | false             | No       |Indicates whether bucket should be created on start-up
-| storage.prefix                             | -                 | No       |Base prefix for all stored resources. The purpose to use the same bucket for different environments, e.g. dev, prod, pre-prod. Must not contain path separators or any invalid chars
-| encryption.password                        | -                 | No       |Password used for AES encryption
+| storage.createBucket                       | false             | No       |Indicates whether bucket should be created on start-up.
+| storage.prefix                             | -                 | No       |Base prefix for all stored resources. The purpose to use the same bucket for different environments, e.g. dev, prod, pre-prod. Must not contain path separators or any invalid chars.
+| encryption.password                        | -                 | No       |Password used for AES encryption.
 | encryption.salt                            | -                 | No       |Salt used for AES encryption. The value should be random generated string.
-| resources.maxSize                          | 1048576           | No       |Max allowed size in bytes for a resource
-| resources.syncPeriod                       | 60000             | No       |Period in milliseconds, how frequently check for resources to sync
-| resources.syncDelay                        | 120000            | No       |Delay in milliseconds for a resource to be written back in object storage after last modification
-| resources.syncBatch                        | 4096              | No       |How many resources to sync in one go
-| resources.cacheExpiration                  | 300000            | No       |Expiration in milliseconds for synced resources in Redis
-| resources.compressionMinSize               | 256               | No       |Compress a resource with gzip if its size in bytes more or equal to this value
+| resources.maxSize                          | 1048576           | No       |Max allowed size in bytes for a resource.
+| resources.syncPeriod                       | 60000             | No       |Period in milliseconds, how frequently check for resources to sync.
+| resources.syncDelay                        | 120000            | No       |Delay in milliseconds for a resource to be written back in object storage after last modification.
+| resources.syncBatch                        | 4096              | No       |How many resources to sync in one go.
+| resources.cacheExpiration                  | 300000            | No       |Expiration in milliseconds for synced resources in Redis.
+| resources.compressionMinSize               | 256               | No       |Compress a resource with gzip if its size in bytes more or equal to this value.
 | redis.singleServerConfig.address           | -                 | Yes      |Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided. 
 | redis.clusterServersConfig.nodeAddresses   | -                 | Yes      |Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.
-| invitations.ttlInSeconds                   | 259200            | No       |Invitation time to live in seconds
+| invitations.ttlInSeconds                   | 259200            | No       |Invitation time to live in seconds.
 | access.admin.rules                         | -                 | No       |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
 
 ### Storage requirements
