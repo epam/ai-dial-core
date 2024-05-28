@@ -35,7 +35,7 @@ Static settings are used on startup and cannot be changed while application is r
 
 | Setting     | Default           | Required | Description
 |------------------|:-----------:|:----------:|-------------------------------------------------|
-| config.files| aidial.config.json | No       |List of paths to dynamic settings. See [example](sample/aidial.config.json) of the file with dynamic settings.|
+| config.files| aidial.config.json | No       |List of paths to dynamic settings. See [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).|
 | config.reload                              | 60000             | No       |Config reload interval in milliseconds.
 | identityProviders                          | -                 | Yes      |Map of identity providers. **Note**: At least one identity provider must be provided. See [examples](sample/aidial.settings.json) of available providers.
 | identityProviders.*.jwksUrl                | -                 | Optional |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided.
@@ -55,7 +55,7 @@ Static settings are used on startup and cannot be changed while application is r
 | storage.identity                           | -                 | Optional |Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
 | storage.credential                         | -                 | Optional |Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers
 | storage.bucket                             | -                 | No       |Blob storage bucket
-| storage.overrides.*                        | -                 | No       |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. See examples in the sections below. 
+| storage.overrides.*                        | -                 | No       |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. See [examples](#temporary-credentials-1) in the sections below. 
 | storage.createBucket                       | false             | No       |Indicates whether bucket should be created on start-up
 | storage.prefix                             | -                 | No       |Base prefix for all stored resources. The purpose to use the same bucket for different environments, e.g. dev, prod, pre-prod. Must not contain path separators or any invalid chars
 | encryption.password                        | -                 | No       |Password used for AES encryption
