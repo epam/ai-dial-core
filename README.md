@@ -34,8 +34,8 @@ Static settings are used on startup and cannot be changed while application is r
 * Default resource file: src/main/resources/aidial.settings.json.
 
 | Setting     | Default           | Required | Description
-|--------------------------------------------|-------------------|----------|-----------------------------------------------------------------------------------------------------------
-| config.files| aidial.config.json | No       |List of paths to dynamic settings. See [example](sample/aidial.config.json) of the file with dynamic settings.
+|--------------------------------------------|-------------------|----------|-----------------------------------------------------------------------------------------------------------|
+| config.files| aidial.config.json | No       |List of paths to dynamic settings. See [example](sample/aidial.config.json) of the file with dynamic settings.|
 | config.reload                              | 60000             | No       |Config reload interval in milliseconds.
 | identityProviders                          | -                 | Yes      |Map of identity providers. **Note**. At least one identity provider must be provided. See [examples](sample/aidial.settings.json) of available providers.
 | identityProviders.*.jwksUrl                | -                 | Optional |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. *Note*. Either `jwksUrl` or `userInfoEndpoint` must be provided.
