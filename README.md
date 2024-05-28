@@ -47,7 +47,7 @@ Static settings are used on startup and cannot be changed while application is r
 | identityProviders.*.negativeCacheExpirationMs    | 10000             | No       |How long to retain JWKS response in the cache in case of failed response.
 | identityProviders.*.issuerPattern          | -                 | No       |Regexp to match the claim "iss" to identity provider
 | identityProviders.*.disableJwtVerification | false             | No       |The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.
-| vertx.*     | -                 | No       |Vertx settings. See more details (here)[https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html].
+| vertx.*     | -                 | No       |Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.
 | server.*    | -                 | No       |Vertx HTTP server settings for incoming requests.
 | client.*    | -                 | No       |Vertx HTTP client settings for outbound requests.
 | storage.provider                           | filesystem                  | Yes      |Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem. See examples in the sections below.
