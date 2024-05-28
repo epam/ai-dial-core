@@ -30,11 +30,13 @@ Or run com.epam.aidial.core.AIDial class from your favorite IDE.
 
 ### Static settings
 
-Static settings are used on startup and cannot be changed while application is running. See [example](sample/aidial.settings.json). Priority order:
+Static settings are used on startup and cannot be changed while application is running. See [example](sample/aidial.settings.json). 
 
-* Environment variables with extra "aidial." prefix. E.g. "aidial.server.port", "aidial.config.files".
-* File specified in "AIDIAL_SETTINGS" environment variable.
-* Default resource file: src/main/resources/aidial.settings.json.
+Priority order:
+
+1. Environment variables with extra "aidial." prefix. E.g. "aidial.server.port", "aidial.config.files".
+2. File specified in "AIDIAL_SETTINGS" environment variable.
+3. Default resource file: src/main/resources/aidial.settings.json.
 
 | Setting     | Default           | Required | Description
 |------------------|:-----------:|:----------:|-------------------------------------------------|
@@ -179,8 +181,9 @@ maxmemory-policy volatile-lfu
 ### Dynamic settings
 
 Dynamic settings are stored in JSON files, specified via "config.files" static setting, and reloaded at interval,
-specified via "config.reload" static setting. See [example](sample/aidial.config.json).
-Dynamic settings include:
+specified via "config.reload" static setting. Refer to [example](sample/aidial.config.json).
+
+Dynamic settings can include:
 
 | Parameter                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 |---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
