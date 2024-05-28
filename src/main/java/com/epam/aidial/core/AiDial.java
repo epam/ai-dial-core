@@ -13,6 +13,7 @@ import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.NotificationService;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
@@ -117,7 +118,9 @@ public class AiDial {
             ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, storage, invitationService, shareService);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
-            PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService, ruleService, storage, generator, clock);
+            NotificationService notificationService = new NotificationService(resourceService, encryptionService);
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
+                    ruleService, notificationService, storage, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
@@ -126,7 +129,8 @@ public class AiDial {
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, publicationService, accessService, lockService, resourceOperationService, ruleService, version());
+                    shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
+                    notificationService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

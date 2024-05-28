@@ -384,6 +384,20 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
+        // verify publication notification
+        response = operationRequest("/v1/ops/notification/list", "");
+        verifyJsonNotExact(response, 200, """
+                {"notifications":[
+                 {
+                    "id":"@ignore",
+                    "url":"publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "type":"PUBLICATION",
+                    "message":"Your request has been approved by admin",
+                    "timestamp": "@ignore"
+                 }
+                ]}
+                """);
+
         // initialize delete request by user (publication owner)
         response = operationRequest("/v1/ops/publication/create", """
                 {
@@ -454,7 +468,8 @@ class PublicationApiTest extends ResourceBaseTest {
         // reject deletion request by admin
         response = operationRequest("/v1/ops/publication/reject", """
                 {
-                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+                    "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                    "comment": "Bad resources"
                 }
                 """, "authorization", "admin");
         verify(response, 200);
@@ -492,6 +507,28 @@ class PublicationApiTest extends ResourceBaseTest {
                         "resourceTypes" : [ "CONVERSATION" ]
                       }
                     ]
+                }
+                """);
+
+        response = operationRequest("/v1/ops/notification/list", "");
+        verifyJsonNotExact(response, 200, """
+                {
+                   "notifications":[
+                      {
+                         "id": "@ignore",
+                         "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                         "type": "PUBLICATION",
+                         "message": "Your request has been approved by admin",
+                         "timestamp": "@ignore"
+                      },
+                      {
+                         "id": "@ignore",
+                         "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                         "type": "PUBLICATION",
+                         "message": "Your request has been rejected by admin: Bad resources",
+                         "timestamp": "@ignore"
+                      }
+                   ]
                 }
                 """);
 
