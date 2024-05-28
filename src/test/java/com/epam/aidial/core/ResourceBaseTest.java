@@ -2,7 +2,9 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
+import com.epam.aidial.core.service.NotificationService;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -87,6 +89,8 @@ public class ResourceBaseTest {
 
     int serverPort;
     ApiKeyStore apiKeyStore;
+    NotificationService notificationService;
+    EncryptionService encryptionService;
 
     AccessTokenValidator validator = Mockito.mock(AccessTokenValidator.class);
 
@@ -159,6 +163,8 @@ public class ResourceBaseTest {
             dial.start();
             serverPort = dial.getServer().actualPort();
             apiKeyStore = dial.getProxy().getApiKeyStore();
+            notificationService = dial.getProxy().getNotificationService();
+            encryptionService = dial.getProxy().getEncryptionService();
 
             Response response = send(HttpMethod.GET, "/v1/bucket", null, "");
             assertEquals(response.status, 200);

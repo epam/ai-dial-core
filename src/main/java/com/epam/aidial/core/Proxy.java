@@ -14,6 +14,7 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.NotificationService;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
@@ -85,6 +86,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final LockService lockService;
     private final ResourceOperationService resourceOperationService;
     private final RuleService ruleService;
+    private final NotificationService notificationService;
     private final String version;
 
     @Override

@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.Publications;
+import com.epam.aidial.core.data.RejectPublicationRequest;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.Rules;
@@ -126,10 +127,11 @@ public class PublicationController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
+                    RejectPublicationRequest request = ProxyUtil.convertToObject(body, RejectPublicationRequest.class);
+                    String url = request.url();
                     ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, false);
-                    return vertx.executeBlocking(() -> publicationService.rejectPublication(resource), false);
+                    return vertx.executeBlocking(() -> publicationService.rejectPublication(resource, request), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't reject publication", error));

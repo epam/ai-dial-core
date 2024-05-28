@@ -6,16 +6,12 @@ import lombok.Getter;
 public enum ResourceType {
     FILE("files"), CONVERSATION("conversations"), PROMPT("prompts"), LIMIT("limits"),
     SHARED_WITH_ME("shared_with_me"), SHARED_BY_ME("shared_by_me"), INVITATION("invitations"),
-    PUBLICATION("publications"), RULES("rules"), API_KEY_DATA("api_key_data");
+    PUBLICATION("publications"), RULES("rules"), API_KEY_DATA("api_key_data"), NOTIFICATION("notifications");
 
     private final String group;
 
     ResourceType(String group) {
         this.group = group;
-    }
-
-    public String getGroup() {
-        return group;
     }
 
     public static ResourceType of(String group) {

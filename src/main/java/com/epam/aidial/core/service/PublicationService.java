@@ -3,7 +3,9 @@ package com.epam.aidial.core.service;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.Notification;
 import com.epam.aidial.core.data.Publication;
+import com.epam.aidial.core.data.RejectPublicationRequest;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
@@ -11,7 +13,6 @@ import com.epam.aidial.core.data.ResourceUrl;
 import com.epam.aidial.core.data.Rule;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.security.RuleMatcher;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -55,6 +56,7 @@ public class PublicationService {
     private final ResourceService resources;
     private final AccessService accessService;
     private final RuleService ruleService;
+    private final NotificationService notificationService;
     private final BlobStorage files;
     private final Supplier<String> ids;
     private final LongSupplier clock;
@@ -255,11 +257,15 @@ public class PublicationService {
         deleteReviewResources(resourcesToAdd);
         deletePublicResources(resourcesToDelete);
 
+        String notificationMessage = "Your request has been approved by admin";
+        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+
         return publication;
     }
 
     @Nullable
-    public Publication rejectPublication(ResourceDescription resource) {
+    public Publication rejectPublication(ResourceDescription resource, RejectPublicationRequest request) {
         if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -293,6 +299,13 @@ public class PublicationService {
                 .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
                 .toList();
         deleteReviewResources(resourcesToAdd);
+
+        String rejectReason = request.comment();
+        String notificationMessage = "Your request has been rejected by admin";
+        notificationMessage = rejectReason != null ? notificationMessage + ": " + rejectReason : notificationMessage;
+        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+
         return publication;
     }
 

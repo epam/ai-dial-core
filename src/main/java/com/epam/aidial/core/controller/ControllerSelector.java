@@ -58,6 +58,8 @@ public class ControllerSelector {
 
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
 
+    private static final Pattern NOTIFICATIONS = Pattern.compile("^/v1/ops/notification/(list|delete)$");
+
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = context.getRequest().path();
         HttpMethod method = context.getRequest().method();
@@ -298,6 +300,18 @@ public class ControllerSelector {
         if (match != null) {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listPublishedResources;
+        }
+
+        match = match(NOTIFICATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            NotificationController controller = new NotificationController(proxy, context);
+
+            return switch (operation) {
+                case "list" -> controller::listNotifications;
+                case "delete" -> controller::deleteNotification;
+                default -> null;
+            };
         }
 
         return null;
