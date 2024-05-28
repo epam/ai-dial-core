@@ -171,7 +171,7 @@ maxmemory 4G
 maxmemory-policy volatile-lfu
 ```
 
-Note: Redis will be strictly required in the upcoming releases 0.8+.
+> **Note**: Redis will be strictly required in the upcoming releases 0.8+.
 
 ### Dynamic settings
 
