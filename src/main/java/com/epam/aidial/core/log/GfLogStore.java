@@ -9,6 +9,10 @@ import com.epam.deltix.gflog.api.LogEntry;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
@@ -22,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Scanner;
 
 @Slf4j
 public class GfLogStore implements LogStore {
@@ -92,6 +97,10 @@ public class GfLogStore implements LogStore {
             append(entry, "}", false);
         }
 
+        append(entry, ",\"deployment\":\"", false);
+        append(entry, context.getDeployment().getName(), true);
+        append(entry, "\"", false);
+
         String sourceDeployment = context.getSourceDeployment();
         if (sourceDeployment != null) {
             append(entry, ",\"parent_deployment\":\"", false);
@@ -115,6 +124,12 @@ public class GfLogStore implements LogStore {
         if (parentSpanId != null) {
             append(entry, "\",\"core_parent_span_id\":\"", false);
             append(entry, context.getParentSpanId(), true);
+        }
+
+        Buffer responseBody = context.getResponseBody();
+        if (isStreamingResponse(responseBody)) {
+            append(entry, "\",\"assembled_streaming_response\":\"", false);
+            append(entry, getAssembledStreamingResponse(responseBody), true);
         }
 
         append(entry, "\"},\"request\":{\"protocol\":\"", false);
@@ -145,7 +160,6 @@ public class GfLogStore implements LogStore {
 
         append(entry, "\"}}", false);
     }
-
 
     private static void append(LogEntry entry, Buffer buffer) {
         if (buffer != null) {
@@ -198,5 +212,108 @@ public class GfLogStore implements LogStore {
     private static String formatTimestamp(long timestamp) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.of("UTC"))
                 .format(DateTimeFormatter.ISO_DATE_TIME);
+    }
+
+    static String getAssembledStreamingResponse(Buffer response) {
+        try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
+            StringBuilder content = new StringBuilder();
+            ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
+            ObjectNode last = null;
+            ObjectNode choice = ProxyUtil.MAPPER.createObjectNode();
+            ObjectNode message = ProxyUtil.MAPPER.createObjectNode();
+            choice.set("message", message);
+            JsonNode usage = null;
+            JsonNode statistics = null;
+            JsonNode systemFingerprint = null;
+            JsonNode model = null;
+            scanner.useDelimiter("\n*data: *");
+            while (scanner.hasNext()) {
+                String chunk = scanner.next();
+                if (chunk.startsWith("[DONE]")) {
+                    break;
+                }
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(chunk);
+                if (tree.get("usage") != null) {
+                    usage = tree.get("usage");
+                }
+                if (tree.get("statistics") != null) {
+                    statistics = tree.get("statistics");
+                }
+                if (tree.get("system_fingerprint") != null) {
+                    systemFingerprint = tree.get("system_fingerprint");
+                }
+                if (model == null && tree.get("model") != null) {
+                    model = tree.get("model");
+                }
+                last = tree;
+                ArrayNode choices = (ArrayNode) tree.get("choices");
+                if (choices == null) {
+                    // skip error message
+                    continue;
+                }
+                JsonNode curChoice = choices.get(0);
+                choice.set("finish_reason", curChoice.get("finish_reason"));
+                JsonNode delta = curChoice.get("delta");
+                if (delta.get("custom_content") != null) {
+                    message.set("custom_content", delta.get("custom_content"));
+                }
+                if (delta.get("tool_calls") != null) {
+                    message.set("tool_calls", delta.get("tool_calls"));
+                }
+                if (delta.get("function_call") != null) {
+                    message.set("function_call", delta.get("function_call"));
+                }
+                JsonNode contentNode = delta.get("content");
+                if (contentNode != null) {
+                    content.append(contentNode.textValue());
+                }
+            }
+
+            if (last == null) {
+                return null;
+            }
+
+            result.set("id", last.get("id"));
+            result.put("object", "chat.completion");
+            result.set("created", last.get("created"));
+            result.set("model", model);
+
+            if (usage != null) {
+                result.set("usage", usage);
+            }
+            if (statistics != null) {
+                result.set("statistics", statistics);
+            }
+            if (systemFingerprint != null) {
+                result.set("system_fingerprint", systemFingerprint);
+            }
+
+            if (content.isEmpty()) {
+                // error
+                return ProxyUtil.convertToString(result);
+            }
+
+            ArrayNode choices = ProxyUtil.MAPPER.createArrayNode();
+            result.set("choices", choices);
+            choices.add(choice);
+            choice.put("index", 0);
+            message.put("role", "assistant");
+            message.put("content", content.toString());
+
+            return ProxyUtil.convertToString(result);
+        } catch (Throwable e) {
+            log.warn("Can't assemble streaming response", e);
+            return null;
+        }
+    }
+
+    static boolean isStreamingResponse(Buffer response) {
+        for (int i = 0; i < response.length(); i++) {
+            byte b = response.getByte(i);
+            if (!Character.isWhitespace(b)) {
+                return b != '{';
+            }
+        }
+        return false;
     }
 }
