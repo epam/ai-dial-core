@@ -116,8 +116,9 @@ public class GfLogStore implements LogStore {
 
         Buffer responseBody = context.getResponseBody();
         if (isStreamingResponse(responseBody)) {
-            append(entry, "\",\"assembled_streaming_response\":\"", false);
+            append(entry, ",\"assembled_streaming_response\":\"", false);
             append(entry, getAssembledStreamingResponse(responseBody), true);
+            append(entry, "\"", false);
         }
 
         append(entry, ",\"trace\":{\"trace_id\":\"", false);
