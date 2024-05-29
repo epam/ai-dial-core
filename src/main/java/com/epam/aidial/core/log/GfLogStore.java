@@ -114,6 +114,12 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
+        Buffer responseBody = context.getResponseBody();
+        if (isStreamingResponse(responseBody)) {
+            append(entry, "\",\"assembled_streaming_response\":\"", false);
+            append(entry, getAssembledStreamingResponse(responseBody), true);
+        }
+
         append(entry, ",\"trace\":{\"trace_id\":\"", false);
         append(entry, context.getTraceId(), true);
 
@@ -124,12 +130,6 @@ public class GfLogStore implements LogStore {
         if (parentSpanId != null) {
             append(entry, "\",\"core_parent_span_id\":\"", false);
             append(entry, context.getParentSpanId(), true);
-        }
-
-        Buffer responseBody = context.getResponseBody();
-        if (isStreamingResponse(responseBody)) {
-            append(entry, "\",\"assembled_streaming_response\":\"", false);
-            append(entry, getAssembledStreamingResponse(responseBody), true);
         }
 
         append(entry, "\"},\"request\":{\"protocol\":\"", false);
@@ -270,7 +270,8 @@ public class GfLogStore implements LogStore {
             }
 
             if (last == null) {
-                return null;
+                log.warn("no chunk is found in streaming response");
+                return "{}";
             }
 
             result.set("id", last.get("id"));
@@ -303,7 +304,7 @@ public class GfLogStore implements LogStore {
             return ProxyUtil.convertToString(result);
         } catch (Throwable e) {
             log.warn("Can't assemble streaming response", e);
-            return null;
+            return "{}";
         }
     }
 
