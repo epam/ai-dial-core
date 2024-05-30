@@ -67,7 +67,7 @@ public class GfLogStoreTest {
     }
 
     @Test
-    public void testGetAssembledStreamingResponse() {
+    public void testAssembleStreamingResponse() {
         String streamingResponse = """
                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
                  
@@ -163,7 +163,7 @@ public class GfLogStoreTest {
                  data: [DONE]
                                 
                 """;
-        String res = GfLogStore.getAssembledStreamingResponse(Buffer.buffer(streamingResponse));
+        String res = GfLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
         assertNotNull(res);
         String expected = """
                 {"id":"1d84aa54-e476-405d-9713-386bdfc85993","object":"chat.completion","created":"1687222196","model":"gpt-35-turbo","usage":{"junk_string":"junk","junk_integer":1,"junk_float":1.0,"junk_null":null,"junk_true":true,"junk_false":false,"completion_tokens":10,"prompt_tokens":20,"total_tokens":30},"statistics":{"usage_per_model":[{"index":0,"name":"text-embedding-ada-002","prompt_tokens":23,"total_tokens":23},{"index":1,"name":"gpt-4","prompt_tokens":123,"completion_tokens":17,"total_tokens":140}]},"choices":[{"message":{"role":"assistant","content":"As an AI language model, I don't have emotions, but I'm functioning perfectly well. How can I assist you today?"},"finish_reason":"stop","index":0}]}""";

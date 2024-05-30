@@ -114,12 +114,14 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
+        append(entry, ",\"assembled_response\":\"", false);
         Buffer responseBody = context.getResponseBody();
         if (isStreamingResponse(responseBody)) {
-            append(entry, ",\"assembled_streaming_response\":\"", false);
-            append(entry, getAssembledStreamingResponse(responseBody), true);
-            append(entry, "\"", false);
+            append(entry, assembleStreamingResponse(responseBody), true);
+        } else {
+            append(entry, responseBody);
         }
+        append(entry, "\"", false);
 
         append(entry, ",\"trace\":{\"trace_id\":\"", false);
         append(entry, context.getTraceId(), true);
@@ -215,7 +217,7 @@ public class GfLogStore implements LogStore {
                 .format(DateTimeFormatter.ISO_DATE_TIME);
     }
 
-    static String getAssembledStreamingResponse(Buffer response) {
+    static String assembleStreamingResponse(Buffer response) {
         try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
             StringBuilder content = new StringBuilder();
             ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
