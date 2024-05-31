@@ -217,10 +217,16 @@ public class GfLogStore implements LogStore {
                 .format(DateTimeFormatter.ISO_DATE_TIME);
     }
 
+    /**
+     * Assembles streaming response into a single one.
+     * The assembling process merges chunks of the streaming response one by one using separator: <code>\n*data: *</code>
+     *
+     * @param response byte array response to be assembled.
+     * @return assembled streaming response
+     */
     static String assembleStreamingResponse(Buffer response) {
         try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
             StringBuilder content = new StringBuilder();
-            ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
             ObjectNode last = null;
             ObjectNode choice = ProxyUtil.MAPPER.createObjectNode();
             ObjectNode message = ProxyUtil.MAPPER.createObjectNode();
@@ -229,6 +235,7 @@ public class GfLogStore implements LogStore {
             JsonNode statistics = null;
             JsonNode systemFingerprint = null;
             JsonNode model = null;
+            // each chunk is separated by one or multiple new lines with the prefix: 'data:'
             scanner.useDelimiter("\n*data: *");
             while (scanner.hasNext()) {
                 String chunk = scanner.next();
@@ -277,6 +284,7 @@ public class GfLogStore implements LogStore {
                 return "{}";
             }
 
+            ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
             result.set("id", last.get("id"));
             result.put("object", "chat.completion");
             result.set("created", last.get("created"));
@@ -311,13 +319,36 @@ public class GfLogStore implements LogStore {
         }
     }
 
+    /**
+     * Determines if the given response is streaming.
+     * <p>
+     *     Streaming response is spitted into chunks. Each chunk starts with a new line and has a prefix: 'data:'.
+     *     For example<br/>
+     *     <code>
+     *         data: {content: "some text"}
+     *         \n\ndata: {content: "some text"}
+     *         \ndata: [DONE]
+     *     </code>
+     * </p>
+     *
+     * @param response byte array response.
+     * @return <code>true</code> is the response is streaming.
+     */
     static boolean isStreamingResponse(Buffer response) {
-        for (int i = 0; i < response.length(); i++) {
+        int i = 0;
+        for (; i < response.length(); i++) {
             byte b = response.getByte(i);
             if (!Character.isWhitespace(b)) {
-                return b != '{';
+                break;
             }
         }
-        return false;
+        String dataToken = "data:";
+        int j = 0;
+        for (; i < response.length() && j < dataToken.length(); i++, j++) {
+            if (dataToken.charAt(j) != response.getByte(i)) {
+                break;
+            }
+        }
+        return j == dataToken.length();
     }
 }
