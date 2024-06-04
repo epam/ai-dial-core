@@ -151,16 +151,16 @@ public class DeploymentPostController {
         });
     }
 
-    private void handleRequestError(String deploymentId, Throwable error) {
+    private Future<Void> handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            return context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
             log.error("Deployment not found {}", deploymentId, error);
-            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            return context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
             log.error("Failed to handle deployment {}", deploymentId, error);
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+            return context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
         }
     }
 
