@@ -48,7 +48,7 @@ public class ProxyContext {
     // deployment name of the source(application/assistant/model) associated with the current request
     private final String sourceDeployment;
 
-    private Deployment deployment;
+    private volatile Deployment deployment;
     private String userSub;
     private List<String> userRoles;
     private String userHash;

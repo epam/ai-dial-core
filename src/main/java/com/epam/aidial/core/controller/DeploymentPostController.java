@@ -4,6 +4,7 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Addon;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -12,8 +13,13 @@ import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
+import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.limiter.RateLimitResult;
 import com.epam.aidial.core.security.AccessService;
+import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.PermissionDeniedException;
+import com.epam.aidial.core.service.ResourceNotFoundException;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
@@ -39,7 +45,6 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
-import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -56,7 +61,6 @@ import java.util.Set;
 import java.util.function.Function;
 
 @Slf4j
-@RequiredArgsConstructor
 public class DeploymentPostController {
 
     private static final Set<Integer> RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
@@ -65,6 +69,17 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
+    private final ResourceService resourceService;
+    private final AccessService accessService;
+    private final EncryptionService encryptionService;
+
+    public DeploymentPostController(Proxy proxy, ProxyContext context) {
+        this.proxy = proxy;
+        this.context = context;
+        this.resourceService = proxy.getResourceService();
+        this.accessService = proxy.getAccessService();
+        this.encryptionService = proxy.getEncryptionService();
+    }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
@@ -73,30 +88,60 @@ public class DeploymentPostController {
         }
 
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
-        if (!isValidDeploymentApi(deployment, deploymentApi)) {
-            deployment = null;
-        }
+        boolean isValidDeployment = isValidDeploymentApi(deployment, deploymentApi);
 
-        if (deployment == null) {
-            log.error("Deployment {} is not found", deploymentId);
-            return context.respond(HttpStatus.NOT_FOUND, "Deployment is not found");
-        }
+        return proxy.getVertx().executeBlocking(() -> {
+            if (!isValidDeployment) {
+                return null;
+            }
 
-        if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
-            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-            return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
-        }
+            if (deployment == null) {
+                ResourceDescription resource;
+                try {
+                    resource = ResourceDescription.fromAnyUrl(deploymentId, encryptionService);
+                } catch (Exception e) {
+                    log.warn("Invalid resource url provided: {}", deploymentId);
+                    return null;
+                }
 
-        context.setDeployment(deployment);
+                if (resource.getType() != ResourceType.APPLICATION) {
+                    throw new IllegalArgumentException("Unsupported deployment type: " + resource.getType());
+                }
 
-        Future<RateLimitResult> rateLimitResultFuture;
-        if (deployment instanceof Model) {
-            rateLimitResultFuture = proxy.getRateLimiter().limit(context);
-        } else {
-            rateLimitResultFuture = Future.succeededFuture(RateLimitResult.SUCCESS);
-        }
+                boolean hasAccess = accessService.hasReadAccess(resource, context);
+                if (!hasAccess) {
+                    throw new PermissionDeniedException("User don't have access to the deployment " + deploymentId);
+                }
 
-        return rateLimitResultFuture.map((Function<RateLimitResult, Void>) result -> {
+                String applicationBody = resourceService.getResource(resource);
+                return ProxyUtil.convertToObject(applicationBody, Application.class);
+            }
+
+            return deployment;
+        }, false)
+        .onFailure(error -> handleRequestError(deploymentId, error))
+        .map(dep -> {
+            if (dep == null) {
+                throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
+            }
+
+            if (!isBaseAssistant(dep) && !DeploymentController.hasAccess(context, dep)) {
+                throw new PermissionDeniedException("Forbidden deployment: " + deploymentId);
+            }
+
+            context.setDeployment(deployment);
+
+            return dep;
+        })
+        .onFailure(error -> handleRequestError(deploymentId, error))
+        .map(dep -> {
+            if (deployment instanceof Model) {
+                return proxy.getRateLimiter().limit(context);
+            } else {
+                return RateLimitResult.SUCCESS;
+            }
+        })
+        .map((Function<RateLimitResult, Void>) result -> {
             if (result.status() == HttpStatus.OK) {
                 handleRateLimitSuccess(deploymentId);
             } else {
@@ -104,6 +149,19 @@ public class DeploymentPostController {
             }
             return null;
         });
+    }
+
+    private void handleRequestError(String deploymentId, Throwable error) {
+        if (error instanceof PermissionDeniedException) {
+            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+        } else if (error instanceof ResourceNotFoundException) {
+            log.error("Deployment not found {}", deploymentId, error);
+            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+        } else {
+            log.error("Failed to handle deployment {}", deploymentId, error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+        }
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
@@ -163,7 +221,7 @@ public class DeploymentPostController {
 
     private void handleError(Throwable error) {
         log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
-                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(),  error);
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
@@ -419,7 +477,7 @@ public class DeploymentPostController {
             proxy.getLogStore().save(context);
 
             log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
-                            + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+                     + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), context.getDeployment().getName(),
                     context.getDeployment().getEndpoint(),

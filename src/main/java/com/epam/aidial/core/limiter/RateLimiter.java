@@ -1,7 +1,6 @@
 package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
@@ -55,34 +54,30 @@ public class RateLimiter {
         }
     }
 
-    public Future<RateLimitResult> limit(ProxyContext context) {
-        try {
-            // skip checking limits if redis is not available
-            if (resourceService == null) {
-                return Future.succeededFuture(RateLimitResult.SUCCESS);
-            }
-            Key key = context.getKey();
-            String deploymentName = context.getDeployment().getName();
-            Limit limit;
-            if (key == null) {
-                limit = getLimitByUser(context, deploymentName);
-            } else {
-                limit = getLimitByApiKey(context, deploymentName);
-            }
-
-            if (limit == null || !limit.isPositive()) {
-                if (limit == null) {
-                    log.warn("Limit is not found for deployment: {}", deploymentName);
-                } else {
-                    log.warn("Limit must be positive for deployment: {}", deploymentName);
-                }
-                return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
-            }
-
-            return vertx.executeBlocking(() -> checkLimit(context, limit), false);
-        } catch (Throwable e) {
-            return Future.failedFuture(e);
+    public RateLimitResult limit(ProxyContext context) {
+        // skip checking limits if redis is not available
+        if (resourceService == null) {
+            return RateLimitResult.SUCCESS;
         }
+        Key key = context.getKey();
+        String deploymentName = context.getDeployment().getName();
+        Limit limit;
+        if (key == null) {
+            limit = getLimitByUser(context, deploymentName);
+        } else {
+            limit = getLimitByApiKey(context, deploymentName);
+        }
+
+        if (limit == null || !limit.isPositive()) {
+            if (limit == null) {
+                log.warn("Limit is not found for deployment: {}", deploymentName);
+            } else {
+                log.warn("Limit must be positive for deployment: {}", deploymentName);
+            }
+            return new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        return checkLimit(context, limit);
     }
 
     public Future<LimitStats> getLimitStats(String deploymentName, ProxyContext context) {

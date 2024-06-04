@@ -2,6 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
@@ -158,10 +159,21 @@ public class ResourceController extends AccessControlBaseController {
                     switch (resourceType) {
                         case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
                         case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+                        case APPLICATION -> {
+                            Application application = ProxyUtil.convertToObject(body, Application.class);
+                            if (application != null) {
+                                // replace application name with it's url
+                                application.setName(descriptor.getUrl());
+                                // defining user roles in custom applications are not allowed
+                                application.setUserRoles(null);
+                                body = ProxyUtil.convertToString(application);
+                            }
+                        }
                         default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
                     }
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite), false);
+                    String requestBody = body;
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, requestBody, overwrite), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {

@@ -11,7 +11,7 @@ public class ResourceUtil {
     public static boolean hasResource(ResourceDescription resource, ResourceService resourceService, BlobStorage storage) {
         return switch (resource.getType()) {
             case FILE -> storage.exists(resource.getAbsoluteFilePath());
-            case CONVERSATION, PROMPT -> resourceService.hasResource(resource);
+            case CONVERSATION, PROMPT, APPLICATION -> resourceService.hasResource(resource);
             default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
         };
     }

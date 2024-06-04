@@ -20,6 +20,7 @@ import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
@@ -36,6 +37,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 import static com.epam.aidial.core.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
@@ -80,6 +82,9 @@ public class DeploymentPostControllerTest {
     @Mock
     private TokenStatsTracker tokenStatsTracker;
 
+    @Mock
+    private Vertx vertx;
+
     @InjectMocks
     private DeploymentPostController controller;
 
@@ -92,7 +97,6 @@ public class DeploymentPostControllerTest {
         controller.handle("app1", "api");
 
         verify(context).respond(eq(UNSUPPORTED_MEDIA_TYPE), anyString());
-
     }
 
     @Test
@@ -106,6 +110,8 @@ public class DeploymentPostControllerTest {
         app.setUserRoles(Set.of("role1"));
         config.getApplications().put("app1", app);
         when(context.getConfig()).thenReturn(config);
+        when(proxy.getVertx()).thenReturn(vertx);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(app));
 
         controller.handle("app1", "chat/completions");
 
@@ -121,6 +127,8 @@ public class DeploymentPostControllerTest {
         Application app = new Application();
         config.getApplications().put("app1", app);
         when(context.getConfig()).thenReturn(config);
+        when(proxy.getVertx()).thenReturn(vertx);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(null));
 
         controller.handle("unknown-app", "chat/completions");
 
@@ -146,6 +154,8 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getVertx()).thenReturn(vertx);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
 
         controller.handle("app1", "chat/completions");
 
@@ -174,6 +184,8 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(proxy.getVertx()).thenReturn(vertx);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
 
         controller.handle("app1", "chat/completions");
 

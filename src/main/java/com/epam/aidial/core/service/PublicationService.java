@@ -50,7 +50,8 @@ public class PublicationService {
     private static final ResourceDescription PUBLIC_PUBLICATIONS = ResourceDescription.fromDecoded(
             ResourceType.PUBLICATION, PUBLIC_BUCKET, PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
-    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT);
+    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
+            ResourceType.PROMPT, ResourceType.APPLICATION);
 
     private final EncryptionService encryption;
     private final ResourceService resources;
@@ -596,7 +597,7 @@ public class PublicationService {
     private boolean checkResource(ResourceDescription descriptor) {
         return switch (descriptor.getType()) {
             case FILE -> files.exists(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.hasResource(descriptor);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.hasResource(descriptor);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         };
     }
@@ -604,7 +605,7 @@ public class PublicationService {
     private boolean copyResource(ResourceDescription from, ResourceDescription to) {
         return switch (from.getType()) {
             case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.copyResource(from, to);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
             default -> throw new IllegalStateException("Unsupported type: " + from.getType());
         };
     }
@@ -612,7 +613,7 @@ public class PublicationService {
     private void deleteResource(ResourceDescription descriptor) {
         switch (descriptor.getType()) {
             case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.deleteResource(descriptor);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }
