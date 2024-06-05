@@ -122,10 +122,11 @@ public class RateLimiterTest {
         ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "trace-id", "span-id");
         proxyContext.setDeployment(new Model());
 
-        RateLimitResult result = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 
         assertNotNull(result);
-        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertNotNull(result.result());
+        assertEquals(HttpStatus.FORBIDDEN, result.result().status());
     }
 
 
@@ -139,10 +140,11 @@ public class RateLimiterTest {
         ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "trace-id", "span-id");
         proxyContext.setDeployment(new Model());
 
-        RateLimitResult result = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 
         assertNotNull(result);
-        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertNotNull(result.result());
+        assertEquals(HttpStatus.FORBIDDEN, result.result().status());
 
     }
 
@@ -164,10 +166,11 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        RateLimitResult result = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 
         assertNotNull(result);
-        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertNotNull(result.result());
+        assertEquals(HttpStatus.FORBIDDEN, result.result().status());
 
     }
 
@@ -189,10 +192,16 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        RateLimitResult result = rateLimiter.limit(proxyContext);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
 
         assertNotNull(result);
-        assertEquals(HttpStatus.OK, result.status());
+        assertNotNull(result.result());
+        assertEquals(HttpStatus.OK, result.result().status());
     }
 
     @Test
@@ -228,10 +237,11 @@ public class RateLimiterTest {
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
-        RateLimitResult checkLimitFuture = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.OK, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -240,7 +250,8 @@ public class RateLimiterTest {
         checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
     }
 
@@ -275,9 +286,10 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(90);
         proxyContext.setTokenUsage(tokenUsage);
 
-        RateLimitResult resultFuture = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> resultFuture = rateLimiter.limit(proxyContext);
         assertNotNull(resultFuture);
-        assertEquals(HttpStatus.OK, resultFuture.status());
+        assertNotNull(resultFuture.result());
+        assertEquals(HttpStatus.OK, resultFuture.result().status());
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -352,10 +364,11 @@ public class RateLimiterTest {
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
-        RateLimitResult checkLimitFuture = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.OK, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -364,7 +377,8 @@ public class RateLimiterTest {
         checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
     }
 
@@ -392,10 +406,11 @@ public class RateLimiterTest {
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
-        RateLimitResult checkLimitFuture = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.OK, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -404,7 +419,8 @@ public class RateLimiterTest {
         checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.OK, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
     }
 
     @Test
@@ -446,10 +462,11 @@ public class RateLimiterTest {
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
-        RateLimitResult checkLimitFuture = rateLimiter.limit(proxyContext);
+        Future<RateLimitResult> checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.OK, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
         increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -458,7 +475,8 @@ public class RateLimiterTest {
         checkLimitFuture = rateLimiter.limit(proxyContext);
 
         assertNotNull(checkLimitFuture);
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.status());
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
     }
 

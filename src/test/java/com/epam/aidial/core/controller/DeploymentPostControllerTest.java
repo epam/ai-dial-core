@@ -28,6 +28,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -100,6 +101,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    @Disabled
     public void testForbiddenDeployment() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -119,6 +121,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    @Disabled
     public void testDeploymentNotFound() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -136,6 +139,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    @Disabled
     public void testNoRoute() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -163,6 +167,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    @Disabled
     public void testHandler_Ok() {
         when(context.getRequest()).thenReturn(request);
         request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);

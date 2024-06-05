@@ -54,30 +54,34 @@ public class RateLimiter {
         }
     }
 
-    public RateLimitResult limit(ProxyContext context) {
-        // skip checking limits if redis is not available
-        if (resourceService == null) {
-            return RateLimitResult.SUCCESS;
-        }
-        Key key = context.getKey();
-        String deploymentName = context.getDeployment().getName();
-        Limit limit;
-        if (key == null) {
-            limit = getLimitByUser(context, deploymentName);
-        } else {
-            limit = getLimitByApiKey(context, deploymentName);
-        }
-
-        if (limit == null || !limit.isPositive()) {
-            if (limit == null) {
-                log.warn("Limit is not found for deployment: {}", deploymentName);
-            } else {
-                log.warn("Limit must be positive for deployment: {}", deploymentName);
+    public Future<RateLimitResult> limit(ProxyContext context) {
+        try {
+            // skip checking limits if redis is not available
+            if (resourceService == null) {
+                return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
-            return new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied");
-        }
+            Key key = context.getKey();
+            String deploymentName = context.getDeployment().getName();
+            Limit limit;
+            if (key == null) {
+                limit = getLimitByUser(context, deploymentName);
+            } else {
+                limit = getLimitByApiKey(context, deploymentName);
+            }
 
-        return checkLimit(context, limit);
+            if (limit == null || !limit.isPositive()) {
+                if (limit == null) {
+                    log.warn("Limit is not found for deployment: {}", deploymentName);
+                } else {
+                    log.warn("Limit must be positive for deployment: {}", deploymentName);
+                }
+                return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
+            }
+
+            return vertx.executeBlocking(() -> checkLimit(context, limit), false);
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
     }
 
     public Future<LimitStats> getLimitStats(String deploymentName, ProxyContext context) {

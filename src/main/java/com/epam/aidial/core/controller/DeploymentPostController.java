@@ -58,7 +58,6 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 
 @Slf4j
 public class DeploymentPostController {
@@ -90,12 +89,20 @@ public class DeploymentPostController {
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
         boolean isValidDeployment = isValidDeploymentApi(deployment, deploymentApi);
 
-        return proxy.getVertx().executeBlocking(() -> {
-            if (!isValidDeployment) {
-                return null;
-            }
+        if (!isValidDeployment) {
+            log.warn("Deployment {}/{} is not valid", deploymentId, deploymentApi);
+            return context.respond(HttpStatus.NOT_FOUND, "Deployment is not found");
+        }
 
-            if (deployment == null) {
+        Future<Deployment> deploymentFuture;
+        if (deployment != null) {
+            if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
+                log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+                return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment: " + deploymentId);
+            }
+            deploymentFuture = Future.succeededFuture(deployment);
+        } else {
+            deploymentFuture = proxy.getVertx().executeBlocking(() -> {
                 ResourceDescription resource;
                 try {
                     resource = ResourceDescription.fromAnyUrl(deploymentId, encryptionService);
@@ -110,58 +117,36 @@ public class DeploymentPostController {
 
                 boolean hasAccess = accessService.hasReadAccess(resource, context);
                 if (!hasAccess) {
+                    log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
                     throw new PermissionDeniedException("User don't have access to the deployment " + deploymentId);
                 }
 
                 String applicationBody = resourceService.getResource(resource);
                 return ProxyUtil.convertToObject(applicationBody, Application.class);
-            }
+            }, false);
+        }
 
-            return deployment;
-        }, false)
-        .onFailure(error -> handleRequestError(deploymentId, error))
-        .map(dep -> {
+        return deploymentFuture.map(dep -> {
             if (dep == null) {
                 throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
             }
 
-            if (!isBaseAssistant(dep) && !DeploymentController.hasAccess(context, dep)) {
-                throw new PermissionDeniedException("Forbidden deployment: " + deploymentId);
-            }
-
-            context.setDeployment(deployment);
-
+            context.setDeployment(dep);
             return dep;
-        })
-        .onFailure(error -> handleRequestError(deploymentId, error))
-        .map(dep -> {
-            if (deployment instanceof Model) {
+        }).compose(dep -> {
+            if (dep instanceof Model) {
                 return proxy.getRateLimiter().limit(context);
             } else {
-                return RateLimitResult.SUCCESS;
+                return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
-        })
-        .map((Function<RateLimitResult, Void>) result -> {
-            if (result.status() == HttpStatus.OK) {
+        }).map(rateLimitResult -> {
+            if (rateLimitResult.status() == HttpStatus.OK) {
                 handleRateLimitSuccess(deploymentId);
             } else {
-                handleRateLimitHit(result);
+                handleRateLimitHit(rateLimitResult);
             }
             return null;
         });
-    }
-
-    private Future<Void> handleRequestError(String deploymentId, Throwable error) {
-        if (error instanceof PermissionDeniedException) {
-            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-            return context.respond(HttpStatus.FORBIDDEN, error.getMessage());
-        } else if (error instanceof ResourceNotFoundException) {
-            log.error("Deployment not found {}", deploymentId, error);
-            return context.respond(HttpStatus.NOT_FOUND, error.getMessage());
-        } else {
-            log.error("Failed to handle deployment {}", deploymentId, error);
-            return context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
-        }
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
