@@ -28,7 +28,6 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -101,7 +100,6 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    @Disabled
     public void testForbiddenDeployment() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -112,8 +110,7 @@ public class DeploymentPostControllerTest {
         app.setUserRoles(Set.of("role1"));
         config.getApplications().put("app1", app);
         when(context.getConfig()).thenReturn(config);
-        when(proxy.getVertx()).thenReturn(vertx);
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(app));
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
 
         controller.handle("app1", "chat/completions");
 
@@ -121,7 +118,6 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    @Disabled
     public void testDeploymentNotFound() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -131,6 +127,7 @@ public class DeploymentPostControllerTest {
         config.getApplications().put("app1", app);
         when(context.getConfig()).thenReturn(config);
         when(proxy.getVertx()).thenReturn(vertx);
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(null));
 
         controller.handle("unknown-app", "chat/completions");
@@ -139,7 +136,6 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    @Disabled
     public void testNoRoute() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -158,8 +154,6 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(proxy.getVertx()).thenReturn(vertx);
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
 
         controller.handle("app1", "chat/completions");
 
@@ -167,7 +161,6 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    @Disabled
     public void testHandler_Ok() {
         when(context.getRequest()).thenReturn(request);
         request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
@@ -189,8 +182,6 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        when(proxy.getVertx()).thenReturn(vertx);
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
 
         controller.handle("app1", "chat/completions");
 

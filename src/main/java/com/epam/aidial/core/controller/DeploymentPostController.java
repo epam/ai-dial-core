@@ -38,6 +38,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -91,14 +92,15 @@ public class DeploymentPostController {
 
         if (!isValidDeployment) {
             log.warn("Deployment {}/{} is not valid", deploymentId, deploymentApi);
-            return context.respond(HttpStatus.NOT_FOUND, "Deployment is not found");
+            return respond(HttpStatus.NOT_FOUND, "Deployment is not found");
         }
 
+        Promise<Void> promise = Promise.promise();
         Future<Deployment> deploymentFuture;
         if (deployment != null) {
             if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
                 log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-                return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment: " + deploymentId);
+                return respond(HttpStatus.FORBIDDEN, "Forbidden deployment: " + deploymentId);
             }
             deploymentFuture = Future.succeededFuture(deployment);
         } else {
@@ -117,7 +119,6 @@ public class DeploymentPostController {
 
                 boolean hasAccess = accessService.hasReadAccess(resource, context);
                 if (!hasAccess) {
-                    log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
                     throw new PermissionDeniedException("User don't have access to the deployment " + deploymentId);
                 }
 
@@ -126,27 +127,49 @@ public class DeploymentPostController {
             }, false);
         }
 
-        return deploymentFuture.map(dep -> {
-            if (dep == null) {
-                throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
-            }
+        deploymentFuture
+                .map(dep -> {
+                    if (dep == null) {
+                        throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
+                    }
 
-            context.setDeployment(dep);
-            return dep;
-        }).compose(dep -> {
-            if (dep instanceof Model) {
-                return proxy.getRateLimiter().limit(context);
-            } else {
-                return Future.succeededFuture(RateLimitResult.SUCCESS);
-            }
-        }).map(rateLimitResult -> {
-            if (rateLimitResult.status() == HttpStatus.OK) {
-                handleRateLimitSuccess(deploymentId);
-            } else {
-                handleRateLimitHit(rateLimitResult);
-            }
-            return null;
-        });
+                    context.setDeployment(dep);
+                    return dep;
+                })
+                .compose(dep -> {
+                    if (dep instanceof Model) {
+                        return proxy.getRateLimiter().limit(context);
+                    } else {
+                        return Future.succeededFuture(RateLimitResult.SUCCESS);
+                    }
+                })
+                .map(rateLimitResult -> {
+                    if (rateLimitResult.status() == HttpStatus.OK) {
+                        handleRateLimitSuccess(deploymentId);
+                    } else {
+                        handleRateLimitHit(rateLimitResult);
+                    }
+                    promise.complete();
+                    return null;
+                })
+                .onFailure(error -> handleRequestError(promise, deploymentId, error));
+
+        return promise.future();
+    }
+
+    private void handleRequestError(Promise<Void> promise, String deploymentId, Throwable error) {
+        if (error instanceof PermissionDeniedException) {
+            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            respond(HttpStatus.FORBIDDEN, error.getMessage());
+        } else if (error instanceof ResourceNotFoundException) {
+            log.error("Deployment not found {}", deploymentId, error);
+            respond(HttpStatus.NOT_FOUND, error.getMessage());
+        } else {
+            log.error("Failed to handle deployment {}", deploymentId, error);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+        }
+
+        promise.complete();
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
@@ -260,7 +283,7 @@ public class DeploymentPostController {
                         context.getTraceId(), context.getSpanId(), e.getMessage());
                 return;
             } catch (Throwable e) {
-                context.respond(HttpStatus.BAD_REQUEST);
+                respond(HttpStatus.BAD_REQUEST);
                 log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
                         context.getTraceId(), context.getSpanId(), e.getMessage());
                 return;
@@ -287,7 +310,7 @@ public class DeploymentPostController {
                 try {
                     context.setRequestBody(enhanceModelRequest(context, tree));
                 } catch (Throwable e) {
-                    context.respond(HttpStatus.BAD_REQUEST);
+                    respond(HttpStatus.BAD_REQUEST);
                     log.warn("Can't enhance model request. Trace: {}. Span: {}. Error: {}",
                             context.getTraceId(), context.getSpanId(), e.getMessage());
                     return;
