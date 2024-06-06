@@ -100,7 +100,7 @@ public class DeploymentPostController {
             if (result.status() == HttpStatus.OK) {
                 handleRateLimitSuccess(deploymentId);
             } else {
-                handleRateLimitHit(result);
+                handleRateLimitHit(deploymentId, result);
             }
             return null;
         });
@@ -145,13 +145,13 @@ public class DeploymentPostController {
         ApiKeyData.initFromContext(proxyApiKeyData, context);
     }
 
-    private void handleRateLimitHit(RateLimitResult result) {
+    private void handleRateLimitHit(String deploymentId, RateLimitResult result) {
         // Returning an error similar to the Azure format.
         ErrorData rateLimitError = new ErrorData();
         rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
         rateLimitError.getError().setMessage(result.errorMessage());
-        log.error("Rate limit error {}. Key: {}. User sub: {}. Trace: {}. Span: {}", result.errorMessage(),
-                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId());
+        log.error("Rate limit error {}. Key: {}. User sub: {}. Deployment: {}. Trace: {}. Span: {}", result.errorMessage(),
+                context.getProject(), context.getUserSub(), deploymentId, context.getTraceId(), context.getSpanId());
         respond(result.status(), rateLimitError);
     }
 
