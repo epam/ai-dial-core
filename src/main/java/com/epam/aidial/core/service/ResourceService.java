@@ -154,7 +154,7 @@ public class ResourceService implements AutoCloseable {
             return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
         }).toList();
 
-        return new ResourceFolderMetadata(descriptor, resources).setNextToken(set.getNextMarker());
+        return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
     }
 
     @Nullable

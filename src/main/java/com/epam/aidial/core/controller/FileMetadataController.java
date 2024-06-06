@@ -30,6 +30,10 @@ public class FileMetadataController extends AccessControlBaseController {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
+        if (limit < 0 || limit > 1000) {
+            context.respond(HttpStatus.BAD_REQUEST, "Limit is out of allowed range: [0, 1000]");
+            return Future.succeededFuture();
+        }
         return proxy.getVertx().executeBlocking(() -> {
             try {
                 MetadataBase metadata = storage.listMetadata(resource, token, limit, recursive);

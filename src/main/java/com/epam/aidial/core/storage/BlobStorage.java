@@ -208,7 +208,7 @@ public class BlobStorage implements Closeable {
         // listing folder
         if (resource.isFolder()) {
             boolean isEmpty = filesMetadata.isEmpty() && !resource.isRootFolder();
-            return isEmpty ? null : new ResourceFolderMetadata(resource, filesMetadata);
+            return isEmpty ? null : new ResourceFolderMetadata(resource, filesMetadata, list.getNextMarker());
         } else {
             // listing file
             if (filesMetadata.size() == 1) {
