@@ -78,7 +78,7 @@ public class DeploymentPostController {
         }
 
         if (deployment == null) {
-            log.error("Deployment {} is not found", deploymentId);
+            log.error("Deployment {}/{} is not found", deploymentId, deploymentApi);
             return context.respond(HttpStatus.NOT_FOUND, "Deployment is not found");
         }
 
