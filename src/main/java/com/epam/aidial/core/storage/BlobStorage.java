@@ -200,9 +200,8 @@ public class BlobStorage implements Closeable {
     /**
      * List all files/folder metadata for a given resource
      */
-    public MetadataBase listMetadata(ResourceDescription resource) {
-        String storageLocation = getStorageLocation(resource.getAbsoluteFilePath());
-        ListContainerOptions options = buildListContainerOptions(storageLocation);
+    public MetadataBase listMetadata(ResourceDescription resource, String afterMarker, int maxResults, boolean recursive) {
+        ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath(), maxResults, recursive, afterMarker);
         PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
         List<MetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
 
@@ -220,20 +219,7 @@ public class BlobStorage implements Closeable {
     }
 
     public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults, boolean recursive) {
-        String storageLocation = getStorageLocation(absoluteFilePath);
-        ListContainerOptions options = new ListContainerOptions()
-                .prefix(storageLocation)
-                .maxResults(maxResults);
-
-        if (recursive) {
-            options.recursive();
-        } else {
-            options.delimiter(BlobStorageUtil.PATH_SEPARATOR);
-        }
-
-        if (afterMarker != null) {
-            options.afterMarker(afterMarker);
-        }
+        ListContainerOptions options = buildListContainerOptions(absoluteFilePath, maxResults, recursive, afterMarker);
 
         PageSet<? extends StorageMetadata> originalSet = blobStore.list(bucketName, options);
         if (prefix == null) {
@@ -264,10 +250,22 @@ public class BlobStorage implements Closeable {
         storeContext.close();
     }
 
-    private static ListContainerOptions buildListContainerOptions(String prefix) {
-        return new ListContainerOptions()
-                .prefix(prefix)
-                .delimiter(BlobStorageUtil.PATH_SEPARATOR);
+    private ListContainerOptions buildListContainerOptions(String absoluteFilePath, int maxResults, boolean recursive, String afterMarker) {
+        String storageLocation = getStorageLocation(absoluteFilePath);
+        ListContainerOptions options = new ListContainerOptions()
+                .prefix(storageLocation)
+                .maxResults(maxResults);
+
+        if (recursive) {
+            options.recursive();
+        } else {
+            options.delimiter(BlobStorageUtil.PATH_SEPARATOR);
+        }
+
+        if (afterMarker != null) {
+            options.afterMarker(afterMarker);
+        }
+        return options;
     }
 
     private MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {

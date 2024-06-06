@@ -27,9 +27,12 @@ public class FileMetadataController extends AccessControlBaseController {
     @Override
     protected Future<?> handle(ResourceDescription resource) {
         BlobStorage storage = proxy.getStorage();
+        boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
+        String token = context.getRequest().getParam("token");
+        int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
         return proxy.getVertx().executeBlocking(() -> {
             try {
-                MetadataBase metadata = storage.listMetadata(resource);
+                MetadataBase metadata = storage.listMetadata(resource, token, limit, recursive);
                 if (metadata != null) {
                     proxy.getAccessService().filterForbidden(context, resource, metadata);
                     context.respond(HttpStatus.OK, getContentType(), metadata);
