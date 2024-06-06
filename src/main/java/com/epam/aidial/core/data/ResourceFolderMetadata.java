@@ -29,10 +29,11 @@ public class ResourceFolderMetadata extends MetadataBase {
     }
 
     public ResourceFolderMetadata(ResourceDescription resource) {
-        this(resource, null);
+        this(resource, null, null);
     }
 
-    public ResourceFolderMetadata(ResourceDescription resource, List<MetadataBase> items) {
+    public ResourceFolderMetadata(ResourceDescription resource, List<MetadataBase> items, String nextToken) {
         this(resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl(), items);
+        this.nextToken = nextToken;
     }
 }
