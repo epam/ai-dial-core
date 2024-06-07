@@ -42,7 +42,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "displayVersion":"1.0",
                 "iconUrl":"http://application1/icon.svg",
                 "description":"My Custom Application Description",
-                "forwardAuthToken":false
+                "forwardAuthToken":false,
+                "defaults": {}
                 }
                 """);
 
@@ -173,7 +174,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "features": {
                  "rateEndpoint": "http://application1/rate",
                  "configurationEndpoint": "http://application1/configuration"
-                 }
+                 },
+                "defaults": {}
                 }
                 """);
 
@@ -280,7 +282,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "features": {
                  "rateEndpoint": "http://application1/rate",
                  "configurationEndpoint": "http://application1/configuration"
-                 }
+                 },
+                "defaults": {}
                 }
                 """);
     }

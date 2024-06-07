@@ -80,6 +80,7 @@ public class ModelController {
         data.setTokenizerModel(model.getTokenizerModel());
         data.setLimits(createLimits(model.getLimits()));
         data.setPricing(createPricing(model.getPricing()));
+        data.setDefaults(model.getDefaults());
         return data;
     }
 

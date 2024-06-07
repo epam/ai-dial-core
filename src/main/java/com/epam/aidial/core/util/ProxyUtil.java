@@ -2,6 +2,7 @@ package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.function.BaseFunction;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -20,8 +21,10 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -176,5 +179,15 @@ public class ProxyUtil {
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException(e);
         }
+    }
+
+    public static <T> Throwable processChain(T item, List<BaseFunction<T>> chain) {
+        for (BaseFunction<T> fn : chain) {
+            Throwable error = fn.apply(item);
+            if (error != null) {
+                return error;
+            }
+        }
+        return null;
     }
 }
