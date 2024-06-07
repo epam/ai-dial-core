@@ -3,6 +3,7 @@ package com.epam.aidial.core.config;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Data
@@ -22,4 +23,11 @@ public abstract class Deployment {
     private Features features;
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
+    /**
+     * Default parameters are applied if a request doesn't contain them in OpenAI chat/completions API call.
+     * <p>
+     *     Note. Parameters' values are converted to strings, e.g. 0.25 -> "0.25" or true -> "true"
+     * </p>
+     */
+    private Map<String, String> defaults = Map.of();
 }

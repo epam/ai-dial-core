@@ -63,6 +63,7 @@ public class ApplicationController {
         data.setFeatures(DeploymentController.createFeatures(application.getFeatures()));
         data.setInputAttachmentTypes(application.getInputAttachmentTypes());
         data.setMaxInputAttachments(application.getMaxInputAttachments());
+        data.setDefaults(application.getDefaults());
         return data;
     }
 }

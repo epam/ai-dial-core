@@ -59,7 +59,10 @@
                     "folderAttachmentsSupported": false
                 },
                 "maxInputAttachments": 10,
-                "inputAttachmentTypes": ["type1", "type2"]
+                "inputAttachmentTypes": ["type1", "type2"],
+                "defaults": {
+                    "param1": "value"
+                }
             }
         }
     },
@@ -86,7 +89,10 @@
                 "folderAttachmentsSupported": false
             },
             "maxInputAttachments": 10,
-            "inputAttachmentTypes": ["type1", "type2"]
+            "inputAttachmentTypes": ["type1", "type2"],
+            "defaults": {
+                "param1": "value"
+            }
         }
     },
     "models": {
@@ -135,7 +141,10 @@
                 "folderAttachmentsSupported": false
             },
             "maxInputAttachments": 10,
-            "inputAttachmentTypes": ["type1", "type2"]
+            "inputAttachmentTypes": ["type1", "type2"],
+            "defaults": {
+                "param1": "value"
+            }
         },
         "embedding-ada": {
             "type": "embedding",
