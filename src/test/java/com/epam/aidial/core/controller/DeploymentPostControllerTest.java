@@ -373,4 +373,33 @@ public class DeploymentPostControllerTest {
         verify(tokenStatsTracker).endSpan(eq(context));
     }
 
+    @Test
+    public void testCustomApplication() {
+        when(context.getRequest()).thenReturn(request);
+        request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        Config config = new Config();
+        config.setApplications(new HashMap<>());
+        when(context.getConfig()).thenReturn(config);
+        Application application = new Application();
+        application.setName("applications/bucket/app1");
+        when(proxy.getVertx()).thenReturn(vertx);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
+        UpstreamBalancer balancer = mock(UpstreamBalancer.class);
+        when(proxy.getUpstreamBalancer()).thenReturn(balancer);
+        UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
+        when(balancer.balance(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(endpointRoute.hasNext()).thenReturn(true);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(context.getDeployment()).thenReturn(application);
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+
+        controller.handle("applications/bucket/app1", "chat/completions");
+
+        verify(tokenStatsTracker).startSpan(eq(context));
+    }
+
 }

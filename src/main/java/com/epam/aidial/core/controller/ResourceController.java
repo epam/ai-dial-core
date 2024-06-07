@@ -166,6 +166,8 @@ public class ResourceController extends AccessControlBaseController {
                                 application.setName(descriptor.getUrl());
                                 // defining user roles in custom applications are not allowed
                                 application.setUserRoles(null);
+                                // forward auth token is not allowed for custom applications
+                                application.setForwardAuthToken(false);
                                 body = ProxyUtil.convertToString(application);
                             }
                         }

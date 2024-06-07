@@ -255,6 +255,23 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testSelectPostDeploymentControllerWithCustomApplication() {
+        when(request.path()).thenReturn("/openai/deployments/applications/bucket/my-application/chat/completions");
+        when(request.method()).thenReturn(HttpMethod.POST);
+        Controller controller = ControllerSelector.select(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertEquals(3, lambda.getCapturedArgCount());
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        Object arg3 = lambda.getCapturedArg(2);
+        assertInstanceOf(DeploymentPostController.class, arg1);
+        assertEquals("applications/bucket/my-application", arg2);
+        assertEquals("chat/completions", arg3);
+    }
+
+    @Test
     public void testSelectUploadFileController() {
         when(request.path()).thenReturn("/v1/files/bucket/folder1/file1.txt");
         when(request.method()).thenReturn(HttpMethod.PUT);
