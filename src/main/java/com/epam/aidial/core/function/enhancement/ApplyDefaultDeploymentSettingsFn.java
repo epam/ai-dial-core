@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.function.BaseFunction;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -36,11 +37,11 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseFunction<ObjectNode> {
     private static boolean applyDefaults(ProxyContext context, ObjectNode tree) {
         Deployment deployment = context.getDeployment();
         boolean applied = false;
-        for (Map.Entry<String, String> e : deployment.getDefaults().entrySet()) {
+        for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
             String key = e.getKey();
-            String value = e.getValue();
+            Object value = e.getValue();
             if (!tree.has(key)) {
-                tree.put(key, value);
+                tree.set(key, ProxyUtil.MAPPER.convertValue(value, JsonNode.class));
                 applied = true;
             }
         }

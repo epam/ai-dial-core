@@ -61,7 +61,10 @@
                 "maxInputAttachments": 10,
                 "inputAttachmentTypes": ["type1", "type2"],
                 "defaults": {
-                    "param1": "value"
+                    "paramStr": "value",
+                    "paramBool": true,
+                    "paramInt": 123,
+                    "paramFloat": 0.25
                 }
             }
         }
@@ -91,7 +94,10 @@
             "maxInputAttachments": 10,
             "inputAttachmentTypes": ["type1", "type2"],
             "defaults": {
-                "param1": "value"
+                "paramStr": "value",
+                "paramBool": true,
+                "paramInt": 123,
+                "paramFloat": 0.25
             }
         }
     },
@@ -143,7 +149,10 @@
             "maxInputAttachments": 10,
             "inputAttachmentTypes": ["type1", "type2"],
             "defaults": {
-                "param1": "value"
+                "paramStr": "value",
+                "paramBool": true,
+                "paramInt": 123,
+                "paramFloat": 0.25
             }
         },
         "embedding-ada": {

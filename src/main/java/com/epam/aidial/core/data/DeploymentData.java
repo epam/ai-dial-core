@@ -30,5 +30,5 @@ public class DeploymentData {
     private FeaturesData features = new FeaturesData();
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
-    private Map<String, String> defaults;
+    private Map<String, Object> defaults;
 }

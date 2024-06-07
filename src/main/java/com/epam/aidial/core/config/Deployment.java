@@ -25,9 +25,6 @@ public abstract class Deployment {
     private Integer maxInputAttachments;
     /**
      * Default parameters are applied if a request doesn't contain them in OpenAI chat/completions API call.
-     * <p>
-     *     Note. Parameters' values are converted to strings, e.g. 0.25 -> "0.25" or true -> "true"
-     * </p>
      */
-    private Map<String, String> defaults = Map.of();
+    private Map<String, Object> defaults = Map.of();
 }
