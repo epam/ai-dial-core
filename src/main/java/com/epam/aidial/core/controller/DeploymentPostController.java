@@ -16,7 +16,6 @@ import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsF
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.limiter.RateLimitResult;
-import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
 import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
@@ -45,7 +44,6 @@ import org.apache.commons.lang3.StringUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
-import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -161,20 +159,14 @@ public class DeploymentPostController {
         respond(result.status(), rateLimitError);
     }
 
-    private void handleRateLimitFailure(Throwable error) {
-        log.warn("Failed to check limits. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
-                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
-        respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to check limits");
-    }
-
     private void handleError(Throwable error) {
-        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}",
                 context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(),  error);
         respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @SneakyThrows
-    private Future<?> sendRequest() {
+    private void sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
 
@@ -183,7 +175,8 @@ public class DeploymentPostController {
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), context.getDeployment().getName(), context.getUserSub());
 
-            return respond(HttpStatus.BAD_GATEWAY, "No route");
+            respond(HttpStatus.BAD_GATEWAY, "No route");
+            return;
         }
 
         Upstream upstream = route.next();
@@ -194,7 +187,7 @@ public class DeploymentPostController {
                 .setAbsoluteURI(uri)
                 .setMethod(request.method());
 
-        return proxy.getClient().request(options)
+        proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
     }
@@ -224,19 +217,6 @@ public class DeploymentPostController {
         }
 
         sendRequest();
-    }
-
-    @SneakyThrows
-    private ResourceDescription getResourceDescription(String url) {
-        if (url == null) {
-            return null;
-        }
-        URI uri = new URI(url);
-        if (uri.isAbsolute()) {
-            // skip public resource
-            return null;
-        }
-        return ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
     }
 
     /**
@@ -342,10 +322,8 @@ public class DeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                proxy.getRateLimiter().increase(context).onFailure(error -> {
-                    log.warn("Failed to increase limit. Trace: {}. Span: {}",
-                            context.getTraceId(), context.getSpanId(), error);
-                });
+                proxy.getRateLimiter().increase(context).onFailure(error -> log.warn("Failed to increase limit. Trace: {}. Span: {}",
+                        context.getTraceId(), context.getSpanId(), error));
                 tokenUsageFuture = Future.succeededFuture(tokenUsage);
                 try {
                     BigDecimal cost = ModelCostCalculator.calculate(context);
@@ -469,14 +447,14 @@ public class DeploymentPostController {
         return context.respond(status, errorMessage);
     }
 
-    private Future<Void> respond(HttpStatus status) {
+    private void respond(HttpStatus status) {
         finalizeRequest();
-        return context.respond(status);
+        context.respond(status);
     }
 
-    private Future<Void> respond(HttpStatus status, Object result) {
+    private void respond(HttpStatus status, Object result) {
         finalizeRequest();
-        return context.respond(status, result);
+        context.respond(status, result);
     }
 
     private void finalizeRequest() {

@@ -14,6 +14,12 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.net.URI;
 
+/**
+ * Collects attached files from the chat completion request and puts the result to API key data.
+ * <p>
+ *     Note. The function assigns a per-request key in the end of the processing.
+ * </p>
+ */
 @Slf4j
 public class CollectAttachmentsFn extends BaseFunction<ObjectNode> {
     public CollectAttachmentsFn(Proxy proxy, ProxyContext context) {
