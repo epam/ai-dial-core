@@ -59,7 +59,13 @@
                     "folderAttachmentsSupported": false
                 },
                 "maxInputAttachments": 10,
-                "inputAttachmentTypes": ["type1", "type2"]
+                "inputAttachmentTypes": ["type1", "type2"],
+                "defaults": {
+                    "paramStr": "value",
+                    "paramBool": true,
+                    "paramInt": 123,
+                    "paramFloat": 0.25
+                }
             }
         }
     },
@@ -86,7 +92,13 @@
                 "folderAttachmentsSupported": false
             },
             "maxInputAttachments": 10,
-            "inputAttachmentTypes": ["type1", "type2"]
+            "inputAttachmentTypes": ["type1", "type2"],
+            "defaults": {
+                "paramStr": "value",
+                "paramBool": true,
+                "paramInt": 123,
+                "paramFloat": 0.25
+            }
         }
     },
     "models": {
@@ -135,7 +147,13 @@
                 "folderAttachmentsSupported": false
             },
             "maxInputAttachments": 10,
-            "inputAttachmentTypes": ["type1", "type2"]
+            "inputAttachmentTypes": ["type1", "type2"],
+            "defaults": {
+                "paramStr": "value",
+                "paramBool": true,
+                "paramInt": 123,
+                "paramFloat": 0.25
+            }
         },
         "embedding-ada": {
             "type": "embedding",
