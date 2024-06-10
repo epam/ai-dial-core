@@ -67,5 +67,8 @@
   "encryption": {
     "salt": "salt",
     "password": "pass"
+  },
+  "deployment": {
+    "retriableErrorCodes": [401, 404]
   }
 }

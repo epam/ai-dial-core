@@ -37,6 +37,7 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -53,9 +54,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -125,12 +128,13 @@ public class AiDial {
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
+            Set<Integer> retriableErrorCodes = readRetriableErrorCodes();
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, version());
+                    notificationService, version(), retriableErrorCodes);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -323,5 +327,21 @@ public class AiDial {
             return val;
         }
         return System.getProperty(systemProperty);
+    }
+
+    private Set<Integer> readRetriableErrorCodes() {
+        JsonObject deployment = settings.getJsonObject("deployment");
+        if (deployment == null) {
+            return Set.of();
+        }
+        JsonArray errors = deployment.getJsonArray("retriableErrorCodes");
+        if (errors == null) {
+            return Set.of();
+        }
+        Set<Integer> retriableErrorCodes = new HashSet<>();
+        for (int i = 0; i < errors.size(); i++) {
+            retriableErrorCodes.add(errors.getInteger(i));
+        }
+        return retriableErrorCodes;
     }
 }
