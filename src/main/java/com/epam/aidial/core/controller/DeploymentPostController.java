@@ -52,7 +52,7 @@ import java.util.function.Function;
 @Slf4j
 public class DeploymentPostController {
 
-    private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
+    private static final Set<Integer> RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
 
@@ -269,7 +269,7 @@ public class DeploymentPostController {
                 context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        if (isRetriableError(proxyResponse.statusCode())) {
+        if (context.getUpstreamRoute().hasNext() && RETRIABLE_HTTP_CODES.contains(proxyResponse.statusCode())) {
             sendRequest(); // try next
             return;
         }
@@ -294,11 +294,6 @@ public class DeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
                 .onFailure(this::handleResponseError);
-    }
-
-    private boolean isRetriableError(int statusCode) {
-        return context.getUpstreamRoute().hasNext()
-                && (DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode) || proxy.getRetriableErrorCodes().contains(statusCode));
     }
 
     /**

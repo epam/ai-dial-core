@@ -88,10 +88,6 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final RuleService ruleService;
     private final NotificationService notificationService;
     private final String version;
-    /**
-     * List of retriable error codes for handling outages at LLM providers.
-     */
-    private final Set<Integer> retriableErrorCodes;
 
     @Override
     public void handle(HttpServerRequest request) {
