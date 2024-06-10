@@ -125,7 +125,7 @@ public class DeploymentPostController {
                 }
 
                 String applicationBody = resourceService.getResource(resource);
-                return ProxyUtil.convertToObject(applicationBody, Application.class);
+                return ProxyUtil.convertToObject(applicationBody, Application.class, true);
             }, false);
         }
 

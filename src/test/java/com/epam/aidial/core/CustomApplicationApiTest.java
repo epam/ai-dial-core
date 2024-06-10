@@ -14,9 +14,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {
                 "endpoint": "http://application1/v1/completions",
-                "displayName": "My Custom Application",
-                "displayVersion": "1.0",
-                "iconUrl": "http://application1/icon.svg",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description"
                 }
                 """);
@@ -38,11 +38,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 {
                 "name":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                 "endpoint":"http://application1/v1/completions",
-                "displayName":"My Custom Application",
-                "displayVersion":"1.0",
-                "iconUrl":"http://application1/icon.svg",
+                "display_name":"My Custom Application",
+                "display_version":"1.0",
+                "icon_url":"http://application1/icon.svg",
                 "description":"My Custom Application Description",
-                "forwardAuthToken":false,
+                "forward_auth_token":false,
                 "defaults": {}
                 }
                 """);
@@ -56,13 +56,13 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {
                 "endpoint": "http://application1/v1/completions",
-                "displayName": "My Custom Application",
-                "displayVersion": "1.0",
-                "iconUrl": "http://application1/icon.svg",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "features": {
-                 "rateEndpoint": "http://application1/rate",
-                 "configurationEndpoint": "http://application1/configuration"
+                 "rate_endpoint": "http://application1/rate",
+                 "configuration_endpoint": "http://application1/configuration"
                  }
                 }
                 """);
@@ -82,9 +82,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/gpt/my-custom-application", null, """
                 {
                 "endpoint": "http://application2/v1/completions",
-                "displayName": "My Custom Application 2",
-                "displayVersion": "1.1",
-                "iconUrl": "http://application2/icon.svg",
+                "display_name": "My Custom Application 2",
+                "display_version": "1.1",
+                "icon_url": "http://application2/icon.svg",
                 "description": "My Custom Application 2 Description"
                 }
                 """);
@@ -138,13 +138,13 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {
                 "endpoint": "http://application1/v1/completions",
-                "displayName": "My Custom Application",
-                "displayVersion": "1.0",
-                "iconUrl": "http://application1/icon.svg",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "features": {
-                 "rateEndpoint": "http://application1/rate",
-                 "configurationEndpoint": "http://application1/configuration"
+                 "rate_endpoint": "http://application1/rate",
+                 "configuration_endpoint": "http://application1/configuration"
                  }
                 }
                 """);
@@ -166,14 +166,14 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 {
                 "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                 "endpoint": "http://application1/v1/completions",
-                "displayName": "My Custom Application",
-                "displayVersion": "1.0",
-                "iconUrl": "http://application1/icon.svg",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
-                "forwardAuthToken": false,
+                "forward_auth_token": false,
                 "features": {
-                 "rateEndpoint": "http://application1/rate",
-                 "configurationEndpoint": "http://application1/configuration"
+                 "rate_endpoint": "http://application1/rate",
+                 "configuration_endpoint": "http://application1/configuration"
                  },
                 "defaults": {}
                 }
@@ -218,13 +218,13 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {
                 "endpoint": "http://application1/v1/completions",
-                "displayName": "My Custom Application",
-                "displayVersion": "1.0",
-                "iconUrl": "http://application1/icon.svg",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "features": {
-                 "rateEndpoint": "http://application1/rate",
-                 "configurationEndpoint": "http://application1/configuration"
+                 "rate_endpoint": "http://application1/rate",
+                 "configuration_endpoint": "http://application1/configuration"
                  }
                 }
                 """);
@@ -274,14 +274,14 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 {
                 "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                 "endpoint": "http://application1/v1/completions",
-                "displayName": "My Custom Application",
-                "displayVersion": "1.0",
-                "iconUrl": "http://application1/icon.svg",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
-                "forwardAuthToken": false,
+                "forward_auth_token": false,
                 "features": {
-                 "rateEndpoint": "http://application1/rate",
-                 "configurationEndpoint": "http://application1/configuration"
+                 "rate_endpoint": "http://application1/rate",
+                 "configuration_endpoint": "http://application1/configuration"
                  },
                 "defaults": {}
                 }
@@ -293,13 +293,13 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {
                 "endpoint": "http://application1/v1/completions",
-                "displayName": "My Custom Application",
-                "displayVersion": "1.0",
-                "iconUrl": "http://application1/icon.svg",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "features": {
-                 "rateEndpoint": "http://application1/rate",
-                 "configurationEndpoint": "http://application1/configuration"
+                 "rate_endpoint": "http://application1/rate",
+                 "configuration_endpoint": "http://application1/configuration"
                  }
                 }
                 """);

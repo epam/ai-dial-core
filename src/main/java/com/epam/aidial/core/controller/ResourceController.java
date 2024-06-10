@@ -160,7 +160,7 @@ public class ResourceController extends AccessControlBaseController {
                         case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
                         case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
                         case APPLICATION -> {
-                            Application application = ProxyUtil.convertToObject(body, Application.class);
+                            Application application = ProxyUtil.convertToObject(body, Application.class, true);
                             if (application != null) {
                                 // replace application name with it's url
                                 application.setName(descriptor.getUrl());
@@ -168,7 +168,7 @@ public class ResourceController extends AccessControlBaseController {
                                 application.setUserRoles(null);
                                 // forward auth token is not allowed for custom applications
                                 application.setForwardAuthToken(false);
-                                body = ProxyUtil.convertToString(application);
+                                body = ProxyUtil.convertToString(application, true);
                             }
                         }
                         default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
