@@ -211,5 +211,6 @@
                 }
             }
         }
-    }
+    },
+    "retriableErrorCodes": [401, 403]
 }
