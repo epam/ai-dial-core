@@ -98,12 +98,25 @@ public class ProxyUtil {
                 continue;
             }
             ArrayNode attachments = (ArrayNode) customContent.get("attachments");
-            if (attachments == null) {
-                continue;
+            if (attachments != null) {
+                for (int j = 0; j < attachments.size(); j++) {
+                    JsonNode attachment = attachments.get(j);
+                    collectAttachedFile(attachment, consumer);
+                }
             }
-            for (int j = 0; j < attachments.size(); j++) {
-                JsonNode attachment = attachments.get(j);
-                collectAttachedFile(attachment, consumer);
+            ArrayNode stages = (ArrayNode) customContent.get("stages");
+            if (stages != null) {
+                for (int j = 0; j < stages.size(); j++) {
+                    JsonNode stage = stages.get(j);
+                    attachments = (ArrayNode) stage.get("attachments");
+                    if (attachments == null) {
+                        continue;
+                    }
+                    for (int k = 0; k < attachments.size(); k++) {
+                        JsonNode attachment = attachments.get(k);
+                        collectAttachedFile(attachment, consumer);
+                    }
+                }
             }
         }
     }
