@@ -87,7 +87,7 @@ public class PublicationUtilTest {
                     "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
                     "lastActivityDate": 4848683153,
-                    "replay": {
+                    "playback": {
                         "messagesStack": [
                         {
                             "custom_content": {
@@ -110,7 +110,9 @@ public class PublicationUtilTest {
                                 ]
                             }
                         }
-                        ],
+                        ]
+                    },
+                    "replay": {
                         "replayUserMessagesStack": [
                         {
                             "custom_content": {
@@ -174,7 +176,7 @@ public class PublicationUtilTest {
                     "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
                     "lastActivityDate": 4848683153,
-                      "replay" : {
+                    "playback" : {
                         "messagesStack" : [ {
                           "custom_content" : {
                             "attachments" : [ {
@@ -191,7 +193,9 @@ public class PublicationUtilTest {
                               "url" : "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/"
                             } ]
                           }
-                        } ],
+                        } ]
+                    },
+                    "replay" : {
                         "replayUserMessagesStack" : [ {
                           "custom_content" : {
                             "attachments" : [ {
@@ -208,8 +212,8 @@ public class PublicationUtilTest {
                               "url" : "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/"
                             } ]
                           }
-                        } ]
-                      }
+                    } ]
+                    }
                 }
                 """, PublicationUtil.replaceLinks(conversationBody, targetResource, Map.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", "files/public/License",
@@ -251,7 +255,7 @@ public class PublicationUtilTest {
                     "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
                     "lastActivityDate": 4848683153,
-                      "replay" : {
+                    "playback" : {
                         "messagesStack" : [ {
                           "custom_content" : {
                             "attachments" : [ {
@@ -268,7 +272,9 @@ public class PublicationUtilTest {
                               "url" : "metadata/files/public/attachments/"
                             } ]
                           }
-                        } ],
+                        } ]
+                      },
+                      "replay" : {
                         "replayUserMessagesStack" : [ {
                           "custom_content" : {
                             "attachments" : [ {
@@ -287,6 +293,7 @@ public class PublicationUtilTest {
                           }
                         } ]
                       }
+                    }
                 }
                 """, PublicationUtil.replaceLinks(conversationBody, targetResource, Map.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", "files/public/License",

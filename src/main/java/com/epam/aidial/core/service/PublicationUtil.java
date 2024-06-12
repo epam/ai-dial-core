@@ -33,13 +33,16 @@ public class PublicationUtil {
         JsonArray messages = conversation.getJsonArray("messages");
         replaceAttachments(messages, attachmentsMapping);
 
+        JsonObject playback = conversation.getJsonObject("playback");
+        if (playback != null) {
+            JsonArray messagesStack = playback.getJsonArray("messagesStack");
+            replaceAttachments(messagesStack, attachmentsMapping);
+        }
+
         JsonObject replay = conversation.getJsonObject("replay");
         if (replay != null) {
-            JsonArray messagesStack = replay.getJsonArray("messagesStack");
+            JsonArray messagesStack = replay.getJsonArray("replayUserMessagesStack");
             replaceAttachments(messagesStack, attachmentsMapping);
-
-            JsonArray userMessagesStack = replay.getJsonArray("replayUserMessagesStack");
-            replaceAttachments(userMessagesStack, attachmentsMapping);
         }
 
         return conversation.toString();
