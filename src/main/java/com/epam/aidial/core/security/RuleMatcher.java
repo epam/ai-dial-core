@@ -61,8 +61,10 @@ public class RuleMatcher {
 
     private boolean equal(List<String> sources, List<String> targets) {
         for (String target : targets) {
-            if (sources.contains(target)) {
-                return true;
+            for (String source : sources) {
+                if (source.equalsIgnoreCase(target)) {
+                    return true;
+                }
             }
         }
 
@@ -72,7 +74,7 @@ public class RuleMatcher {
     private boolean contain(List<String> sources, List<String> targets) {
         for (String target : targets) {
             for (String role : sources) {
-                if (role.contains(target)) {
+                if (role.toLowerCase().contains(target.toLowerCase())) {
                     return true;
                 }
             }
