@@ -7,6 +7,7 @@ class PublicationApiTest extends ResourceBaseTest {
 
     private static final String PUBLICATION_REQUEST = """
             {
+              "name": "Publication name",
               "targetFolder": "public/folder/",
               "resources": [
                 {
@@ -34,6 +35,7 @@ class PublicationApiTest extends ResourceBaseTest {
     private static final String PUBLICATION_RESPONSE = """
             {
               "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+              "name": "Publication name",
               "targetFolder" : "public/folder/",
               "status" : "PENDING",
               "createdAt" : 0,
@@ -81,6 +83,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "name": "Publication name",
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
@@ -562,6 +565,7 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name" : "Publication name",
                   "targetFolder" : "public/folder/",
                   "status" : "APPROVED",
                   "createdAt" : 0,
@@ -632,6 +636,7 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name": "Publication name",
                   "targetFolder" : "public/folder/",
                   "status" : "REJECTED",
                   "createdAt" : 0,
