@@ -18,8 +18,8 @@ public class PublicationUtil {
      * Replacing `id` and `folderId` - chat specific and may not be suitable for generic use-case.
      * Typical use-case: replace attachment links in conversation after publishing.
      *
-     * @param conversationBody - source conversation body
-     * @param targetResource - target resource link
+     * @param conversationBody   - source conversation body
+     * @param targetResource     - target resource link
      * @param attachmentsMapping - attachments map (sourceUrl -> targetUrl) to replace
      * @return conversation body after replacement
      */
@@ -31,8 +31,26 @@ public class PublicationUtil {
         }
 
         JsonArray messages = conversation.getJsonArray("messages");
+        replaceAttachments(messages, attachmentsMapping);
+
+        JsonObject playback = conversation.getJsonObject("playback");
+        if (playback != null) {
+            JsonArray messagesStack = playback.getJsonArray("messagesStack");
+            replaceAttachments(messagesStack, attachmentsMapping);
+        }
+
+        JsonObject replay = conversation.getJsonObject("replay");
+        if (replay != null) {
+            JsonArray messagesStack = replay.getJsonArray("replayUserMessagesStack");
+            replaceAttachments(messagesStack, attachmentsMapping);
+        }
+
+        return conversation.toString();
+    }
+
+    private void replaceAttachments(JsonArray messages, Map<String, String> attachmentsMapping) {
         if (messages == null || messages.isEmpty()) {
-            return conversation.toString();
+            return;
         }
 
         for (int i = 0; i < messages.size(); i++) {
@@ -62,8 +80,6 @@ public class PublicationUtil {
                 }
             }
         }
-
-        return conversation.toString();
     }
 
     private JsonObject replaceConversationIdentity(String conversationBody, ResourceDescription targetResource) {

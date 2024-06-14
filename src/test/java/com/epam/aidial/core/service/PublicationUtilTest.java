@@ -86,7 +86,57 @@ public class PublicationUtilTest {
                     ],
                     "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
-                    "lastActivityDate": 4848683153
+                    "lastActivityDate": 4848683153,
+                    "playback": {
+                        "messagesStack": [
+                        {
+                            "custom_content": {
+                                "attachments": [
+                                {
+                                    "type": "application/octet-stream",
+                                    "title": "LICENSE",
+                                    "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE"
+                                },
+                                {
+                                    "type": "binary/octet-stream",
+                                    "title": "Dockerfile",
+                                    "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile"
+                                },
+                                {
+                                    "type": "application/vnd.dial.metadata+json",
+                                    "title": ".dockerignore",
+                                    "url": "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/"
+                                }
+                                ]
+                            }
+                        }
+                        ]
+                    },
+                    "replay": {
+                        "replayUserMessagesStack": [
+                        {
+                            "custom_content": {
+                                "attachments": [
+                                {
+                                    "type": "application/octet-stream",
+                                    "title": "LICENSE",
+                                    "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE"
+                                },
+                                {
+                                    "type": "binary/octet-stream",
+                                    "title": "Dockerfile",
+                                    "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile"
+                                },
+                                {
+                                    "type": "application/vnd.dial.metadata+json",
+                                    "title": ".dockerignore",
+                                    "url": "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/"
+                                }
+                                ]
+                            }
+                        }
+                        ]
+                    }
                 }
                 """;
 
@@ -125,7 +175,45 @@ public class PublicationUtilTest {
                     ],
                     "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
-                    "lastActivityDate": 4848683153
+                    "lastActivityDate": 4848683153,
+                    "playback" : {
+                        "messagesStack" : [ {
+                          "custom_content" : {
+                            "attachments" : [ {
+                              "type" : "application/octet-stream",
+                              "title" : "LICENSE",
+                              "url" : "files/public/License"
+                            }, {
+                              "type" : "binary/octet-stream",
+                              "title" : "Dockerfile",
+                              "url" : "files/public/Dockerfile"
+                            }, {
+                              "type" : "application/vnd.dial.metadata+json",
+                              "title" : ".dockerignore",
+                              "url" : "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/"
+                            } ]
+                          }
+                        } ]
+                    },
+                    "replay" : {
+                        "replayUserMessagesStack" : [ {
+                          "custom_content" : {
+                            "attachments" : [ {
+                              "type" : "application/octet-stream",
+                              "title" : "LICENSE",
+                              "url" : "files/public/License"
+                            }, {
+                              "type" : "binary/octet-stream",
+                              "title" : "Dockerfile",
+                              "url" : "files/public/Dockerfile"
+                            }, {
+                              "type" : "application/vnd.dial.metadata+json",
+                              "title" : ".dockerignore",
+                              "url" : "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/"
+                            } ]
+                          }
+                    } ]
+                    }
                 }
                 """, PublicationUtil.replaceLinks(conversationBody, targetResource, Map.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", "files/public/License",
@@ -166,7 +254,46 @@ public class PublicationUtilTest {
                     ],
                     "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
-                    "lastActivityDate": 4848683153
+                    "lastActivityDate": 4848683153,
+                    "playback" : {
+                        "messagesStack" : [ {
+                          "custom_content" : {
+                            "attachments" : [ {
+                              "type" : "application/octet-stream",
+                              "title" : "LICENSE",
+                              "url" : "files/public/License"
+                            }, {
+                              "type" : "binary/octet-stream",
+                              "title" : "Dockerfile",
+                              "url" : "files/public/Dockerfile"
+                            }, {
+                              "type" : "application/vnd.dial.metadata+json",
+                              "title" : ".dockerignore",
+                              "url" : "metadata/files/public/attachments/"
+                            } ]
+                          }
+                        } ]
+                      },
+                      "replay" : {
+                        "replayUserMessagesStack" : [ {
+                          "custom_content" : {
+                            "attachments" : [ {
+                              "type" : "application/octet-stream",
+                              "title" : "LICENSE",
+                              "url" : "files/public/License"
+                            }, {
+                              "type" : "binary/octet-stream",
+                              "title" : "Dockerfile",
+                              "url" : "files/public/Dockerfile"
+                            }, {
+                              "type" : "application/vnd.dial.metadata+json",
+                              "title" : ".dockerignore",
+                              "url" : "metadata/files/public/attachments/"
+                            } ]
+                          }
+                        } ]
+                      }
+                    }
                 }
                 """, PublicationUtil.replaceLinks(conversationBody, targetResource, Map.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", "files/public/License",
