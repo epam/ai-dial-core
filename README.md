@@ -29,7 +29,7 @@ You have the option to deploy the AI DIAL Core on the Kubernetes cluster by util
 
 > Refer to [Examples](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/examples/README.md) for guidelines.
 
-In any case, in your Helm chart values.yaml file, it is necessary to provide application's configurations described in the [Configuration](#configuration) section.
+In any case, in your Helm values file, it is necessary to provide application's configurations described in the [Configuration](#configuration) section.
 
 ## Configuration
 
