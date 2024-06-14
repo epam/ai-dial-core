@@ -23,6 +23,14 @@ Run the project with Gradle:
 
 Or run `com.epam.aidial.core.AIDial` class from your favorite IDE.
 
+## Helm Deployemnt
+
+You have the option to deploy the AI DIAL Core on the Kubernetes cluster by utilizing an _umbrella_ [dial](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/README.md) Helm chart, which also deploys other AI DIAL components. Alternatively, you can create a dedicated Helm chart using the [dial-core](https://github.com/epam/ai-dial-helm/blob/main/charts/dial-core/README.md) Helm chart. 
+
+> Refer to [Examples](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/examples/README.md) for guidelines.
+
+In any case, in your Helm chart values.yaml file, it is necessary to provide application's configurations described in the [Configuration](#configuration) section.
+
 ## Configuration
 
 * [Static settings](#static-settings)
