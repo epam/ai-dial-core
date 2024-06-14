@@ -26,7 +26,7 @@ Or run `com.epam.aidial.core.AIDial` class from your favorite IDE.
 ## Configuration
 
 * [Static settings](#static-settings)
-* [Dynaminc settings](#dynamic-settings)
+* [Dynamic settings](#dynamic-settings)
 
 ### Static settings
 
