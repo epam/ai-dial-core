@@ -16,6 +16,7 @@ public class Publication {
      * Publication url: publications/bucket/id.
      */
     String url;
+    String name;
     /**
      * Target directory prefix to publish; for example: public/ or public/folder/.
      */
