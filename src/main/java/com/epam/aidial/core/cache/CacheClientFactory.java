@@ -11,6 +11,8 @@ import org.redisson.config.Config;
 import org.redisson.config.ConfigSupport;
 import org.redisson.config.CredentialsResolver;
 
+import java.util.Objects;
+
 @UtilityClass
 public class CacheClientFactory {
     @SneakyThrows
@@ -42,11 +44,11 @@ public class CacheClientFactory {
     }
 
     private CredentialsResolver createElastiCacheCredResolver(JsonObject providerSettings) {
-        String userId = providerSettings.getString("userId");
-        String region = providerSettings.getString("region");
-        String cacheName = providerSettings.getString("cacheName");
-        boolean serverless = providerSettings.getBoolean("serverless");
-        IamAuthTokenRequest iamAuthTokenRequest = new IamAuthTokenRequest(userId, cacheName, region, serverless);
+        String userId = Objects.requireNonNull(providerSettings.getString("userId"), "AIM user must be provided");
+        String region = Objects.requireNonNull(providerSettings.getString("region"), "AWS region ID must be provided");
+        String clusterName = Objects.requireNonNull(providerSettings.getString("clusterName"), "Redis cluster name must be provided");
+        boolean serverless = Objects.requireNonNull(providerSettings.getBoolean("serverless"), "Serverless flag must be provided");
+        IamAuthTokenRequest iamAuthTokenRequest = new IamAuthTokenRequest(userId, clusterName, region, serverless);
         AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
         return new AwsCredentialsResolver(userId, iamAuthTokenRequest, awsCredentialsProvider);
     }

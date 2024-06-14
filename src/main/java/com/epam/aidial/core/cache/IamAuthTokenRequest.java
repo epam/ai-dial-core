@@ -35,13 +35,13 @@ public class IamAuthTokenRequest {
     private static final long TOKEN_EXPIRY_SECONDS = 900;
 
     private final String userId;
-    private final String cacheName;
+    private final String clusterName;
     private final String region;
     private final boolean isServerless;
 
-    public IamAuthTokenRequest(String userId, String cacheName, String region, boolean isServerless) {
+    public IamAuthTokenRequest(String userId, String clusterName, String region, boolean isServerless) {
         this.userId = userId;
-        this.cacheName = cacheName;
+        this.clusterName = clusterName;
         this.region = region;
         this.isServerless = isServerless;
     }
@@ -69,7 +69,7 @@ public class IamAuthTokenRequest {
     }
 
     private URI getRequestUri() {
-        return URI.create(String.format("%s%s/", REQUEST_PROTOCOL, cacheName));
+        return URI.create(String.format("%s%s/", REQUEST_PROTOCOL, clusterName));
     }
 
     private <T> void sign(SignableRequest<T> request, AWSCredentials credentials) {

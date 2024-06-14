@@ -75,10 +75,10 @@ Priority order:
 | redis.clusterServersConfig.nodeAddresses      | -                 |   Yes    |Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.
 | redis.provider.*                              | -                 |    No    |Provider specific settings
 | redis.provider.name                           | -                 |   Yes    |Provider name. The valid values are `aws-elasti-cache`(see [instructions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html)).
-| redis.provider.userId                           | -                 |   Yes    | IAM-enabled user ID. **Note**. It's applied to `aws-elasti-cache`
-| redis.provider.region                           | -                 |   Yes    | Geo region where the cache is located. **Note**. It's applied to `aws-elasti-cache` 
-| redis.provider.cacheName                           | -                 |   Yes    | Cache name. **Note**. It's applied to `aws-elasti-cache`
-| redis.provider.serverless                           | -                 |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
+| redis.provider.userId                         | -                 |   Yes    | IAM-enabled user ID. **Note**. It's applied to `aws-elasti-cache`
+| redis.provider.region                         | -                 |   Yes    | Geo region where the cache is located. **Note**. It's applied to `aws-elasti-cache` 
+| redis.provider.clusterName                    | -                 |   Yes    | Redis cluster name. **Note**. It's applied to `aws-elasti-cache`
+| redis.provider.serverless                     | -                 |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
 | invitations.ttlInSeconds                      | 259200            |    No    |Invitation time to live in seconds.
 | access.admin.rules                            | -                 |    No    |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
 
