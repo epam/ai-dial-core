@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.cache.CacheClientFactory;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.config.FileConfigStore;
@@ -44,10 +45,7 @@ import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
-import org.redisson.config.Config;
-import org.redisson.config.ConfigSupport;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -109,7 +107,7 @@ public class AiDial {
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker();
 
-            redis = openRedis();
+            redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
             resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
@@ -141,18 +139,6 @@ public class AiDial {
             stop();
             throw e;
         }
-    }
-
-    private RedissonClient openRedis() throws IOException {
-        JsonObject conf = settings("redis");
-        if (conf.isEmpty()) {
-            throw new IllegalArgumentException("Redis configuration not found");
-        }
-
-        ConfigSupport support = new ConfigSupport();
-        Config config = support.fromJSON(conf.toString(), Config.class);
-
-        return Redisson.create(config);
     }
 
     @VisibleForTesting
