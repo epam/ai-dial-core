@@ -49,6 +49,7 @@ public class ProxyUtil {
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
             .add(HttpHeaders.ACCEPT_ENCODING, "whatever")
             .add(Proxy.HEADER_API_KEY, "whatever");
+    public static final String METADATA_PREFIX = "metadata/";
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
         copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());
@@ -131,11 +132,10 @@ public class ProxyUtil {
 
         JsonNode typeNode = attachment.get("type");
         if (typeNode != null && typeNode.textValue().equals(MetadataBase.MIME_TYPE)) {
-            String prefix = "metadata/";
-            if (!url.startsWith(prefix)) {
+            if (!url.startsWith(METADATA_PREFIX)) {
                 throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
             }
-            url = url.substring(prefix.length());
+            url = url.substring(METADATA_PREFIX.length());
         }
 
         consumer.accept(url);

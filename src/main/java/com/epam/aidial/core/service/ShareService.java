@@ -116,6 +116,9 @@ public class ShareService {
         Set<ResourceLink> normalizedResourceLinks = new HashSet<>();
         for (ResourceLink resourceLink : resourceLinks) {
             String url = resourceLink.url();
+            if (url.startsWith(ProxyUtil.METADATA_PREFIX)) {
+                url = url.substring(ProxyUtil.METADATA_PREFIX.length());
+            }
             ResourceDescription resource = getResourceFromLink(url);
             if (!bucket.equals(resource.getBucketName())) {
                 throw new IllegalArgumentException("Resource %s does not belong to the user".formatted(url));
