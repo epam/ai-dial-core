@@ -2,6 +2,7 @@ package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.experimental.UtilityClass;
@@ -10,8 +11,6 @@ import java.util.Map;
 
 @UtilityClass
 public class PublicationUtil {
-
-    private static final String METADATA_PREFIX = "metadata/";
 
     /**
      * Replaces conversation identity and attachment links after it has been copied from one location to another.
@@ -70,13 +69,13 @@ public class PublicationUtil {
                     continue;
                 }
                 boolean isMetadata = false;
-                if (url.startsWith(METADATA_PREFIX)) {
+                if (url.startsWith(ProxyUtil.METADATA_PREFIX)) {
                     isMetadata = true;
-                    url = url.substring(METADATA_PREFIX.length());
+                    url = url.substring(ProxyUtil.METADATA_PREFIX.length());
                 }
                 String toReplace = attachmentsMapping.get(url);
                 if (toReplace != null) {
-                    attachment.put("url", isMetadata ? METADATA_PREFIX + toReplace : toReplace);
+                    attachment.put("url", isMetadata ? ProxyUtil.METADATA_PREFIX + toReplace : toReplace);
                 }
             }
         }
