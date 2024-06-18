@@ -45,7 +45,9 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     implementation 'com.auth0:java-jwt:4.4.0'
     implementation 'com.auth0:jwks-rsa:0.22.1'
-    // fat jar of https://github.com/Maxim-Gadalov/jclouds/tree/2.5.0-gcp-fix
+    // manually built jclouds fat jar
+    // base commit https://github.com/apache/jclouds/commit/5fad7fa895c02c1a8394175032a47a8bb175e84d
+    // cherry-pick commit https://github.com/apache/jclouds/commit/b379c17156237de96cedbb19d82bc86168fe83af
     // this version includes important google-cloud-storage fix that is not released yet
     implementation files("libs/jclouds-allblobstore-2.5.0-SNAPSHOT-jar-with-dependencies.jar")
     implementation ('org.apache.jclouds.api:filesystem:2.5.0') {
