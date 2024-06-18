@@ -13,6 +13,7 @@ COPY --chown=gradle:gradle . /home/gradle/src
 
 RUN echo $PWD
 RUN ls -la /home/gradle/src
+RUN ls -la /home/gradle/src/libs
 
 WORKDIR /home/gradle/src
 RUN gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
