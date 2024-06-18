@@ -19,7 +19,7 @@ import javax.annotation.Nullable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
 
-    private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}');
+    private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}', '"');
     private static final int MAX_PATH_SIZE = 900;
 
     ResourceType type;
