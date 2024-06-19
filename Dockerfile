@@ -11,10 +11,6 @@ FROM gradle:8.2.0-jdk17-alpine as builder
 COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
 
-RUN echo $PWD
-RUN ls -la /home/gradle/src
-RUN ls -la /home/gradle/src/libs
-
 WORKDIR /home/gradle/src
 RUN gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/build/distributions/aidial-core*.tar --strip-components=1 -C /build
