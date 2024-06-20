@@ -118,7 +118,7 @@ public class FileApiTest extends ResourceBaseTest {
     public void testEmptyFilesList(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
-        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
+        Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
         ResourceFolderMetadata emptyBucketResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
         client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
@@ -138,7 +138,7 @@ public class FileApiTest extends ResourceBaseTest {
     public void testMetadataContentType(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
-        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
+        Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
         ResourceFolderMetadata emptyBucketResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
 
@@ -312,7 +312,7 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
+        Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
         ResourceFolderMetadata emptyFolderResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
@@ -386,7 +386,7 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
-        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
+        Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
         FileMetadata expectedFileMetadata = new FileMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                 "file.txt", "appdata/EPM-RTC-RAIL", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt", 17, "text/custom", null);
         ResourceFolderMetadata expectedFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
@@ -644,10 +644,10 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
+        Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
         ResourceFolderMetadata emptyFolderResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null, List.of());
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
 
-        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
         FileMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom", null);
         FileMetadata expectedFileMetadata2 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
@@ -656,14 +656,12 @@ public class FileApiTest extends ResourceBaseTest {
                 "folder1", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/", permissions);
         ResourceFolderMetadata expectedRootFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions,
-                List.of(
-                        fileMetadataWithPermissions(expectedFileMetadata1, permissions),
-                        expectedFolder1Metadata));
+                List.of(fileMetadataWithPermissions(expectedFileMetadata1, permissions), expectedFolder1Metadata));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(ResourceFolderMetadata.class))
                     .send(context.succeeding(response -> {
@@ -732,7 +730,7 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
-        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
+        Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
         ResourceFolderMetadata emptyFolderResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
 
