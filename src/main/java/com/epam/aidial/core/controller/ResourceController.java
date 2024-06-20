@@ -42,11 +42,7 @@ public class ResourceController extends AccessControlBaseController {
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
         // PUT and DELETE require write access, GET - read
-        super(
-                proxy,
-                context,
-                HttpMethod.GET.equals(context.getRequest().method())
-                        ? ResourceAccessType.READ : ResourceAccessType.WRITE);
+        super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.shareService = proxy.getShareService();

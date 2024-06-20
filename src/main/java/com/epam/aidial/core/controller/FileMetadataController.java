@@ -18,7 +18,7 @@ public class FileMetadataController extends AccessControlBaseController {
     private final AccessService accessService;
 
     public FileMetadataController(Proxy proxy, ProxyContext context) {
-        super(proxy, context, ResourceAccessType.READ);
+        super(proxy, context, false);
         accessService = proxy.getAccessService();
     }
 

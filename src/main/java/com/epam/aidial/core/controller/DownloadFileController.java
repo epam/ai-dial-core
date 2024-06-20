@@ -21,7 +21,7 @@ import java.io.IOException;
 public class DownloadFileController extends AccessControlBaseController {
 
     public DownloadFileController(Proxy proxy, ProxyContext context) {
-        super(proxy, context, ResourceAccessType.READ);
+        super(proxy, context, false);
     }
 
     @Override

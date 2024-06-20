@@ -25,7 +25,7 @@ public class DeleteFileController extends AccessControlBaseController {
     private final LockService lockService;
 
     public DeleteFileController(Proxy proxy, ProxyContext context) {
-        super(proxy, context, ResourceAccessType.WRITE);
+        super(proxy, context, true);
         this.shareService = proxy.getShareService();
         this.invitationService = proxy.getInvitationService();
         this.lockService = proxy.getLockService();

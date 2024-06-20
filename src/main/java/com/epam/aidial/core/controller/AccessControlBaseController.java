@@ -17,7 +17,7 @@ public abstract class AccessControlBaseController {
 
     final Proxy proxy;
     final ProxyContext context;
-    final ResourceAccessType accessType;
+    final boolean isWriteAccess;
 
     public Future<?> handle(String resourceUrl) {
         ResourceDescription resource;
@@ -33,7 +33,8 @@ public abstract class AccessControlBaseController {
         return proxy.getVertx()
                 .executeBlocking(() -> {
                     AccessService service = proxy.getAccessService();
-                    return !service.lookupPermissions(resource, context, Set.of(accessType)).isEmpty();
+                    ResourceAccessType permission = isWriteAccess ? ResourceAccessType.WRITE : ResourceAccessType.READ;
+                    return !service.lookupPermissions(resource, context, Set.of(permission)).isEmpty();
                 }, false)
                 .map(hasAccess -> {
                     if (hasAccess) {
