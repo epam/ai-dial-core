@@ -61,7 +61,7 @@ public class AccessService {
         for (PermissionRule permissionRule : permissionRules) {
             if (permissionRule.predicate.test(resource, context)) {
                 Set<ResourceAccessType> permissions = permissionRule.function.apply(resource, context);
-                for (ResourceAccessType permission: permissions) {
+                for (ResourceAccessType permission : permissions) {
                     if (remainingAccess.remove(permission)) {
                         result.add(permission);
                         if (remainingAccess.isEmpty()) {

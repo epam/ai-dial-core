@@ -165,7 +165,7 @@ public class InvitationService {
                 Set<SharedResource> toMove = invitationResourceLinks.stream()
                         .filter(sharedResource -> source.getUrl().equals(sharedResource.url()))
                         .collect(Collectors.toUnmodifiableSet());
-                for (SharedResource sharedResource: toMove) {
+                for (SharedResource sharedResource : toMove) {
                     invitationResourceLinks.remove(sharedResource);
                     invitationResourceLinks.add(sharedResource.withUrl(destination.getUrl()));
                 }

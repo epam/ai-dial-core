@@ -201,7 +201,7 @@ public class ShareService {
                 }
 
                 // add all links to the user
-                for (SharedResource sharedResource: links) {
+                for (SharedResource sharedResource : links) {
                     Set<ResourceAccessType> permissions = sharedResource.permissions();
                     if (permissions.contains(ResourceAccessType.READ)) {
                         sharedResources.getReadableResources().add(sharedResource.toLink());
@@ -364,7 +364,7 @@ public class ShareService {
                 ? new HashMap<>(
                         sharedByMeDto.getResourcesWithPermissions().getOrDefault(source.getUrl(), Map.of()))
                 : new HashMap<>();
-        for (String user: sharedByMeDto.getReadableResourceToUsers().get(source.getUrl())) {
+        for (String user : sharedByMeDto.getReadableResourceToUsers().get(source.getUrl())) {
             Set<ResourceAccessType> otherPermissions =
                     userPermissions.computeIfAbsent(user, k -> EnumSet.noneOf(ResourceAccessType.class));
             otherPermissions.add(ResourceAccessType.READ);
