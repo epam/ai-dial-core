@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ShareService;
@@ -15,6 +16,7 @@ import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -43,12 +45,11 @@ public class DeleteFileController extends AccessControlBaseController {
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
+            Map<String, Set<ResourceAccessType>> permissionsToRemove = Map.of(resource.getUrl(), ResourceAccessType.ALL);
             try {
-                Set<ResourceLink> resourceLinks = new HashSet<>();
-                resourceLinks.add(new ResourceLink(resource.getUrl()));
                 return lockService.underBucketLock(bucketLocation, () -> {
-                    invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
-                    shareService.revokeSharedAccess(bucketName, bucketLocation, resourceLinks);
+                    invitationService.cleanUpResourceLinks(bucketName, bucketLocation, permissionsToRemove);
+                    shareService.revokeSharedAccess(bucketName, bucketLocation, permissionsToRemove);
                     storage.delete(absoluteFilePath);
                     return null;
                 });

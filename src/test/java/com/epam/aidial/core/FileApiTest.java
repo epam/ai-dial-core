@@ -363,7 +363,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedFolderMetadata), response.body());
+                            verifyMetadata(expectedFolderMetadata, response.body());
                             checkpoint.flag();
                         });
                     }));
@@ -454,7 +454,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedFolderMetadata), response.body());
+                            verifyMetadata(expectedFolderMetadata, response.body());
                             checkpoint.flag();
                         });
                     }));
@@ -718,7 +718,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedRootFolderMetadata), response.body());
+                            verifyMetadata(expectedRootFolderMetadata, response.body());
                             checkpoint.flag();
                         });
                     }));
@@ -785,7 +785,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedRootFolderMetadata), response.body());
+                            verifyMetadata(expectedRootFolderMetadata, response.body());
                             checkpoint.flag();
                         });
                     }));

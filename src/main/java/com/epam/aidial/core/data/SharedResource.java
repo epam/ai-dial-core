@@ -16,7 +16,7 @@ public record SharedResource(
         return new SharedResource(url, permissions);
     }
 
-    public ResourceLink toLink() {
-        return new ResourceLink(url);
+    public SharedResource withPermissions(Set<ResourceAccessType> permissions) {
+        return new SharedResource(url, permissions);
     }
 }

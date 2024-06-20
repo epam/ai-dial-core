@@ -1,5 +1,7 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
@@ -214,9 +216,8 @@ public class ResourceBaseTest {
     static void verifyJson(Response response, int status, String body) {
         assertEquals(status, response.status());
         try {
-            JsonNode expected = ProxyUtil.MAPPER.readTree(body);
-            sortPermissions(expected);
-            JsonNode actual = ProxyUtil.MAPPER.readTree(response.body());
+            JsonNode expected = sortPermissions(ProxyUtil.MAPPER.readTree(body));
+            JsonNode actual = sortPermissions(ProxyUtil.MAPPER.readTree(response.body()));
             sortPermissions(actual);
             assertEquals(expected.toPrettyString(), actual.toPrettyString());
         } catch (JsonProcessingException e) {
@@ -224,7 +225,13 @@ public class ResourceBaseTest {
         }
     }
 
-    private static void sortPermissions(JsonNode root) {
+    static void verifyMetadata(MetadataBase expected, String actual) throws JsonProcessingException {
+        assertEquals(
+                sortPermissions(ProxyUtil.MAPPER.readTree(ProxyUtil.MAPPER.writeValueAsString(expected))),
+                sortPermissions(ProxyUtil.MAPPER.readTree(actual)));
+    }
+
+    private static JsonNode sortPermissions(JsonNode root) {
         for (JsonNode node : root.findValues("permissions")) {
             if (node instanceof ArrayNode permissions) {
                 List<JsonNode> elements = new ArrayList<>();
@@ -234,6 +241,8 @@ public class ResourceBaseTest {
                 permissions.addAll(elements);
             }
         }
+
+        return root;
     }
 
     static void verifyJsonNotExact(Response response, int status, String body) {

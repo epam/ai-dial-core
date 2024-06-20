@@ -3,6 +3,7 @@ package com.epam.aidial.core.service;
 import com.epam.aidial.core.data.Invitation;
 import com.epam.aidial.core.data.InvitationCollection;
 import com.epam.aidial.core.data.InvitationsMap;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.SharedResource;
@@ -11,6 +12,7 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -127,7 +129,8 @@ public class InvitationService {
         return new InvitationCollection(new HashSet<>(invitationMap.getInvitations().values()));
     }
 
-    public void cleanUpResourceLinks(String bucket, String location, Set<ResourceLink> resourcesToCleanUp) {
+    public void cleanUpResourceLinks(
+            String bucket, String location, Map<String, Set<ResourceAccessType>> permissionsToCleanUp) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
@@ -137,9 +140,19 @@ public class InvitationService {
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             List<String> invitationsToRemove = new ArrayList<>();
             for (Invitation invitation : invitationMap.values()) {
-                Set<SharedResource> invitationResourceLinks = invitation.getResources();
-                invitationResourceLinks.removeIf(sharedResource ->
-                        resourcesToCleanUp.contains(sharedResource.toLink()));
+                Set<SharedResource> invitationResourceLinks = new HashSet<>();
+                for (SharedResource sharedResource : invitation.getResources()) {
+                    Set<ResourceAccessType> permissions = permissionsToCleanUp.get(sharedResource.url());
+                    if (permissions == null) {
+                        invitationResourceLinks.add(sharedResource);
+                    } else {
+                        Set<ResourceAccessType> updatedPermissions =
+                                Sets.difference(sharedResource.permissions(), permissions);
+                        if (!updatedPermissions.isEmpty()) {
+                            invitationResourceLinks.add(sharedResource.withPermissions(updatedPermissions));
+                        }
+                    }
+                }
 
                 if (invitationResourceLinks.isEmpty()) {
                     invitationsToRemove.add(invitation.getId());

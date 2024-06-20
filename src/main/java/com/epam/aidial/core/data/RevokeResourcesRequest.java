@@ -6,5 +6,5 @@ import java.util.Set;
 
 @Data
 public class RevokeResourcesRequest {
-    Set<ResourceLink> resources;
+    Set<SharedResource> resources;
 }

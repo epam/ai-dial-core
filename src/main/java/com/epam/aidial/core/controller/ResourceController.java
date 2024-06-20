@@ -8,6 +8,7 @@ import com.epam.aidial.core.data.Prompt;
 import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
@@ -26,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -194,13 +196,13 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         return vertx.executeBlocking(() -> {
-                    Set<ResourceLink> resourceLinks = new HashSet<>();
-                    resourceLinks.add(new ResourceLink(descriptor.getUrl()));
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
+                    Map<String, Set<ResourceAccessType>> permissionsToRemove =
+                            Map.of(descriptor.getUrl(), ResourceAccessType.ALL);
                     return lockService.underBucketLock(bucketLocation, () -> {
-                        invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
-                        shareService.revokeSharedAccess(bucketName, bucketLocation, resourceLinks);
+                        invitationService.cleanUpResourceLinks(bucketName, bucketLocation, permissionsToRemove);
+                        shareService.revokeSharedAccess(bucketName, bucketLocation, permissionsToRemove);
                         return service.deleteResource(descriptor);
                     });
                 }, false)

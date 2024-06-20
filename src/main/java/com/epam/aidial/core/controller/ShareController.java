@@ -4,9 +4,11 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.CopySharedAccessRequest;
 import com.epam.aidial.core.data.ListSharedResourcesRequest;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.data.RevokeResourcesRequest;
 import com.epam.aidial.core.data.ShareResourcesRequest;
+import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
@@ -19,11 +21,15 @@ import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.ResourceUtil;
+import com.google.common.collect.Sets;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class ShareController {
@@ -133,10 +139,13 @@ public class ShareController {
                     RevokeResourcesRequest request = getRevokeResourcesRequest(buffer, Operation.REVOKE);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
+                    Map<String, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
+                            .collect(Collectors.toUnmodifiableMap(
+                                    SharedResource::url, SharedResource::permissions, Sets::union));
                     return proxy.getVertx()
                             .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
-                                invitationService.cleanUpResourceLinks(bucket, bucketLocation, request.getResources());
-                                shareService.revokeSharedAccess(bucket, bucketLocation, request.getResources());
+                                invitationService.cleanUpResourceLinks(bucket, bucketLocation, permissionsToRevoke);
+                                shareService.revokeSharedAccess(bucket, bucketLocation, permissionsToRevoke);
                                 return null;
                             }), false);
                 })

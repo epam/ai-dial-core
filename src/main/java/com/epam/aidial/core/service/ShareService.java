@@ -171,9 +171,7 @@ public class ShareService {
         Map<ResourceType, List<SharedResource>> resourceGroups = resourceLinks.stream()
                 .collect(Collectors.groupingBy(sharedResource -> ResourceUtil.getResourceType(sharedResource.url())));
 
-        for (Map.Entry<ResourceType, List<SharedResource>> group : resourceGroups.entrySet()) {
-            ResourceType resourceType = group.getKey();
-            List<SharedResource> links = group.getValue();
+        resourceGroups.forEach((resourceType, links) -> {
             String ownerBucket = ResourceUtil.getBucket(links.get(0).url());
             String ownerLocation = encryptionService.decrypt(ownerBucket);
 
@@ -204,7 +202,7 @@ public class ShareService {
                 for (SharedResource sharedResource : links) {
                     Set<ResourceAccessType> permissions = sharedResource.permissions();
                     if (permissions.contains(ResourceAccessType.READ)) {
-                        sharedResources.getReadableResources().add(sharedResource.toLink());
+                        sharedResources.getReadableResources().add(new ResourceLink(sharedResource.url()));
                     }
 
                     Set<ResourceAccessType> existingPermissions = sharedResources.getResourcesWithPermissions()
@@ -214,7 +212,7 @@ public class ShareService {
 
                 return ProxyUtil.convertToString(sharedResources);
             });
-        }
+        });
     }
 
     public Set<ResourceAccessType> getPermissions(String bucket, String location, ResourceDescription resource) {
@@ -243,55 +241,70 @@ public class ShareService {
      *
      * @param bucket - user bucket
      * @param location - storage location
-     * @param resourceLinks - collection of links to revoke access
+     * @param permissionsToRevoke - collection of links and permissions to revoke access
      */
-    public void revokeSharedAccess(String bucket, String location, Set<ResourceLink> resourceLinks) {
-        if (resourceLinks.isEmpty()) {
+    public void revokeSharedAccess(
+            String bucket, String location, Map<String, Set<ResourceAccessType>> permissionsToRevoke) {
+        if (permissionsToRevoke.isEmpty()) {
             throw new IllegalArgumentException("No resources provided");
         }
 
         // validate that all resources belong to the user, who perform this action
-        Set<ResourceDescription> resources = new HashSet<>();
-        for (ResourceLink link : resourceLinks) {
-            ResourceDescription resource = getResourceFromLink(link.url());
+        Map<ResourceDescription, Set<ResourceAccessType>> resources = new HashMap<>();
+        permissionsToRevoke.forEach((link, permissions) -> {
+            ResourceDescription resource = getResourceFromLink(link);
             if (!resource.getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("You are only allowed to revoke access from own resources");
             }
-            resources.add(resource);
-        }
+            resources.put(resource, permissions);
+        });
 
-        for (ResourceDescription resource : resources) {
+        resources.forEach((resource, permissionsToRemove) -> {
             ResourceType resourceType = resource.getType();
             String resourceUrl = resource.getUrl();
             ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, resourceType, bucket, location);
             String state = resourceService.getResource(sharedByMeResource);
             SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
             if (dto != null) {
-                Set<String> userLocations = new HashSet<>();
-                userLocations.addAll(dto.getReadableResourceToUsers().getOrDefault(resourceUrl, Set.of()));
-                userLocations.addAll(dto.getResourcesWithPermissions().getOrDefault(resourceUrl, Map.of()).keySet());
+                Map<String, Set<ResourceAccessType>> userLocations = dto.getResourcesWithPermissions().get(resourceUrl);
 
                 // if userLocations is NULL - this means that provided resource wasn't shared
-                if (userLocations.isEmpty()) {
-                    continue;
+                if (userLocations == null) {
+                    return;
                 }
 
-                for (String userLocation : userLocations) {
-                    String userBucket = encryptionService.encrypt(userLocation);
-                    removeSharedResource(userBucket, userLocation, resourceUrl, resourceType);
-                }
+                userLocations.keySet().forEach(user -> {
+                    String userBucket = encryptionService.encrypt(user);
+                    removeSharedResourcePermissions(userBucket, user, resourceUrl, resourceType, permissionsToRemove);
+                });
 
                 resourceService.computeResource(sharedByMeResource, ownerState -> {
                     SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
                     if (sharedByMeDto != null) {
-                        sharedByMeDto.getReadableResourceToUsers().remove(resourceUrl);
-                        sharedByMeDto.getResourcesWithPermissions().remove(resourceUrl);
+                        if (permissionsToRemove.contains(ResourceAccessType.READ)) {
+                            sharedByMeDto.getReadableResourceToUsers().remove(resourceUrl);
+                        }
+                        Map<String, Set<ResourceAccessType>> userPermissions =
+                                sharedByMeDto.getResourcesWithPermissions().get(resourceUrl);
+                        if (userPermissions != null) {
+                            Set<String> usersToRemove = new HashSet<>();
+                            userPermissions.forEach((user, permissions) -> {
+                                permissions.removeAll(permissionsToRemove);
+                                if (permissions.isEmpty()) {
+                                    usersToRemove.add(user);
+                                }
+                            });
+                            usersToRemove.forEach(userPermissions::remove);
+                            if (userPermissions.isEmpty()) {
+                                sharedByMeDto.getResourcesWithPermissions().remove(resourceUrl);
+                            }
+                        }
                     }
 
                     return ProxyUtil.convertToString(sharedByMeDto);
                 });
             }
-        }
+        });
     }
 
     public void discardSharedAccess(String bucket, String location, ResourceLinkCollection request) {
@@ -308,7 +321,7 @@ public class ShareService {
         for (ResourceDescription resource : resources) {
             ResourceType resourceType = resource.getType();
             String resourceUrl = resource.getUrl();
-            removeSharedResource(bucket, location, resourceUrl, resourceType);
+            removeSharedResourcePermissions(bucket, location, resourceUrl, resourceType, ResourceAccessType.ALL);
 
             String ownerBucket = resource.getBucketName();
             String ownerLocation = encryptionService.decrypt(ownerBucket);
@@ -399,16 +412,25 @@ public class ShareService {
         // copy shared access from source to destination
         copySharedAccess(bucket, location, source, destination);
         // revoke shared access from source
-        revokeSharedAccess(bucket, location, Set.of(new ResourceLink(source.getUrl())));
+        revokeSharedAccess(bucket, location, Map.of(source.getUrl(), ResourceAccessType.ALL));
     }
 
-    private void removeSharedResource(String bucket, String location, String link, ResourceType resourceType) {
+    private void removeSharedResourcePermissions(
+            String bucket, String location, String link, ResourceType resourceType, Set<ResourceAccessType> permissions) {
         ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe != null) {
-                sharedWithMe.getReadableResources().remove(new ResourceLink(link));
-                sharedWithMe.getResourcesWithPermissions().remove(link);
+                if (permissions.contains(ResourceAccessType.READ)) {
+                    sharedWithMe.getReadableResources().remove(new ResourceLink(link));
+                }
+                Set<ResourceAccessType> allPermissions = sharedWithMe.getResourcesWithPermissions().get(link);
+                if (allPermissions != null) {
+                    allPermissions.removeAll(permissions);
+                    if (allPermissions.isEmpty()) {
+                        sharedWithMe.getResourcesWithPermissions().remove(link);
+                    }
+                }
             }
 
             return ProxyUtil.convertToString(sharedWithMe);
