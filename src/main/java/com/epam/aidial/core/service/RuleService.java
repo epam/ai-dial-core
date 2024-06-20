@@ -51,13 +51,12 @@ public class RuleService {
         }
     }
 
-    public List<Rule> storeRules(String targetFolder, List<Rule> rules) {
+    public void storeRules(String targetFolder, List<Rule> rules) {
         resources.computeResource(PUBLIC_RULES, body -> {
             Map<String, List<Rule>> rulesMap = decodeRules(body);
             List<Rule> previous = rulesMap.put(targetFolder, rules);
             return (rules.equals(previous)) ? body : encodeRules(rulesMap);
         });
-        return rules;
     }
 
     public Map<String, List<Rule>> listRules(ResourceDescription resource) {
@@ -127,12 +126,14 @@ public class RuleService {
     }
 
     private Map<String, List<Rule>> getCachedRules() {
-        ResourceItemMetadata meta = resources.getResourceMetadata(PUBLIC_RULES);
+        ResourceItemMetadata meta = resources.getResourceMetadata(
+                PUBLIC_RULES, PermissionsFetcher.NULL);
         long key = (meta == null) ? Long.MIN_VALUE : meta.getUpdatedAt();
         Pair<Long, Map<String, List<Rule>>> current = cachedRules.get();
 
         if (current == null || current.getKey() != key) {
-            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES);
+            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(
+                    PUBLIC_RULES, PermissionsFetcher.NULL);
             Pair<Long, Map<String, List<Rule>>> next = (resource == null)
                     ? Pair.of(Long.MIN_VALUE, decodeRules(null))
                     : Pair.of(resource.getKey().getUpdatedAt(), decodeRules(resource.getValue()));

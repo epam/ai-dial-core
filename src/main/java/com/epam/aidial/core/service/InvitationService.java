@@ -5,6 +5,7 @@ import com.epam.aidial.core.data.InvitationCollection;
 import com.epam.aidial.core.data.InvitationsMap;
 import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.ApiKeyGenerator;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
@@ -44,7 +45,7 @@ public class InvitationService {
         this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
     }
 
-    public Invitation createInvitation(String bucket, String location, Set<ResourceLink> resources) {
+    public Invitation createInvitation(String bucket, String location, Set<SharedResource> resources) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
@@ -134,17 +135,18 @@ public class InvitationService {
                 return null;
             }
             Map<String, Invitation> invitationMap = invitations.getInvitations();
-            List<Invitation> invitationsToRemove = new ArrayList<>();
+            List<String> invitationsToRemove = new ArrayList<>();
             for (Invitation invitation : invitationMap.values()) {
-                Set<ResourceLink> invitationResourceLinks = invitation.getResources();
-                invitationResourceLinks.removeAll(resourcesToCleanUp);
+                Set<SharedResource> invitationResourceLinks = invitation.getResources();
+                invitationResourceLinks.removeIf(sharedResource ->
+                        resourcesToCleanUp.contains(sharedResource.toLink()));
 
                 if (invitationResourceLinks.isEmpty()) {
-                    invitationsToRemove.add(invitation);
+                    invitationsToRemove.add(invitation.getId());
                 }
             }
 
-            invitationsToRemove.forEach(invitationToRemove -> invitationMap.remove(invitationToRemove.getId()));
+            invitationsToRemove.forEach(invitationMap::remove);
 
             return ProxyUtil.convertToString(invitations);
         });
@@ -152,8 +154,6 @@ public class InvitationService {
 
     public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
-        ResourceLink sourceLink = new ResourceLink(source.getUrl());
-        ResourceLink destinationLink = new ResourceLink(destination.getUrl());
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
@@ -161,9 +161,13 @@ public class InvitationService {
             }
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             for (Invitation invitation : invitationMap.values()) {
-                Set<ResourceLink> invitationResourceLinks = invitation.getResources();
-                if (invitationResourceLinks.remove(sourceLink)) {
-                    invitationResourceLinks.add(destinationLink);
+                Set<SharedResource> invitationResourceLinks = invitation.getResources();
+                Set<SharedResource> toMove = invitationResourceLinks.stream()
+                        .filter(sharedResource -> source.getUrl().equals(sharedResource.url()))
+                        .collect(Collectors.toUnmodifiableSet());
+                for (SharedResource sharedResource: toMove) {
+                    invitationResourceLinks.remove(sharedResource);
+                    invitationResourceLinks.add(sharedResource.withUrl(destination.getUrl()));
                 }
             }
 

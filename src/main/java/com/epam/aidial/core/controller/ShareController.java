@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.CopySharedAccessRequest;
 import com.epam.aidial.core.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.data.RevokeResourcesRequest;
 import com.epam.aidial.core.data.ShareResourcesRequest;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
@@ -35,8 +36,6 @@ public class ShareController {
     private final EncryptionService encryptionService;
     private final LockService lockService;
     private final InvitationService invitationService;
-    private final ResourceService resourceService;
-    private final BlobStorage storage;
 
     public ShareController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
@@ -45,8 +44,6 @@ public class ShareController {
         this.encryptionService = proxy.getEncryptionService();
         this.lockService = proxy.getLockService();
         this.invitationService = proxy.getInvitationService();
-        this.resourceService = proxy.getResourceService();
-        this.storage = proxy.getStorage();
     }
 
     public Future<?> handle(Operation operation) {
@@ -133,13 +130,13 @@ public class ShareController {
         return context.getRequest()
                 .body()
                 .compose(buffer -> {
-                    ResourceLinkCollection request = getResourceLinkCollection(buffer, Operation.REVOKE);
+                    RevokeResourcesRequest request = getRevokeResourcesRequest(buffer, Operation.REVOKE);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return proxy.getVertx()
                             .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                                 invitationService.cleanUpResourceLinks(bucket, bucketLocation, request.getResources());
-                                shareService.revokeSharedAccess(bucket, bucketLocation, request);
+                                shareService.revokeSharedAccess(bucket, bucketLocation, request.getResources());
                                 return null;
                             }), false);
                 })
@@ -210,8 +207,14 @@ public class ShareController {
         }
     }
 
-    private boolean hasResource(ResourceDescription resource) {
-        return ResourceUtil.hasResource(resource, resourceService, storage);
+    private RevokeResourcesRequest getRevokeResourcesRequest(Buffer buffer, Operation operation) {
+        try {
+            String body = buffer.toString(StandardCharsets.UTF_8);
+            return ProxyUtil.convertToObject(body, RevokeResourcesRequest.class);
+        } catch (Exception e) {
+            log.error("Invalid request body provided", e);
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Can't %s shared resources. Incorrect body".formatted(operation));
+        }
     }
 
     public enum Operation {

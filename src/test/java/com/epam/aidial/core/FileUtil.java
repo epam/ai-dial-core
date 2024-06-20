@@ -38,17 +38,4 @@ public class FileUtil {
             PathUtils.deleteDirectory(dir);
         }
     }
-
-    public static BlobStorage buildFsBlobStorage(Path baseDir) {
-        Properties properties = new Properties();
-        properties.setProperty(FilesystemConstants.PROPERTY_BASEDIR, baseDir.toAbsolutePath().toString());
-        Storage storageConfig = new Storage();
-        storageConfig.setBucket("test");
-        storageConfig.setProvider("filesystem");
-        storageConfig.setIdentity("access-key");
-        storageConfig.setCredential("secret-key");
-        storageConfig.setOverrides(properties);
-        storageConfig.setPrefix("test");
-        return new BlobStorage(storageConfig);
-    }
 }

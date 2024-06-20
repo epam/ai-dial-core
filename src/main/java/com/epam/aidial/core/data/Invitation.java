@@ -11,7 +11,7 @@ import java.util.Set;
 @NoArgsConstructor
 public class Invitation {
     String id;
-    Set<ResourceLink> resources;
+    Set<SharedResource> resources;
     long createdAt;
     long expireAt;
 }

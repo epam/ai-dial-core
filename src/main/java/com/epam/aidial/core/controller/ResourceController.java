@@ -5,11 +5,13 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceLink;
-import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -36,13 +38,19 @@ public class ResourceController extends AccessControlBaseController {
     private final LockService lockService;
     private final InvitationService invitationService;
     private final boolean metadata;
+    private final AccessService accessService;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
-        // PUT and DELETE require full access, GET - not
-        super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
+        // PUT and DELETE require write access, GET - read
+        super(
+                proxy,
+                context,
+                HttpMethod.GET.equals(context.getRequest().method())
+                        ? ResourceAccessType.READ : ResourceAccessType.WRITE);
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.shareService = proxy.getShareService();
+        this.accessService = proxy.getAccessService();
         this.lockService = proxy.getLockService();
         this.invitationService = proxy.getInvitationService();
         this.metadata = metadata;
@@ -88,7 +96,9 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
+        PermissionsFetcher permissionsFetcher = PermissionsFetcher.of(context, accessService);
+        return vertx.executeBlocking(() -> service.getMetadata(
+                descriptor, permissionsFetcher, token, limit, recursive), false)
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -194,8 +204,7 @@ public class ResourceController extends AccessControlBaseController {
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
-                        shareService.revokeSharedAccess(bucketName, bucketLocation,
-                                new ResourceLinkCollection(resourceLinks));
+                        shareService.revokeSharedAccess(bucketName, bucketLocation, resourceLinks);
                         return service.deleteResource(descriptor);
                     });
                 }, false)

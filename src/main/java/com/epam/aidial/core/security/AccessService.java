@@ -2,6 +2,7 @@ package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.Rule;
 import com.epam.aidial.core.service.PublicationService;
@@ -13,7 +14,12 @@ import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.json.JsonObject;
 
+import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 
 public class AccessService {
 
@@ -21,6 +27,14 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
+    private final List<PermissionRule> permissionRules = List.of(
+            new PermissionRule(AccessService::isAutoShared, (resource, context) -> EnumSet.of(ResourceAccessType.READ)),
+            new PermissionRule((resource, context) -> resource.isPublic(), this::getPublicAccess),
+            new PermissionRule((resource, context) -> PublicationService.isReviewResource(resource), this::getReviewAccess),
+            new PermissionRule(AccessService::isMyResource, (resource, context) -> EnumSet.allOf(ResourceAccessType.class)),
+            new PermissionRule(AccessService::isAppResource, (resource, context) -> EnumSet.allOf(ResourceAccessType.class)),
+            new PermissionRule((resource, context) -> true, this::getSharedAccess)
+    );
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
@@ -33,59 +47,53 @@ public class AccessService {
     }
 
     public boolean hasReadAccess(ResourceDescription resource, ProxyContext context) {
-        if (isAutoShared(resource, context)) {
-            return true;
-        }
-
-        if (resource.isPublic()) {
-            return hasPublicAccess(List.of(resource), context, true);
-        }
-
-        return isMyResource(resource, context) || isAppResource(resource, context)
-                || hasReviewAccess(resource, context, true) || isSharedResource(resource, context);
+        return !lookupPermissions(resource, context, Set.of(ResourceAccessType.READ)).isEmpty();
     }
 
-    public boolean hasWriteAccess(ResourceDescription resource, ProxyContext context) {
-        if (resource.isPublic()) {
-            return hasPublicAccess(List.of(resource), context, false);
+    public Set<ResourceAccessType> lookupPermissions(ResourceDescription resource, ProxyContext context) {
+        return lookupPermissions(resource, context, EnumSet.allOf(ResourceAccessType.class));
+    }
+
+    public Set<ResourceAccessType> lookupPermissions(
+            ResourceDescription resource, ProxyContext context, Set<ResourceAccessType> toLookup) {
+        Set<ResourceAccessType> remainingAccess = new HashSet<>(toLookup);
+        Set<ResourceAccessType> result = new HashSet<>();
+        for (PermissionRule permissionRule : permissionRules) {
+            if (permissionRule.predicate.test(resource, context)) {
+                Set<ResourceAccessType> permissions = permissionRule.function.apply(resource, context);
+                for (ResourceAccessType permission: permissions) {
+                    if (remainingAccess.remove(permission)) {
+                        result.add(permission);
+                        if (remainingAccess.isEmpty()) {
+                            return result;
+                        }
+                    }
+                }
+            }
         }
 
-        return isMyResource(resource, context) || isAppResource(resource, context) || hasReviewAccess(resource, context, false);
+        return result;
     }
 
     /**
-     * Checks if USER has public access to the provided resources.
+     * Returns USER permissions to the provided public resources.
      * This method also checks admin privileges.
      *
      * @param resources - public resources
      * @param context - context
-     * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
+     * @return USER permissions
      */
-    public boolean hasPublicAccess(List<ResourceDescription> resources, ProxyContext context) {
-        return hasPublicAccess(resources, context, true);
-    }
-
-    /**
-     * Checks if USER has public access to the provided resources.
-     * This method also checks admin privileges.
-     *
-     * @param resources - public resources
-     * @param context - context
-     * @param readOnly - true to check read only access, false to check write access as well
-     * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
-     */
-    private boolean hasPublicAccess(List<ResourceDescription> resources, ProxyContext context, boolean readOnly) {
-        boolean isAllPublic = resources.stream().allMatch(ResourceDescription::isPublic);
-        if (!isAllPublic) {
-            return false;
-        }
-
-        if (readOnly) {
-            return hasAdminAccess(context) || ruleService.hasPublicAccess(context, resources);
-        } else {
+    private Set<ResourceAccessType> getPublicAccess(ResourceDescription resources, ProxyContext context) {
+        if (hasAdminAccess(context)) {
             boolean isNotApplication = (context.getApiKeyData().getPerRequestKey() == null);
-            return isNotApplication && hasAdminAccess(context);
+            return isNotApplication
+                    ? EnumSet.allOf(ResourceAccessType.class)
+                    : EnumSet.of(ResourceAccessType.READ);
         }
+
+        return ruleService.hasPublicAccess(context, resources)
+                ? EnumSet.of(ResourceAccessType.READ)
+                : Set.of();
     }
 
     private static boolean isAutoShared(ResourceDescription resource, ProxyContext context) {
@@ -127,22 +135,20 @@ public class AccessService {
         return filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment)));
     }
 
-    private boolean isSharedResource(ResourceDescription resource, ProxyContext context) {
+    private Set<ResourceAccessType> getSharedAccess(ResourceDescription resource, ProxyContext context) {
         String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
         String actualUserBucket = encryptionService.encrypt(actualUserLocation);
-        return shareService.hasReadAccess(actualUserBucket, actualUserLocation, resource);
+        return shareService.getPermissions(actualUserBucket, actualUserLocation, resource);
     }
 
-    private boolean hasReviewAccess(ResourceDescription resource, ProxyContext context, boolean readOnly) {
-        if (!PublicationService.isReviewResource(resource)) {
-            return false;
-        }
-
+    private Set<ResourceAccessType> getReviewAccess(ResourceDescription resource, ProxyContext context) {
         if (hasAdminAccess(context)) {
-            return true;
+            return EnumSet.allOf(ResourceAccessType.class);
         }
 
-        return readOnly && PublicationService.hasReviewAccess(context, resource);
+        return PublicationService.hasReviewAccess(context, resource)
+                ? EnumSet.of(ResourceAccessType.READ)
+                : Set.of();
     }
 
     public boolean hasAdminAccess(ProxyContext context) {
@@ -160,5 +166,10 @@ public class AccessService {
         String rules = settings.getJsonObject("admin").getJsonArray("rules").toString();
         List<Rule> list = ProxyUtil.convertToObject(rules, Rule.LIST_TYPE);
         return (list == null) ? List.of() : list;
+    }
+
+    private record PermissionRule(
+            BiPredicate<ResourceDescription, ProxyContext> predicate,
+            BiFunction<ResourceDescription, ProxyContext, Set<ResourceAccessType>> function) {
     }
 }

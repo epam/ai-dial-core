@@ -13,6 +13,7 @@ import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PermissionDeniedException;
+import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.service.RuleService;
@@ -161,7 +162,9 @@ public class PublicationController {
                     ListPublishedResourcesRequest request = ProxyUtil.convertToObject(body, ListPublishedResourcesRequest.class);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptService.encrypt(bucketLocation);
-                    return vertx.executeBlocking(() -> publicationService.listPublishedResources(request, bucket, bucketLocation), false);
+                    PermissionsFetcher permissionsFetcher = PermissionsFetcher.of(context, accessService);
+                    return vertx.executeBlocking(() -> publicationService.listPublishedResources(
+                            request, permissionsFetcher, bucket, bucketLocation), false);
                 })
                 .onSuccess(metadata -> context.respond(HttpStatus.OK, metadata))
                 .onFailure(error -> respondError("Can't list published resources", error));

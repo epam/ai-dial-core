@@ -6,6 +6,6 @@ import java.util.Set;
 
 @Data
 public class ShareResourcesRequest {
-    Set<ResourceLink> resources;
+    Set<SharedResource> resources;
     InvitationType invitationType;
 }

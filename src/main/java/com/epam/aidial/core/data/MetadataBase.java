@@ -1,8 +1,11 @@
 package com.epam.aidial.core.data;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.Set;
 
 @AllArgsConstructor
 @Data
@@ -16,4 +19,6 @@ public abstract class MetadataBase {
     private String url;
     private NodeType nodeType;
     private ResourceType resourceType;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Set<ResourceAccessType> permissions;
 }

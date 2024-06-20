@@ -8,6 +8,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -19,21 +20,45 @@ public class ResourceFolderMetadata extends MetadataBase {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String nextToken;
 
-    public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url, List<MetadataBase> items) {
-        super(name, path, bucket, url, NodeType.FOLDER, type);
+    public ResourceFolderMetadata(
+            ResourceType type,
+            String bucket,
+            String name,
+            String path,
+            String url,
+            Set<ResourceAccessType> permissions,
+            List<MetadataBase> items) {
+        super(name, path, bucket, url, NodeType.FOLDER, type, permissions);
         this.items = items;
     }
 
-    public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url) {
-        this(type, bucket, name, path, url, null);
+    public ResourceFolderMetadata(
+            ResourceType type,
+            String bucket,
+            String name,
+            String path,
+            String url,
+            Set<ResourceAccessType> permissions) {
+        this(type, bucket, name, path, url, permissions, null);
     }
 
-    public ResourceFolderMetadata(ResourceDescription resource) {
-        this(resource, null, null);
+    public ResourceFolderMetadata(ResourceDescription resource, Set<ResourceAccessType> permissions) {
+        this(resource, permissions, null, null);
     }
 
-    public ResourceFolderMetadata(ResourceDescription resource, List<MetadataBase> items, String nextToken) {
-        this(resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl(), items);
+    public ResourceFolderMetadata(
+            ResourceDescription resource,
+            Set<ResourceAccessType> permissions,
+            List<MetadataBase> items,
+            String nextToken) {
+        this(
+                resource.getType(),
+                resource.getBucketName(),
+                resource.getName(),
+                resource.getParentPath(),
+                resource.getUrl(),
+                permissions,
+                items);
         this.nextToken = nextToken;
     }
 }

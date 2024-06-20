@@ -90,7 +90,11 @@ public class PublicationService {
         return publications.values();
     }
 
-    public Collection<MetadataBase> listPublishedResources(ListPublishedResourcesRequest request, String bucket, String location) {
+    public Collection<MetadataBase> listPublishedResources(
+            ListPublishedResourcesRequest request,
+            PermissionsFetcher permissionsFetcher,
+            String bucket,
+            String location) {
         ResourceDescription publicationResource = publications(bucket, location);
         Map<String, Publication> publications = decodePublications(resources.getResource(publicationResource));
 
@@ -114,9 +118,9 @@ public class PublicationService {
             }
 
             if (resourceDescription.isFolder()) {
-                metadata.add(new ResourceFolderMetadata(resourceDescription));
+                metadata.add(new ResourceFolderMetadata(resourceDescription, permissionsFetcher.fetch(resourceDescription)));
             } else {
-                metadata.add(new ResourceItemMetadata(resourceDescription));
+                metadata.add(new ResourceItemMetadata(resourceDescription, permissionsFetcher.fetch(resourceDescription)));
             }
         }
 
@@ -363,7 +367,8 @@ public class PublicationService {
                 .toList();
 
         // validate if user has access to all target resources
-        boolean hasPublicAccess = accessService.hasPublicAccess(targetResources, context);
+        boolean hasPublicAccess = targetResources.stream()
+                .allMatch(resource -> accessService.hasReadAccess(resource, context));
         if (!hasPublicAccess) {
             throw new PermissionDeniedException("User don't have permissions to the provided target resources");
         }

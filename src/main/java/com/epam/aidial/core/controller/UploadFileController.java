@@ -2,6 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
@@ -16,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 public class UploadFileController extends AccessControlBaseController {
 
     public UploadFileController(Proxy proxy, ProxyContext context) {
-        super(proxy, context, true);
+        super(proxy, context, ResourceAccessType.WRITE);
     }
 
     @Override
