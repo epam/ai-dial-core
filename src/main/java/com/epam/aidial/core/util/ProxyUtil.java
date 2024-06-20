@@ -54,6 +54,7 @@ public class ProxyUtil {
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
             .add(HttpHeaders.ACCEPT_ENCODING, "whatever")
             .add(Proxy.HEADER_API_KEY, "whatever");
+    public static final String METADATA_PREFIX = "metadata/";
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
         copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());
@@ -103,12 +104,25 @@ public class ProxyUtil {
                 continue;
             }
             ArrayNode attachments = (ArrayNode) customContent.get("attachments");
-            if (attachments == null) {
-                continue;
+            if (attachments != null) {
+                for (int j = 0; j < attachments.size(); j++) {
+                    JsonNode attachment = attachments.get(j);
+                    collectAttachedFile(attachment, consumer);
+                }
             }
-            for (int j = 0; j < attachments.size(); j++) {
-                JsonNode attachment = attachments.get(j);
-                collectAttachedFile(attachment, consumer);
+            ArrayNode stages = (ArrayNode) customContent.get("stages");
+            if (stages != null) {
+                for (int j = 0; j < stages.size(); j++) {
+                    JsonNode stage = stages.get(j);
+                    attachments = (ArrayNode) stage.get("attachments");
+                    if (attachments == null) {
+                        continue;
+                    }
+                    for (int k = 0; k < attachments.size(); k++) {
+                        JsonNode attachment = attachments.get(k);
+                        collectAttachedFile(attachment, consumer);
+                    }
+                }
             }
         }
     }
@@ -123,11 +137,10 @@ public class ProxyUtil {
 
         JsonNode typeNode = attachment.get("type");
         if (typeNode != null && typeNode.textValue().equals(MetadataBase.MIME_TYPE)) {
-            String prefix = "metadata/";
-            if (!url.startsWith(prefix)) {
+            if (!url.startsWith(METADATA_PREFIX)) {
                 throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
             }
-            url = url.substring(prefix.length());
+            url = url.substring(METADATA_PREFIX.length());
         }
 
         consumer.accept(url);

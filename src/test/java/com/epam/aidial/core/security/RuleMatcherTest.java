@@ -19,11 +19,13 @@ class RuleMatcherTest {
         verify(rule("roles", Rule.Function.EQUAL, "admin"), true, "admin");
         verify(rule("roles", Rule.Function.EQUAL, "admin1"), false, "admin");
         verify(rule("roles", Rule.Function.EQUAL, "admin1"), false, "admin2");
+        verify(rule("roles", Rule.Function.EQUAL, "AdMin"), true, "admin");
 
         verify(rule("roles", Rule.Function.CONTAIN, "admin"), true, "admin");
         verify(rule("roles", Rule.Function.CONTAIN, "admin1"), false, "admin");
         verify(rule("roles", Rule.Function.CONTAIN, "admin"), true, "admin2");
         verify(rule("roles", Rule.Function.CONTAIN, "dmi"), true, "admin");
+        verify(rule("roles", Rule.Function.CONTAIN, "manager"), true, "Delivery Manager");
 
         verify(rule("roles", Rule.Function.REGEX, ".*"), true, "any");
         verify(rule("roles", Rule.Function.REGEX, "(admin|user)"), true, "user");

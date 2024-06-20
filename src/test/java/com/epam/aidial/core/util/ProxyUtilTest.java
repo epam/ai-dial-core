@@ -94,6 +94,25 @@ public class ProxyUtilTest {
                             "title": ".dockerignore",
                             "url": "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
                           }
+                        ],
+                        "stages": [
+                            {
+                               "index": 0,
+                               "name": "stage1",
+                               "status": "completed",
+                               "attachments": [
+                                    {
+                                        "type": "application/octet-stream",
+                                        "title": "LICENSE",
+                                        "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0"
+                                    },
+                                    {
+                                        "type": "application/octet-stream",
+                                        "title": "LICENSE",
+                                        "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1"
+                                    }
+                               ]
+                            }
                         ]
                       }
                     }
@@ -109,7 +128,9 @@ public class ProxyUtilTest {
                 Set.of(
                         "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile",
                         "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore",
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0",
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1"
                 ),
                 apiKeyData.getAttachedFiles()
         );
