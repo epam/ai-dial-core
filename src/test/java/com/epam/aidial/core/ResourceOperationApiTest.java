@@ -168,7 +168,8 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     } ]
                 }
                 """);
@@ -188,7 +189,8 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     } ]
                 }
                 """);

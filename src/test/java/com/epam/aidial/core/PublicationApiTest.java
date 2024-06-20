@@ -847,7 +847,7 @@ class PublicationApiTest extends ResourceBaseTest {
                  }
                 """);
 
-        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "recursive=true", null,
+        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "recursive=true&permissions=true", null,
                 "authorization", "admin");
         verifyJsonNotExact(response, 200, """
                 {

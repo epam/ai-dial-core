@@ -100,7 +100,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     } ]
                 }
                 """);
@@ -120,7 +121,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     } ]
                 }
                 """);
@@ -901,7 +903,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -909,7 +912,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -930,7 +934,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -938,7 +943,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -1041,7 +1047,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/prompt",
                     "nodeType" : "ITEM",
-                    "resourceType" : "PROMPT"
+                    "resourceType" : "PROMPT",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -1049,7 +1056,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -1070,7 +1078,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/prompt",
                     "nodeType" : "ITEM",
-                    "resourceType" : "PROMPT"
+                    "resourceType" : "PROMPT",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -1078,7 +1087,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
