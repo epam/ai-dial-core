@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -30,6 +31,8 @@ import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -211,9 +214,25 @@ public class ResourceBaseTest {
     static void verifyJson(Response response, int status, String body) {
         assertEquals(status, response.status());
         try {
-            assertEquals(ProxyUtil.MAPPER.readTree(body).toPrettyString(), ProxyUtil.MAPPER.readTree(response.body()).toPrettyString());
+            JsonNode expected = ProxyUtil.MAPPER.readTree(body);
+            sortPermissions(expected);
+            JsonNode actual = ProxyUtil.MAPPER.readTree(response.body());
+            sortPermissions(actual);
+            assertEquals(expected.toPrettyString(), actual.toPrettyString());
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private static void sortPermissions(JsonNode root) {
+        for (JsonNode node : root.findValues("permissions")) {
+            if (node instanceof ArrayNode permissions) {
+                List<JsonNode> elements = new ArrayList<>();
+                permissions.forEach(elements::add);
+                elements.sort(Comparator.comparing(JsonNode::asText));
+                permissions.removeAll();
+                permissions.addAll(elements);
+            }
         }
     }
 
