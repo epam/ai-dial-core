@@ -23,6 +23,7 @@ import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
@@ -117,9 +118,10 @@ public class FileApiTest extends ResourceBaseTest {
     public void testEmptyFilesList(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
+        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
         ResourceFolderMetadata emptyBucketResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null, List.of());
-        client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
+        client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                 .putHeader("Api-key", "proxyKey2")
                 .as(BodyCodec.json(ResourceFolderMetadata.class))
                 .send(context.succeeding(response -> {
@@ -136,10 +138,11 @@ public class FileApiTest extends ResourceBaseTest {
     public void testMetadataContentType(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
+        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
         ResourceFolderMetadata emptyBucketResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null, List.of());
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
 
-        client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+        client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                 .putHeader("Api-key", "proxyKey2")
                 .putHeader(HttpHeaders.ACCEPT, MetadataBase.MIME_TYPE)
                 .as(BodyCodec.json(ResourceFolderMetadata.class))
@@ -309,17 +312,19 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
+        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
         ResourceFolderMetadata emptyFolderResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null, List.of());
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
         FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "файл.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt", 17, "text/custom", null);
         ResourceFolderMetadata expectedFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null, List.of(expectedFileMetadata));
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions,
+                List.of(fileMetadataWithPermissions(expectedFileMetadata, permissions)));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(ResourceFolderMetadata.class))
                     .send(context.succeeding(response -> {
@@ -352,7 +357,7 @@ public class FileApiTest extends ResourceBaseTest {
             return promise.future();
         }).andThen((result) -> {
             // verify uploaded file can be listed
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -381,10 +386,12 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
+        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
         FileMetadata expectedFileMetadata = new FileMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                 "file.txt", "appdata/EPM-RTC-RAIL", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt", 17, "text/custom", null);
         ResourceFolderMetadata expectedFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                "EPM-RTC-RAIL", "appdata", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/", null, List.of(expectedFileMetadata));
+                "EPM-RTC-RAIL", "appdata", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/",
+                permissions, List.of(fileMetadataWithPermissions(expectedFileMetadata, permissions)));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -441,7 +448,7 @@ public class FileApiTest extends ResourceBaseTest {
             return promise.future();
         }).andThen((result) -> {
             // verify uploaded file can be listed by bucket owner
-            client.get(serverPort, "localhost", "/v1/metadata/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/")
+            client.get(serverPort, "localhost", "/v1/metadata/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/?permissions=true")
                     .putHeader("Api-key", "proxyKey1")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -640,15 +647,18 @@ public class FileApiTest extends ResourceBaseTest {
         ResourceFolderMetadata emptyFolderResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null, List.of());
 
+        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
         FileMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom", null);
         FileMetadata expectedFileMetadata2 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/custom", null);
         ResourceFolderMetadata expectedFolder1Metadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "folder1", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/", null);
+                "folder1", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/", permissions);
         ResourceFolderMetadata expectedRootFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null,
-                List.of(expectedFileMetadata1, expectedFolder1Metadata));
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions,
+                List.of(
+                        fileMetadataWithPermissions(expectedFileMetadata1, permissions),
+                        expectedFolder1Metadata));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -704,7 +714,7 @@ public class FileApiTest extends ResourceBaseTest {
             return promise.future();
         }).andThen((result) -> {
             // verify uploaded files can be listed
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -722,8 +732,9 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(3);
         WebClient client = WebClient.create(vertx);
 
+        Set<ResourceAccessType> permissions = EnumSet.of(ResourceAccessType.WRITE, ResourceAccessType.READ);
         ResourceFolderMetadata emptyFolderResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null, List.of());
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions, List.of());
 
         FileMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "image.png", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "binary/octet-stream", null);
@@ -731,13 +742,13 @@ public class FileApiTest extends ResourceBaseTest {
         FileMetadata expectedImageMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "image.png", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "image/png", null);
         ResourceFolderMetadata expectedRootFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", null,
-                List.of(expectedImageMetadata));
+                null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", permissions,
+                List.of(fileMetadataWithPermissions(expectedImageMetadata, permissions)));
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(ResourceFolderMetadata.class))
                     .send(context.succeeding(response -> {
@@ -770,7 +781,7 @@ public class FileApiTest extends ResourceBaseTest {
             return promise.future();
         }).andThen((result) -> {
             // verify uploaded files can be listed
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
@@ -845,5 +856,16 @@ public class FileApiTest extends ResourceBaseTest {
 
     private static MultipartForm generateMultipartForm(String fileName, String content, String contentType) {
         return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
+    }
+
+    private static FileMetadata fileMetadataWithPermissions(FileMetadata expectedFileMetadata, Set<ResourceAccessType> permissions) {
+        return new FileMetadata(
+                expectedFileMetadata.getBucket(),
+                expectedFileMetadata.getName(),
+                expectedFileMetadata.getParentPath(),
+                expectedFileMetadata.getUrl(),
+                expectedFileMetadata.getContentLength(),
+                expectedFileMetadata.getContentType(),
+                permissions);
     }
 }

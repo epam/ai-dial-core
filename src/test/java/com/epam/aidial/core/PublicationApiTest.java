@@ -673,7 +673,7 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void testResourceList() {
-        Response response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", null, null,
+        Response response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "permissions=true", null,
                 "authorization", "user");
         verifyJson(response, 200, """
                 {
@@ -683,11 +683,12 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
+                  "permissions" : [ "READ" ],
                   "items" : [ ]
                 }
                 """);
 
-        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", null, null,
+        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "permissions=true", null,
                 "authorization", "admin");
         verifyJson(response, 200, """
                 {
@@ -697,6 +698,7 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
+                  "permissions" : [ "WRITE", "READ" ],
                   "items" : [ ]
                 }
                 """);
@@ -763,7 +765,7 @@ class PublicationApiTest extends ResourceBaseTest {
         verify(response, 200);
 
 
-        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", null, null,
+        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "permissions=true", null,
                 "authorization", "user");
         verifyJson(response, 200, """
                 {
@@ -773,6 +775,7 @@ class PublicationApiTest extends ResourceBaseTest {
                    "url" : "conversations/public/",
                    "nodeType" : "FOLDER",
                    "resourceType" : "CONVERSATION",
+                   "permissions" : [ "READ" ],
                    "items" : [
                    {
                      "name" : "folder1",
@@ -781,12 +784,13 @@ class PublicationApiTest extends ResourceBaseTest {
                      "url" : "conversations/public/folder1/",
                      "nodeType" : "FOLDER",
                      "resourceType" : "CONVERSATION",
+                     "permissions" : [ "READ" ],
                      "items" : null
                    } ]
                  }
                 """);
 
-        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "recursive=true", null,
+        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "recursive=true&permissions=true", null,
                 "authorization", "user");
         verifyJsonNotExact(response, 200, """
                 {
@@ -796,6 +800,7 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
+                  "permissions" : [ "READ" ],
                   "items" : [ {
                     "name" : "conversation1",
                     "parentPath" : "folder1",
@@ -803,12 +808,13 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "conversations/public/folder1/conversation1",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "updatedAt" : "@ignore"
+                    "updatedAt" : "@ignore",
+                    "permissions" : [ "READ" ]
                   } ]
                 }
                 """);
 
-        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", null, null,
+        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "permissions=true", null,
                 "authorization", "admin");
         verifyJsonNotExact(response, 200, """
                 {
@@ -818,6 +824,7 @@ class PublicationApiTest extends ResourceBaseTest {
                    "url" : "conversations/public/",
                    "nodeType" : "FOLDER",
                    "resourceType" : "CONVERSATION",
+                   "permissions" : [ "WRITE", "READ" ],
                    "items" : [ {
                      "name" : "folder1",
                      "parentPath" : null,
@@ -825,6 +832,7 @@ class PublicationApiTest extends ResourceBaseTest {
                      "url" : "conversations/public/folder1/",
                      "nodeType" : "FOLDER",
                      "resourceType" : "CONVERSATION",
+                     "permissions" : [ "WRITE", "READ" ],
                      "items" : null
                    }, {
                      "name" : "folder2",
@@ -833,6 +841,7 @@ class PublicationApiTest extends ResourceBaseTest {
                      "url" : "conversations/public/folder2/",
                      "nodeType" : "FOLDER",
                      "resourceType" : "CONVERSATION",
+                     "permissions" : [ "WRITE", "READ" ],
                      "items" : null
                    } ]
                  }
@@ -848,6 +857,7 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
+                  "permissions" : [ "WRITE", "READ" ],
                   "items" : [ {
                     "name" : "conversation1",
                     "parentPath" : "folder1",
@@ -855,7 +865,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "conversations/public/folder1/conversation1",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "updatedAt" : "@ignore"
+                    "updatedAt" : "@ignore",
+                    "permissions" : [ "WRITE", "READ" ]
                   }, {
                     "name" : "conversation2",
                     "parentPath" : "folder2",
@@ -863,7 +874,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "conversations/public/folder2/conversation2",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "updatedAt" : "@ignore"
+                    "updatedAt" : "@ignore",
+                    "permissions" : [ "WRITE", "READ" ]
                   } ]
                 }
                 """);
