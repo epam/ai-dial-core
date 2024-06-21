@@ -61,8 +61,8 @@ public class ResourceController extends AccessControlBaseController {
         if (context.getRequest().method() == HttpMethod.DELETE) {
             return deleteResource(descriptor);
         }
-
-        return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+        log.warn("Unsupported HTTP method for accessing resource {}", descriptor.getUrl());
+        return context.respond(HttpStatus.BAD_REQUEST, "Unsupported HTTP method");
     }
 
     private String getContentType() {
