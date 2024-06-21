@@ -25,6 +25,7 @@ import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -199,7 +200,7 @@ public class ShareService {
             resourceService.computeResource(sharedWithMe, state -> {
                 SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
                 if (sharedResources == null) {
-                    sharedResources = new SharedResources(new HashSet<>());
+                    sharedResources = new SharedResources(new ArrayList<>());
                 }
                 Map<String, Set<ResourceAccessType>> existingPermissions = new HashMap<>();
                 for (SharedResource sharedResource : sharedResources.getResources()) {
@@ -216,7 +217,7 @@ public class ShareService {
                 }
                 sharedResources.setResources(existingPermissions.entrySet().stream()
                         .map(entry -> new SharedResource(entry.getKey(), entry.getValue()))
-                        .collect(Collectors.toSet()));
+                        .toList());
 
                 return ProxyUtil.convertToString(sharedResources);
             });
@@ -451,7 +452,7 @@ public class ShareService {
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe == null) {
-                sharedWithMe = new SharedResources(new HashSet<>());
+                sharedWithMe = new SharedResources(new ArrayList<>());
             }
             Set<ResourceAccessType> permissions = sharedWithMe.lookupPermissions(link);
             permissions.addAll(newPermissions);

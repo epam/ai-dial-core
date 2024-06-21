@@ -4,17 +4,17 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.List;
+
 
 @Data
 public class RevokeResourcesRequest {
-    Set<SharedResource> resources;
+    List<SharedResource> resources;
 
     @JsonCreator
-    public RevokeResourcesRequest(@JsonProperty("resources") Set<SharedResource> resources) {
+    public RevokeResourcesRequest(@JsonProperty("resources") List<SharedResource> resources) {
         this.resources = resources.stream()
                 .map(SharedResource::withAllIfNoPermissions)
-                .collect(Collectors.toSet());
+                .toList();
     }
 }

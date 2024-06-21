@@ -5,22 +5,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Data
 public class SharedResources {
-    Set<SharedResource> resources;
+    List<SharedResource> resources;
 
     @JsonCreator
     public SharedResources(
             @JsonProperty("resources")
-            Set<SharedResource> resources) {
+            List<SharedResource> resources) {
         this.resources = resources.stream()
-                .map(resource -> resource.permissions() == null
-                        ? resource.withPermissions(EnumSet.of(ResourceAccessType.READ))
-                        : resource)
-                .collect(Collectors.toSet());
+                .map(SharedResource::withReadIfNoPermissions)
+                .toList();
     }
 
     public Set<ResourceAccessType> lookupPermissions(String url) {
