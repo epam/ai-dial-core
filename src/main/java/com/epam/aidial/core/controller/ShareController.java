@@ -141,11 +141,7 @@ public class ShareController {
                     String bucket = encryptionService.encrypt(bucketLocation);
                     Map<String, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
                             .collect(Collectors.toUnmodifiableMap(
-                                    SharedResource::url,
-                                    resource -> resource.permissions() == null
-                                            ? ResourceAccessType.ALL
-                                            : resource.permissions(),
-                                    Sets::union));
+                                    SharedResource::url, SharedResource::permissions, Sets::union));
                     return proxy.getVertx()
                             .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                                 invitationService.cleanUpResourceLinks(bucket, bucketLocation, permissionsToRevoke);
