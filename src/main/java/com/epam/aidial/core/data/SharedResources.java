@@ -7,6 +7,7 @@ import lombok.Data;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Data
 public class SharedResources {
@@ -18,7 +19,7 @@ public class SharedResources {
             List<SharedResource> resources) {
         this.resources = resources.stream()
                 .map(SharedResource::withReadIfNoPermissions)
-                .toList();
+                .collect(Collectors.toList());
     }
 
     public Set<ResourceAccessType> lookupPermissions(String url) {
