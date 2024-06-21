@@ -635,6 +635,7 @@ public class PublicationService {
     private static Publication newMetadata(Publication publication) {
         return new Publication()
                 .setUrl(publication.getUrl())
+                .setName(publication.getName())
                 .setTargetFolder(publication.getTargetFolder())
                 .setStatus(publication.getStatus())
                 .setResourceTypes(publication.getResourceTypes())
