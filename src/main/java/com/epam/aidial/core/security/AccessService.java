@@ -51,7 +51,7 @@ public class AccessService {
     }
 
     public Set<ResourceAccessType> lookupPermissions(ResourceDescription resource, ProxyContext context) {
-        return lookupPermissions(resource, context, EnumSet.allOf(ResourceAccessType.class));
+        return lookupPermissions(resource, context, ResourceAccessType.ALL);
     }
 
     public Set<ResourceAccessType> lookupPermissions(

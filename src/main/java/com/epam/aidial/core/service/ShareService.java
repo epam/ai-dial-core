@@ -21,6 +21,7 @@ import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.ResourceUtil;
+import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -67,7 +68,10 @@ public class ShareService {
             String sharedResource = resourceService.getResource(resource);
             SharedResources sharedResources = ProxyUtil.convertToObject(sharedResource, SharedResources.class);
             if (sharedResources != null) {
-                resultMetadata.addAll(linksToMetadata(sharedResources.getResourcesWithPermissions()));
+                Map<String, Set<ResourceAccessType>> links = sharedResources.getResources().stream()
+                                .collect(Collectors.toUnmodifiableMap(
+                                        SharedResource::url, SharedResource::permissions, Sets::union));
+                resultMetadata.addAll(linksToMetadata(links));
             }
         }
 
@@ -195,20 +199,24 @@ public class ShareService {
             resourceService.computeResource(sharedWithMe, state -> {
                 SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
                 if (sharedResources == null) {
-                    sharedResources = new SharedResources(new HashSet<>(), new HashMap<>());
+                    sharedResources = new SharedResources(new HashSet<>());
+                }
+                Map<String, Set<ResourceAccessType>> existingPermissions = new HashMap<>();
+                for (SharedResource sharedResource : sharedResources.getResources()) {
+                    Set<ResourceAccessType> permissions = existingPermissions
+                            .computeIfAbsent(sharedResource.url(), k -> EnumSet.noneOf(ResourceAccessType.class));
+                    permissions.addAll(sharedResource.permissions());
                 }
 
                 // add all links to the user
                 for (SharedResource sharedResource : links) {
-                    Set<ResourceAccessType> permissions = sharedResource.permissions();
-                    if (permissions.contains(ResourceAccessType.READ)) {
-                        sharedResources.getReadableResources().add(new ResourceLink(sharedResource.url()));
-                    }
-
-                    Set<ResourceAccessType> existingPermissions = sharedResources.getResourcesWithPermissions()
+                    Set<ResourceAccessType> permissions = existingPermissions
                             .computeIfAbsent(sharedResource.url(), k -> EnumSet.noneOf(ResourceAccessType.class));
-                    existingPermissions.addAll(permissions);
+                    permissions.addAll(sharedResource.permissions());
                 }
+                sharedResources.setResources(existingPermissions.entrySet().stream()
+                        .map(entry -> new SharedResource(entry.getKey(), entry.getValue()))
+                        .collect(Collectors.toSet()));
 
                 return ProxyUtil.convertToString(sharedResources);
             });
@@ -229,7 +237,7 @@ public class ShareService {
         Set<ResourceAccessType> result = EnumSet.noneOf(ResourceAccessType.class);
         ResourceDescription next = resource;
         while (next != null) {
-            result.addAll(sharedResources.getResourcesWithPermissions().getOrDefault(next.getUrl(), Set.of()));
+            result.addAll(sharedResources.lookupPermissions(next.getUrl()));
             next = next.getParent();
         }
 
@@ -416,20 +424,16 @@ public class ShareService {
     }
 
     private void removeSharedResourcePermissions(
-            String bucket, String location, String link, ResourceType resourceType, Set<ResourceAccessType> permissions) {
+            String bucket, String location, String link, ResourceType resourceType, Set<ResourceAccessType> permissionsToRemove) {
         ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe != null) {
-                if (permissions.contains(ResourceAccessType.READ)) {
-                    sharedWithMe.getReadableResources().remove(new ResourceLink(link));
-                }
-                Set<ResourceAccessType> allPermissions = sharedWithMe.getResourcesWithPermissions().get(link);
-                if (allPermissions != null) {
-                    allPermissions.removeAll(permissions);
-                    if (allPermissions.isEmpty()) {
-                        sharedWithMe.getResourcesWithPermissions().remove(link);
-                    }
+                Set<ResourceAccessType> permissions = sharedWithMe.lookupPermissions(link);
+                permissions.removeAll(permissionsToRemove);
+                sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
+                if (!permissions.isEmpty()) {
+                    sharedWithMe.getResources().add(new SharedResource(link, permissions));
                 }
             }
 
@@ -442,22 +446,17 @@ public class ShareService {
             String location,
             String link,
             ResourceType resourceType,
-            Set<ResourceAccessType> permissions) {
+            Set<ResourceAccessType> newPermissions) {
         ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe == null) {
-                sharedWithMe = new SharedResources(new HashSet<>(), new HashMap<>());
+                sharedWithMe = new SharedResources(new HashSet<>());
             }
-
-            if (permissions.contains(ResourceAccessType.READ)) {
-                sharedWithMe.getReadableResources().add(new ResourceLink(link));
-            }
-
-            Set<ResourceAccessType> existingPermissions =
-                    sharedWithMe.getResourcesWithPermissions()
-                            .computeIfAbsent(link, k -> EnumSet.noneOf(ResourceAccessType.class));
-            existingPermissions.addAll(permissions);
+            Set<ResourceAccessType> permissions = sharedWithMe.lookupPermissions(link);
+            permissions.addAll(newPermissions);
+            sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
+            sharedWithMe.getResources().add(new SharedResource(link, permissions));
 
             return ProxyUtil.convertToString(sharedWithMe);
         });

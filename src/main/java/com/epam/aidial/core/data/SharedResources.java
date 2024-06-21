@@ -5,31 +5,31 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.EnumSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Data
 public class SharedResources {
-    @JsonProperty("resources")
-    Set<ResourceLink> readableResources;
-    Map<String, Set<ResourceAccessType>> resourcesWithPermissions;
+    Set<SharedResource> resources;
 
     @JsonCreator
     public SharedResources(
             @JsonProperty("resources")
-            Set<ResourceLink> readableResources,
-            @JsonProperty("resourcesWithPermissions")
-            Map<String, Set<ResourceAccessType>> resourcesWithPermissions) {
-        this.readableResources = readableResources;
-        this.resourcesWithPermissions = resourcesWithPermissions == null
-                ? oldSetToReadPermissions(readableResources)
-                : resourcesWithPermissions;
+            Set<SharedResource> resources) {
+        this.resources = resources.stream()
+                .map(resource -> resource.permissions() == null
+                        ? resource.withPermissions(EnumSet.of(ResourceAccessType.READ))
+                        : resource)
+                .collect(Collectors.toSet());
     }
 
-    private static Map<String, Set<ResourceAccessType>> oldSetToReadPermissions(
-            Set<ResourceLink> readableResources) {
-        return readableResources.stream()
-                .collect(Collectors.toMap(ResourceLink::url, link -> EnumSet.of(ResourceAccessType.READ)));
+    public Set<ResourceAccessType> lookupPermissions(String url) {
+        return resources.stream()
+                .filter(resource -> url.equals(resource.url()))
+                .map(SharedResource::permissions)
+                .reduce(EnumSet.noneOf(ResourceAccessType.class), (a, b) -> {
+                    a.addAll(b);
+                    return a;
+                });
     }
 }
