@@ -50,6 +50,10 @@ public class AccessService {
         return !lookupPermissions(resource, context, Set.of(ResourceAccessType.READ)).isEmpty();
     }
 
+    public boolean hasPublicReadAccess(ResourceDescription resource, ProxyContext context) {
+        return getPublicAccess(resource, context).contains(ResourceAccessType.READ);
+    }
+
     public Set<ResourceAccessType> lookupPermissions(ResourceDescription resource, ProxyContext context) {
         return lookupPermissions(resource, context, ResourceAccessType.ALL);
     }

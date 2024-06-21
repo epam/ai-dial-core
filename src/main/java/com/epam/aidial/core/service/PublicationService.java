@@ -368,7 +368,7 @@ public class PublicationService {
 
         // validate if user has access to all target resources
         boolean hasPublicAccess = targetResources.stream()
-                .allMatch(resource -> accessService.hasReadAccess(resource, context));
+                .allMatch(resource -> accessService.hasPublicReadAccess(resource, context));
         if (!hasPublicAccess) {
             throw new PermissionDeniedException("User don't have permissions to the provided target resources");
         }
