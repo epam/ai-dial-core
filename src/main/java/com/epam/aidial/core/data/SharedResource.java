@@ -15,13 +15,13 @@ public record SharedResource(
     }
 
     public SharedResource withReadIfNoPermissions() {
-        return permissions == null
+        return permissions == null || permissions.isEmpty()
                 ? withPermissions(EnumSet.of(ResourceAccessType.READ))
                 : this;
     }
 
     public SharedResource withAllIfNoPermissions() {
-        return permissions == null
+        return permissions == null || permissions.isEmpty()
                 ? withPermissions(EnumSet.allOf(ResourceAccessType.class))
                 : this;
     }
