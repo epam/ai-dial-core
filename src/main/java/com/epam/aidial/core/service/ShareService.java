@@ -259,7 +259,7 @@ public class ShareService {
         Set<ResourceAccessType> permissions = cache.get(resource);
         if (permissions == null) {
             permissions = Sets.union(
-                    resourcePermissions.get(resource.getUrl()),
+                    resourcePermissions.getOrDefault(resource.getUrl(), Set.of()),
                     lookupPermissions(resource.getParent(), resourcePermissions, cache));
             cache.put(resource, permissions);
         }
