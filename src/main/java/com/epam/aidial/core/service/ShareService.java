@@ -239,8 +239,9 @@ public class ShareService {
                 return;
             }
 
+            Map<String, Set<ResourceAccessType>> resourcePermissions = sharedResources.toMap();
             for (ResourceDescription resource : resources) {
-                result.put(resource, lookupPermissions(resource, sharedResources, new HashMap<>()));
+                result.put(resource, lookupPermissions(resource, resourcePermissions, new HashMap<>()));
             }
         });
 
@@ -248,7 +249,9 @@ public class ShareService {
     }
 
     private static Set<ResourceAccessType> lookupPermissions(
-            ResourceDescription resource, SharedResources resources, Map<ResourceDescription, Set<ResourceAccessType>> cache) {
+            ResourceDescription resource,
+            Map<String, Set<ResourceAccessType>> resourcePermissions,
+            Map<ResourceDescription, Set<ResourceAccessType>> cache) {
         if (resource == null) {
             return Set.of();
         }
@@ -256,8 +259,8 @@ public class ShareService {
         Set<ResourceAccessType> permissions = cache.get(resource);
         if (permissions == null) {
             permissions = Sets.union(
-                    resources.lookupPermissions(resource.getUrl()),
-                    lookupPermissions(resource.getParent(), resources, cache));
+                    resourcePermissions.get(resource.getUrl()),
+                    lookupPermissions(resource.getParent(), resourcePermissions, cache));
             cache.put(resource, permissions);
         }
 
@@ -449,7 +452,7 @@ public class ShareService {
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe != null) {
-                Set<ResourceAccessType> permissions = sharedWithMe.lookupPermissions(link);
+                Set<ResourceAccessType> permissions = EnumSet.copyOf(sharedWithMe.findPermissions(link));
                 permissions.removeAll(permissionsToRemove);
                 sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
                 if (!permissions.isEmpty()) {
@@ -473,7 +476,7 @@ public class ShareService {
             if (sharedWithMe == null) {
                 sharedWithMe = new SharedResources(new ArrayList<>());
             }
-            Set<ResourceAccessType> permissions = sharedWithMe.lookupPermissions(link);
+            Set<ResourceAccessType> permissions = EnumSet.copyOf(sharedWithMe.findPermissions(link));
             permissions.addAll(newPermissions);
             sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
             sharedWithMe.getResources().add(new SharedResource(link, permissions));
