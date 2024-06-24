@@ -452,7 +452,8 @@ public class ShareService {
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe != null) {
-                Set<ResourceAccessType> permissions = EnumSet.copyOf(sharedWithMe.findPermissions(link));
+                Set<ResourceAccessType> permissions = EnumSet.noneOf(ResourceAccessType.class);
+                permissions.addAll(sharedWithMe.findPermissions(link));
                 permissions.removeAll(permissionsToRemove);
                 sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
                 if (!permissions.isEmpty()) {
@@ -469,15 +470,16 @@ public class ShareService {
             String location,
             String link,
             ResourceType resourceType,
-            Set<ResourceAccessType> newPermissions) {
+            Set<ResourceAccessType> permissionsToAdd) {
         ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe == null) {
                 sharedWithMe = new SharedResources(new ArrayList<>());
             }
-            Set<ResourceAccessType> permissions = EnumSet.copyOf(sharedWithMe.findPermissions(link));
-            permissions.addAll(newPermissions);
+            Set<ResourceAccessType> permissions = EnumSet.noneOf(ResourceAccessType.class);
+            permissions.addAll(sharedWithMe.findPermissions(link));
+            permissions.addAll(permissionsToAdd);
             sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
             sharedWithMe.getResources().add(new SharedResource(link, permissions));
 
