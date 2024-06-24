@@ -53,7 +53,8 @@ public class AccessService {
     }
 
     public boolean hasPublicReadAccess(ResourceDescription resource, ProxyContext context) {
-        return getPublicAccess(Set.of(resource), context).get(resource).contains(ResourceAccessType.READ);
+        return getPublicAccess(Set.of(resource), context).getOrDefault(resource, Set.of())
+                .contains(ResourceAccessType.READ);
     }
 
     public boolean hasAccess(

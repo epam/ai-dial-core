@@ -29,6 +29,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -141,9 +142,11 @@ public class ResourceService implements AutoCloseable {
         }
 
         Map<ResourceDescription, StorageMetadata> resources = set.stream()
-                .collect(Collectors.toUnmodifiableMap(
+                .collect(Collectors.toMap(
                         meta -> ResourceDescription.fromDecoded(descriptor, meta.getName()),
-                        Function.identity()));
+                        Function.identity(),
+                        (a, b) -> a,
+                        LinkedHashMap::new));
         Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(
                 Sets.union(Set.of(descriptor), resources.keySet()));
         List<MetadataBase> nestedMetadata = new ArrayList<>(resources.size());

@@ -35,6 +35,7 @@ import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -213,10 +214,12 @@ public class BlobStorage implements Closeable {
         ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath(), maxResults, recursive, afterMarker);
         PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
         Map<ResourceDescription, StorageMetadata> nestedMetadata = list.stream()
-                .collect(Collectors.toUnmodifiableMap(
+                .collect(Collectors.toMap(
                         meta -> getResourceDescription(
                                 resource.getType(), bucketName, resource.getBucketLocation(), meta.getName()),
-                        Function.identity()));
+                        Function.identity(),
+                        (a, b) -> a,
+                        LinkedHashMap::new));
         Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(
                 Sets.union(Set.of(resource), nestedMetadata.keySet()));
         List<MetadataBase> filesMetadata = nestedMetadata.entrySet().stream()
