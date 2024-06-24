@@ -22,9 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
-import java.util.function.BiPredicate;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+
 
 public class AccessService {
 
@@ -62,7 +60,7 @@ public class AccessService {
             ResourceDescription resource, ProxyContext context, ResourceAccessType resourceAccessType) {
         Map<ResourceDescription, Set<ResourceAccessType>> permissions =
                 lookupPermissions(Set.of(resource), context, Set.of(resourceAccessType));
-        return !permissions.get(resource).isEmpty();
+        return permissions.get(resource).contains(resourceAccessType);
     }
 
     public Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
