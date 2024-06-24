@@ -89,7 +89,7 @@ Priority order:
 | redis.provider.serverless                     | -                 |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
 | invitations.ttlInSeconds                      | 259200            |    No    |Invitation time to live in seconds.
 | access.admin.rules                            | -                 |    No    |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
-| applications.includeCustomApplications        | false             |    No    |The flag indicates whether custom applications should be included into openai listing
+| applications.includeCustomApps                | false             |    No    |The flag indicates whether custom applications should be included into openai listing
 
 ### Storage requirements
 
