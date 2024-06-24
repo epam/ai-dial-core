@@ -81,31 +81,13 @@ public class RuleService {
     }
 
     public boolean hasPublicAccess(ProxyContext context, ResourceDescription resource) {
-        return hasPublicAccess(context, List.of(resource));
-    }
-
-    public boolean hasPublicAccess(ProxyContext context, List<ResourceDescription> resources) {
-        if (resources.isEmpty()) {
-            return true;
-        }
-
-        for (ResourceDescription resource : resources) {
-            if (!resource.isPublic()) {
-                return false;
-            }
+        if (!resource.isPublic()) {
+            return false;
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
-        boolean hasAccess = false;
-        for (ResourceDescription resource : resources) {
-            hasAccess = evaluate(context, resource, rules, cache);
-            if (!hasAccess) {
-                return false;
-            }
-        }
-
-        return hasAccess;
+        return evaluate(context, resource, rules, cache);
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {
@@ -127,13 +109,13 @@ public class RuleService {
 
     private Map<String, List<Rule>> getCachedRules() {
         ResourceItemMetadata meta = resources.getResourceMetadata(
-                PUBLIC_RULES, PermissionsFetcher.NULL);
+                PUBLIC_RULES, PermissionsFetcher.EMPTY);
         long key = (meta == null) ? Long.MIN_VALUE : meta.getUpdatedAt();
         Pair<Long, Map<String, List<Rule>>> current = cachedRules.get();
 
         if (current == null || current.getKey() != key) {
             Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(
-                    PUBLIC_RULES, PermissionsFetcher.NULL);
+                    PUBLIC_RULES);
             Pair<Long, Map<String, List<Rule>>> next = (resource == null)
                     ? Pair.of(Long.MIN_VALUE, decodeRules(null))
                     : Pair.of(resource.getKey().getUpdatedAt(), decodeRules(resource.getValue()));

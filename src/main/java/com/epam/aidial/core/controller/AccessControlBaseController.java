@@ -34,7 +34,7 @@ public abstract class AccessControlBaseController {
                 .executeBlocking(() -> {
                     AccessService service = proxy.getAccessService();
                     ResourceAccessType permission = isWriteAccess ? ResourceAccessType.WRITE : ResourceAccessType.READ;
-                    return !service.lookupPermissions(resource, context, Set.of(permission)).isEmpty();
+                    return service.hasAccess(resource, context, permission);
                 }, false)
                 .map(hasAccess -> {
                     if (hasAccess) {

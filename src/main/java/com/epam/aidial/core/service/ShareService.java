@@ -224,25 +224,38 @@ public class ShareService {
         });
     }
 
-    public Set<ResourceAccessType> getPermissions(String bucket, String location, ResourceDescription resource) {
-        ResourceDescription shareResource = getShareResource(ResourceType.SHARED_WITH_ME, resource.getType(), bucket, location);
+    public Map<ResourceDescription, Set<ResourceAccessType>> getPermissions(
+            String bucket, String location, Set<ResourceDescription> allResources) {
+        Map<ResourceType, List<ResourceDescription>> resourcesByTypes = allResources.stream()
+                .collect(Collectors.groupingBy(ResourceDescription::getType));
+        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
+        resourcesByTypes.forEach((type, resources) -> {
+            ResourceDescription shareResource = getShareResource(ResourceType.SHARED_WITH_ME, type, bucket, location);
 
-        String state = resourceService.getResource(shareResource);
-        SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
-        if (sharedResources == null) {
-            log.debug("No state found for share access");
+            String state = resourceService.getResource(shareResource);
+            SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
+            if (sharedResources == null) {
+                log.debug("No state found for share access");
+                return;
+            }
+
+            for (ResourceDescription resource : resources) {
+                result.put(resource, lookupPermissions(resource, sharedResources, new HashMap<>()));
+            }
+        });
+
+        return result;
+    }
+
+    private static Set<ResourceAccessType> lookupPermissions(
+            ResourceDescription resource, SharedResources resources, Map<ResourceDescription, Set<ResourceAccessType>> cache) {
+        if (resource == null) {
             return Set.of();
         }
 
-        // check if you have shared access to the parent folder
-        Set<ResourceAccessType> result = EnumSet.noneOf(ResourceAccessType.class);
-        ResourceDescription next = resource;
-        while (next != null) {
-            result.addAll(sharedResources.lookupPermissions(next.getUrl()));
-            next = next.getParent();
-        }
-
-        return result;
+        return cache.computeIfAbsent(resource, key -> Sets.union(
+                resources.lookupPermissions(key.getUrl()),
+                lookupPermissions(key.getParent(), resources, cache)));
     }
 
     /**

@@ -9,6 +9,7 @@ import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.storage.credential.CredentialProvider;
 import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
+import com.google.common.collect.Sets;
 import io.vertx.core.buffer.Buffer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -210,7 +212,15 @@ public class BlobStorage implements Closeable {
             boolean recursive) {
         ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath(), maxResults, recursive, afterMarker);
         PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
-        List<MetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, permissionsFetcher, meta)).toList();
+        Map<ResourceDescription, StorageMetadata> nestedMetadata = list.stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        meta -> getResourceDescription(
+                                resource.getType(), bucketName, resource.getBucketLocation(), meta.getName()),
+                        Function.identity()));
+        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(
+                Sets.union(Set.of(resource), nestedMetadata.keySet()));
+        List<MetadataBase> filesMetadata = nestedMetadata.entrySet().stream()
+                .map(entry -> buildFileMetadata(resource, permissions.get(entry.getKey()), entry.getValue())).toList();
 
         // listing folder
         if (resource.isFolder()) {
@@ -218,8 +228,7 @@ public class BlobStorage implements Closeable {
             if (isEmpty) {
                 return null;
             }
-            Set<ResourceAccessType> permissions = permissionsFetcher.fetch(resource);
-            return new ResourceFolderMetadata(resource, permissions, filesMetadata, list.getNextMarker());
+            return new ResourceFolderMetadata(resource, permissions.get(resource), filesMetadata, list.getNextMarker());
         } else {
             // listing file
             if (filesMetadata.size() == 1) {
@@ -280,7 +289,7 @@ public class BlobStorage implements Closeable {
     }
 
     private MetadataBase buildFileMetadata(
-            ResourceDescription resource, PermissionsFetcher permissionsFetcher, StorageMetadata metadata) {
+            ResourceDescription resource, Set<ResourceAccessType> permissions, StorageMetadata metadata) {
         String bucketName = resource.getBucketName();
         ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
                 resource.getBucketLocation(), metadata.getName());
@@ -292,11 +301,9 @@ public class BlobStorage implements Closeable {
                     blobContentType = BlobStorageUtil.getContentType(metadata.getName());
                 }
 
-                Set<ResourceAccessType> permissions = permissionsFetcher.fetch(resultResource);
                 yield new FileMetadata(resultResource, metadata.getSize(), blobContentType, permissions);
             }
             case FOLDER, RELATIVE_PATH -> {
-                Set<ResourceAccessType> permissions = permissionsFetcher.fetch(resultResource);
                 yield new ResourceFolderMetadata(resultResource, permissions);
             }
             case CONTAINER -> throw new IllegalArgumentException("Can't list container");

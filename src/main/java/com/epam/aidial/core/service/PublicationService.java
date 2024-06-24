@@ -6,6 +6,7 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Notification;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.RejectPublicationRequest;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
@@ -104,23 +105,24 @@ public class PublicationService {
                 .filter(publication -> Publication.Status.APPROVED.equals(publication.getStatus()))
                 .toList();
 
-        Set<Publication.Resource> resourceSet = approvedPublications.stream()
+        Set<ResourceDescription> resourceSet = approvedPublications.stream()
                 .flatMap(publication -> publication.getResources().stream())
+                .map(publication -> ResourceDescription.fromPrivateUrl(publication.getSourceUrl(), encryption))
                 .collect(Collectors.toSet());
         Set<ResourceType> requestedResourceTypes = request.getResourceTypes();
+        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(resourceSet);
 
         Set<MetadataBase> metadata = new HashSet<>();
-        for (Publication.Resource resource : resourceSet) {
-            ResourceDescription resourceDescription = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
+        for (ResourceDescription resourceDescription : resourceSet) {
             // check if published resource match requested criteria
             if (!requestedResourceTypes.contains(resourceDescription.getType())) {
                 continue;
             }
 
             if (resourceDescription.isFolder()) {
-                metadata.add(new ResourceFolderMetadata(resourceDescription, permissionsFetcher.fetch(resourceDescription)));
+                metadata.add(new ResourceFolderMetadata(resourceDescription, permissions.get(resourceDescription)));
             } else {
-                metadata.add(new ResourceItemMetadata(resourceDescription, permissionsFetcher.fetch(resourceDescription)));
+                metadata.add(new ResourceItemMetadata(resourceDescription, permissions.get(resourceDescription)));
             }
         }
 

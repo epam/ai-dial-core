@@ -8,6 +8,7 @@ import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
+import com.google.common.collect.Sets;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
@@ -27,12 +28,13 @@ import org.redisson.client.codec.StringCodec;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.EnumSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -138,38 +140,46 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        List<MetadataBase> resources = set.stream().map(meta -> {
+        Map<ResourceDescription, StorageMetadata> resources = set.stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        meta -> ResourceDescription.fromDecoded(descriptor, meta.getName()),
+                        Function.identity()));
+        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(
+                Sets.union(Set.of(descriptor), resources.keySet()));
+        List<MetadataBase> nestedMetadata = new ArrayList<>(resources.size());
+        resources.forEach((resource, meta) -> {
             Map<String, String> metadata = meta.getUserMetadata();
             String path = meta.getName();
             ResourceDescription description = ResourceDescription.fromDecoded(descriptor, path);
 
             if (meta.getType() != StorageType.BLOB) {
-                return new ResourceFolderMetadata(description, permissionsFetcher.fetch(description));
+                nestedMetadata.add(
+                        new ResourceFolderMetadata(description, permissions.get(description)));
+            } else {
+                Long createdAt = null;
+                Long updatedAt = null;
+
+                if (metadata != null) {
+                    createdAt = metadata.containsKey("created_at") ? Long.parseLong(metadata.get("created_at")) : null;
+                    updatedAt = metadata.containsKey("updated_at") ? Long.parseLong(metadata.get("updated_at")) : null;
+                }
+
+                if (createdAt == null && meta.getCreationDate() != null) {
+                    createdAt = meta.getCreationDate().getTime();
+                }
+
+                if (updatedAt == null && meta.getLastModified() != null) {
+                    updatedAt = meta.getLastModified().getTime();
+                }
+
+                nestedMetadata.add(new ResourceItemMetadata(description, permissions.get(description))
+                        .setCreatedAt(createdAt)
+                        .setUpdatedAt(updatedAt));
             }
-
-            Long createdAt = null;
-            Long updatedAt = null;
-
-            if (metadata != null) {
-                createdAt = metadata.containsKey("created_at") ? Long.parseLong(metadata.get("created_at")) : null;
-                updatedAt = metadata.containsKey("updated_at") ? Long.parseLong(metadata.get("updated_at")) : null;
-            }
-
-            if (createdAt == null && meta.getCreationDate() != null) {
-                createdAt = meta.getCreationDate().getTime();
-            }
-
-            if (updatedAt == null && meta.getLastModified() != null) {
-                updatedAt = meta.getLastModified().getTime();
-            }
-
-            return new ResourceItemMetadata(description, permissionsFetcher.fetch(description))
-                    .setCreatedAt(createdAt)
-                    .setUpdatedAt(updatedAt);
-        }).toList();
+        });
 
         return new ResourceFolderMetadata(
-                descriptor, permissionsFetcher.fetch(descriptor), resources, set.getNextMarker());
+                descriptor, permissions.get(descriptor), nestedMetadata, set.getNextMarker());
     }
 
     @Nullable
@@ -192,7 +202,8 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        return new ResourceItemMetadata(descriptor, permissionsFetcher.fetch(descriptor))
+        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(Set.of(descriptor));
+        return new ResourceItemMetadata(descriptor, permissions.get(descriptor))
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt);
     }
@@ -211,13 +222,13 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     public Pair<ResourceItemMetadata, String> getResourceWithMetadata(
-            ResourceDescription descriptor, PermissionsFetcher permissionsFetcher) {
-        return getResourceWithMetadata(descriptor, permissionsFetcher, true);
+            ResourceDescription descriptor) {
+        return getResourceWithMetadata(descriptor, true);
     }
 
     @Nullable
     public Pair<ResourceItemMetadata, String> getResourceWithMetadata(
-            ResourceDescription descriptor, PermissionsFetcher permissionsFetcher, boolean lock) {
+            ResourceDescription descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
@@ -234,7 +245,7 @@ public class ResourceService implements AutoCloseable {
         }
 
         if (result.exists) {
-            ResourceItemMetadata metadata = new ResourceItemMetadata(descriptor, permissionsFetcher.fetch(descriptor))
+            ResourceItemMetadata metadata = new ResourceItemMetadata(descriptor, null)
                     .setCreatedAt(result.createdAt)
                     .setUpdatedAt(result.updatedAt);
 
@@ -251,7 +262,7 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     public String getResource(ResourceDescription descriptor, boolean lock) {
-        Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, PermissionsFetcher.NULL, lock);
+        Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, lock);
         return (result == null) ? null : result.getRight();
     }
 
