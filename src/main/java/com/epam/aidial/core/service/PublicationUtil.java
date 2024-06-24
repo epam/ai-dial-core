@@ -22,7 +22,7 @@ public class PublicationUtil {
      * @param attachmentsMapping - attachments map (sourceUrl -> targetUrl) to replace
      * @return conversation body after replacement
      */
-    public String replaceLinks(String conversationBody, ResourceDescription targetResource, Map<String, String> attachmentsMapping) {
+    public String replaceConversationLinks(String conversationBody, ResourceDescription targetResource, Map<String, String> attachmentsMapping) {
         JsonObject conversation = replaceConversationIdentity(conversationBody, targetResource);
 
         if (attachmentsMapping.isEmpty()) {
@@ -45,6 +45,13 @@ public class PublicationUtil {
         }
 
         return conversation.toString();
+    }
+
+    public String replaceApplicationIdentity(String applicationBody, ResourceDescription targetResource) {
+        JsonObject application = new JsonObject(applicationBody);
+        application.put("name", targetResource.getUrl());
+
+        return application.toString();
     }
 
     private void replaceAttachments(JsonArray messages, Map<String, String> attachmentsMapping) {

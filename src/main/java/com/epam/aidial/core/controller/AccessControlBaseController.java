@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
+import org.apache.commons.lang3.tuple.Pair;
 
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
@@ -29,11 +30,19 @@ public abstract class AccessControlBaseController {
         return proxy.getVertx()
                 .executeBlocking(() -> {
                     AccessService service = proxy.getAccessService();
-                    return isWriteAccess ? service.hasWriteAccess(resource, context) : service.hasReadAccess(resource, context);
+                    boolean hasWriteAccess = service.hasWriteAccess(resource, context);
+                    if (hasWriteAccess) {
+                        // pair of writeAccess, readAccess
+                        return Pair.of(true, true);
+                    } else {
+                        // pair of writeAccess, readAccess
+                        return Pair.of(false, service.hasReadAccess(resource, context));
+                    }
                 }, false)
-                .map(hasAccess -> {
+                .map(pair -> {
+                    boolean hasAccess = isWriteAccess ? pair.getLeft() : pair.getRight();
                     if (hasAccess) {
-                        handle(resource);
+                        handle(resource, pair.getLeft());
                     } else {
                         context.respond(HttpStatus.FORBIDDEN, "You don't have an access to: " + resourceUrl);
                     }
@@ -41,6 +50,6 @@ public abstract class AccessControlBaseController {
                 });
     }
 
-    protected abstract Future<?> handle(ResourceDescription resource);
+    protected abstract Future<?> handle(ResourceDescription resource, boolean hasWriteAccess);
 
 }

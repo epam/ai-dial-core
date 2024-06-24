@@ -3,7 +3,6 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
@@ -11,19 +10,15 @@ import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
-import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.function.BaseFunction;
 import com.epam.aidial.core.function.CollectAttachmentsFn;
 import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.limiter.RateLimitResult;
-import com.epam.aidial.core.security.AccessService;
-import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.CustomApplicationService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceNotFoundException;
-import com.epam.aidial.core.service.ResourceService;
-import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
 import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
@@ -66,17 +61,13 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private final ResourceService resourceService;
-    private final AccessService accessService;
-    private final EncryptionService encryptionService;
+    private final CustomApplicationService applicationService;
     private final List<BaseFunction<ObjectNode>> enhancementFunctions;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.resourceService = proxy.getResourceService();
-        this.accessService = proxy.getAccessService();
-        this.encryptionService = proxy.getEncryptionService();
+        this.applicationService = proxy.getCustomApplicationService();
         this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
@@ -106,27 +97,8 @@ public class DeploymentPostController {
             }
             deploymentFuture = Future.succeededFuture(deployment);
         } else {
-            deploymentFuture = proxy.getVertx().executeBlocking(() -> {
-                ResourceDescription resource;
-                try {
-                    resource = ResourceDescription.fromAnyUrl(deploymentId, encryptionService);
-                } catch (Exception e) {
-                    log.warn("Invalid resource url provided: {}", deploymentId);
-                    return null;
-                }
-
-                if (resource.getType() != ResourceType.APPLICATION) {
-                    throw new IllegalArgumentException("Unsupported deployment type: " + resource.getType());
-                }
-
-                boolean hasAccess = accessService.hasReadAccess(resource, context);
-                if (!hasAccess) {
-                    throw new PermissionDeniedException("User don't have access to the deployment " + deploymentId);
-                }
-
-                String applicationBody = resourceService.getResource(resource);
-                return ProxyUtil.convertToObject(applicationBody, Application.class, true);
-            }, false);
+            deploymentFuture = proxy.getVertx().executeBlocking(() ->
+               applicationService.getCustomApplication(deploymentId, context), false);
         }
 
         deploymentFuture

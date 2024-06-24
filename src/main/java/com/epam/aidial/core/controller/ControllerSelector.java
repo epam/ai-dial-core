@@ -29,7 +29,7 @@ public class ControllerSelector {
     private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/([^/]+)$");
     private static final Pattern PATTERN_ASSISTANTS = Pattern.compile("^/+openai/assistants$");
 
-    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/([^/]+)$");
+    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
 
 
@@ -135,14 +135,14 @@ public class ControllerSelector {
 
         match = match(PATTERN_APPLICATION, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             String application = UrlUtil.decodePath(match.group(1));
             return () -> controller.getApplication(application);
         }
 
         match = match(PATTERN_APPLICATIONS, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             return controller::getApplications;
         }
 

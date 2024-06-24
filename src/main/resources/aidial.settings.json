@@ -59,6 +59,9 @@
     "cacheExpiration": 300000,
     "compressionMinSize": 256
   },
+  "applications": {
+    "includeCustomApps": false
+  },
   "access": {
     "admin": {
       "rules": [

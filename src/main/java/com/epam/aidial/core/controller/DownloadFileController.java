@@ -24,7 +24,7 @@ public class DownloadFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource) {
+    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");
         }

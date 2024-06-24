@@ -272,18 +272,147 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, "", "Api-key", "proxyKey2");
         verifyJsonNotExact(response, 200, """
                 {
-                "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                "endpoint": "http://application1/v1/completions",
-                "display_name": "My Custom Application",
-                "display_version": "1.0",
-                "icon_url": "http://application1/icon.svg",
-                "description": "My Custom Application Description",
-                "forward_auth_token": false,
-                "features": {
-                 "rate_endpoint": "http://application1/rate",
-                 "configuration_endpoint": "http://application1/configuration"
-                 },
-                "defaults": {}
+                   "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                   "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                   "display_name" : "My Custom Application",
+                   "display_version" : "1.0",
+                   "icon_url" : "http://application1/icon.svg",
+                   "description" : "My Custom Application Description",
+                   "owner" : "organization-owner",
+                   "object" : "application",
+                   "status" : "succeeded",
+                   "created_at" : 1672534800,
+                   "updated_at" : 1672534800,
+                   "features" : {
+                     "rate" : true,
+                     "tokenize" : false,
+                     "truncate_prompt" : false,
+                     "configuration" : true,
+                     "system_prompt" : true,
+                     "tools" : false,
+                     "seed" : false,
+                     "url_attachments" : false,
+                     "folder_attachments" : false
+                   },
+                   "defaults" : { }
+                }
+                """);
+
+        // verify user1 can list both applications (from config and own)
+        response = send(HttpMethod.GET, "/openai/applications");
+        verifyJson(response, 200, """
+                {
+                    "data":[
+                        {
+                            "id":"app",
+                            "application":"app",
+                            "display_name":"10k",
+                            "icon_url":"http://localhost:7001/logo10k.png",
+                            "description":"Some description of the application for testing",
+                            "owner":"organization-owner",
+                            "object":"application",
+                            "status":"succeeded",
+                            "created_at":1672534800,
+                            "updated_at":1672534800,
+                            "features":{
+                                "rate":true,
+                                "tokenize":false,
+                                "truncate_prompt":false,
+                                "configuration":true,
+                                "system_prompt":false,
+                                "tools":false,
+                                "seed":false,
+                                "url_attachments":false,
+                                "folder_attachments":false
+                                },
+                            "defaults":{}
+                        },
+                        {
+                            "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                            "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                            "display_name" : "My Custom Application",
+                            "display_version" : "1.0",
+                            "icon_url" : "http://application1/icon.svg",
+                            "description" : "My Custom Application Description",
+                            "owner" : "organization-owner",
+                            "object" : "application",
+                            "status" : "succeeded",
+                            "created_at" : 1672534800,
+                            "updated_at" : 1672534800,
+                            "features" : {
+                              "rate" : true,
+                              "tokenize" : false,
+                              "truncate_prompt" : false,
+                              "configuration" : true,
+                              "system_prompt" : true,
+                              "tools" : false,
+                              "seed" : false,
+                              "url_attachments" : false,
+                              "folder_attachments" : false
+                            },
+                            "defaults" : { }
+                          }
+                    ],
+                    "object":"list"
+                }
+                """);
+
+        // verify user2 can list both applications (from config and shared)
+        response = send(HttpMethod.GET, "/openai/applications", null, null, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                    "data":[
+                        {
+                            "id":"app",
+                            "application":"app",
+                            "display_name":"10k",
+                            "icon_url":"http://localhost:7001/logo10k.png",
+                            "description":"Some description of the application for testing",
+                            "owner":"organization-owner",
+                            "object":"application",
+                            "status":"succeeded",
+                            "created_at":1672534800,
+                            "updated_at":1672534800,
+                            "features":{
+                                "rate":true,
+                                "tokenize":false,
+                                "truncate_prompt":false,
+                                "configuration":true,
+                                "system_prompt":false,
+                                "tools":false,
+                                "seed":false,
+                                "url_attachments":false,
+                                "folder_attachments":false
+                                },
+                            "defaults":{}
+                        },
+                        {
+                            "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                            "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                            "display_name" : "My Custom Application",
+                            "display_version" : "1.0",
+                            "icon_url" : "http://application1/icon.svg",
+                            "description" : "My Custom Application Description",
+                            "owner" : "organization-owner",
+                            "object" : "application",
+                            "status" : "succeeded",
+                            "created_at" : 1672534800,
+                            "updated_at" : 1672534800,
+                            "features" : {
+                              "rate" : true,
+                              "tokenize" : false,
+                              "truncate_prompt" : false,
+                              "configuration" : true,
+                              "system_prompt" : true,
+                              "tools" : false,
+                              "seed" : false,
+                              "url_attachments" : false,
+                              "folder_attachments" : false
+                            },
+                            "defaults" : { }
+                          }
+                    ],
+                    "object":"list"
                 }
                 """);
     }
@@ -359,5 +488,206 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/applications/public/folder/my-custom-application",
                 null, null, "authorization", "user");
         verify(response, 200);
+
+        // verify listing returns both applications (from config and public)
+        response = send(HttpMethod.GET, "/openai/applications", null, null, "authorization", "user");
+        verifyJson(response, 200, """
+                {
+                    "data":[
+                        {
+                            "id":"app",
+                            "application":"app",
+                            "display_name":"10k",
+                            "icon_url":"http://localhost:7001/logo10k.png",
+                            "description":"Some description of the application for testing",
+                            "owner":"organization-owner",
+                            "object":"application",
+                            "status":"succeeded",
+                            "created_at":1672534800,
+                            "updated_at":1672534800,
+                            "features":{
+                                "rate":true,
+                                "tokenize":false,
+                                "truncate_prompt":false,
+                                "configuration":true,
+                                "system_prompt":false,
+                                "tools":false,
+                                "seed":false,
+                                "url_attachments":false,
+                                "folder_attachments":false
+                                },
+                            "defaults":{}
+                        },
+                        {
+                            "id" : "applications/public/folder/my-custom-application",
+                            "application" : "applications/public/folder/my-custom-application",
+                            "display_name" : "My Custom Application",
+                            "display_version" : "1.0",
+                            "icon_url" : "http://application1/icon.svg",
+                            "description" : "My Custom Application Description",
+                            "owner" : "organization-owner",
+                            "object" : "application",
+                            "status" : "succeeded",
+                            "created_at" : 1672534800,
+                            "updated_at" : 1672534800,
+                            "features" : {
+                              "rate" : true,
+                              "tokenize" : false,
+                              "truncate_prompt" : false,
+                              "configuration" : true,
+                              "system_prompt" : true,
+                              "tools" : false,
+                              "seed" : false,
+                              "url_attachments" : false,
+                              "folder_attachments" : false
+                            },
+                            "defaults" : { }
+                          }
+                    ],
+                    "object":"list"
+                }
+                """);
+    }
+
+    @Test
+    void testOpenAiApplicationListing() {
+        // verify listing return only application from config
+        Response response = send(HttpMethod.GET, "/openai/applications");
+        verifyJson(response, 200, """
+                {
+                    "data":[
+                        {
+                            "id":"app",
+                            "application":"app",
+                            "display_name":"10k",
+                            "icon_url":"http://localhost:7001/logo10k.png",
+                            "description":"Some description of the application for testing",
+                            "owner":"organization-owner",
+                            "object":"application",
+                            "status":"succeeded",
+                            "created_at":1672534800,
+                            "updated_at":1672534800,
+                            "features":{
+                                "rate":true,
+                                "tokenize":false,
+                                "truncate_prompt":false,
+                                "configuration":true,
+                                "system_prompt":false,
+                                "tools":false,
+                                "seed":false,
+                                "url_attachments":false,
+                                "folder_attachments":false
+                                },
+                            "defaults":{}
+                        }
+                    ],
+                    "object":"list"
+                }
+                """);
+
+        // create custom application
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+                {
+                    "endpoint": "http://application1/v1/completions",
+                    "display_name": "My Custom Application",
+                    "display_version": "1.0",
+                    "icon_url": "http://application1/icon.svg",
+                    "description": "My Custom Application Description",
+                    "features": {
+                        "rate_endpoint": "http://application1/rate",
+                        "configuration_endpoint": "http://application1/configuration"
+                    }
+                }
+                """);
+        verify(response, 200);
+
+        // get custom application with openai endpoint
+        response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application");
+        verifyJson(response, 200, """
+                {
+                    "id":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                    "application":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                    "display_name":"My Custom Application",
+                    "display_version":"1.0",
+                    "icon_url":"http://application1/icon.svg",
+                    "description":"My Custom Application Description",
+                    "owner":"organization-owner",
+                    "object":"application",
+                    "status":"succeeded",
+                    "created_at":1672534800,
+                    "updated_at":1672534800,
+                    "features":{
+                        "rate":true,
+                        "tokenize":false,
+                        "truncate_prompt":false,
+                        "configuration":true,
+                        "system_prompt":true,
+                        "tools":false,
+                        "seed":false,
+                        "url_attachments":false,
+                        "folder_attachments":false
+                    },
+                    "defaults":{}
+                }
+                """);
+
+        // verify listing returns both applications (from config and own)
+        response = send(HttpMethod.GET, "/openai/applications");
+        verifyJson(response, 200, """
+                {
+                    "data":[
+                        {
+                            "id":"app",
+                            "application":"app",
+                            "display_name":"10k",
+                            "icon_url":"http://localhost:7001/logo10k.png",
+                            "description":"Some description of the application for testing",
+                            "owner":"organization-owner",
+                            "object":"application",
+                            "status":"succeeded",
+                            "created_at":1672534800,
+                            "updated_at":1672534800,
+                            "features":{
+                                "rate":true,
+                                "tokenize":false,
+                                "truncate_prompt":false,
+                                "configuration":true,
+                                "system_prompt":false,
+                                "tools":false,
+                                "seed":false,
+                                "url_attachments":false,
+                                "folder_attachments":false
+                                },
+                            "defaults":{}
+                        },
+                        {
+                            "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                            "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                            "display_name" : "My Custom Application",
+                            "display_version" : "1.0",
+                            "icon_url" : "http://application1/icon.svg",
+                            "description" : "My Custom Application Description",
+                            "owner" : "organization-owner",
+                            "object" : "application",
+                            "status" : "succeeded",
+                            "created_at" : 1672534800,
+                            "updated_at" : 1672534800,
+                            "features" : {
+                              "rate" : true,
+                              "tokenize" : false,
+                              "truncate_prompt" : false,
+                              "configuration" : true,
+                              "system_prompt" : true,
+                              "tools" : false,
+                              "seed" : false,
+                              "url_attachments" : false,
+                              "folder_attachments" : false
+                            },
+                            "defaults" : { }
+                          }
+                    ],
+                    "object":"list"
+                }
+                """);
     }
 }

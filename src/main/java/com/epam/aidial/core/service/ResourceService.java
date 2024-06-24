@@ -118,7 +118,7 @@ public class ResourceService implements AutoCloseable {
                 : getResourceMetadata(descriptor);
     }
 
-    private ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
+    public ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
         PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
 
