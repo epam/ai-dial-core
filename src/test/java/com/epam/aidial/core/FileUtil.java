@@ -1,18 +1,14 @@
 package com.epam.aidial.core;
 
-import com.epam.aidial.core.config.Storage;
-import com.epam.aidial.core.storage.BlobStorage;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.io.file.PathUtils;
-import org.jclouds.filesystem.reference.FilesystemConstants;
 
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
-import java.util.Properties;
 
 @UtilityClass
 public class FileUtil {

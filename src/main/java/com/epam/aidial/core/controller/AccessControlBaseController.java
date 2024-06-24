@@ -9,9 +9,6 @@ import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
 
-import java.util.List;
-import java.util.Set;
-
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
 

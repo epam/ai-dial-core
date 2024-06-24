@@ -3,9 +3,6 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ResourceAccessType;
-import com.epam.aidial.core.data.ResourceLink;
-import com.epam.aidial.core.data.ResourceLinkCollection;
-import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ShareService;
@@ -15,7 +12,6 @@ import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 

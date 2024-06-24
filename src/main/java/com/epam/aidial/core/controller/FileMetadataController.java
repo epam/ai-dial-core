@@ -3,7 +3,6 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.storage.BlobStorage;

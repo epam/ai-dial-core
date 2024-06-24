@@ -5,7 +5,6 @@ import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass

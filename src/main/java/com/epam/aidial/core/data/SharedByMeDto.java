@@ -2,9 +2,7 @@ package com.epam.aidial.core.data;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -13,8 +11,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static java.util.function.Predicate.not;
 
 @Data
 public class SharedByMeDto {

@@ -4,7 +4,6 @@ import com.epam.aidial.core.data.Invitation;
 import com.epam.aidial.core.data.InvitationCollection;
 import com.epam.aidial.core.data.InvitationsMap;
 import com.epam.aidial.core.data.ResourceAccessType;
-import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.ApiKeyGenerator;

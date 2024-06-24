@@ -6,9 +6,7 @@ import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
 import com.epam.aidial.core.data.ResourceAccessType;
-import com.epam.aidial.core.data.ResourceLink;
 import com.epam.aidial.core.data.ResourceType;
-import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
@@ -26,7 +24,6 @@ import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
