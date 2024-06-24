@@ -253,9 +253,15 @@ public class ShareService {
             return Set.of();
         }
 
-        return cache.computeIfAbsent(resource, key -> Sets.union(
-                resources.lookupPermissions(key.getUrl()),
-                lookupPermissions(key.getParent(), resources, cache)));
+        Set<ResourceAccessType> permissions = cache.get(resource);
+        if (permissions == null) {
+            permissions = Sets.union(
+                    resources.lookupPermissions(resource.getUrl()),
+                    lookupPermissions(resource.getParent(), resources, cache));
+            cache.put(resource, permissions);
+        }
+
+        return permissions;
     }
 
     /**
