@@ -64,8 +64,7 @@ public class AccessService {
      */
     public boolean hasPublicAccess(Set<ResourceDescription> resources, ProxyContext context) {
         return resources.stream().allMatch(ResourceDescription::isPublic)
-                && hasAdminAccess(context)
-                && ruleService.hasPublicAccess(context, resources);
+                && (hasAdminAccess(context) || ruleService.hasPublicAccess(context, resources));
     }
 
     public boolean hasAccess(
