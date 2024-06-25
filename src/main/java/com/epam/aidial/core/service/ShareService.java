@@ -226,10 +226,11 @@ public class ShareService {
 
     public Map<ResourceDescription, Set<ResourceAccessType>> getPermissions(
             String bucket, String location, Set<ResourceDescription> allResources) {
-        Map<ResourceType, List<ResourceDescription>> resourcesByTypes = allResources.stream()
+        Map<ResourceType, List<ResourceDescription>> privateResourcesByTypes = allResources.stream()
+                .filter(ResourceDescription::isPrivate)
                 .collect(Collectors.groupingBy(ResourceDescription::getType));
         Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
-        resourcesByTypes.forEach((type, resources) -> {
+        privateResourcesByTypes.forEach((type, resources) -> {
             ResourceDescription shareResource = getShareResource(ResourceType.SHARED_WITH_ME, type, bucket, location);
 
             String state = resourceService.getResource(shareResource);

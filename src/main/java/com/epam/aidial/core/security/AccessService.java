@@ -15,13 +15,14 @@ import com.epam.aidial.core.util.UrlUtil;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonObject;
 
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 
 public class AccessService {
@@ -31,12 +32,13 @@ public class AccessService {
     private final RuleService ruleService;
     private final List<Rule> adminRules;
     private final List<PermissionRule> permissionRules = List.of(
-            AccessService::getAutoSharedAccess,
-            this::getPublicAccess,
-            this::getReviewAccess,
             AccessService::getOwnResourcesAccess,
+            this::getAdminAccess,
+            AccessService::getAutoSharedAccess,
             AccessService::getAppResourceAccess,
-            this::getSharedAccess);
+            this::getSharedAccess,
+            this::getPublicAccess,
+            this::getReviewAccess);
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
@@ -52,9 +54,10 @@ public class AccessService {
         return hasAccess(resource, context, ResourceAccessType.READ);
     }
 
-    public boolean hasPublicReadAccess(ResourceDescription resource, ProxyContext context) {
-        return getPublicAccess(Set.of(resource), context).getOrDefault(resource, Set.of())
-                .contains(ResourceAccessType.READ);
+    public boolean allHavePublicReadAccess(Set<ResourceDescription> resources, ProxyContext context) {
+        Map<ResourceDescription, Set<ResourceAccessType>> publicAccess = getPublicAccess(resources, context);
+        return resources.stream().allMatch(
+                resource -> publicAccess.getOrDefault(resource, Set.of()).contains(ResourceAccessType.READ));
     }
 
     public boolean hasAccess(
@@ -64,6 +67,20 @@ public class AccessService {
         return permissions.get(resource).contains(resourceAccessType);
     }
 
+    /***
+     * The method returns permissions associated with provided resources.
+     * Check sequence:
+     *  * Own resources
+     *  * Admin access
+     *  * Auto shared
+     *  * App resource
+     *  * Shared access
+     *  * Public access
+     *  * Review resource
+     * @param resources resources to retrieve permissions
+     * @param context proxy context
+     * @return User permissions to all requested resources
+     */
     public Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescription> resources, ProxyContext context) {
         return lookupPermissions(resources, context, ResourceAccessType.ALL);
@@ -77,9 +94,11 @@ public class AccessService {
             Map<ResourceDescription, Set<ResourceAccessType>> rulePermissions =
                     permissionRule.apply(remainingResources, context);
 
+            // Merge permissions returned by the rule with previously collected permissions
             rulePermissions.forEach((resource, permissions) -> {
                 Set<ResourceAccessType> mergedPermissions = result.merge(resource, permissions, Sets::union);
                 if (toLookup.equals(mergedPermissions)) {
+                    // Remove from further lookup if all requested permissions are collected
                     remainingResources.remove(resource);
                 }
             });
@@ -89,6 +108,20 @@ public class AccessService {
         }
 
         return result;
+    }
+
+    private Map<ResourceDescription, Set<ResourceAccessType>> getAdminAccess(
+            Set<ResourceDescription> resources, ProxyContext context) {
+        if (hasAdminAccess(context)) {
+            boolean isNotApplication = context.getApiKeyData().getPerRequestKey() == null;
+            Set<ResourceAccessType> permissions = isNotApplication
+                    ? ResourceAccessType.ALL
+                    : ResourceAccessType.READ_ONLY;
+            return resources.stream()
+                    .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> permissions));
+        }
+
+        return Map.of();
     }
 
     /**
@@ -101,23 +134,11 @@ public class AccessService {
      */
     private Map<ResourceDescription, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescription> resources, ProxyContext context) {
-        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
-        for (ResourceDescription resource : resources) {
-            if (!resource.isPublic()) {
-                continue;
-            }
-
-            if (hasAdminAccess(context)) {
-                boolean isNotApplication = (context.getApiKeyData().getPerRequestKey() == null);
-                result.put(resource, isNotApplication
-                        ? ResourceAccessType.ALL
-                        : EnumSet.of(ResourceAccessType.READ));
-            } else if (ruleService.hasPublicAccess(context, resource)) {
-                result.put(resource, EnumSet.of(ResourceAccessType.READ));
-            }
-        }
-
-        return result;
+        return resources.stream()
+                .filter(resource -> resource.isPublic() && ruleService.hasPublicAccess(context, resource))
+                .collect(Collectors.toUnmodifiableMap(
+                        Function.identity(),
+                        resource -> ResourceAccessType.READ_ONLY));
     }
 
     private static Map<ResourceDescription, Set<ResourceAccessType>> getAutoSharedAccess(
@@ -127,13 +148,13 @@ public class AccessService {
             String resourceUrl = resource.getUrl();
             boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resourceUrl);
             if (isAutoShared) {
-                result.put(resource, EnumSet.of(ResourceAccessType.READ));
+                result.put(resource, ResourceAccessType.READ_ONLY);
                 continue;
             }
             List<String> attachedFolders = context.getApiKeyData().getAttachedFolders();
             for (String folder : attachedFolders) {
                 if (resourceUrl.startsWith(folder)) {
-                    result.put(resource, EnumSet.of(ResourceAccessType.READ));
+                    result.put(resource, ResourceAccessType.READ_ONLY);
                     break;
                 }
             }
@@ -172,7 +193,7 @@ public class AccessService {
             String parentPath = resource.getParentPath();
             String filePath = (parentPath == null)
                     ? resource.getName()
-                    : resource.getParentPath() + BlobStorageUtil.PATH_SEPARATOR + resource.getName();
+                    : parentPath + BlobStorageUtil.PATH_SEPARATOR + resource.getName();
 
             if (filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment)))) {
                 result.put(resource, ResourceAccessType.ALL);
@@ -191,20 +212,12 @@ public class AccessService {
 
     private Map<ResourceDescription, Set<ResourceAccessType>> getReviewAccess(
             Set<ResourceDescription> resources, ProxyContext context) {
-        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
-        for (ResourceDescription resource : resources) {
-            if (!PublicationService.isReviewResource(resource)) {
-                continue;
-            }
 
-            if (hasAdminAccess(context)) {
-                result.put(resource, ResourceAccessType.ALL);
-            } else if (PublicationService.hasReviewAccess(context, resource)) {
-                result.put(resource, EnumSet.of(ResourceAccessType.READ));
-            }
-        }
-
-        return result;
+        return resources.stream()
+                .filter(resource -> PublicationService.isReviewResource(resource)
+                        && PublicationService.hasReviewAccess(context, resource))
+                .collect(Collectors.toUnmodifiableMap(
+                        Function.identity(), resource -> ResourceAccessType.READ_ONLY));
     }
 
     public boolean hasAdminAccess(ProxyContext context) {
