@@ -78,15 +78,18 @@ public class AccessService {
     /***
      * The method returns permissions associated with provided resources.
      * Check sequence:
-     *  * Own resources
-     *  * Admin access
-     *  * Auto shared
-     *  * App resource
-     *  * Shared access
-     *  * Public access
-     *  * Review resource
-     * @param resources resources to retrieve permissions
-     * @param context proxy context
+     * <ul>
+     *   <li>Own resources</li>
+     *   <li>Admin access</li>
+     *   <li>Auto shared</li>
+     *   <li>App resource</li>
+     *   <li>Shared access</li>
+     *   <li>Public access</li>
+     *   <li>Review resource</li>
+     * </ul>
+     *
+     * @param resources - resources to retrieve permissions for
+     * @param context - proxy context
      * @return User permissions to all requested resources
      */
     public Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
