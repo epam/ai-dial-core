@@ -131,7 +131,7 @@ public class ShareService {
             throw new IllegalArgumentException("No resources provided");
         }
 
-        Set<SharedResource> normalizedResourceLinks = new HashSet<>();
+        List<SharedResource> normalizedResourceLinks = new ArrayList<>(sharedResources.size());
         for (SharedResource sharedResource : sharedResources) {
             String url = sharedResource.url();
             if (url.startsWith(ProxyUtil.METADATA_PREFIX)) {
@@ -164,7 +164,7 @@ public class ShareService {
             throw new ResourceNotFoundException("No invitation found with id: " + invitationId);
         }
 
-        Set<SharedResource> resourceLinks = invitation.getResources();
+        List<SharedResource> resourceLinks = invitation.getResources();
         for (SharedResource link : resourceLinks) {
             String url = link.url();
             if (ResourceDescription.fromPrivateUrl(url, encryptionService).getBucketName().equals(bucket)) {

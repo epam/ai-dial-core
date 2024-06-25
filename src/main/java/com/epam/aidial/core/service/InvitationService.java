@@ -46,7 +46,7 @@ public class InvitationService {
         this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
     }
 
-    public Invitation createInvitation(String bucket, String location, Set<SharedResource> resources) {
+    public Invitation createInvitation(String bucket, String location, List<SharedResource> resources) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
@@ -139,22 +139,23 @@ public class InvitationService {
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             List<String> invitationsToRemove = new ArrayList<>();
             for (Invitation invitation : invitationMap.values()) {
-                Set<SharedResource> invitationResourceLinks = new HashSet<>();
+                List<SharedResource> updatedResources = new ArrayList<>();
                 for (SharedResource sharedResource : invitation.getResources()) {
                     Set<ResourceAccessType> permissions = permissionsToCleanUp.get(sharedResource.url());
                     if (permissions == null) {
-                        invitationResourceLinks.add(sharedResource);
+                        updatedResources.add(sharedResource);
                     } else {
-                        Set<ResourceAccessType> updatedPermissions =
-                                Sets.difference(sharedResource.permissions(), permissions);
-                        if (!updatedPermissions.isEmpty()) {
-                            invitationResourceLinks.add(sharedResource.withPermissions(updatedPermissions));
+                        sharedResource.permissions().removeAll(permissions);
+                        if (!sharedResource.permissions().isEmpty()) {
+                            updatedResources.add(sharedResource);
                         }
                     }
                 }
 
-                if (invitationResourceLinks.isEmpty()) {
+                if (updatedResources.isEmpty()) {
                     invitationsToRemove.add(invitation.getId());
+                } else {
+                    invitation.setResources(updatedResources);
                 }
             }
 
@@ -173,7 +174,7 @@ public class InvitationService {
             }
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             for (Invitation invitation : invitationMap.values()) {
-                Set<SharedResource> invitationResourceLinks = invitation.getResources();
+                List<SharedResource> invitationResourceLinks = invitation.getResources();
                 Set<SharedResource> toMove = invitationResourceLinks.stream()
                         .filter(sharedResource -> source.getUrl().equals(sharedResource.url()))
                         .collect(Collectors.toUnmodifiableSet());
