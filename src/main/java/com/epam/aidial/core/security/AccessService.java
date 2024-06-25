@@ -54,10 +54,18 @@ public class AccessService {
         return hasAccess(resource, context, ResourceAccessType.READ);
     }
 
-    public boolean allHavePublicReadAccess(Set<ResourceDescription> resources, ProxyContext context) {
-        Map<ResourceDescription, Set<ResourceAccessType>> publicAccess = getPublicAccess(resources, context);
-        return resources.stream().allMatch(
-                resource -> publicAccess.getOrDefault(resource, Set.of()).contains(ResourceAccessType.READ));
+    /**
+     * Checks if USER has public access to the provided resources.
+     * This method also checks admin privileges.
+     *
+     * @param resources - public resources
+     * @param context - context
+     * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
+     */
+    public boolean hasPublicAccess(Set<ResourceDescription> resources, ProxyContext context) {
+        return resources.stream().allMatch(ResourceDescription::isPublic)
+                && hasAdminAccess(context)
+                && ruleService.hasPublicAccess(context, resources);
     }
 
     public boolean hasAccess(
@@ -126,7 +134,6 @@ public class AccessService {
 
     /**
      * Returns USER permissions to the provided public resources.
-     * This method also checks admin privileges.
      *
      * @param resources - public resources
      * @param context - context
@@ -134,8 +141,15 @@ public class AccessService {
      */
     private Map<ResourceDescription, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescription> resources, ProxyContext context) {
-        return resources.stream()
-                .filter(resource -> resource.isPublic() && ruleService.hasPublicAccess(context, resource))
+        Set<ResourceDescription> publicResources = resources.stream()
+                .filter(ResourceDescription::isPublic)
+                .collect(Collectors.toSet());
+
+        if (!ruleService.hasPublicAccess(context, publicResources)) {
+            return Map.of();
+        }
+
+        return publicResources.stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(),
                         resource -> ResourceAccessType.READ_ONLY));

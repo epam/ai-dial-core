@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -80,14 +81,28 @@ public class RuleService {
         return result;
     }
 
-    public boolean hasPublicAccess(ProxyContext context, ResourceDescription resource) {
-        if (!resource.isPublic()) {
-            return false;
+    public boolean hasPublicAccess(ProxyContext context, Set<ResourceDescription> resources) {
+        if (resources.isEmpty()) {
+            return true;
+        }
+
+        for (ResourceDescription resource : resources) {
+            if (!resource.isPublic()) {
+                return false;
+            }
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
-        return evaluate(context, resource, rules, cache);
+        boolean hasAccess = false;
+        for (ResourceDescription resource : resources) {
+            hasAccess = evaluate(context, resource, rules, cache);
+            if (!hasAccess) {
+                return false;
+            }
+        }
+
+        return hasAccess;
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {
