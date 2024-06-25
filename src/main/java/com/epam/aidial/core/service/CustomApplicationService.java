@@ -45,7 +45,7 @@ public class CustomApplicationService {
             resource = ResourceDescription.fromAnyUrl(url, encryptionService);
         } catch (Exception e) {
             log.warn("Invalid resource url provided: {}", url);
-            return null;
+            throw new ResourceNotFoundException("Application %s not found".formatted(url));
         }
 
         if (resource.getType() != ResourceType.APPLICATION) {

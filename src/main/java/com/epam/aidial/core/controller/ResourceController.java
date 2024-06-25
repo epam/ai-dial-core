@@ -161,29 +161,10 @@ public class ResourceController extends AccessControlBaseController {
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
                     }
 
-                    String body = bytes.toString(StandardCharsets.UTF_8);
-
                     ResourceType resourceType = descriptor.getType();
-                    switch (resourceType) {
-                        case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
-                        case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
-                        case APPLICATION -> {
-                            Application application = ProxyUtil.convertToObject(body, Application.class, true);
-                            if (application != null) {
-                                // replace application name with it's url
-                                application.setName(descriptor.getUrl());
-                                // defining user roles in custom applications are not allowed
-                                application.setUserRoles(null);
-                                // forward auth token is not allowed for custom applications
-                                application.setForwardAuthToken(false);
-                                body = ProxyUtil.convertToString(application, true);
-                            }
-                        }
-                        default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
-                    }
+                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
 
-                    String requestBody = body;
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, requestBody, overwrite), false);
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {
@@ -202,6 +183,27 @@ public class ResourceController extends AccessControlBaseController {
                         context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                     }
                 });
+    }
+
+    private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body) {
+        switch (resourceType) {
+            case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
+            case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+            case APPLICATION -> {
+                Application application = ProxyUtil.convertToObject(body, Application.class, true);
+                if (application != null) {
+                    // replace application name with it's url
+                    application.setName(descriptor.getUrl());
+                    // defining user roles in custom applications are not allowed
+                    application.setUserRoles(null);
+                    // forward auth token is not allowed for custom applications
+                    application.setForwardAuthToken(false);
+                    body = ProxyUtil.convertToString(application, true);
+                }
+            }
+            default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
+        }
+        return body;
     }
 
     private Future<?> deleteResource(ResourceDescription descriptor) {

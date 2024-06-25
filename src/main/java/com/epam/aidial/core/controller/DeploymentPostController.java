@@ -33,7 +33,6 @@ import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
-import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -88,7 +87,6 @@ public class DeploymentPostController {
             return respond(HttpStatus.NOT_FOUND, "Deployment is not found");
         }
 
-        Promise<Void> promise = Promise.promise();
         Future<Deployment> deploymentFuture;
         if (deployment != null) {
             if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
@@ -101,7 +99,7 @@ public class DeploymentPostController {
                applicationService.getCustomApplication(deploymentId, context), false);
         }
 
-        deploymentFuture
+        return deploymentFuture
                 .map(dep -> {
                     if (dep == null) {
                         throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
@@ -123,15 +121,15 @@ public class DeploymentPostController {
                     } else {
                         handleRateLimitHit(deploymentId, rateLimitResult);
                     }
-                    promise.complete();
                     return null;
                 })
-                .onFailure(error -> handleRequestError(promise, deploymentId, error));
-
-        return promise.future();
+                .otherwise(error -> {
+                    handleRequestError(deploymentId, error);
+                    return null;
+                });
     }
 
-    private void handleRequestError(Promise<Void> promise, String deploymentId, Throwable error) {
+    private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             respond(HttpStatus.FORBIDDEN, error.getMessage());
@@ -142,8 +140,6 @@ public class DeploymentPostController {
             log.error("Failed to handle deployment {}", deploymentId, error);
             respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
         }
-
-        promise.complete();
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
