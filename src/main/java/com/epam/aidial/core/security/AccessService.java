@@ -74,7 +74,7 @@ public class AccessService {
         return permissions.get(resource).contains(resourceAccessType);
     }
 
-    /***
+    /**
      * The method returns permissions associated with provided resources.
      * Check sequence:
      * <ul>
