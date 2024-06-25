@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static com.epam.aidial.core.storage.BlobStorageUtil.PUBLIC_BUCKET;
 import static com.epam.aidial.core.storage.BlobStorageUtil.PUBLIC_LOCATION;
@@ -81,28 +82,27 @@ public class RuleService {
         return result;
     }
 
-    public boolean hasPublicAccess(ProxyContext context, Set<ResourceDescription> resources) {
+    public Set<ResourceDescription> getAllowedPublicResources(
+            ProxyContext context, Set<ResourceDescription> resources) {
         if (resources.isEmpty()) {
-            return true;
+            return Set.of();
         }
 
         for (ResourceDescription resource : resources) {
             if (!resource.isPublic()) {
-                return false;
+                return Set.of();
             }
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
-        Map<String, Boolean> cache = new HashMap<>();
-        boolean hasAccess = false;
+        Map<ResourceDescription, Boolean> cache = new HashMap<>();
         for (ResourceDescription resource : resources) {
-            hasAccess = evaluate(context, resource, rules, cache);
-            if (!hasAccess) {
-                return false;
-            }
+            evaluate(context, resource, rules, cache);
         }
 
-        return hasAccess;
+        return resources.stream()
+                .filter(cache::get)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {
@@ -111,8 +111,8 @@ public class RuleService {
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
-        Map<String, Boolean> cache = new HashMap<>();
-        cache.put(ruleUrl(folder), true);
+        Map<ResourceDescription, Boolean> cache = new HashMap<>();
+        cache.put(folder, true);
 
         List<? extends MetadataBase> filtered = metadata.getItems().stream().filter(item -> {
             ResourceDescription resource = ResourceDescription.fromPublicUrl(item.getUrl());
@@ -145,8 +145,8 @@ public class RuleService {
     private static boolean evaluate(ProxyContext context,
                                     ResourceDescription resource,
                                     Map<String, List<Rule>> rules,
-                                    Map<String, Boolean> cache) {
-
+                                    Map<ResourceDescription, Boolean> cache) {
+        ResourceDescription originalResource = resource;
         if (resource != null && !resource.isFolder()) {
             resource = resource.getParent();
         }
@@ -155,8 +155,7 @@ public class RuleService {
             return true;
         }
 
-        String folderUrl = ruleUrl(resource);
-        Boolean evaluated = cache.get(folderUrl);
+        Boolean evaluated = cache.get(resource);
 
         if (evaluated != null) {
             return evaluated;
@@ -165,11 +164,14 @@ public class RuleService {
         evaluated = evaluate(context, resource.getParent(), rules, cache);
 
         if (evaluated) {
-            List<Rule> folderRules = rules.get(folderUrl);
+            List<Rule> folderRules = rules.get(ruleUrl(resource));
             evaluated = folderRules == null || RuleMatcher.match(context, folderRules);
         }
 
-        cache.put(folderUrl, evaluated);
+        cache.put(resource, evaluated);
+        if (originalResource != resource) {
+            cache.put(originalResource, evaluated);
+        }
         return evaluated;
     }
 
