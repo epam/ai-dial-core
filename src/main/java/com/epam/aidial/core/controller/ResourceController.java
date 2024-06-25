@@ -5,7 +5,6 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
-import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
@@ -24,8 +23,6 @@ import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.Set;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -195,11 +192,9 @@ public class ResourceController extends AccessControlBaseController {
         return vertx.executeBlocking(() -> {
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
-                    Map<String, Set<ResourceAccessType>> permissionsToRemove =
-                            Map.of(descriptor.getUrl(), ResourceAccessType.ALL);
                     return lockService.underBucketLock(bucketLocation, () -> {
-                        invitationService.cleanUpResourceLinks(bucketName, bucketLocation, permissionsToRemove);
-                        shareService.revokeSharedAccess(bucketName, bucketLocation, permissionsToRemove);
+                        invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor.getUrl());
+                        shareService.revokeSharedAccess(bucketName, bucketLocation, descriptor.getUrl());
                         return service.deleteResource(descriptor);
                     });
                 }, false)

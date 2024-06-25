@@ -11,7 +11,6 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
-import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -126,6 +125,10 @@ public class InvitationService {
         }
 
         return new InvitationCollection(new HashSet<>(invitationMap.getInvitations().values()));
+    }
+
+    public void cleanUpResourceLink(String bucket, String location, String resourceLink) {
+        cleanUpResourceLinks(bucket, location, Map.of(resourceLink, ResourceAccessType.ALL));
     }
 
     public void cleanUpResourceLinks(

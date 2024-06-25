@@ -273,6 +273,18 @@ public class ShareService {
      *
      * @param bucket - user bucket
      * @param location - storage location
+     * @param resourceLink - link to the resource to revoke access
+     */
+    public void revokeSharedAccess(
+            String bucket, String location, String resourceLink) {
+        revokeSharedAccess(bucket, location, Map.of(resourceLink, ResourceAccessType.ALL));
+    }
+
+    /**
+     * Revoke share access for provided resources. Only resource owner can perform this operation
+     *
+     * @param bucket - user bucket
+     * @param location - storage location
      * @param permissionsToRevoke - collection of links and permissions to revoke access
      */
     public void revokeSharedAccess(
