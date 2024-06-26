@@ -30,7 +30,7 @@ public class SharedByMeDto {
 
     public Set<String> collectUsersForPermissions(String url, Set<ResourceAccessType> permissions) {
         return permissions.stream()
-                .flatMap(permission -> getUserMapForPermission(permission).get(url).stream())
+                .flatMap(permission -> getUserMapForPermission(permission).getOrDefault(url, Set.of()).stream())
                 .collect(Collectors.toUnmodifiableSet());
     }
 
