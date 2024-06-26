@@ -123,14 +123,12 @@ public class RuleService {
     }
 
     private Map<String, List<Rule>> getCachedRules() {
-        ResourceItemMetadata meta = resources.getResourceMetadata(
-                PUBLIC_RULES, PermissionsFetcher.EMPTY);
+        ResourceItemMetadata meta = resources.getResourceMetadata(PUBLIC_RULES);
         long key = (meta == null) ? Long.MIN_VALUE : meta.getUpdatedAt();
         Pair<Long, Map<String, List<Rule>>> current = cachedRules.get();
 
         if (current == null || current.getKey() != key) {
-            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(
-                    PUBLIC_RULES);
+            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES);
             Pair<Long, Map<String, List<Rule>>> next = (resource == null)
                     ? Pair.of(Long.MIN_VALUE, decodeRules(null))
                     : Pair.of(resource.getKey().getUpdatedAt(), decodeRules(resource.getValue()));

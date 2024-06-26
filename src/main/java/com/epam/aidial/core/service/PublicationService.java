@@ -6,7 +6,6 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Notification;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.RejectPublicationRequest;
-import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
@@ -91,11 +90,7 @@ public class PublicationService {
         return publications.values();
     }
 
-    public Collection<MetadataBase> listPublishedResources(
-            ListPublishedResourcesRequest request,
-            PermissionsFetcher permissionsFetcher,
-            String bucket,
-            String location) {
+    public Collection<MetadataBase> listPublishedResources(ListPublishedResourcesRequest request, String bucket, String location) {
         ResourceDescription publicationResource = publications(bucket, location);
         Map<String, Publication> publications = decodePublications(resources.getResource(publicationResource));
 
@@ -105,24 +100,23 @@ public class PublicationService {
                 .filter(publication -> Publication.Status.APPROVED.equals(publication.getStatus()))
                 .toList();
 
-        Set<ResourceDescription> resourceSet = approvedPublications.stream()
+        Set<Publication.Resource> resourceSet = approvedPublications.stream()
                 .flatMap(publication -> publication.getResources().stream())
-                .map(publication -> ResourceDescription.fromPrivateUrl(publication.getSourceUrl(), encryption))
                 .collect(Collectors.toSet());
         Set<ResourceType> requestedResourceTypes = request.getResourceTypes();
-        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(resourceSet);
 
         Set<MetadataBase> metadata = new HashSet<>();
-        for (ResourceDescription resourceDescription : resourceSet) {
+        for (Publication.Resource resource : resourceSet) {
+            ResourceDescription resourceDescription = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
             // check if published resource match requested criteria
             if (!requestedResourceTypes.contains(resourceDescription.getType())) {
                 continue;
             }
 
             if (resourceDescription.isFolder()) {
-                metadata.add(new ResourceFolderMetadata(resourceDescription, permissions.get(resourceDescription)));
+                metadata.add(new ResourceFolderMetadata(resourceDescription));
             } else {
-                metadata.add(new ResourceItemMetadata(resourceDescription, permissions.get(resourceDescription)));
+                metadata.add(new ResourceItemMetadata(resourceDescription));
             }
         }
 
@@ -641,6 +635,7 @@ public class PublicationService {
     private static Publication newMetadata(Publication publication) {
         return new Publication()
                 .setUrl(publication.getUrl())
+                .setName(publication.getName())
                 .setTargetFolder(publication.getTargetFolder())
                 .setStatus(publication.getStatus())
                 .setResourceTypes(publication.getResourceTypes())

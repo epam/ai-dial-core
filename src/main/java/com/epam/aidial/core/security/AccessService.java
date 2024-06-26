@@ -15,6 +15,7 @@ import com.epam.aidial.core.util.UrlUtil;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonObject;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -91,7 +92,7 @@ public class AccessService {
      * @param context - proxy context
      * @return User permissions to all requested resources
      */
-    public Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
+    private Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescription> resources, ProxyContext context) {
         return lookupPermissions(resources, context, ResourceAccessType.ALL);
     }
@@ -240,6 +241,31 @@ public class AccessService {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
             ruleService.filterForbidden(context, descriptor, folder);
+        }
+    }
+
+    public void populatePermissions(
+            ProxyContext context,
+            String bucketLocation,
+            Collection<MetadataBase> metadata) {
+        Map<ResourceDescription, MetadataBase> allMetadata = new HashMap<>();
+        for (MetadataBase meta : metadata) {
+            expandMetadata(meta, bucketLocation, allMetadata);
+        }
+
+        Map<ResourceDescription, Set<ResourceAccessType>> permissions = lookupPermissions(allMetadata.keySet(), context);
+        allMetadata.forEach((resource, meta) -> meta.setPermissions(permissions.get(resource)));
+    }
+
+    private static void expandMetadata(
+            MetadataBase metadata, String bucketLocation, Map<ResourceDescription, MetadataBase> result) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(
+                metadata.getResourceType(), metadata.getBucket(), bucketLocation, metadata.getUrl());
+        result.put(resource, metadata);
+        if (metadata instanceof ResourceFolderMetadata folderMetadata) {
+            for (MetadataBase item : folderMetadata.getItems()) {
+                expandMetadata(item, bucketLocation, result);
+            }
         }
     }
 

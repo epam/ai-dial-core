@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ListPublishedResourcesRequest;
+import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.Publications;
 import com.epam.aidial.core.data.RejectPublicationRequest;
@@ -13,7 +14,6 @@ import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PermissionDeniedException;
-import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.service.RuleService;
@@ -26,6 +26,9 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Collection;
+import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -162,9 +165,14 @@ public class PublicationController {
                     ListPublishedResourcesRequest request = ProxyUtil.convertToObject(body, ListPublishedResourcesRequest.class);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptService.encrypt(bucketLocation);
-                    PermissionsFetcher permissionsFetcher = PermissionsFetcher.of(context, accessService);
-                    return vertx.executeBlocking(() -> publicationService.listPublishedResources(
-                            request, permissionsFetcher, bucket, bucketLocation), false);
+                    return vertx.executeBlocking(() -> {
+                        Collection<MetadataBase> metadata =
+                                publicationService.listPublishedResources(request, bucket, bucketLocation);
+                        if (context.getBooleanParam("permissions")) {
+                            accessService.populatePermissions(context, bucketLocation, metadata);
+                        }
+                        return metadata;
+                    }, false);
                 })
                 .onSuccess(metadata -> context.respond(HttpStatus.OK, metadata))
                 .onFailure(error -> respondError("Can't list published resources", error));

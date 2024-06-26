@@ -100,7 +100,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
 
                 Buffer lastChunk = chunkBuffer.slice(0, position);
-                metadata = new FileMetadata(resource, bytesHandled, contentType, null);
+                metadata = new FileMetadata(resource, bytesHandled, contentType);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
                     storage.store(resource.getAbsoluteFilePath(), contentType, lastChunk);

@@ -4,13 +4,14 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.security.AccessService;
-import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
 
 @Slf4j
 public class FileMetadataController extends AccessControlBaseController {
@@ -37,12 +38,14 @@ public class FileMetadataController extends AccessControlBaseController {
         if (limit < 0 || limit > 1000) {
             return context.respond(HttpStatus.BAD_REQUEST, "Limit is out of allowed range: [0, 1000]");
         }
-        PermissionsFetcher permissionsFetcher = PermissionsFetcher.of(context, accessService);
         return proxy.getVertx().executeBlocking(() -> {
             try {
-                MetadataBase metadata = storage.listMetadata(resource, permissionsFetcher, token, limit, recursive);
+                MetadataBase metadata = storage.listMetadata(resource, token, limit, recursive);
                 if (metadata != null) {
-                    proxy.getAccessService().filterForbidden(context, resource, metadata);
+                    accessService.filterForbidden(context, resource, metadata);
+                    if (context.getBooleanParam("permissions")) {
+                        accessService.populatePermissions(context, resource.getBucketLocation(), List.of(metadata));
+                    }
                     context.respond(HttpStatus.OK, getContentType(), metadata);
                 } else {
                     context.respond(HttpStatus.NOT_FOUND);

@@ -451,11 +451,11 @@ public class ShareService {
                     String link = entry.getKey();
                     Set<ResourceAccessType> permissions = entry.getValue();
                     ResourceDescription resource = ResourceDescription.fromPrivateUrl(link, encryptionService);
-                    if (resource.isFolder()) {
-                        return new ResourceFolderMetadata(resource, permissions);
-                    } else {
-                        return new ResourceItemMetadata(resource, permissions);
-                    }
+                    MetadataBase metadata = resource.isFolder()
+                            ? new ResourceFolderMetadata(resource)
+                            : new ResourceItemMetadata(resource);
+                    metadata.setPermissions(permissions);
+                    return metadata;
                 }).toList();
     }
 

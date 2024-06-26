@@ -134,4 +134,8 @@ public class ProxyContext {
     public List<String> getExecutionPath() {
         return proxyApiKeyData == null ? null : proxyApiKeyData.getExecutionPath();
     }
+
+    public boolean getBooleanParam(String name) {
+        return Boolean.parseBoolean(request.getParam(name, "false"));
+    }
 }

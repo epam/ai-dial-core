@@ -3,13 +3,10 @@ package com.epam.aidial.core.storage;
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
-import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.storage.credential.CredentialProvider;
 import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
-import com.google.common.collect.Sets;
 import io.vertx.core.buffer.Buffer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -35,12 +32,10 @@ import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -205,33 +200,15 @@ public class BlobStorage implements Closeable {
     /**
      * List all files/folder metadata for a given resource
      */
-    public MetadataBase listMetadata(
-            ResourceDescription resource,
-            PermissionsFetcher permissionsFetcher,
-            String afterMarker,
-            int maxResults,
-            boolean recursive) {
+    public MetadataBase listMetadata(ResourceDescription resource, String afterMarker, int maxResults, boolean recursive) {
         ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath(), maxResults, recursive, afterMarker);
         PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
-        Map<ResourceDescription, StorageMetadata> nestedMetadata = list.stream()
-                .collect(Collectors.toMap(
-                        meta -> getResourceDescription(
-                                resource.getType(), bucketName, resource.getBucketLocation(), meta.getName()),
-                        Function.identity(),
-                        (a, b) -> a,
-                        LinkedHashMap::new));
-        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(
-                Sets.union(Set.of(resource), nestedMetadata.keySet()));
-        List<MetadataBase> filesMetadata = nestedMetadata.entrySet().stream()
-                .map(entry -> buildFileMetadata(resource, permissions.get(entry.getKey()), entry.getValue())).toList();
+        List<MetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
 
         // listing folder
         if (resource.isFolder()) {
             boolean isEmpty = filesMetadata.isEmpty() && !resource.isRootFolder();
-            if (isEmpty) {
-                return null;
-            }
-            return new ResourceFolderMetadata(resource, permissions.get(resource), filesMetadata, list.getNextMarker());
+            return isEmpty ? null : new ResourceFolderMetadata(resource, filesMetadata, list.getNextMarker());
         } else {
             // listing file
             if (filesMetadata.size() == 1) {
@@ -291,8 +268,7 @@ public class BlobStorage implements Closeable {
         return options;
     }
 
-    private MetadataBase buildFileMetadata(
-            ResourceDescription resource, Set<ResourceAccessType> permissions, StorageMetadata metadata) {
+    private MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
         String bucketName = resource.getBucketName();
         ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
                 resource.getBucketLocation(), metadata.getName());
@@ -304,11 +280,9 @@ public class BlobStorage implements Closeable {
                     blobContentType = BlobStorageUtil.getContentType(metadata.getName());
                 }
 
-                yield new FileMetadata(resultResource, metadata.getSize(), blobContentType, permissions);
+                yield new FileMetadata(resultResource, metadata.getSize(), blobContentType);
             }
-            case FOLDER, RELATIVE_PATH -> {
-                yield new ResourceFolderMetadata(resultResource, permissions);
-            }
+            case FOLDER, RELATIVE_PATH -> new ResourceFolderMetadata(resultResource);
             case CONTAINER -> throw new IllegalArgumentException("Can't list container");
         };
     }

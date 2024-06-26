@@ -1,14 +1,12 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
-import com.google.common.collect.Sets;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
@@ -28,14 +26,11 @@ import org.redisson.client.codec.StringCodec;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -117,23 +112,13 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public MetadataBase getMetadata(
-            ResourceDescription descriptor,
-            PermissionsFetcher permissionsFetcher,
-            String token,
-            int limit,
-            boolean recursive) {
+    public MetadataBase getMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         return descriptor.isFolder()
-                ? getFolderMetadata(descriptor, permissionsFetcher, token, limit, recursive)
-                : getResourceMetadata(descriptor, permissionsFetcher);
+                ? getFolderMetadata(descriptor, token, limit, recursive)
+                : getResourceMetadata(descriptor);
     }
 
-    private ResourceFolderMetadata getFolderMetadata(
-            ResourceDescription descriptor,
-            PermissionsFetcher permissionsFetcher,
-            String token,
-            int limit,
-            boolean recursive) {
+    private ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
         PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
 
@@ -141,54 +126,39 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        Map<ResourceDescription, StorageMetadata> resources = set.stream()
-                .collect(Collectors.toMap(
-                        meta -> ResourceDescription.fromDecoded(descriptor, meta.getName()),
-                        Function.identity(),
-                        (a, b) -> a,
-                        LinkedHashMap::new));
-        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(
-                Sets.union(Set.of(descriptor), resources.keySet()));
-        List<MetadataBase> nestedMetadata = new ArrayList<>(resources.size());
-        resources.forEach((resource, meta) -> {
+        List<MetadataBase> resources = set.stream().map(meta -> {
             Map<String, String> metadata = meta.getUserMetadata();
             String path = meta.getName();
             ResourceDescription description = ResourceDescription.fromDecoded(descriptor, path);
 
             if (meta.getType() != StorageType.BLOB) {
-                nestedMetadata.add(
-                        new ResourceFolderMetadata(description, permissions.get(description)));
-            } else {
-                Long createdAt = null;
-                Long updatedAt = null;
-
-                if (metadata != null) {
-                    createdAt = metadata.containsKey("created_at") ? Long.parseLong(metadata.get("created_at")) : null;
-                    updatedAt = metadata.containsKey("updated_at") ? Long.parseLong(metadata.get("updated_at")) : null;
-                }
-
-                if (createdAt == null && meta.getCreationDate() != null) {
-                    createdAt = meta.getCreationDate().getTime();
-                }
-
-                if (updatedAt == null && meta.getLastModified() != null) {
-                    updatedAt = meta.getLastModified().getTime();
-                }
-
-                nestedMetadata.add(new ResourceItemMetadata(description, permissions.get(description))
-                        .setCreatedAt(createdAt)
-                        .setUpdatedAt(updatedAt));
+                return new ResourceFolderMetadata(description);
             }
-        });
 
-        return new ResourceFolderMetadata(
-                descriptor, permissions.get(descriptor), nestedMetadata, set.getNextMarker());
+            Long createdAt = null;
+            Long updatedAt = null;
+
+            if (metadata != null) {
+                createdAt = metadata.containsKey("created_at") ? Long.parseLong(metadata.get("created_at")) : null;
+                updatedAt = metadata.containsKey("updated_at") ? Long.parseLong(metadata.get("updated_at")) : null;
+            }
+
+            if (createdAt == null && meta.getCreationDate() != null) {
+                createdAt = meta.getCreationDate().getTime();
+            }
+
+            if (updatedAt == null && meta.getLastModified() != null) {
+                updatedAt = meta.getLastModified().getTime();
+            }
+
+            return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+        }).toList();
+
+        return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
     }
 
     @Nullable
-    public ResourceItemMetadata getResourceMetadata(
-            ResourceDescription descriptor,
-            PermissionsFetcher permissionsFetcher) {
+    public ResourceItemMetadata getResourceMetadata(ResourceDescription descriptor) {
         if (descriptor.isFolder()) {
             throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
         }
@@ -205,8 +175,7 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        Map<ResourceDescription, Set<ResourceAccessType>> permissions = permissionsFetcher.fetch(Set.of(descriptor));
-        return new ResourceItemMetadata(descriptor, permissions.get(descriptor))
+        return new ResourceItemMetadata(descriptor)
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt);
     }
@@ -224,14 +193,12 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(
-            ResourceDescription descriptor) {
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor) {
         return getResourceWithMetadata(descriptor, true);
     }
 
     @Nullable
-    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(
-            ResourceDescription descriptor, boolean lock) {
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
@@ -248,7 +215,7 @@ public class ResourceService implements AutoCloseable {
         }
 
         if (result.exists) {
-            ResourceItemMetadata metadata = new ResourceItemMetadata(descriptor, null)
+            ResourceItemMetadata metadata = new ResourceItemMetadata(descriptor)
                     .setCreatedAt(result.createdAt)
                     .setUpdatedAt(result.updatedAt);
 
@@ -296,7 +263,7 @@ public class ResourceService implements AutoCloseable {
                 blobPut(blobKey, "", createdAt, updatedAt); // create an empty object for listing
             }
 
-            return new ResourceItemMetadata(descriptor, null).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+            return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
         }
     }
 
@@ -529,5 +496,4 @@ public class ResourceService implements AutoCloseable {
 
     private record Result(String body, long createdAt, long updatedAt, boolean synced, boolean exists) {
     }
-
 }

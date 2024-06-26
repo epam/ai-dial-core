@@ -9,7 +9,6 @@ import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
-import com.epam.aidial.core.service.PermissionsFetcher;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -23,6 +22,7 @@ import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -88,14 +88,15 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        PermissionsFetcher permissionsFetcher = PermissionsFetcher.of(context, accessService);
-        return vertx.executeBlocking(() -> service.getMetadata(
-                descriptor, permissionsFetcher, token, limit, recursive), false)
+        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
-                        proxy.getAccessService().filterForbidden(context, descriptor, result);
+                        accessService.filterForbidden(context, descriptor, result);
+                        if (context.getBooleanParam("permissions")) {
+                            accessService.populatePermissions(context, descriptor.getBucketLocation(), List.of(result));
+                        }
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
