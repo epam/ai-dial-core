@@ -68,9 +68,7 @@ public class ShareService {
             String sharedResource = resourceService.getResource(resource);
             SharedResources sharedResources = ProxyUtil.convertToObject(sharedResource, SharedResources.class);
             if (sharedResources != null) {
-                Map<String, Set<ResourceAccessType>> links = sharedResources.getResources().stream()
-                                .collect(Collectors.toUnmodifiableMap(
-                                        SharedResource::url, SharedResource::permissions, Sets::union));
+                Map<String, Set<ResourceAccessType>> links = ResourceUtil.mergePermissions(sharedResources.getResources());
                 resultMetadata.addAll(linksToMetadata(links));
             }
         }
@@ -194,22 +192,9 @@ public class ShareService {
                 if (sharedResources == null) {
                     sharedResources = new SharedResources(new ArrayList<>());
                 }
-                Map<String, Set<ResourceAccessType>> existingPermissions = new HashMap<>();
-                for (SharedResource sharedResource : sharedResources.getResources()) {
-                    Set<ResourceAccessType> permissions = existingPermissions
-                            .computeIfAbsent(sharedResource.url(), k -> EnumSet.noneOf(ResourceAccessType.class));
-                    permissions.addAll(sharedResource.permissions());
-                }
 
                 // add all links to the user
-                for (SharedResource sharedResource : links) {
-                    Set<ResourceAccessType> permissions = existingPermissions
-                            .computeIfAbsent(sharedResource.url(), k -> EnumSet.noneOf(ResourceAccessType.class));
-                    permissions.addAll(sharedResource.permissions());
-                }
-                sharedResources.setResources(existingPermissions.entrySet().stream()
-                        .map(entry -> new SharedResource(entry.getKey(), entry.getValue()))
-                        .toList());
+                sharedResources.addSharedResources(ResourceUtil.mergePermissions(links));
 
                 return ProxyUtil.convertToString(sharedResources);
             });

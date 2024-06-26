@@ -1,11 +1,19 @@
 package com.epam.aidial.core.util;
 
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.google.common.collect.Sets;
 import lombok.experimental.UtilityClass;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @UtilityClass
 public class ResourceUtil {
@@ -44,5 +52,10 @@ public class ResourceUtil {
         }
 
         return paths[1];
+    }
+
+    public Map<String, Set<ResourceAccessType>> mergePermissions(List<SharedResource> sharedResources) {
+        return sharedResources.stream()
+                .collect(Collectors.toUnmodifiableMap(SharedResource::url, SharedResource::permissions, Sets::union));
     }
 }
