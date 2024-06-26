@@ -1,5 +1,6 @@
 package com.epam.aidial.core.data;
 
+import java.util.EnumSet;
 import java.util.Set;
 
 public record SharedResource(
@@ -15,13 +16,13 @@ public record SharedResource(
 
     public SharedResource withReadIfNoPermissions() {
         return permissions == null || permissions.isEmpty()
-                ? withPermissions(ResourceAccessType.READ_ONLY)
+                ? withPermissions(EnumSet.of(ResourceAccessType.READ))
                 : this;
     }
 
     public SharedResource withAllIfNoPermissions() {
         return permissions == null || permissions.isEmpty()
-                ? withPermissions(ResourceAccessType.ALL)
+                ? withPermissions(EnumSet.allOf(ResourceAccessType.class))
                 : this;
     }
 }
