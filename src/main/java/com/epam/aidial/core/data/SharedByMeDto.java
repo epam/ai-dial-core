@@ -8,66 +8,104 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Data
 public class SharedByMeDto {
     @JsonProperty("resourceToUsers")
     Map<String, Set<String>> readableResourceToUsers;
-    Map<String, Map<String, Set<ResourceAccessType>>> resourcesWithPermissions;
+    Map<String, Set<String>> writableResourcesToUsers;
 
     @JsonCreator
     public SharedByMeDto(
             @JsonProperty("resourceToUsers")
             Map<String, Set<String>> readableResourceToUsers,
-            @JsonProperty("resourcesWithPermissions")
-            Map<String, Map<String, Set<ResourceAccessType>>> resourcesWithPermissions) {
+            @JsonProperty("writableResourcesToUsers")
+            Map<String, Set<String>> writableResourcesToUsers) {
         this.readableResourceToUsers = readableResourceToUsers;
-        this.resourcesWithPermissions = resourcesWithPermissions == null
-                ? oldMapToReadPermissions(readableResourceToUsers)
-                : resourcesWithPermissions;
+        this.writableResourcesToUsers = Objects.requireNonNullElseGet(writableResourcesToUsers, HashMap::new);
+    }
+
+    public Set<String> collectUsersForPermissions(String url, Set<ResourceAccessType> permissions) {
+        return permissions.stream()
+                .flatMap(permission -> getUserMapForPermission(permission).get(url).stream())
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public void addUserToResource(SharedResource resource, String userLocation) {
         Set<ResourceAccessType> permissions = resource.permissions();
         String url = resource.url();
-        if (permissions.contains(ResourceAccessType.READ)) {
-            Set<String> users = readableResourceToUsers.computeIfAbsent(url, k -> new HashSet<>());
+        for (ResourceAccessType permission : permissions) {
+            Set<String> users = getUserMapForPermission(permission)
+                    .computeIfAbsent(url, k -> new HashSet<>());
             users.add(userLocation);
         }
-
-        Map<String, Set<ResourceAccessType>> usersWithPermissions =
-                resourcesWithPermissions.computeIfAbsent(url, k -> new HashMap<>());
-
-        Set<ResourceAccessType> existingPermissions =
-                usersWithPermissions.computeIfAbsent(userLocation, k -> EnumSet.noneOf(ResourceAccessType.class));
-        existingPermissions.addAll(permissions);
     }
 
-    public void addUsersToResource(String url, Map<String, Set<ResourceAccessType>> usersPermissions) {
-        usersPermissions.forEach((user, permissions) -> {
-            if (permissions.contains(ResourceAccessType.READ)) {
-                Set<String> users = readableResourceToUsers.computeIfAbsent(url, k -> new HashSet<>());
+    public void addUserPermissionsToResource(String url, Map<String, Set<ResourceAccessType>> userPermissions) {
+        userPermissions.forEach((user, permissions) -> {
+            for (ResourceAccessType permission : permissions) {
+                Set<String> users = getUserMapForPermission(permission)
+                        .computeIfAbsent(url, k -> new HashSet<>());
                 users.add(user);
             }
-
-            Set<ResourceAccessType> existingPermissions =
-                    resourcesWithPermissions.computeIfAbsent(url, k -> new HashMap<>())
-                            .computeIfAbsent(user, k -> EnumSet.noneOf(ResourceAccessType.class));
-            existingPermissions.addAll(permissions);
         });
     }
 
-    private static Map<String, Map<String, Set<ResourceAccessType>>> oldMapToReadPermissions(
-            Map<String, Set<String>> readableResourceToUsers) {
-        return readableResourceToUsers.entrySet().stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> entry.getValue().stream()
-                                .collect(Collectors.toMap(
-                                        Function.identity(),
-                                        user -> EnumSet.of(ResourceAccessType.READ)))));
+    public void removeUserFromResource(String url, String user) {
+        for (ResourceAccessType permission : ResourceAccessType.ALL) {
+            Map<String, Set<String>> usersMap = getUserMapForPermission(permission);
+            Set<String> users = usersMap.get(url);
+            if (users != null) {
+                users.remove(user);
+                if (users.isEmpty()) {
+                    usersMap.remove(url);
+                }
+            }
+        }
+    }
+
+    public void removePermissionsFromResource(String url, Set<ResourceAccessType> permissionsToRemove) {
+        for (ResourceAccessType permission : permissionsToRemove) {
+            Map<String, Set<String>> usersMap = getUserMapForPermission(permission);
+            usersMap.remove(url);
+        }
+    }
+
+    public Map<String, Set<ResourceAccessType>> getAggregatedPermissions() {
+        Map<String, Set<ResourceAccessType>> result = new HashMap<>();
+        for (ResourceAccessType permission : ResourceAccessType.ALL) {
+            Map<String, Set<String>> usersMap = getUserMapForPermission(permission);
+            usersMap.forEach((resource, users) -> {
+                Set<ResourceAccessType> permissions = result.computeIfAbsent(
+                        resource, k -> EnumSet.noneOf(ResourceAccessType.class));
+                permissions.add(permission);
+            });
+        }
+
+        return result;
+    }
+
+    public Map<String, Set<ResourceAccessType>> getUserPermissions(String url) {
+        Map<String, Set<ResourceAccessType>> result = new HashMap<>();
+        for (ResourceAccessType permission : ResourceAccessType.ALL) {
+            Set<String> users = getUserMapForPermission(permission).get(url);
+            for (String user : users) {
+                Set<ResourceAccessType> permissions =
+                        result.computeIfAbsent(user, k -> EnumSet.noneOf(ResourceAccessType.class));
+                permissions.add(permission);
+            }
+        }
+
+        return result;
+    }
+
+    private Map<String, Set<String>> getUserMapForPermission(ResourceAccessType permission) {
+        return switch (permission) {
+            case READ -> readableResourceToUsers;
+            case WRITE -> writableResourcesToUsers;
+        };
     }
 }

@@ -26,7 +26,6 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -101,14 +100,7 @@ public class ShareService {
             String sharedResource = resourceService.getResource(resource);
             SharedByMeDto resourceToUsers = ProxyUtil.convertToObject(sharedResource, SharedByMeDto.class);
             if (resourceToUsers != null) {
-                Map<String, Set<ResourceAccessType>> links =
-                        resourceToUsers.getResourcesWithPermissions().entrySet().stream()
-                                .collect(Collectors.toUnmodifiableMap(
-                                        Map.Entry::getKey,
-                                        // Directly assigned (non-inherited) aggregated permissions
-                                        entry -> entry.getValue().values().stream()
-                                                .flatMap(Collection::stream)
-                                                .collect(Collectors.toUnmodifiableSet())));
+                Map<String, Set<ResourceAccessType>> links = resourceToUsers.getAggregatedPermissions();
                 resultMetadata.addAll(linksToMetadata(links));
             }
         }
@@ -307,14 +299,14 @@ public class ShareService {
             String state = resourceService.getResource(sharedByMeResource);
             SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
             if (dto != null) {
-                Map<String, Set<ResourceAccessType>> userLocations = dto.getResourcesWithPermissions().get(resourceUrl);
+                Set<String> userLocations = dto.collectUsersForPermissions(resourceUrl, permissionsToRemove);
 
-                // if userLocations is NULL - this means that provided resource wasn't shared
-                if (userLocations == null) {
+                // if userLocations is empty - this means that provided resource wasn't shared
+                if (userLocations.isEmpty()) {
                     return;
                 }
 
-                userLocations.keySet().forEach(user -> {
+                userLocations.forEach(user -> {
                     String userBucket = encryptionService.encrypt(user);
                     removeSharedResourcePermissions(userBucket, user, resourceUrl, resourceType, permissionsToRemove);
                 });
@@ -322,24 +314,7 @@ public class ShareService {
                 resourceService.computeResource(sharedByMeResource, ownerState -> {
                     SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
                     if (sharedByMeDto != null) {
-                        if (permissionsToRemove.contains(ResourceAccessType.READ)) {
-                            sharedByMeDto.getReadableResourceToUsers().remove(resourceUrl);
-                        }
-                        Map<String, Set<ResourceAccessType>> userPermissions =
-                                sharedByMeDto.getResourcesWithPermissions().get(resourceUrl);
-                        if (userPermissions != null) {
-                            Set<String> usersToRemove = new HashSet<>();
-                            userPermissions.forEach((user, permissions) -> {
-                                permissions.removeAll(permissionsToRemove);
-                                if (permissions.isEmpty()) {
-                                    usersToRemove.add(user);
-                                }
-                            });
-                            usersToRemove.forEach(userPermissions::remove);
-                            if (userPermissions.isEmpty()) {
-                                sharedByMeDto.getResourcesWithPermissions().remove(resourceUrl);
-                            }
-                        }
+                        sharedByMeDto.removePermissionsFromResource(resourceUrl, permissionsToRemove);
                     }
 
                     return ProxyUtil.convertToString(sharedByMeDto);
@@ -371,26 +346,7 @@ public class ShareService {
             resourceService.computeResource(sharedWithMe, ownerState -> {
                 SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(ownerState, SharedByMeDto.class);
                 if (sharedByMeDto != null) {
-                    Set<String> userLocations = sharedByMeDto.getReadableResourceToUsers().get(resourceUrl);
-                    // if userLocations is NULL - this means that provided resource wasn't shared
-                    if (userLocations != null) {
-                        userLocations.remove(location);
-
-                        // clean up shared resource
-                        if (userLocations.isEmpty()) {
-                            sharedByMeDto.getReadableResourceToUsers().remove(resourceUrl);
-                        }
-                    }
-
-                    Map<String, Set<ResourceAccessType>> permissions =
-                            sharedByMeDto.getResourcesWithPermissions().get(resourceUrl);
-                    if (permissions != null) {
-                        permissions.remove(location);
-
-                        if (permissions.isEmpty()) {
-                            sharedByMeDto.getResourcesWithPermissions().remove(resourceUrl);
-                        }
-                    }
+                    sharedByMeDto.removeUserFromResource(resourceUrl, location);
                 }
 
                 return ProxyUtil.convertToString(sharedByMeDto);
@@ -414,15 +370,7 @@ public class ShareService {
             return;
         }
 
-        Map<String, Set<ResourceAccessType>> userPermissions = sharedByMeDto.getResourcesWithPermissions() != null
-                ? new HashMap<>(
-                        sharedByMeDto.getResourcesWithPermissions().getOrDefault(source.getUrl(), Map.of()))
-                : new HashMap<>();
-        for (String user : sharedByMeDto.getReadableResourceToUsers().get(source.getUrl())) {
-            Set<ResourceAccessType> otherPermissions =
-                    userPermissions.computeIfAbsent(user, k -> EnumSet.noneOf(ResourceAccessType.class));
-            otherPermissions.add(ResourceAccessType.READ);
-        }
+        Map<String, Set<ResourceAccessType>> userPermissions = sharedByMeDto.getUserPermissions(source.getUrl());
 
         ResourceType destinationResourceType = destination.getType();
         String destinationResourceLink = destination.getUrl();
@@ -437,7 +385,7 @@ public class ShareService {
             }
 
             // add shared access to the destination resource
-            dto.addUsersToResource(destinationResourceLink, userPermissions);
+            dto.addUserPermissionsToResource(destinationResourceLink, userPermissions);
 
             return ProxyUtil.convertToString(dto);
         });
