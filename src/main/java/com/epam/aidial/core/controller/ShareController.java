@@ -141,7 +141,7 @@ public class ShareController {
                                     SharedResource::url, SharedResource::permissions, Sets::union));
                     return proxy.getVertx()
                             .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
-                                invitationService.cleanUpResourceLinks(bucket, bucketLocation, permissionsToRevoke);
+                                invitationService.cleanUpPermissions(bucket, bucketLocation, permissionsToRevoke);
                                 shareService.revokeSharedAccess(bucket, bucketLocation, permissionsToRevoke);
                                 return null;
                             }), false);

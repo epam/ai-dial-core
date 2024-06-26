@@ -128,10 +128,10 @@ public class InvitationService {
     }
 
     public void cleanUpResourceLink(String bucket, String location, String resourceLink) {
-        cleanUpResourceLinks(bucket, location, Map.of(resourceLink, ResourceAccessType.ALL));
+        cleanUpPermissions(bucket, location, Map.of(resourceLink, ResourceAccessType.ALL));
     }
 
-    public void cleanUpResourceLinks(
+    public void cleanUpPermissions(
             String bucket, String location, Map<String, Set<ResourceAccessType>> permissionsToCleanUp) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         resourceService.computeResource(resource, state -> {

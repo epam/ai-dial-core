@@ -40,7 +40,7 @@ public class DeleteFileController extends AccessControlBaseController {
             try {
                 return lockService.underBucketLock(bucketLocation, () -> {
                     invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource.getUrl());
-                    shareService.revokeSharedAccess(bucketName, bucketLocation, resource.getUrl());
+                    shareService.revokeSharedResource(bucketName, bucketLocation, resource.getUrl());
                     storage.delete(absoluteFilePath);
                     return null;
                 });
