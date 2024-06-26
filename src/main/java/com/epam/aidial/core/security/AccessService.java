@@ -258,7 +258,7 @@ public class AccessService {
         ResourceDescription resource = ResourceDescription.fromDecoded(
                 metadata.getResourceType(), metadata.getBucket(), bucketLocation, metadata.getUrl());
         result.put(resource, metadata);
-        if (metadata instanceof ResourceFolderMetadata folderMetadata) {
+        if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
             for (MetadataBase item : folderMetadata.getItems()) {
                 expandMetadata(item, bucketLocation, result);
             }
