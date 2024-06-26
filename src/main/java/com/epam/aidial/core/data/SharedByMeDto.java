@@ -91,7 +91,7 @@ public class SharedByMeDto {
     public Map<String, Set<ResourceAccessType>> getUserPermissions(String url) {
         Map<String, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceAccessType permission : ResourceAccessType.ALL) {
-            Set<String> users = getUserMapForPermission(permission).get(url);
+            Set<String> users = getUserMapForPermission(permission).getOrDefault(url, Set.of());
             for (String user : users) {
                 Set<ResourceAccessType> permissions =
                         result.computeIfAbsent(user, k -> EnumSet.noneOf(ResourceAccessType.class));
