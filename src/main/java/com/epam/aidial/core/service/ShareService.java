@@ -273,10 +273,10 @@ public class ShareService {
      *
      * @param bucket - user bucket
      * @param location - storage location
-     * @param resourceLink - link to the resource to revoke access
+     * @param resourceLink - the resource to revoke access
      */
     public void revokeSharedResource(
-            String bucket, String location, String resourceLink) {
+            String bucket, String location, ResourceDescription resourceLink) {
         revokeSharedAccess(bucket, location, Map.of(resourceLink, ResourceAccessType.ALL));
     }
 
@@ -285,25 +285,22 @@ public class ShareService {
      *
      * @param bucket - user bucket
      * @param location - storage location
-     * @param permissionsToRevoke - collection of links and permissions to revoke access
+     * @param permissionsToRevoke - collection of resources and permissions to revoke access
      */
     public void revokeSharedAccess(
-            String bucket, String location, Map<String, Set<ResourceAccessType>> permissionsToRevoke) {
+            String bucket, String location, Map<ResourceDescription, Set<ResourceAccessType>> permissionsToRevoke) {
         if (permissionsToRevoke.isEmpty()) {
             throw new IllegalArgumentException("No resources provided");
         }
 
         // validate that all resources belong to the user, who perform this action
-        Map<ResourceDescription, Set<ResourceAccessType>> resources = new HashMap<>();
-        permissionsToRevoke.forEach((link, permissions) -> {
-            ResourceDescription resource = getResourceFromLink(link);
+        permissionsToRevoke.forEach((resource, permissions) -> {
             if (!resource.getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("You are only allowed to revoke access from own resources");
             }
-            resources.put(resource, permissions);
         });
 
-        resources.forEach((resource, permissionsToRemove) -> {
+        permissionsToRevoke.forEach((resource, permissionsToRemove) -> {
             ResourceType resourceType = resource.getType();
             String resourceUrl = resource.getUrl();
             ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, resourceType, bucket, location);
@@ -456,7 +453,7 @@ public class ShareService {
         // copy shared access from source to destination
         copySharedAccess(bucket, location, source, destination);
         // revoke shared access from source
-        revokeSharedAccess(bucket, location, Map.of(source.getUrl(), ResourceAccessType.ALL));
+        revokeSharedAccess(bucket, location, Map.of(source, ResourceAccessType.ALL));
     }
 
     private void removeSharedResourcePermissions(
@@ -514,7 +511,7 @@ public class ShareService {
                 }).toList();
     }
 
-    private ResourceDescription getResourceFromLink(String url) {
+    public ResourceDescription getResourceFromLink(String url) {
         try {
             return ResourceDescription.fromPrivateUrl(url, encryptionService);
         } catch (Exception e) {

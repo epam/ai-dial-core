@@ -127,12 +127,12 @@ public class InvitationService {
         return new InvitationCollection(new HashSet<>(invitationMap.getInvitations().values()));
     }
 
-    public void cleanUpResourceLink(String bucket, String location, String resourceLink) {
-        cleanUpPermissions(bucket, location, Map.of(resourceLink, ResourceAccessType.ALL));
+    public void cleanUpResourceLink(String bucket, String location, ResourceDescription resource) {
+        cleanUpPermissions(bucket, location, Map.of(resource, ResourceAccessType.ALL));
     }
 
     public void cleanUpPermissions(
-            String bucket, String location, Map<String, Set<ResourceAccessType>> permissionsToCleanUp) {
+            String bucket, String location, Map<ResourceDescription, Set<ResourceAccessType>> permissionsToCleanUp) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
@@ -141,10 +141,12 @@ public class InvitationService {
             }
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             List<String> invitationsToRemove = new ArrayList<>();
+            Map<String, Set<ResourceAccessType>> linkToPermissions = permissionsToCleanUp.keySet().stream()
+                    .collect(Collectors.toUnmodifiableMap(ResourceDescription::getUrl, permissionsToCleanUp::get));
             for (Invitation invitation : invitationMap.values()) {
                 List<SharedResource> updatedResources = new ArrayList<>();
                 for (SharedResource sharedResource : invitation.getResources()) {
-                    Set<ResourceAccessType> permissions = permissionsToCleanUp.get(sharedResource.url());
+                    Set<ResourceAccessType> permissions = linkToPermissions.get(sharedResource.url());
                     if (permissions == null) {
                         updatedResources.add(sharedResource);
                     } else {

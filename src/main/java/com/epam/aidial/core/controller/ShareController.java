@@ -136,9 +136,11 @@ public class ShareController {
                     RevokeResourcesRequest request = getRevokeResourcesRequest(buffer, Operation.REVOKE);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
-                    Map<String, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
+                    Map<ResourceDescription, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
                             .collect(Collectors.toUnmodifiableMap(
-                                    SharedResource::url, SharedResource::permissions, Sets::union));
+                                    resource -> shareService.getResourceFromLink(resource.url()),
+                                    SharedResource::permissions,
+                                    Sets::union));
                     return proxy.getVertx()
                             .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                                 invitationService.cleanUpPermissions(bucket, bucketLocation, permissionsToRevoke);

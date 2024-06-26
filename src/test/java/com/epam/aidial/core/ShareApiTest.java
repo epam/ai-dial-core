@@ -325,6 +325,10 @@ public class ShareApiTest extends ResourceBaseTest {
         InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
         assertNotNull(invitationLink);
 
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+        verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
+
         // verify user2 do not have access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
         verify(response, 403);
@@ -348,6 +352,13 @@ public class ShareApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyJson(response, 200, """
+                {
+                  "invitations" : [ ]
+                }
+                """);
 
         // verify user2 do not have access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
@@ -454,6 +465,9 @@ public class ShareApiTest extends ResourceBaseTest {
         InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
         assertNotNull(invitationLink);
 
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+
         // verify user2 do not have access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
         verify(response, 403);
@@ -486,6 +500,10 @@ public class ShareApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+        verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
 
         // verify user2 still has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");

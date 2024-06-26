@@ -193,8 +193,8 @@ public class ResourceController extends AccessControlBaseController {
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
-                        invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor.getUrl());
-                        shareService.revokeSharedResource(bucketName, bucketLocation, descriptor.getUrl());
+                        invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
+                        shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
                         return service.deleteResource(descriptor);
                     });
                 }, false)
