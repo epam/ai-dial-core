@@ -64,8 +64,8 @@ public class AccessService {
      * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
      */
     public boolean hasPublicAccess(Set<ResourceDescription> resources, ProxyContext context) {
-        return resources.stream().allMatch(ResourceDescription::isPublic)
-                && (hasAdminAccess(context) || resources.equals(ruleService.getAllowedPublicResources(context, resources)));
+        return resources.stream().allMatch(ResourceDescription::isPublic) && hasAdminAccess(context)
+                || resources.equals(ruleService.getAllowedPublicResources(context, resources));
     }
 
     public boolean hasAccess(
@@ -144,11 +144,7 @@ public class AccessService {
      */
     private Map<ResourceDescription, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescription> resources, ProxyContext context) {
-        Set<ResourceDescription> publicResources = resources.stream()
-                .filter(ResourceDescription::isPublic)
-                .collect(Collectors.toSet());
-
-        return ruleService.getAllowedPublicResources(context, publicResources).stream()
+        return ruleService.getAllowedPublicResources(context, resources).stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(),
                         resource -> ResourceAccessType.READ_ONLY));

@@ -82,16 +82,15 @@ public class RuleService {
         return result;
     }
 
+
     public Set<ResourceDescription> getAllowedPublicResources(
             ProxyContext context, Set<ResourceDescription> resources) {
+        resources = resources.stream()
+                .filter(ResourceDescription::isPublic)
+                .collect(Collectors.toUnmodifiableSet());
+
         if (resources.isEmpty()) {
             return Set.of();
-        }
-
-        for (ResourceDescription resource : resources) {
-            if (!resource.isPublic()) {
-                return Set.of();
-            }
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
