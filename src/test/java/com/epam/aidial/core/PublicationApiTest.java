@@ -698,7 +698,7 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
-                  "permissions" : [ "WRITE", "READ" ],
+                  "permissions" : [ "READ", "WRITE" ],
                   "items" : [ ]
                 }
                 """);
@@ -824,7 +824,7 @@ class PublicationApiTest extends ResourceBaseTest {
                    "url" : "conversations/public/",
                    "nodeType" : "FOLDER",
                    "resourceType" : "CONVERSATION",
-                   "permissions" : [ "WRITE", "READ" ],
+                  "permissions" : [ "READ", "WRITE" ],
                    "items" : [ {
                      "name" : "folder1",
                      "parentPath" : null,
@@ -832,7 +832,7 @@ class PublicationApiTest extends ResourceBaseTest {
                      "url" : "conversations/public/folder1/",
                      "nodeType" : "FOLDER",
                      "resourceType" : "CONVERSATION",
-                     "permissions" : [ "WRITE", "READ" ],
+                     "permissions" : [ "READ", "WRITE" ],
                      "items" : null
                    }, {
                      "name" : "folder2",
@@ -841,7 +841,7 @@ class PublicationApiTest extends ResourceBaseTest {
                      "url" : "conversations/public/folder2/",
                      "nodeType" : "FOLDER",
                      "resourceType" : "CONVERSATION",
-                     "permissions" : [ "WRITE", "READ" ],
+                     "permissions" : [ "READ", "WRITE" ],
                      "items" : null
                    } ]
                  }
@@ -857,7 +857,7 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
-                  "permissions" : [ "WRITE", "READ" ],
+                  "permissions" : [ "READ", "WRITE" ],
                   "items" : [ {
                     "name" : "conversation1",
                     "parentPath" : "folder1",
@@ -866,7 +866,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
                     "updatedAt" : "@ignore",
-                    "permissions" : [ "WRITE", "READ" ]
+                    "permissions" : [ "READ", "WRITE" ]
                   }, {
                     "name" : "conversation2",
                     "parentPath" : "folder2",
@@ -875,7 +875,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
                     "updatedAt" : "@ignore",
-                    "permissions" : [ "WRITE", "READ" ]
+                    "permissions" : [ "READ", "WRITE" ]
                   } ]
                 }
                 """);
