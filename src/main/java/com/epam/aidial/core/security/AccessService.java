@@ -52,7 +52,9 @@ public class AccessService {
     }
 
     public boolean hasReadAccess(ResourceDescription resource, ProxyContext context) {
-        return hasAccess(resource, context, ResourceAccessType.READ);
+        Map<ResourceDescription, Set<ResourceAccessType>> permissions =
+                lookupPermissions(Set.of(resource), context, Set.of(ResourceAccessType.READ));
+        return permissions.get(resource).contains(ResourceAccessType.READ);
     }
 
     /**
@@ -66,13 +68,6 @@ public class AccessService {
     public boolean hasPublicAccess(Set<ResourceDescription> resources, ProxyContext context) {
         return resources.stream().allMatch(ResourceDescription::isPublic) && hasAdminAccess(context)
                 || resources.equals(ruleService.getAllowedPublicResources(context, resources));
-    }
-
-    public boolean hasAccess(
-            ResourceDescription resource, ProxyContext context, ResourceAccessType resourceAccessType) {
-        Map<ResourceDescription, Set<ResourceAccessType>> permissions =
-                lookupPermissions(Set.of(resource), context, Set.of(resourceAccessType));
-        return permissions.get(resource).contains(resourceAccessType);
     }
 
     /**
@@ -92,7 +87,7 @@ public class AccessService {
      * @param context - proxy context
      * @return User permissions to all requested resources
      */
-    private Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
+    public Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescription> resources, ProxyContext context) {
         return lookupPermissions(resources, context, ResourceAccessType.ALL);
     }

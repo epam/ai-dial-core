@@ -927,6 +927,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "name" : "Publication name",
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
@@ -1147,6 +1148,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "publications" : [ {
                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                    "name" : "Publication name",
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,

@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 @UtilityClass
 public class ControllerSelector {
 
-    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/([^/]+)/(completions|chat/completions|embeddings)$");
+    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(.+?)/(completions|chat/completions|embeddings)$");
     private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/([^/]+)$");
     private static final Pattern PATTERN_DEPLOYMENTS = Pattern.compile("^/+openai/deployments$");
 
@@ -29,7 +29,7 @@ public class ControllerSelector {
     private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/([^/]+)$");
     private static final Pattern PATTERN_ASSISTANTS = Pattern.compile("^/+openai/assistants$");
 
-    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/([^/]+)$");
+    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
 
 
@@ -38,8 +38,8 @@ public class ControllerSelector {
     private static final Pattern PATTERN_FILES = Pattern.compile("^/v1/files/[a-zA-Z0-9]+/.*");
     private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("^/v1/metadata/files/[a-zA-Z0-9]+/.*");
 
-    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts)/[a-zA-Z0-9]+/.*");
-    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts)/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
 
     private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/([^/]+)/rate$");
     private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/([^/]+)/tokenize$");
@@ -135,14 +135,14 @@ public class ControllerSelector {
 
         match = match(PATTERN_APPLICATION, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             String application = UrlUtil.decodePath(match.group(1));
             return () -> controller.getApplication(application);
         }
 
         match = match(PATTERN_APPLICATIONS, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             return controller::getApplications;
         }
 

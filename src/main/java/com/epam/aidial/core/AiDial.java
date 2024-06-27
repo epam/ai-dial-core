@@ -12,6 +12,7 @@ import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.CustomApplicationService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.NotificationService;
@@ -124,11 +125,14 @@ public class AiDial {
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
 
+            CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
+                    resourceService, shareService, accessService, settings("applications"));
+
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, version());
+                    notificationService, customApplicationService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

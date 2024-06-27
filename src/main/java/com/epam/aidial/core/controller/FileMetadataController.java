@@ -30,7 +30,7 @@ public class FileMetadataController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource) {
+    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
         BlobStorage storage = proxy.getStorage();
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");

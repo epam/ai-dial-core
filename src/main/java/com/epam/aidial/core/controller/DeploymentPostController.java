@@ -16,6 +16,9 @@ import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsF
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.limiter.RateLimitResult;
+import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.PermissionDeniedException;
+import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.token.TokenUsageParser;
 import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
@@ -47,7 +50,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 
 @Slf4j
 public class DeploymentPostController {
@@ -58,12 +60,13 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-
+    private final CustomApplicationService applicationService;
     private final List<BaseFunction<ObjectNode>> enhancementFunctions;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
+        this.applicationService = proxy.getCustomApplicationService();
         this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
@@ -77,37 +80,66 @@ public class DeploymentPostController {
         }
 
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
-        if (!isValidDeploymentApi(deployment, deploymentApi)) {
-            deployment = null;
+        boolean isValidDeployment = isValidDeploymentApi(deployment, deploymentApi);
+
+        if (!isValidDeployment) {
+            log.warn("Deployment {}/{} is not valid", deploymentId, deploymentApi);
+            return respond(HttpStatus.NOT_FOUND, "Deployment is not found");
         }
 
-        if (deployment == null) {
-            log.error("Deployment {} is not found", deploymentId);
-            return context.respond(HttpStatus.NOT_FOUND, "Deployment is not found");
-        }
-
-        if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
-            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-            return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
-        }
-
-        context.setDeployment(deployment);
-
-        Future<RateLimitResult> rateLimitResultFuture;
-        if (deployment instanceof Model) {
-            rateLimitResultFuture = proxy.getRateLimiter().limit(context);
-        } else {
-            rateLimitResultFuture = Future.succeededFuture(RateLimitResult.SUCCESS);
-        }
-
-        return rateLimitResultFuture.map((Function<RateLimitResult, Void>) result -> {
-            if (result.status() == HttpStatus.OK) {
-                handleRateLimitSuccess(deploymentId);
-            } else {
-                handleRateLimitHit(deploymentId, result);
+        Future<Deployment> deploymentFuture;
+        if (deployment != null) {
+            if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
+                log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+                return respond(HttpStatus.FORBIDDEN, "Forbidden deployment: " + deploymentId);
             }
-            return null;
-        });
+            deploymentFuture = Future.succeededFuture(deployment);
+        } else {
+            deploymentFuture = proxy.getVertx().executeBlocking(() ->
+               applicationService.getCustomApplication(deploymentId, context), false);
+        }
+
+        return deploymentFuture
+                .map(dep -> {
+                    if (dep == null) {
+                        throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
+                    }
+
+                    context.setDeployment(dep);
+                    return dep;
+                })
+                .compose(dep -> {
+                    if (dep instanceof Model) {
+                        return proxy.getRateLimiter().limit(context);
+                    } else {
+                        return Future.succeededFuture(RateLimitResult.SUCCESS);
+                    }
+                })
+                .map(rateLimitResult -> {
+                    if (rateLimitResult.status() == HttpStatus.OK) {
+                        handleRateLimitSuccess(deploymentId);
+                    } else {
+                        handleRateLimitHit(deploymentId, rateLimitResult);
+                    }
+                    return null;
+                })
+                .otherwise(error -> {
+                    handleRequestError(deploymentId, error);
+                    return null;
+                });
+    }
+
+    private void handleRequestError(String deploymentId, Throwable error) {
+        if (error instanceof PermissionDeniedException) {
+            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            respond(HttpStatus.FORBIDDEN, error.getMessage());
+        } else if (error instanceof ResourceNotFoundException) {
+            log.error("Deployment not found {}", deploymentId, error);
+            respond(HttpStatus.NOT_FOUND, error.getMessage());
+        } else {
+            log.error("Failed to handle deployment {}", deploymentId, error);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+        }
     }
 
     private void handleRateLimitSuccess(String deploymentId) {
@@ -160,8 +192,8 @@ public class DeploymentPostController {
     }
 
     private void handleError(Throwable error) {
-        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}",
-                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(),  error);
+        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
@@ -348,7 +380,7 @@ public class DeploymentPostController {
             proxy.getLogStore().save(context);
 
             log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
-                            + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+                     + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), context.getDeployment().getName(),
                     context.getDeployment().getEndpoint(),

@@ -9,6 +9,8 @@ import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
 
+import java.util.Set;
+
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
 
@@ -30,12 +32,13 @@ public abstract class AccessControlBaseController {
         return proxy.getVertx()
                 .executeBlocking(() -> {
                     AccessService service = proxy.getAccessService();
-                    ResourceAccessType permission = isWriteAccess ? ResourceAccessType.WRITE : ResourceAccessType.READ;
-                    return service.hasAccess(resource, context, permission);
+                    return service.lookupPermissions(Set.of(resource), context).get(resource);
                 }, false)
-                .map(hasAccess -> {
+                .map(permissions -> {
+                    boolean hasAccess = permissions.contains(isWriteAccess
+                            ? ResourceAccessType.WRITE : ResourceAccessType.READ);
                     if (hasAccess) {
-                        handle(resource);
+                        handle(resource, permissions.contains(ResourceAccessType.WRITE));
                     } else {
                         context.respond(HttpStatus.FORBIDDEN, "You don't have an access to: " + resourceUrl);
                     }
@@ -43,6 +46,6 @@ public abstract class AccessControlBaseController {
                 });
     }
 
-    protected abstract Future<?> handle(ResourceDescription resource);
+    protected abstract Future<?> handle(ResourceDescription resource, boolean hasWriteAccess);
 
 }

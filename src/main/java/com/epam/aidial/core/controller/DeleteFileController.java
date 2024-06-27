@@ -26,7 +26,7 @@ public class DeleteFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource) {
+    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't delete a folder");
         }

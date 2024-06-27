@@ -50,7 +50,8 @@ public class PublicationService {
     private static final ResourceDescription PUBLIC_PUBLICATIONS = ResourceDescription.fromDecoded(
             ResourceType.PUBLICATION, PUBLIC_BUCKET, PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
-    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT);
+    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
+            ResourceType.PROMPT, ResourceType.APPLICATION);
 
     private final EncryptionService encryption;
     private final ResourceService resources;
@@ -529,6 +530,7 @@ public class PublicationService {
 
     private void replaceSourceToReviewLinks(List<Publication.Resource> resources) {
         List<ResourceDescription> reviewConversations = new ArrayList<>();
+        List<ResourceDescription> reviewPublications = new ArrayList<>();
         Map<String, String> attachmentsMap = new HashMap<>();
         for (Publication.Resource resource : resources) {
             String sourceUrl = resource.getSourceUrl();
@@ -537,23 +539,23 @@ public class PublicationService {
             ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
 
-            ResourceType type = from.getType();
-            if (type == ResourceType.CONVERSATION) {
-                reviewConversations.add(to);
-            } else if (type == ResourceType.FILE) {
-                attachmentsMap.put(from.getUrl(), to.getUrl());
-            }
+            collectLinksForReplacement(reviewConversations, reviewPublications, attachmentsMap, from, to);
         }
 
         for (ResourceDescription reviewConversation : reviewConversations) {
             this.resources.computeResource(reviewConversation, body ->
-                    PublicationUtil.replaceLinks(body, reviewConversation, attachmentsMap)
+                    PublicationUtil.replaceConversationLinks(body, reviewConversation, attachmentsMap)
             );
+        }
+
+        for (ResourceDescription reviewPublication : reviewPublications) {
+            this.resources.computeResource(reviewPublication, body -> PublicationUtil.replaceApplicationIdentity(body, reviewPublication));
         }
     }
 
     private void replaceReviewToTargetLinks(List<Publication.Resource> resources) {
-        List<ResourceDescription> reviewConversations = new ArrayList<>();
+        List<ResourceDescription> publicConversations = new ArrayList<>();
+        List<ResourceDescription> publicApplications = new ArrayList<>();
         Map<String, String> attachmentsMap = new HashMap<>();
         for (Publication.Resource resource : resources) {
             String reviewUrl = resource.getReviewUrl();
@@ -562,18 +564,29 @@ public class PublicationService {
             ResourceDescription from = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
 
-            ResourceType type = from.getType();
-            if (type == ResourceType.CONVERSATION) {
-                reviewConversations.add(to);
-            } else if (type == ResourceType.FILE) {
-                attachmentsMap.put(from.getUrl(), to.getUrl());
-            }
+            collectLinksForReplacement(publicConversations, publicApplications, attachmentsMap, from, to);
         }
 
-        for (ResourceDescription reviewConversation : reviewConversations) {
-            this.resources.computeResource(reviewConversation, body ->
-                    PublicationUtil.replaceLinks(body, reviewConversation, attachmentsMap)
+        for (ResourceDescription publicConversation : publicConversations) {
+            this.resources.computeResource(publicConversation, body ->
+                    PublicationUtil.replaceConversationLinks(body, publicConversation, attachmentsMap)
             );
+        }
+
+        for (ResourceDescription publicApplication : publicApplications) {
+            this.resources.computeResource(publicApplication, body -> PublicationUtil.replaceApplicationIdentity(body, publicApplication));
+        }
+    }
+
+    private void collectLinksForReplacement(List<ResourceDescription> publicConversations, List<ResourceDescription> publicApplications,
+                                            Map<String, String> attachmentsMap, ResourceDescription from, ResourceDescription to) {
+        ResourceType type = from.getType();
+        if (type == ResourceType.CONVERSATION) {
+            publicConversations.add(to);
+        } else if (type == ResourceType.FILE) {
+            attachmentsMap.put(from.getUrl(), to.getUrl());
+        } else if (type == ResourceType.APPLICATION) {
+            publicApplications.add(to);
         }
     }
 
@@ -596,7 +609,7 @@ public class PublicationService {
     private boolean checkResource(ResourceDescription descriptor) {
         return switch (descriptor.getType()) {
             case FILE -> files.exists(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.hasResource(descriptor);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.hasResource(descriptor);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         };
     }
@@ -604,7 +617,7 @@ public class PublicationService {
     private boolean copyResource(ResourceDescription from, ResourceDescription to) {
         return switch (from.getType()) {
             case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.copyResource(from, to);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
             default -> throw new IllegalStateException("Unsupported type: " + from.getType());
         };
     }
@@ -612,7 +625,7 @@ public class PublicationService {
     private void deleteResource(ResourceDescription descriptor) {
         switch (descriptor.getType()) {
             case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.deleteResource(descriptor);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }
@@ -635,6 +648,7 @@ public class PublicationService {
     private static Publication newMetadata(Publication publication) {
         return new Publication()
                 .setUrl(publication.getUrl())
+                .setName(publication.getName())
                 .setTargetFolder(publication.getTargetFolder())
                 .setStatus(publication.getStatus())
                 .setResourceTypes(publication.getResourceTypes())

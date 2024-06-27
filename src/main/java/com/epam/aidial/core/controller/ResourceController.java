@@ -2,6 +2,8 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.data.ApplicationData;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
@@ -49,9 +51,9 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription descriptor) {
+    protected Future<?> handle(ResourceDescription descriptor, boolean hasWriteAccess) {
         if (context.getRequest().method() == HttpMethod.GET) {
-            return metadata ? getMetadata(descriptor) : getResource(descriptor);
+            return metadata ? getMetadata(descriptor) : getResource(descriptor, hasWriteAccess);
         }
 
         if (context.getRequest().method() == HttpMethod.PUT) {
@@ -61,8 +63,8 @@ public class ResourceController extends AccessControlBaseController {
         if (context.getRequest().method() == HttpMethod.DELETE) {
             return deleteResource(descriptor);
         }
-
-        return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+        log.warn("Unsupported HTTP method for accessing resource {}", descriptor.getUrl());
+        return context.respond(HttpStatus.BAD_REQUEST, "Unsupported HTTP method");
     }
 
     private String getContentType() {
@@ -106,7 +108,7 @@ public class ResourceController extends AccessControlBaseController {
                 });
     }
 
-    private Future<?> getResource(ResourceDescription descriptor) {
+    private Future<?> getResource(ResourceDescription descriptor, boolean hasWriteAccess) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
@@ -116,7 +118,14 @@ public class ResourceController extends AccessControlBaseController {
                     if (body == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
-                        context.respond(HttpStatus.OK, body);
+                        // if resource type is application and caller has no write access - return application data
+                        if (descriptor.getType() == ResourceType.APPLICATION && !hasWriteAccess) {
+                            Application application = ProxyUtil.convertToObject(body, Application.class, true);
+                            ApplicationData applicationData = ApplicationUtil.mapApplication(application);
+                            context.respond(HttpStatus.OK, ProxyUtil.convertToString(applicationData));
+                        } else {
+                            context.respond(HttpStatus.OK, body);
+                        }
                     }
                 })
                 .onFailure(error -> {
@@ -155,14 +164,8 @@ public class ResourceController extends AccessControlBaseController {
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
                     }
 
-                    String body = bytes.toString(StandardCharsets.UTF_8);
-
                     ResourceType resourceType = descriptor.getType();
-                    switch (resourceType) {
-                        case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
-                        case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
-                        default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
-                    }
+                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
 
                     return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite), false);
                 })
@@ -183,6 +186,27 @@ public class ResourceController extends AccessControlBaseController {
                         context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                     }
                 });
+    }
+
+    private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body) {
+        switch (resourceType) {
+            case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
+            case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+            case APPLICATION -> {
+                Application application = ProxyUtil.convertToObject(body, Application.class, true);
+                if (application != null) {
+                    // replace application name with it's url
+                    application.setName(descriptor.getUrl());
+                    // defining user roles in custom applications are not allowed
+                    application.setUserRoles(null);
+                    // forward auth token is not allowed for custom applications
+                    application.setForwardAuthToken(false);
+                    body = ProxyUtil.convertToString(application, true);
+                }
+            }
+            default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
+        }
+        return body;
     }
 
     private Future<?> deleteResource(ResourceDescription descriptor) {
