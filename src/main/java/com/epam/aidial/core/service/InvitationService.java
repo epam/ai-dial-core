@@ -92,7 +92,7 @@ public class InvitationService {
         return invitation;
     }
 
-    public void deleteInvitation(String bucket, String location, String invitationId) {
+    public void deleteInvitation(String bucket, String invitationId) {
         ResourceDescription resource = getInvitationResource(invitationId);
         if (resource == null) {
             throw new ResourceNotFoundException("No invitation found for ID" + invitationId);

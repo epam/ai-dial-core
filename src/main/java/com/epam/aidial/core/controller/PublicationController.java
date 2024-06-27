@@ -28,7 +28,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
-import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -168,7 +167,7 @@ public class PublicationController {
                     return vertx.executeBlocking(() -> {
                         Collection<MetadataBase> metadata =
                                 publicationService.listPublishedResources(request, bucket, bucketLocation);
-                        if (context.getBooleanParam("permissions")) {
+                        if (context.getBooleanRequestQueryParam("permissions")) {
                             accessService.populatePermissions(context, bucketLocation, metadata);
                         }
                         return metadata;

@@ -18,6 +18,7 @@ import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.epam.aidial.core.util.ResourceUtil;
 import com.google.common.collect.Sets;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -138,9 +139,8 @@ public class ShareController {
                     String bucket = encryptionService.encrypt(bucketLocation);
                     Map<ResourceDescription, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
                             .collect(Collectors.toUnmodifiableMap(
-                                    resource -> shareService.getResourceFromLink(resource.url()),
-                                    SharedResource::permissions,
-                                    Sets::union));
+                                    resource -> ResourceUtil.resourceFromUrl(resource.url(), encryptionService),
+                                    SharedResource::permissions));
                     return proxy.getVertx()
                             .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                                 invitationService.cleanUpPermissions(bucket, bucketLocation, permissionsToRevoke);

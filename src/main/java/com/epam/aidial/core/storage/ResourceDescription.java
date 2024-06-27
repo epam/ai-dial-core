@@ -204,6 +204,11 @@ public class ResourceDescription {
         return fromUrl(url, null, null, encryption);
     }
 
+    @Override
+    public String toString() {
+        return getUrl();
+    }
+
     /**
      *
      * @param url - resource url, e.g. files/bucket/folder/file.txt

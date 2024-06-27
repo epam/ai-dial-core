@@ -94,13 +94,16 @@ public class RuleService {
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
-        Map<ResourceDescription, Boolean> cache = new HashMap<>();
+        Map<String, Boolean> cache = new HashMap<>();
         for (ResourceDescription resource : resources) {
             evaluate(context, resource, rules, cache);
         }
 
         return resources.stream()
-                .filter(cache::get)
+                .filter(resource -> {
+                    resource = resource.isFolder() ? resource : resource.getParent();
+                    return resource == null || cache.get(ruleUrl(resource));
+                })
                 .collect(Collectors.toUnmodifiableSet());
     }
 
@@ -110,8 +113,8 @@ public class RuleService {
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
-        Map<ResourceDescription, Boolean> cache = new HashMap<>();
-        cache.put(folder, true);
+        Map<String, Boolean> cache = new HashMap<>();
+        cache.put(ruleUrl(folder), true);
 
         List<? extends MetadataBase> filtered = metadata.getItems().stream().filter(item -> {
             ResourceDescription resource = ResourceDescription.fromPublicUrl(item.getUrl());
@@ -142,8 +145,8 @@ public class RuleService {
     private static boolean evaluate(ProxyContext context,
                                     ResourceDescription resource,
                                     Map<String, List<Rule>> rules,
-                                    Map<ResourceDescription, Boolean> cache) {
-        ResourceDescription originalResource = resource;
+                                    Map<String, Boolean> cache) {
+
         if (resource != null && !resource.isFolder()) {
             resource = resource.getParent();
         }
@@ -152,7 +155,8 @@ public class RuleService {
             return true;
         }
 
-        Boolean evaluated = cache.get(resource);
+        String folderUrl = ruleUrl(resource);
+        Boolean evaluated = cache.get(folderUrl);
 
         if (evaluated != null) {
             return evaluated;
@@ -161,14 +165,11 @@ public class RuleService {
         evaluated = evaluate(context, resource.getParent(), rules, cache);
 
         if (evaluated) {
-            List<Rule> folderRules = rules.get(ruleUrl(resource));
+            List<Rule> folderRules = rules.get(folderUrl);
             evaluated = folderRules == null || RuleMatcher.match(context, folderRules);
         }
 
-        cache.put(resource, evaluated);
-        if (originalResource != resource) {
-            cache.put(originalResource, evaluated);
-        }
+        cache.put(folderUrl, evaluated);
         return evaluated;
     }
 

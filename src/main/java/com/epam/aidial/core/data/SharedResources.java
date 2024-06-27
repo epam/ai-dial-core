@@ -1,5 +1,6 @@
 package com.epam.aidial.core.data;
 
+import com.epam.aidial.core.util.ResourceUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.Sets;
@@ -25,7 +26,7 @@ public class SharedResources {
     }
 
     public void addSharedResources(Map<String, Set<ResourceAccessType>> sharedResources) {
-        Map<String, Set<ResourceAccessType>> resourcesMap = toMap();
+        Map<String, Set<ResourceAccessType>> resourcesMap = ResourceUtil.sharedResourcesToMap(resources);
         sharedResources.forEach((url, permissions) -> {
             Set<ResourceAccessType> existingPermissions = resourcesMap.get(url);
             if (existingPermissions == null) {
@@ -42,10 +43,5 @@ public class SharedResources {
                 .filter(resource -> url.equals(resource.url()))
                 .map(SharedResource::permissions)
                 .reduce(Set.of(), Sets::union);
-    }
-
-    public Map<String, Set<ResourceAccessType>> toMap() {
-        return resources.stream()
-                .collect(Collectors.toUnmodifiableMap(SharedResource::url, SharedResource::permissions));
     }
 }

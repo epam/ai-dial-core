@@ -1,6 +1,7 @@
 package com.epam.aidial.core.data;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
@@ -74,6 +75,7 @@ public class SharedByMeDto {
         }
     }
 
+    @JsonIgnore
     public Map<String, Set<ResourceAccessType>> getAggregatedPermissions() {
         Map<String, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceAccessType permission : ResourceAccessType.ALL) {
@@ -88,6 +90,7 @@ public class SharedByMeDto {
         return result;
     }
 
+    @JsonIgnore
     public Map<String, Set<ResourceAccessType>> getUserPermissions(String url) {
         Map<String, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceAccessType permission : ResourceAccessType.ALL) {
@@ -102,6 +105,7 @@ public class SharedByMeDto {
         return result;
     }
 
+    @JsonIgnore
     private Map<String, Set<String>> getUserMapForPermission(ResourceAccessType permission) {
         return switch (permission) {
             case READ -> readableResourceToUsers;

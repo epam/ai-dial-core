@@ -68,7 +68,7 @@ public class ShareService {
             String sharedResource = resourceService.getResource(resource);
             SharedResources sharedResources = ProxyUtil.convertToObject(sharedResource, SharedResources.class);
             if (sharedResources != null) {
-                Map<String, Set<ResourceAccessType>> links = ResourceUtil.mergePermissions(sharedResources.getResources());
+                Map<String, Set<ResourceAccessType>> links = ResourceUtil.sharedResourcesToMap(sharedResources.getResources());
                 resultMetadata.addAll(linksToMetadata(links));
             }
         }
@@ -121,15 +121,15 @@ public class ShareService {
             throw new IllegalArgumentException("No resources provided");
         }
 
+        Set<String> uniqueLinks = new HashSet<>();
         List<SharedResource> normalizedResourceLinks = new ArrayList<>(sharedResources.size());
         for (SharedResource sharedResource : sharedResources) {
-            String url = sharedResource.url();
-            if (url.startsWith(ProxyUtil.METADATA_PREFIX)) {
-                url = url.substring(ProxyUtil.METADATA_PREFIX.length());
-            }
-            ResourceDescription resource = getResourceFromLink(url);
+            ResourceDescription resource = getResourceFromLink(sharedResource.url());
             if (!bucket.equals(resource.getBucketName())) {
-                throw new IllegalArgumentException("Resource %s does not belong to the user".formatted(url));
+                throw new IllegalArgumentException("Resource %s does not belong to the user".formatted(resource.getUrl()));
+            }
+            if (!uniqueLinks.add(resource.getUrl())) {
+                throw new IllegalArgumentException("Duplicated resource: %s".formatted(resource.getUrl()));
             }
             normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()));
         }
@@ -192,7 +192,7 @@ public class ShareService {
                 }
 
                 // add all links to the user
-                sharedResources.addSharedResources(ResourceUtil.mergePermissions(links));
+                sharedResources.addSharedResources(ResourceUtil.sharedResourcesToMap(links));
 
                 return ProxyUtil.convertToString(sharedResources);
             });
@@ -215,7 +215,8 @@ public class ShareService {
                 return;
             }
 
-            Map<String, Set<ResourceAccessType>> resourcePermissions = sharedResources.toMap();
+            Map<String, Set<ResourceAccessType>> resourcePermissions =
+                    ResourceUtil.sharedResourcesToMap(sharedResources.getResources());
             for (ResourceDescription resource : resources) {
                 result.put(resource, lookupPermissions(resource, resourcePermissions, new HashMap<>()));
             }
@@ -442,12 +443,8 @@ public class ShareService {
                 }).toList();
     }
 
-    public ResourceDescription getResourceFromLink(String url) {
-        try {
-            return ResourceDescription.fromPrivateUrl(url, encryptionService);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Incorrect resource link provided " + url);
-        }
+    private ResourceDescription getResourceFromLink(String url) {
+        return ResourceUtil.resourceFromUrl(url, encryptionService);
     }
 
     private boolean hasResource(ResourceDescription resource) {
