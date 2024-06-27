@@ -1,7 +1,6 @@
 package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;

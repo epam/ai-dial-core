@@ -37,7 +37,7 @@ public class ResourceOperationService {
                 }
                 storage.copy(sourceResourcePath, destinationResourcePath);
             }
-            case CONVERSATION, PROMPT -> {
+            case CONVERSATION, PROMPT, APPLICATION -> {
                 boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
                 if (!copied) {
                     throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
@@ -61,7 +61,7 @@ public class ResourceOperationService {
     private void deleteResource(ResourceDescription resource) {
         switch (resource.getType()) {
             case FILE -> storage.delete(resource.getAbsoluteFilePath());
-            case CONVERSATION, PROMPT -> resourceService.deleteResource(resource);
+            case CONVERSATION, PROMPT, APPLICATION -> resourceService.deleteResource(resource);
             default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
         }
     }

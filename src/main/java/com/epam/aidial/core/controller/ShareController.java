@@ -9,15 +9,12 @@ import com.epam.aidial.core.data.ShareResourcesRequest;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
-import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
-import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -35,8 +32,6 @@ public class ShareController {
     private final EncryptionService encryptionService;
     private final LockService lockService;
     private final InvitationService invitationService;
-    private final ResourceService resourceService;
-    private final BlobStorage storage;
 
     public ShareController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
@@ -45,8 +40,6 @@ public class ShareController {
         this.encryptionService = proxy.getEncryptionService();
         this.lockService = proxy.getLockService();
         this.invitationService = proxy.getInvitationService();
-        this.resourceService = proxy.getResourceService();
-        this.storage = proxy.getStorage();
     }
 
     public Future<?> handle(Operation operation) {
@@ -208,10 +201,6 @@ public class ShareController {
             log.error("Invalid request body provided", e);
             throw new HttpException(HttpStatus.BAD_REQUEST, "Can't %s shared resources. Incorrect body".formatted(operation));
         }
-    }
-
-    private boolean hasResource(ResourceDescription resource) {
-        return ResourceUtil.hasResource(resource, resourceService, storage);
     }
 
     public enum Operation {

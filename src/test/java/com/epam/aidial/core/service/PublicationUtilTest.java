@@ -29,7 +29,7 @@ public class PublicationUtilTest {
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
-                """, PublicationUtil.replaceLinks(ResourceBaseTest.CONVERSATION_BODY_1, targetResource1, Map.of()));
+                """, PublicationUtil.replaceConversationLinks(ResourceBaseTest.CONVERSATION_BODY_1, targetResource1, Map.of()));
 
         ResourceDescription targetResource2 = ResourceDescription.fromDecoded(ResourceType.CONVERSATION, "bucketName", "bucket/location/", "folder1/conversation");
         verifyJson("""
@@ -45,7 +45,7 @@ public class PublicationUtilTest {
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
-                """, PublicationUtil.replaceLinks(ResourceBaseTest.CONVERSATION_BODY_1, targetResource2, Map.of()));
+                """, PublicationUtil.replaceConversationLinks(ResourceBaseTest.CONVERSATION_BODY_1, targetResource2, Map.of()));
     }
 
     @Test
@@ -215,7 +215,7 @@ public class PublicationUtilTest {
                     } ]
                     }
                 }
-                """, PublicationUtil.replaceLinks(conversationBody, targetResource, Map.of(
+                """, PublicationUtil.replaceConversationLinks(conversationBody, targetResource, Map.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", "files/public/License",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", "files/public/Dockerfile")));
 
@@ -295,10 +295,39 @@ public class PublicationUtilTest {
                       }
                     }
                 }
-                """, PublicationUtil.replaceLinks(conversationBody, targetResource, Map.of(
+                """, PublicationUtil.replaceConversationLinks(conversationBody, targetResource, Map.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", "files/public/License",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", "files/public/Dockerfile",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/", "files/public/attachments/")));
+    }
+
+    @Test
+    void testReplaceApplicationIdentity() {
+        String application = """
+                {
+                "name":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                "endpoint":"http://application1/v1/completions",
+                "display_name":"My Custom Application",
+                "display_version":"1.0",
+                "icon_url":"http://application1/icon.svg",
+                "description":"My Custom Application Description",
+                "forward_auth_token":false,
+                "defaults": {}
+                }
+                """;
+        ResourceDescription targetResource1 = ResourceDescription.fromDecoded(ResourceType.APPLICATION, "bucketName", "bucket/location/", "my-app");
+        verifyJson("""
+                {
+                "name":"applications/bucketName/my-app",
+                "endpoint":"http://application1/v1/completions",
+                "display_name":"My Custom Application",
+                "display_version":"1.0",
+                "icon_url":"http://application1/icon.svg",
+                "description":"My Custom Application Description",
+                "forward_auth_token":false,
+                "defaults": {}
+                }
+                """, PublicationUtil.replaceApplicationIdentity(application, targetResource1));
     }
 
     private static void verifyJson(String expected, String actual) {

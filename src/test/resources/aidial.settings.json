@@ -58,6 +58,9 @@
     "cacheExpiration": 300000,
     "compressionMinSize": 256
   },
+  "applications": {
+    "includeCustomApps": true
+  },
   "access": {
     "admin": {
       "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
