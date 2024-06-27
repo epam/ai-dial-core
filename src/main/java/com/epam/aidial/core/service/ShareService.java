@@ -131,9 +131,7 @@ public class ShareService {
             if (!bucket.equals(resource.getBucketName())) {
                 throw new IllegalArgumentException("Resource %s does not belong to the user".formatted(url));
             }
-            normalizedResourceLinks.add(sharedResource.permissions() == null
-                    ? new SharedResource(resource.getUrl(), Set.of(ResourceAccessType.READ))
-                    : sharedResource.withUrl(resource.getUrl()));
+            normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()));
         }
 
         Invitation invitation = invitationService.createInvitation(bucket, location, normalizedResourceLinks);
