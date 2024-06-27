@@ -4,8 +4,11 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.CopySharedAccessRequest;
 import com.epam.aidial.core.data.ListSharedResourcesRequest;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.data.RevokeResourcesRequest;
 import com.epam.aidial.core.data.ShareResourcesRequest;
+import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
@@ -15,11 +18,15 @@ import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class ShareController {
@@ -126,13 +133,17 @@ public class ShareController {
         return context.getRequest()
                 .body()
                 .compose(buffer -> {
-                    ResourceLinkCollection request = getResourceLinkCollection(buffer, Operation.REVOKE);
+                    RevokeResourcesRequest request = getRevokeResourcesRequest(buffer, Operation.REVOKE);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
+                    Map<ResourceDescription, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
+                            .collect(Collectors.toUnmodifiableMap(
+                                    resource -> ResourceUtil.resourceFromUrl(resource.url(), encryptionService),
+                                    SharedResource::permissions));
                     return proxy.getVertx()
                             .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
-                                invitationService.cleanUpResourceLinks(bucket, bucketLocation, request.getResources());
-                                shareService.revokeSharedAccess(bucket, bucketLocation, request);
+                                invitationService.cleanUpPermissions(bucket, bucketLocation, permissionsToRevoke);
+                                shareService.revokeSharedAccess(bucket, bucketLocation, permissionsToRevoke);
                                 return null;
                             }), false);
                 })
@@ -197,6 +208,16 @@ public class ShareController {
         try {
             String body = buffer.toString(StandardCharsets.UTF_8);
             return ProxyUtil.convertToObject(body, ResourceLinkCollection.class);
+        } catch (Exception e) {
+            log.error("Invalid request body provided", e);
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Can't %s shared resources. Incorrect body".formatted(operation));
+        }
+    }
+
+    private RevokeResourcesRequest getRevokeResourcesRequest(Buffer buffer, Operation operation) {
+        try {
+            String body = buffer.toString(StandardCharsets.UTF_8);
+            return ProxyUtil.convertToObject(body, RevokeResourcesRequest.class);
         } catch (Exception e) {
             log.error("Invalid request body provided", e);
             throw new HttpException(HttpStatus.BAD_REQUEST, "Can't %s shared resources. Incorrect body".formatted(operation));

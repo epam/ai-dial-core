@@ -20,7 +20,7 @@ public class ResourceFolderMetadata extends MetadataBase {
     private String nextToken;
 
     public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url, List<MetadataBase> items) {
-        super(name, path, bucket, url, NodeType.FOLDER, type);
+        super(name, path, bucket, url, NodeType.FOLDER, type, null);
         this.items = items;
     }
 

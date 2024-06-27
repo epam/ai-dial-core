@@ -359,9 +359,9 @@ public class PublicationService {
             }
         }
 
-        List<ResourceDescription> targetResources = publication.getResources().stream()
+        Set<ResourceDescription> targetResources = publication.getResources().stream()
                 .map(resource -> ResourceDescription.fromPublicUrl(resource.getTargetUrl()))
-                .toList();
+                .collect(Collectors.toUnmodifiableSet());
 
         // validate if user has access to all target resources
         boolean hasPublicAccess = accessService.hasPublicAccess(targetResources, context);

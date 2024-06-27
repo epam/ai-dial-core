@@ -17,8 +17,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static com.epam.aidial.core.storage.BlobStorageUtil.PUBLIC_BUCKET;
 import static com.epam.aidial.core.storage.BlobStorageUtil.PUBLIC_LOCATION;
@@ -51,13 +53,12 @@ public class RuleService {
         }
     }
 
-    public List<Rule> storeRules(String targetFolder, List<Rule> rules) {
+    public void storeRules(String targetFolder, List<Rule> rules) {
         resources.computeResource(PUBLIC_RULES, body -> {
             Map<String, List<Rule>> rulesMap = decodeRules(body);
             List<Rule> previous = rulesMap.put(targetFolder, rules);
             return (rules.equals(previous)) ? body : encodeRules(rulesMap);
         });
-        return rules;
     }
 
     public Map<String, List<Rule>> listRules(ResourceDescription resource) {
@@ -81,32 +82,29 @@ public class RuleService {
         return result;
     }
 
-    public boolean hasPublicAccess(ProxyContext context, ResourceDescription resource) {
-        return hasPublicAccess(context, List.of(resource));
-    }
 
-    public boolean hasPublicAccess(ProxyContext context, List<ResourceDescription> resources) {
+    public Set<ResourceDescription> getAllowedPublicResources(
+            ProxyContext context, Set<ResourceDescription> resources) {
+        resources = resources.stream()
+                .filter(ResourceDescription::isPublic)
+                .collect(Collectors.toUnmodifiableSet());
+
         if (resources.isEmpty()) {
-            return true;
-        }
-
-        for (ResourceDescription resource : resources) {
-            if (!resource.isPublic()) {
-                return false;
-            }
+            return Set.of();
         }
 
         Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
-        boolean hasAccess = false;
         for (ResourceDescription resource : resources) {
-            hasAccess = evaluate(context, resource, rules, cache);
-            if (!hasAccess) {
-                return false;
-            }
+            evaluate(context, resource, rules, cache);
         }
 
-        return hasAccess;
+        return resources.stream()
+                .filter(resource -> {
+                    resource = resource.isFolder() ? resource : resource.getParent();
+                    return resource == null || cache.get(ruleUrl(resource));
+                })
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {

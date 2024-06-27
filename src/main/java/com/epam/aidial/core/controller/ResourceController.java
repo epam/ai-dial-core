@@ -7,9 +7,8 @@ import com.epam.aidial.core.data.ApplicationData;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
-import com.epam.aidial.core.data.ResourceLink;
-import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
@@ -25,8 +24,7 @@ import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -38,13 +36,15 @@ public class ResourceController extends AccessControlBaseController {
     private final LockService lockService;
     private final InvitationService invitationService;
     private final boolean metadata;
+    private final AccessService accessService;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
-        // PUT and DELETE require full access, GET - not
+        // PUT and DELETE require write access, GET - read
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.shareService = proxy.getShareService();
+        this.accessService = proxy.getAccessService();
         this.lockService = proxy.getLockService();
         this.invitationService = proxy.getInvitationService();
         this.metadata = metadata;
@@ -95,7 +95,10 @@ public class ResourceController extends AccessControlBaseController {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
-                        proxy.getAccessService().filterForbidden(context, descriptor, result);
+                        accessService.filterForbidden(context, descriptor, result);
+                        if (context.getBooleanRequestQueryParam("permissions")) {
+                            accessService.populatePermissions(context, descriptor.getBucketLocation(), List.of(result));
+                        }
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
@@ -212,14 +215,11 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         return vertx.executeBlocking(() -> {
-                    Set<ResourceLink> resourceLinks = new HashSet<>();
-                    resourceLinks.add(new ResourceLink(descriptor.getUrl()));
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
-                        invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
-                        shareService.revokeSharedAccess(bucketName, bucketLocation,
-                                new ResourceLinkCollection(resourceLinks));
+                        invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
+                        shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
                         return service.deleteResource(descriptor);
                     });
                 }, false)

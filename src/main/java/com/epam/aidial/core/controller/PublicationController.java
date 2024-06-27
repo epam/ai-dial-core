@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ListPublishedResourcesRequest;
+import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Publication;
 import com.epam.aidial.core.data.Publications;
 import com.epam.aidial.core.data.RejectPublicationRequest;
@@ -25,6 +26,8 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Collection;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -161,7 +164,14 @@ public class PublicationController {
                     ListPublishedResourcesRequest request = ProxyUtil.convertToObject(body, ListPublishedResourcesRequest.class);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptService.encrypt(bucketLocation);
-                    return vertx.executeBlocking(() -> publicationService.listPublishedResources(request, bucket, bucketLocation), false);
+                    return vertx.executeBlocking(() -> {
+                        Collection<MetadataBase> metadata =
+                                publicationService.listPublishedResources(request, bucket, bucketLocation);
+                        if (context.getBooleanRequestQueryParam("permissions")) {
+                            accessService.populatePermissions(context, bucketLocation, metadata);
+                        }
+                        return metadata;
+                    }, false);
                 })
                 .onSuccess(metadata -> context.respond(HttpStatus.OK, metadata))
                 .onFailure(error -> respondError("Can't list published resources", error));

@@ -89,7 +89,7 @@ public class InvitationController {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return lockService.underBucketLock(bucketLocation, () -> {
-                        invitationService.deleteInvitation(bucket, bucketLocation, invitationId);
+                        invitationService.deleteInvitation(bucket, invitationId);
                         return null;
                     });
                 }, false)
