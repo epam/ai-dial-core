@@ -146,7 +146,7 @@ public class ShareApiTest extends ResourceBaseTest {
         // check no conversations shared with me
         Response response = operationRequest("/v1/ops/resource/share/list", """
                 {
-                  "resourceTypes": ["FILE"],
+                  "resourceTypes": ["CONVERSATION"],
                   "with": "me"
                 }
                 """);
@@ -159,7 +159,7 @@ public class ShareApiTest extends ResourceBaseTest {
         // check no conversations shared by me
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
-                  "resourceTypes": ["FILE"],
+                  "resourceTypes": ["CONVERSATION"],
                   "with": "others"
                 }
                 """);
