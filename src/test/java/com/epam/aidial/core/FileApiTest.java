@@ -7,6 +7,7 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -368,7 +369,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            verifyMetadata(expectedFolderMetadata, response.body());
+                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedFolderMetadata), response.body());
                             checkpoint.flag();
                         });
                     }));
@@ -461,7 +462,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            verifyMetadata(expectedFolderMetadata, response.body());
+                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedFolderMetadata), response.body());
                             checkpoint.flag();
                         });
                     }));
@@ -731,7 +732,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            verifyMetadata(expectedRootFolderMetadata, response.body());
+                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedRootFolderMetadata), response.body());
                             checkpoint.flag();
                         });
                     }));
@@ -802,7 +803,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            verifyMetadata(expectedRootFolderMetadata, response.body());
+                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedRootFolderMetadata), response.body());
                             checkpoint.flag();
                         });
                     }));

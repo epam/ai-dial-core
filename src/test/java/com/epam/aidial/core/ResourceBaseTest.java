@@ -1,6 +1,5 @@
 package com.epam.aidial.core;
 
-import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
@@ -31,7 +30,6 @@ import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -213,32 +211,10 @@ public class ResourceBaseTest {
     static void verifyJson(Response response, int status, String body) {
         assertEquals(status, response.status());
         try {
-            JsonNode expected = sortPermissions(ProxyUtil.MAPPER.readTree(body));
-            JsonNode actual = sortPermissions(ProxyUtil.MAPPER.readTree(response.body()));
-            assertEquals(expected.toPrettyString(), actual.toPrettyString());
+            assertEquals(ProxyUtil.MAPPER.readTree(body).toPrettyString(), ProxyUtil.MAPPER.readTree(response.body()).toPrettyString());
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    static void verifyMetadata(MetadataBase expected, String actual) throws JsonProcessingException {
-        assertEquals(
-                sortPermissions(ProxyUtil.MAPPER.readTree(ProxyUtil.MAPPER.writeValueAsString(expected))),
-                sortPermissions(ProxyUtil.MAPPER.readTree(actual)));
-    }
-
-    private static JsonNode sortPermissions(JsonNode root) {
-        for (JsonNode node : root.findValues("permissions")) {
-            if (node instanceof ArrayNode permissions) {
-                List<JsonNode> elements = new ArrayList<>();
-                permissions.forEach(elements::add);
-                elements.sort(Comparator.comparing(JsonNode::asText));
-                permissions.removeAll();
-                permissions.addAll(elements);
-            }
-        }
-
-        return root;
     }
 
     static void verifyJsonNotExact(Response response, int status, String body) {
