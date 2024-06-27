@@ -215,7 +215,6 @@ public class ResourceBaseTest {
         try {
             JsonNode expected = sortPermissions(ProxyUtil.MAPPER.readTree(body));
             JsonNode actual = sortPermissions(ProxyUtil.MAPPER.readTree(response.body()));
-            sortPermissions(actual);
             assertEquals(expected.toPrettyString(), actual.toPrettyString());
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
