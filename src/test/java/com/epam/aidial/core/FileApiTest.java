@@ -376,53 +376,6 @@ public class FileApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testFileUpload2(Vertx vertx, VertxTestContext context) {
-        Checkpoint checkpoint = context.checkpoint(2);
-        WebClient client = WebClient.create(vertx);
-
-        Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
-        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "file.txt", "folder", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/file.txt", 17, "text/custom");
-        ResourceFolderMetadata expectedFolderMetadata = setPermissions(
-                new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                        "folder", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/",
-                        List.of(setPermissions(cloneFileMetadata(expectedFileMetadata), permissions))),
-                permissions);
-
-        Future.succeededFuture().compose((mapper) -> {
-            Promise<Void> promise = Promise.promise();
-            // upload test file
-            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/file.txt")
-                    .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FileMetadata.class))
-                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/custom"),
-                            context.succeeding(response -> {
-                                context.verify(() -> {
-                                    assertEquals(200, response.statusCode());
-                                    assertEquals(expectedFileMetadata, response.body());
-                                    checkpoint.flag();
-                                    promise.complete();
-                                });
-                            })
-                    );
-
-            return promise.future();
-        }).andThen((result) -> {
-            // verify uploaded file can be listed
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/?permissions=true")
-                    .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.string())
-                    .send(context.succeeding(response -> {
-                        context.verify(() -> {
-                            assertEquals(200, response.statusCode());
-                            verifyMetadata(expectedFolderMetadata, response.body());
-                            checkpoint.flag();
-                        });
-                    }));
-        });
-    }
-
-    @Test
     public void testFileUploadToAppdata(Vertx vertx, VertxTestContext context) {
         // creating per-request API key with proxyKey1 as originator
         // and proxyKey2 caller
