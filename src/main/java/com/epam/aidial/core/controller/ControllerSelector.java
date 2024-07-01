@@ -41,11 +41,11 @@ public class ControllerSelector {
     private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
     private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
 
-    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/([^/]+)/rate$");
-    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/([^/]+)/tokenize$");
-    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/([^/]+)/truncate_prompt$");
-
-    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/([^/]+)/configuration$");
+    // deployment feature patterns
+    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/(.+?)/rate$");
+    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/(.+?)/tokenize$");
+    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/(.+?)/truncate_prompt$");
+    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/(.+?)/configuration$");
 
     private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
