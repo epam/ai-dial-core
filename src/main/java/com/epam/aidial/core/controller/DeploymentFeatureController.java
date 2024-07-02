@@ -3,6 +3,9 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.PermissionDeniedException;
+import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -14,7 +17,6 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
-import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,25 +24,45 @@ import java.net.URL;
 import java.util.function.Function;
 
 @Slf4j
-@RequiredArgsConstructor
 public class DeploymentFeatureController {
 
     private final Proxy proxy;
     private final ProxyContext context;
+    private final CustomApplicationService applicationService;
+
+    public DeploymentFeatureController(Proxy proxy, ProxyContext context) {
+        this.proxy = proxy;
+        this.context = context;
+        this.applicationService = proxy.getCustomApplicationService();
+    }
 
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
 
-        if (deployment == null || !DeploymentController.hasAccessByUserRoles(context, deployment)) {
-            context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
-            return Future.succeededFuture();
+        Future<Deployment> deploymentFuture;
+        if (deployment != null) {
+            if (!DeploymentController.hasAccessByUserRoles(context, deployment)) {
+                deploymentFuture = Future.failedFuture(new PermissionDeniedException("Forbidden deployment: " + deploymentId));
+            } else {
+                deploymentFuture = Future.succeededFuture(deployment);
+            }
+        } else {
+            deploymentFuture = proxy.getVertx().executeBlocking(() ->
+                    applicationService.getCustomApplication(deploymentId, context), false);
         }
 
-        String endpoint = endpointGetter.apply(deployment);
-        context.setDeployment(deployment);
-        context.getRequest().body()
-                .onSuccess(requestBody -> this.handleRequestBody(endpoint, requireEndpoint, requestBody))
-                .onFailure(this::handleRequestBodyError);
+        deploymentFuture.map(dep -> {
+            String endpoint = endpointGetter.apply(dep);
+            context.setDeployment(dep);
+            context.getRequest().body()
+                    .onSuccess(requestBody -> this.handleRequestBody(endpoint, requireEndpoint, requestBody))
+                    .onFailure(this::handleRequestBodyError);
+            return dep;
+        }).otherwise(error -> {
+            handleRequestError(deploymentId, error);
+            return null;
+        });
+
         return Future.succeededFuture();
     }
 
@@ -65,6 +87,19 @@ public class DeploymentFeatureController {
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
+    }
+
+    private void handleRequestError(String deploymentId, Throwable error) {
+        if (error instanceof PermissionDeniedException) {
+            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+        } else if (error instanceof ResourceNotFoundException) {
+            log.error("Deployment not found {}", deploymentId, error);
+            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+        } else {
+            log.error("Failed to handle deployment {}", deploymentId, error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+        }
     }
 
     /**
