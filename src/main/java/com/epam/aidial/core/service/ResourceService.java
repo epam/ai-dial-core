@@ -342,7 +342,12 @@ public class ResourceService implements AutoCloseable {
 
             Result result = redisGet(redisKey, false);
             if (result == null || result.synced) {
-                redis.getMap(redisKey, StringCodec.INSTANCE).expireIfNotSet(cacheExpiration);
+                RMap<Object, Object> map = redis.getMap(redisKey, StringCodec.INSTANCE);
+                long ttl = map.remainTimeToLive();
+                // according to the documentation, -1 means expiration is not set
+                if (ttl == -1) {
+                    map.expire(cacheExpiration);
+                }
                 redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
                 return;
             }

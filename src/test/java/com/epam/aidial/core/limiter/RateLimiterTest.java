@@ -63,7 +63,7 @@ public class RateLimiterTest {
 
     @BeforeAll
     public static void beforeAll() throws IOException {
-        redisServer = RedisServer.builder()
+        redisServer = RedisServer.newRedisServer()
                 .port(16370)
                 .setting("bind 127.0.0.1")
                 .setting("maxmemory 16M")
@@ -83,7 +83,7 @@ public class RateLimiterTest {
     }
 
     @AfterAll
-    public static void afterAll() {
+    public static void afterAll() throws IOException {
         if (redissonClient != null) {
             redissonClient.shutdown();
         }

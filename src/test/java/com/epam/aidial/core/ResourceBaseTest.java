@@ -100,7 +100,7 @@ public class ResourceBaseTest {
             testDir = FileUtil.baseTestPath(ResourceApiTest.class);
             FileUtil.createDir(testDir.resolve("test"));
 
-            redis = RedisServer.builder()
+            redis = RedisServer.newRedisServer()
                     .port(16370)
                     .setting("bind 127.0.0.1")
                     .setting("maxmemory 16M")
