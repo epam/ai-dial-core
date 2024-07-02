@@ -22,6 +22,7 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -49,7 +50,7 @@ public class ApiKeyStoreTest {
 
     @BeforeAll
     public static void beforeAll() throws IOException {
-        redisServer = RedisServer.builder()
+        redisServer = RedisServer.newRedisServer()
                 .port(16370)
                 .setting("bind 127.0.0.1")
                 .setting("maxmemory 16M")
@@ -69,7 +70,7 @@ public class ApiKeyStoreTest {
     }
 
     @AfterAll
-    public static void afterAll() {
+    public static void afterAll() throws IOException {
         if (redissonClient != null) {
             redissonClient.shutdown();
         }
