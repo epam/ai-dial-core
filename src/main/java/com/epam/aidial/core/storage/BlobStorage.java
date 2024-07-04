@@ -7,6 +7,8 @@ import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.credential.CredentialProvider;
 import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
+import com.epam.aidial.core.util.HttpException;
+import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.buffer.Buffer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +30,9 @@ import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.io.ContentMetadata;
 import org.jclouds.io.ContentMetadataBuilder;
+import org.jclouds.io.Payload;
 import org.jclouds.io.payloads.BaseMutableContentMetadata;
+import org.jclouds.io.payloads.ByteArrayPayload;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
@@ -125,15 +129,8 @@ public class BlobStorage implements Closeable {
      * @param contentType      MIME type of the content, for example: text/csv
      * @param data             whole content data
      */
-    public void store(String absoluteFilePath, String contentType, Buffer data) {
-        String storageLocation = getStorageLocation(absoluteFilePath);
-        Blob blob = blobStore.blobBuilder(storageLocation)
-                .payload(new BufferPayload(data))
-                .contentLength(data.length())
-                .contentType(contentType)
-                .build();
-
-        blobStore.putBlob(bucketName, blob);
+    public void store(String absoluteFilePath, String contentType, Buffer data, String etag) {
+        store(absoluteFilePath, contentType, null, Map.of(ResourceUtil.ETAG_ATTRIBUTE, etag), new BufferPayload(data));
     }
 
     /**
@@ -144,15 +141,25 @@ public class BlobStorage implements Closeable {
      * @param contentEncoding  content encoding, e.g. gzip/brotli/deflate
      * @param data             whole content data
      */
-    public void store(String absoluteFilePath,
-                      String contentType,
-                      String contentEncoding,
-                      Map<String, String> metadata,
-                      byte[] data) {
+    public void store(
+            String absoluteFilePath,
+            String contentType,
+            String contentEncoding,
+            Map<String, String> metadata,
+            byte[] data) {
+        store(absoluteFilePath, contentType, contentEncoding, metadata, new ByteArrayPayload(data));
+    }
+
+    private void store(
+            String absoluteFilePath,
+            String contentType,
+            String contentEncoding,
+            Map<String, String> metadata,
+            Payload data) {
         String storageLocation = getStorageLocation(absoluteFilePath);
         Blob blob = blobStore.blobBuilder(storageLocation)
                 .payload(data)
-                .contentLength(data.length)
+                .contentLength(data.getContentMetadata().getContentLength())
                 .contentType(contentType)
                 .contentEncoding(contentEncoding)
                 .userMetadata(metadata)
@@ -180,6 +187,15 @@ public class BlobStorage implements Closeable {
     public BlobMetadata meta(String filePath) {
         String storageLocation = getStorageLocation(filePath);
         return blobStore.blobMetadata(bucketName, storageLocation);
+    }
+
+    public void validateEtag(ResourceDescription resource, String etag) {
+        if (etag != null) {
+            BlobMetadata meta = meta(resource.getAbsoluteFilePath());
+            if (meta != null) {
+                HttpException.validateETag(etag, ResourceUtil.extractEtag(meta.getUserMetadata()));
+            }
+        }
     }
 
     /**

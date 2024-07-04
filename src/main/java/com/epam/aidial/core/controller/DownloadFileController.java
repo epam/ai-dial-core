@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.storage.InputStreamReader;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpHeaders;
@@ -44,11 +45,13 @@ public class DownloadFileController extends AccessControlBaseController {
             MutableContentMetadata metadata = payload.getContentMetadata();
             String contentType = metadata.getContentType();
             Long length = metadata.getContentLength();
+            String etag = ResourceUtil.extractEtag(blob.getMetadata().getUserMetadata());
 
             HttpServerResponse response = context.getResponse()
                     .putHeader(HttpHeaders.CONTENT_TYPE, contentType)
                     // content-length removed by vertx
-                    .putHeader(HttpHeaders.CONTENT_LENGTH, length.toString());
+                    .putHeader(HttpHeaders.CONTENT_LENGTH, length.toString())
+                    .putHeader(HttpHeaders.ETAG, etag);
 
             try {
                 InputStreamReader stream = new InputStreamReader(proxy.getVertx(), payload.openStream());

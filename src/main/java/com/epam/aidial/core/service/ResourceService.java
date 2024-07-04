@@ -7,6 +7,9 @@ import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
+import com.epam.aidial.core.util.ETagBuilder;
+import com.epam.aidial.core.util.HttpException;
+import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
@@ -35,10 +38,10 @@ import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
-    private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists");
-    private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists");
+    private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists", ResourceUtil.ETAG_ATTRIBUTE);
+    private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists", ResourceUtil.ETAG_ATTRIBUTE);
 
-    private static final Result BLOB_NOT_FOUND = new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false);
+    private static final Result BLOB_NOT_FOUND = new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false, "");
 
     private final Vertx vertx;
     private final RedissonClient redis;
@@ -163,7 +166,7 @@ public class ResourceService implements AutoCloseable {
             throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
         }
 
-        String redisKey = redisKey(descriptor);
+        String redisKey = lockService.redisKey(descriptor);
         String blobKey = blobKey(descriptor);
         Result result = redisGet(redisKey, false);
 
@@ -177,11 +180,12 @@ public class ResourceService implements AutoCloseable {
 
         return new ResourceItemMetadata(descriptor)
                 .setCreatedAt(result.createdAt)
-                .setUpdatedAt(result.updatedAt);
+                .setUpdatedAt(result.updatedAt)
+                .setEtag(result.etag);
     }
 
     public boolean hasResource(ResourceDescription descriptor) {
-        String redisKey = redisKey(descriptor);
+        String redisKey = lockService.redisKey(descriptor);
         Result result = redisGet(redisKey, false);
 
         if (result == null) {
@@ -199,7 +203,7 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
-        String redisKey = redisKey(descriptor);
+        String redisKey = lockService.redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
         if (result == null) {
@@ -217,7 +221,8 @@ public class ResourceService implements AutoCloseable {
         if (result.exists) {
             ResourceItemMetadata metadata = new ResourceItemMetadata(descriptor)
                     .setCreatedAt(result.createdAt)
-                    .setUpdatedAt(result.updatedAt);
+                    .setUpdatedAt(result.updatedAt)
+                    .setEtag(result.etag);
 
             return Pair.of(metadata, result.body);
         }
@@ -236,13 +241,14 @@ public class ResourceService implements AutoCloseable {
         return (result == null) ? null : result.getRight();
     }
 
-    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body, boolean overwrite) {
-        return putResource(descriptor, body, overwrite, true);
+    public ResourceItemMetadata putResource(
+            ResourceDescription descriptor, String body, String etag, boolean overwrite) {
+        return putResource(descriptor, body, etag, overwrite, true);
     }
 
-    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body,
-                                            boolean overwrite, boolean lock) {
-        String redisKey = redisKey(descriptor);
+    public ResourceItemMetadata putResource(
+            ResourceDescription descriptor, String body, String etag, boolean overwrite, boolean lock) {
+        String redisKey = lockService.redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -251,16 +257,21 @@ public class ResourceService implements AutoCloseable {
                 result = blobGet(blobKey, false);
             }
 
-            if (result.exists && !overwrite) {
-                return null;
+            if (result.exists) {
+                if (!overwrite) {
+                    return null;
+                }
+
+                HttpException.validateETag(etag, result.etag);
             }
 
             long updatedAt = time();
             long createdAt = result.exists ? result.createdAt : updatedAt;
-            redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true));
+            String newETag = ETagBuilder.generateETag(body.getBytes());
+            redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true, newETag));
 
             if (!result.exists) {
-                blobPut(blobKey, "", createdAt, updatedAt); // create an empty object for listing
+                blobPut(blobKey, "", createdAt, updatedAt, newETag); // create an empty object for listing
             }
 
             return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
@@ -268,7 +279,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
-        String redisKey = redisKey(descriptor);
+        String redisKey = lockService.redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
             String oldBody = getResource(descriptor, false);
@@ -276,25 +287,29 @@ public class ResourceService implements AutoCloseable {
             if (newBody != null) {
                 // update resource only if body changed
                 if (!newBody.equals(oldBody)) {
-                    putResource(descriptor, newBody, true, false);
+                    putResource(descriptor, newBody, null, true, false);
                 }
             }
         }
     }
 
-    public boolean deleteResource(ResourceDescription descriptor) {
-        String redisKey = redisKey(descriptor);
+    public boolean deleteResource(ResourceDescription descriptor, String etag) {
+        String redisKey = lockService.redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
             Result result = redisGet(redisKey, false);
-            boolean existed = (result == null) ? blobExists(blobKey) : result.exists;
+            if (result == null) {
+                result = blobGet(blobKey, false);
+            }
 
-            if (!existed) {
+            if (!result.exists) {
                 return false;
             }
 
-            redisPut(redisKey, new Result("", Long.MIN_VALUE, Long.MIN_VALUE, false, false));
+            HttpException.validateETag(etag, result.etag);
+
+            redisPut(redisKey, new Result("", Long.MIN_VALUE, Long.MIN_VALUE, false, false, ""));
             blobDelete(blobKey);
             redisSync(redisKey);
 
@@ -313,7 +328,7 @@ public class ResourceService implements AutoCloseable {
             return false;
         }
 
-        ResourceItemMetadata metadata = putResource(to, body, overwrite);
+        ResourceItemMetadata metadata = putResource(to, body, null, overwrite);
         return metadata != null;
     }
 
@@ -356,7 +371,7 @@ public class ResourceService implements AutoCloseable {
             if (result.exists) {
                 log.debug("Syncing resource: {}. Blob updating", redisKey);
                 result = redisGet(redisKey, true);
-                blobPut(blobKey, result.body, result.createdAt, result.updatedAt);
+                blobPut(blobKey, result.body, result.createdAt, result.updatedAt, result.etag);
             } else {
                 log.debug("Syncing resource: {}. Blob deleting", redisKey);
                 blobDelete(blobKey);
@@ -390,6 +405,7 @@ public class ResourceService implements AutoCloseable {
 
         long createdAt = Long.parseLong(meta.getUserMetadata().get("created_at"));
         long updatedAt = Long.parseLong(meta.getUserMetadata().get("updated_at"));
+        String etag = ResourceUtil.extractEtag(meta.getUserMetadata());
 
         String body = "";
 
@@ -404,10 +420,10 @@ public class ResourceService implements AutoCloseable {
             }
         }
 
-        return new Result(body, createdAt, updatedAt, true, true);
+        return new Result(body, createdAt, updatedAt, true, true, etag);
     }
 
-    private void blobPut(String key, String body, long createdAt, long updatedAt) {
+    private void blobPut(String key, String body, long createdAt, long updatedAt, String etag) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         String encoding = null;
 
@@ -418,7 +434,8 @@ public class ResourceService implements AutoCloseable {
 
         Map<String, String> metadata = Map.of(
                 "created_at", Long.toString(createdAt),
-                "updated_at", Long.toString(updatedAt)
+                "updated_at", Long.toString(updatedAt),
+                ResourceUtil.ETAG_ATTRIBUTE, etag
         );
         blobStore.store(key, "application/json", encoding, metadata, bytes);
     }
@@ -452,8 +469,9 @@ public class ResourceService implements AutoCloseable {
         long updatedAt = Long.parseLong(fields.get("updated_at"));
         boolean synced = Boolean.parseBoolean(Objects.requireNonNull(fields.get("synced")));
         boolean exists = Boolean.parseBoolean(Objects.requireNonNull(fields.get("exists")));
+        String etag = ResourceUtil.extractEtag(fields);
 
-        return new Result(body, createdAt, updatedAt, synced, exists);
+        return new Result(body, createdAt, updatedAt, synced, exists, etag);
     }
 
     private void redisPut(String key, Result result) {
@@ -471,7 +489,8 @@ public class ResourceService implements AutoCloseable {
                 "created_at", Long.toString(result.createdAt),
                 "updated_at", Long.toString(result.updatedAt),
                 "synced", Boolean.toString(result.synced),
-                "exists", Boolean.toString(result.exists)
+                "exists", Boolean.toString(result.exists),
+                ResourceUtil.ETAG_ATTRIBUTE, result.etag
         );
         map.putAll(fields);
 
@@ -490,15 +509,10 @@ public class ResourceService implements AutoCloseable {
         set.remove(key);
     }
 
-    private String redisKey(ResourceDescription descriptor) {
-        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
-        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
-    }
-
     private static long time() {
         return System.currentTimeMillis();
     }
 
-    private record Result(String body, long createdAt, long updatedAt, boolean synced, boolean exists) {
+    private record Result(String body, long createdAt, long updatedAt, boolean synced, boolean exists, String etag) {
     }
 }

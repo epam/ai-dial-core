@@ -1,6 +1,10 @@
 package com.epam.aidial.core.storage;
 
 import com.epam.aidial.core.data.FileMetadata;
+import com.epam.aidial.core.data.ResourceItemMetadata;
+import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.util.ETagBuilder;
+import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -8,6 +12,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.WriteStream;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
@@ -28,15 +33,18 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private final Vertx vertx;
     private final BlobStorage storage;
+    private final LockService.Lock lock;
     private final ResourceDescription resource;
     private final String contentType;
+    private final ETagBuilder eTagBuilder = new ETagBuilder();
 
     private final Buffer chunkBuffer = Buffer.buffer();
     private int chunkSize = MIN_PART_SIZE_BYTES;
     private int position;
     private MultipartUpload mpu;
     private int chunkNumber = 0;
-    private FileMetadata metadata;
+    @Getter
+    private ResourceItemMetadata metadata;
 
     private Throwable exception;
 
@@ -50,10 +58,12 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     public BlobWriteStream(Vertx vertx,
                            BlobStorage storage,
+                           LockService.Lock lock,
                            ResourceDescription resource,
                            String contentType) {
         this.vertx = vertx;
         this.storage = storage;
+        this.lock = lock;
         this.resource = resource;
         this.contentType = contentType != null ? contentType : BlobStorageUtil.getContentType(resource.getName());
     }
@@ -96,20 +106,27 @@ public class BlobWriteStream implements WriteStream<Buffer> {
         Future<Void> result = vertx.executeBlocking(() -> {
             synchronized (BlobWriteStream.this) {
                 if (exception != null) {
+                    if (mpu != null) {
+                        storage.abortMultipartUpload(mpu);
+                        log.warn("Multipart upload aborted", exception);
+                    }
                     throw new RuntimeException(exception);
                 }
+                lock.extend();
 
                 Buffer lastChunk = chunkBuffer.slice(0, position);
-                metadata = new FileMetadata(resource, bytesHandled, contentType);
+                String etag = eTagBuilder.append(lastChunk.getBytes()).build();
+                metadata = new FileMetadata(resource, bytesHandled, contentType)
+                        .setEtag(etag);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
-                    storage.store(resource.getAbsoluteFilePath(), contentType, lastChunk);
+                    storage.store(resource.getAbsoluteFilePath(), contentType, lastChunk, etag);
                 } else {
                     if (position != 0) {
                         MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, lastChunk);
                         parts.add(part);
                     }
-
+                    mpu.blobMetadata().getUserMetadata().put(ResourceUtil.ETAG_ATTRIBUTE, etag);
                     storage.completeMultipartUpload(mpu, parts);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
@@ -124,6 +141,10 @@ public class BlobWriteStream implements WriteStream<Buffer> {
         }).onFailure(error -> {
             if (handler != null) {
                 handler.handle(Future.failedFuture(error));
+            }
+
+            if (errorHandler != null) {
+                errorHandler.handle(error);
             }
         });
     }
@@ -148,7 +169,10 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     if (mpu == null) {
                         mpu = storage.initMultipartUpload(resource.getAbsoluteFilePath(), contentType);
                     }
-                    MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkBuffer.slice(0, position));
+                    lock.extend();
+                    Buffer chunk = chunkBuffer.slice(0, position);
+                    eTagBuilder.append(chunk.getBytes());
+                    MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunk);
                     parts.add(part);
                     position = 0;
                     isBufferFull = false;
@@ -164,21 +188,5 @@ public class BlobWriteStream implements WriteStream<Buffer> {
         });
 
         return this;
-    }
-
-    public synchronized FileMetadata getMetadata() {
-        return metadata;
-    }
-
-    public synchronized void abortUpload(Throwable ex) {
-        if (mpu != null) {
-            storage.abortMultipartUpload(mpu);
-        }
-
-        if (errorHandler != null) {
-            errorHandler.handle(ex);
-        }
-
-        log.warn("Multipart upload aborted", ex);
     }
 }

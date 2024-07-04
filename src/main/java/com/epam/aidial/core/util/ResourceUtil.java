@@ -17,6 +17,9 @@ import java.util.stream.Collectors;
 
 @UtilityClass
 public class ResourceUtil {
+    public static final String ETAG_ATTRIBUTE = "etag";
+    // Default ETag for old records
+    private static final String DEFAULT_ETAG = "0";
 
     public static boolean hasResource(ResourceDescription resource, ResourceService resourceService, BlobStorage storage) {
         return switch (resource.getType()) {
@@ -70,4 +73,7 @@ public class ResourceUtil {
         }
     }
 
+    public String extractEtag(Map<String, String> attributes) {
+        return attributes.getOrDefault(ETAG_ATTRIBUTE, DEFAULT_ETAG);
+    }
 }

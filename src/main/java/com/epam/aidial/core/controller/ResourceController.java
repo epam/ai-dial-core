@@ -153,6 +153,7 @@ public class ResourceController extends AccessControlBaseController {
 
         String ifNoneMatch = context.getRequest().getHeader(HttpHeaders.IF_NONE_MATCH);
         boolean overwrite = (ifNoneMatch == null);
+        String etag = context.getRequest().getHeader(HttpHeaders.IF_MATCH);
 
         if (ifNoneMatch != null && !ifNoneMatch.equals("*")) {
             return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
@@ -167,7 +168,7 @@ public class ResourceController extends AccessControlBaseController {
                     ResourceType resourceType = descriptor.getType();
                     String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite), false);
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag, overwrite), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {
@@ -214,13 +215,14 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
+        String etag = context.getRequest().getHeader(HttpHeaders.IF_MATCH);
         return vertx.executeBlocking(() -> {
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
                         shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
-                        return service.deleteResource(descriptor);
+                        return service.deleteResource(descriptor, etag);
                     });
                 }, false)
                 .onSuccess(deleted -> {
@@ -232,7 +234,11 @@ public class ResourceController extends AccessControlBaseController {
                 })
                 .onFailure(error -> {
                     log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+                    if (error instanceof HttpException exception) {
+                        context.respond(exception.getStatus(), exception.getMessage());
+                    } else {
+                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+                    }
                 });
     }
 }

@@ -625,7 +625,7 @@ public class PublicationService {
     private void deleteResource(ResourceDescription descriptor) {
         switch (descriptor.getType()) {
             case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor, null);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }

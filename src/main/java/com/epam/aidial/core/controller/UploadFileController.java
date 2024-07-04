@@ -2,12 +2,15 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.impl.PipeImpl;
 import lombok.extern.slf4j.Slf4j;
@@ -35,20 +38,35 @@ public class UploadFileController extends AccessControlBaseController {
                 .uploadHandler(upload -> {
                     String contentType = upload.contentType();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                    BlobWriteStream writeStream = new BlobWriteStream(
-                            proxy.getVertx(),
-                            proxy.getStorage(),
-                            resource,
-                            contentType);
-                    pipe.to(writeStream, result);
 
-                    result.future()
-                            .onSuccess(success -> context.respond(HttpStatus.OK, writeStream.getMetadata()))
-                            .onFailure(error -> {
-                                writeStream.abortUpload(error);
-                                context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
-                            });
+                    LockService.Lock lock = proxy.getLockService().lock(resource);
+                    try {
+                        proxy.getStorage().validateEtag(resource, context.getRequest().getHeader(HttpHeaders.IF_MATCH));
+
+                        BlobWriteStream writeStream = new BlobWriteStream(
+                                proxy.getVertx(),
+                                proxy.getStorage(),
+                                lock,
+                                resource,
+                                contentType);
+                        pipe.to(writeStream, result);
+
+                        result.future()
+                                .onComplete(complete -> lock.close())
+                                .onSuccess(success -> {
+                                    context.getResponse().putHeader(HttpHeaders.ETAG, writeStream.getMetadata().getEtag());
+                                    context.respond(HttpStatus.OK, writeStream.getMetadata());
+                                })
+                                .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath())));
+                    } catch (Throwable error) {
+                        lock.close();
+                        if (error instanceof HttpException exception) {
+                            context.respond(exception.getStatus(), exception.getMessage());
+                        } else {
+                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                        }
+                    }
                 });
 
         return result.future();

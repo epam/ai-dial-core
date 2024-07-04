@@ -10,4 +10,10 @@ public class HttpException extends RuntimeException {
         super(message);
         this.status = status;
     }
+
+    public static void validateETag(String expected, String actual) {
+        if (expected != null && !expected.equals(actual)) {
+            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "ETag %s is outdated".formatted(expected));
+        }
+    }
 }

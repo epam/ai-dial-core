@@ -7,8 +7,10 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -37,21 +39,27 @@ public class DeleteFileController extends AccessControlBaseController {
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
-            try {
+            try (LockService.Lock ignored = proxy.getLockService().lock(resource)) {
+                String etag = context.getRequest().getHeader(HttpHeaders.IF_MATCH);
+                storage.validateEtag(resource, etag);
                 return lockService.underBucketLock(bucketLocation, () -> {
                     invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                     shareService.revokeSharedResource(bucketName, bucketLocation, resource);
                     storage.delete(absoluteFilePath);
                     return null;
                 });
-            } catch (Exception ex) {
-                log.error("Failed to delete file  %s/%s".formatted(bucketName, resource.getOriginalPath()), ex);
-                throw new RuntimeException(ex);
             }
         }, false);
 
         return result
                 .onSuccess(success -> context.respond(HttpStatus.OK))
-                .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
+                .onFailure(error -> {
+                    log.error("Failed to delete file  {}/{}", resource.getBucketName(), resource.getOriginalPath(), error);
+                    if (error instanceof HttpException exception) {
+                        context.respond(exception.getStatus(), exception.getMessage());
+                    } else {
+                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                    }
+                });
     }
 }

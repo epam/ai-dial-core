@@ -54,7 +54,7 @@ public class ApiKeyStore {
         ResourceDescription resource = toResource(perRequestKey);
         data.setPerRequestKey(perRequestKey);
         String json = ProxyUtil.convertToString(data);
-        if (resourceService.putResource(resource, json, false, false) == null) {
+        if (resourceService.putResource(resource, json, null, false, false) == null) {
             throw new IllegalStateException(String.format("API key %s already exists in the storage", perRequestKey));
         }
     }
@@ -85,7 +85,7 @@ public class ApiKeyStore {
         String apiKey = apiKeyData.getPerRequestKey();
         if (apiKey != null) {
             ResourceDescription resource = toResource(apiKey);
-            return vertx.executeBlocking(() -> resourceService.deleteResource(resource), false);
+            return vertx.executeBlocking(() -> resourceService.deleteResource(resource, null), false);
         }
         return Future.succeededFuture(true);
     }

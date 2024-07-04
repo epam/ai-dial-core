@@ -1,7 +1,8 @@
 package com.epam.aidial.core.service;
 
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
@@ -32,6 +33,15 @@ public class LockService {
         this.script = redis.getScript(StringCodec.INSTANCE);
     }
 
+    public String redisKey(ResourceDescription descriptor) {
+        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
+        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
+    }
+
+    public Lock lock(ResourceDescription resource) {
+        return lock(redisKey(resource));
+    }
+
     public Lock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
@@ -44,7 +54,7 @@ public class LockService {
             ttl = tryLock(id, owner);
         }
 
-        return () -> unlock(id, owner);
+        return new Lock(id, owner);
     }
 
     public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
@@ -59,7 +69,7 @@ public class LockService {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
         long ttl = tryLock(id, owner);
-        return (ttl == 0) ? () -> unlock(id, owner) : null;
+        return (ttl == 0) ? new Lock(id, owner) : null;
     }
 
     private long tryLock(String id, long owner) {
@@ -68,34 +78,51 @@ public class LockService {
                         local time = redis.call('time')
                         local now = time[1] * 1000000 + time[2]
                         local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
-                                                
+                        
                         if (deadline ~= nil and now < deadline) then
                           return deadline - now
                         end
-                                                
+                        
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
                         return 0
                         """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
+    private boolean tryExtend(String id, long owner) {
+        return script.eval(RScript.Mode.READ_WRITE,
+                """
+                        local time = redis.call('time')
+                        local now = time[1] * 1000000 + time[2]
+                        local data = redis.call('hmget', KEYS[1], 'owner', 'deadline')
+                        local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
+                        
+                        if (data[1] == ARGV[1] and deadline ~= nil and now < deadline) then
+                          redis.call('hset', KEYS[1], 'deadline', now + ARGV[2])
+                          return true
+                        end
+                        
+                        return false
+                        """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
+    }
+
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
-            log.error("Lock service failed to unlock: " + id);
+            log.error("Lock service failed to unlock: {}", id);
         }
     }
 
     private boolean tryUnlock(String id, long owner) {
         return script.eval(RScript.Mode.READ_WRITE,
-                """                      
-                        local owner = redis.call('hget', KEYS[1], 'owner')                 
-                                               
+                """
+                        local owner = redis.call('hget', KEYS[1], 'owner')
+                        
                         if (owner == ARGV[1]) then
                           redis.call('del', KEYS[1])
                           return true
-                        end   
-                                                
-                        return false            
+                        end
+                        
+                        return false
                         """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner));
     }
 
@@ -103,8 +130,20 @@ public class LockService {
         return "lock:" + key;
     }
 
-    public interface Lock extends AutoCloseable {
+    @AllArgsConstructor
+    public final class Lock implements AutoCloseable {
+        private final String id;
+        private final long owner;
+
+        public void extend() {
+            if (!LockService.this.tryExtend(id, owner)) {
+                throw new IllegalStateException("Failed to acquire storage lock");
+            }
+        }
+
         @Override
-        void close();
+        public void close() {
+            unlock(id, owner);
+        }
     }
 }

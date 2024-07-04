@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -122,7 +123,7 @@ public class ResourceBaseTest {
                         "credential": "secret-key",
                         "prefix": "test-2",
                         "overrides": {
-                          "jclouds.filesystem.basedir": "%s"
+                          "jclouds.filesystem.basedir": %s
                         }
                       },
                       "redis": {
@@ -136,7 +137,7 @@ public class ResourceBaseTest {
                         "cacheExpiration": 100
                       }
                     }
-                    """.formatted(testDir);
+                    """.formatted(Json.encode(testDir.toString()));
 
             JsonObject settings = AiDial.settings()
                     .mergeIn(new JsonObject(overrides), true);
