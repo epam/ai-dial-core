@@ -5,10 +5,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class ETagBuilder {
+public class EtagBuilder {
     private final MessageDigest digest = getDigest();
 
-    public ETagBuilder append(byte[] bytes) {
+    public EtagBuilder append(byte[] bytes) {
         digest.update(bytes);
         return this;
     }
@@ -28,7 +28,7 @@ public class ETagBuilder {
         }
     }
 
-    public static String generateETag(byte[] bytes) {
-        return new ETagBuilder().append(bytes).build();
+    public static String generateEtag(byte[] bytes) {
+        return new EtagBuilder().append(bytes).build();
     }
 }

@@ -7,7 +7,7 @@ import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
-import com.epam.aidial.core.util.ETagBuilder;
+import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Vertx;
@@ -267,11 +267,11 @@ public class ResourceService implements AutoCloseable {
 
             long updatedAt = time();
             long createdAt = result.exists ? result.createdAt : updatedAt;
-            String newETag = ETagBuilder.generateETag(body.getBytes());
-            redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true, newETag));
+            String newEtag = EtagBuilder.generateEtag(body.getBytes());
+            redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true, newEtag));
 
             if (!result.exists) {
-                blobPut(blobKey, "", createdAt, updatedAt, newETag); // create an empty object for listing
+                blobPut(blobKey, "", createdAt, updatedAt, newEtag); // create an empty object for listing
             }
 
             return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);

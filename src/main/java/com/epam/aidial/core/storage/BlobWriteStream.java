@@ -3,7 +3,7 @@ package com.epam.aidial.core.storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.service.LockService;
-import com.epam.aidial.core.util.ETagBuilder;
+import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -36,7 +36,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     private final LockService.Lock lock;
     private final ResourceDescription resource;
     private final String contentType;
-    private final ETagBuilder eTagBuilder = new ETagBuilder();
+    private final EtagBuilder etagBuilder = new EtagBuilder();
 
     private final Buffer chunkBuffer = Buffer.buffer();
     private int chunkSize = MIN_PART_SIZE_BYTES;
@@ -115,7 +115,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 lock.extend();
 
                 Buffer lastChunk = chunkBuffer.slice(0, position);
-                String etag = eTagBuilder.append(lastChunk.getBytes()).build();
+                String etag = etagBuilder.append(lastChunk.getBytes()).build();
                 metadata = new FileMetadata(resource, bytesHandled, contentType)
                         .setEtag(etag);
                 if (mpu == null) {
@@ -171,7 +171,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
                     lock.extend();
                     Buffer chunk = chunkBuffer.slice(0, position);
-                    eTagBuilder.append(chunk.getBytes());
+                    etagBuilder.append(chunk.getBytes());
                     MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunk);
                     parts.add(part);
                     position = 0;
