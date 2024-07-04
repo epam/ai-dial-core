@@ -262,7 +262,7 @@ public class ResourceService implements AutoCloseable {
                     return null;
                 }
 
-                HttpException.validateETag(etag, result.etag);
+                HttpException.validateEtag(etag, result.etag);
             }
 
             long updatedAt = time();
@@ -307,7 +307,7 @@ public class ResourceService implements AutoCloseable {
                 return false;
             }
 
-            HttpException.validateETag(etag, result.etag);
+            HttpException.validateEtag(etag, result.etag);
 
             redisPut(redisKey, new Result("", Long.MIN_VALUE, Long.MIN_VALUE, false, false, ""));
             blobDelete(blobKey);

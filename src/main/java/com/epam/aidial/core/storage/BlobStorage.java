@@ -193,7 +193,7 @@ public class BlobStorage implements Closeable {
         if (etag != null) {
             BlobMetadata meta = meta(resource.getAbsoluteFilePath());
             if (meta != null) {
-                HttpException.validateETag(etag, ResourceUtil.extractEtag(meta.getUserMetadata()));
+                HttpException.validateEtag(etag, ResourceUtil.extractEtag(meta.getUserMetadata()));
             }
         }
     }
