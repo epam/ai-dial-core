@@ -394,7 +394,7 @@ public class FileApiTest extends ResourceBaseTest {
         WebClient client = WebClient.create(vertx);
 
         Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
-        ResourceItemMetadata expectedFileMetadata = new FileMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+        FileMetadata expectedFileMetadata = (FileMetadata) new FileMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                 "file.txt", "appdata/EPM-RTC-RAIL", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt", 17, "text/custom")
                 .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
         ResourceFolderMetadata expectedFolderMetadata = setPermissions(
