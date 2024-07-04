@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class FileApiTest extends ResourceBaseTest {
 
     private static final String TEST_FILE_CONTENT = "Test file content";
+    private static final String TEST_FILE_ETAG = "ac79653edeb65ab5563585f2d5f14fe9";
 
     @Test
     public void testBucket(Vertx vertx, VertxTestContext context) {
@@ -213,7 +214,7 @@ public class FileApiTest extends ResourceBaseTest {
 
         ResourceItemMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -318,11 +319,12 @@ public class FileApiTest extends ResourceBaseTest {
         MetadataBase emptyFolderResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                         null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of())
                 .setPermissions(permissions);
-        FileMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                "файл.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt", 17, "text/custom");
+        FileMetadata expectedFileMetadata = (FileMetadata) new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "файл.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt", 17, "text/custom")
+                .setEtag(TEST_FILE_ETAG);
         MetadataBase expectedFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                         null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
-                        List.of(cloneFileMetadata(expectedFileMetadata).setPermissions(permissions)))
+                        List.of(newFileMetadata(expectedFileMetadata).setPermissions(permissions)))
                 .setPermissions(permissions);
 
         Future.succeededFuture().compose((mapper) -> {
@@ -351,7 +353,7 @@ public class FileApiTest extends ResourceBaseTest {
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
-//                                    assertEquals(expectedFileMetadata, response.body());
+                                    assertEquals(expectedFileMetadata, response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -393,10 +395,10 @@ public class FileApiTest extends ResourceBaseTest {
         Set<ResourceAccessType> permissions = EnumSet.allOf(ResourceAccessType.class);
         FileMetadata expectedFileMetadata = (FileMetadata) new FileMetadata("3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                 "file.txt", "appdata/EPM-RTC-RAIL", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt", 17, "text/custom")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
         MetadataBase expectedFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                         "EPM-RTC-RAIL", "appdata", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/",
-                        List.of(cloneFileMetadata(expectedFileMetadata).setPermissions(permissions)))
+                        List.of(newFileMetadata(expectedFileMetadata).setPermissions(permissions)))
                 .setPermissions(permissions);
 
         Future.succeededFuture().compose((mapper) -> {
@@ -486,7 +488,7 @@ public class FileApiTest extends ResourceBaseTest {
 
         ResourceItemMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -556,7 +558,7 @@ public class FileApiTest extends ResourceBaseTest {
 
         ResourceItemMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -612,7 +614,7 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(2);
         WebClient client = WebClient.create(vertx);
 
-        String etag = "3cddd3926cbb2787afc183c6da2b1d56161416af";
+        String etag = TEST_FILE_ETAG;
         ResourceItemMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/plain")
                 .setEtag(etag);
@@ -662,16 +664,16 @@ public class FileApiTest extends ResourceBaseTest {
 
         FileMetadata expectedFileMetadata1 = (FileMetadata) new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt", 17, "text/custom")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
         MetadataBase expectedFileMetadata2 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.txt", "folder1", "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", 17, "text/custom")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
         MetadataBase expectedFolder1Metadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                         "folder1", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/")
                 .setPermissions(permissions);
         MetadataBase expectedRootFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                         null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
-                        List.of(cloneFileMetadata(expectedFileMetadata1).setPermissions(permissions), expectedFolder1Metadata))
+                        List.of(newFileMetadata(expectedFileMetadata1).setPermissions(permissions), expectedFolder1Metadata))
                 .setPermissions(permissions);
 
         Future.succeededFuture().compose((mapper) -> {
@@ -753,13 +755,13 @@ public class FileApiTest extends ResourceBaseTest {
 
         ResourceItemMetadata expectedFileMetadata1 = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "image.png", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "binary/octet-stream")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
 
         FileMetadata expectedImageMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "image.png", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png", 17, "image/png");
         MetadataBase expectedRootFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                         null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
-                        List.of(cloneFileMetadata(expectedImageMetadata).setPermissions(permissions)))
+                        List.of(newFileMetadata(expectedImageMetadata).setPermissions(permissions)))
                 .setPermissions(permissions);
 
         Future.succeededFuture().compose((mapper) -> {
@@ -818,7 +820,7 @@ public class FileApiTest extends ResourceBaseTest {
 
         ResourceItemMetadata expectedFileMetadata = new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "test_file.txt", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt", 17, "text/plain")
-                .setEtag("3cddd3926cbb2787afc183c6da2b1d56161416af");
+                .setEtag(TEST_FILE_ETAG);
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -876,7 +878,7 @@ public class FileApiTest extends ResourceBaseTest {
         return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
     }
 
-    private static FileMetadata cloneFileMetadata(FileMetadata expectedFileMetadata) {
+    private static FileMetadata newFileMetadata(FileMetadata expectedFileMetadata) {
         return new FileMetadata(
                 expectedFileMetadata.getBucket(),
                 expectedFileMetadata.getName(),

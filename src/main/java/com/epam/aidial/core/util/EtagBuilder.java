@@ -22,7 +22,7 @@ public class EtagBuilder {
 
     public MessageDigest getDigest() {
         try {
-            return MessageDigest.getInstance("SHA-1");
+            return MessageDigest.getInstance("MD5");
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
