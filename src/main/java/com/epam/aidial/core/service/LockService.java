@@ -66,13 +66,11 @@ public class LockService {
 
         long interval = WAIT_MIN;
         while (true) {
-            Lock lock1 = tryLock(id1);
-            if (lock1 != null) {
-                Lock lock2 = tryLock(id2);
-                if (lock2 != null) {
+            if (tryLock(id1, owner)) {
+                if (tryLock(id2, owner)) {
                     return new MoveLock(id1, id2, owner);
                 }
-                lock1.close();
+                unlock(id1, owner);
             }
 
             LockSupport.parkNanos(interval);
