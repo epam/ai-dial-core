@@ -38,11 +38,11 @@ public class LockService {
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 
-    public ExtendableLock lock(ResourceDescription resource) {
+    public Lock lock(ResourceDescription resource) {
         return lock(redisKey(resource));
     }
 
-    public ExtendableLock lock(String key) {
+    public Lock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
 
@@ -52,28 +52,32 @@ public class LockService {
             interval = Math.min(2 * interval, WAIT_MAX);
         }
 
-        return new ExtendableLock(id, owner);
+        return new Lock(id, owner);
     }
 
-    public Lock lock(ResourceDescription resource1, ResourceDescription resource2) {
+    public MoveLock lock(ResourceDescription resource1, ResourceDescription resource2) {
         return lock(redisKey(resource1), redisKey(resource2));
     }
 
-    public Lock lock(String key1, String key2) {
+    private MoveLock lock(String key1, String key2) {
         String id1 = id(key1);
         String id2 = id(key2);
         long owner = ThreadLocalRandom.current().nextLong();
 
         long interval = WAIT_MIN;
-        while (!tryLock(id1, id2, owner)) {
+        while (true) {
+            Lock lock1 = tryLock(id1);
+            if (lock1 != null) {
+                Lock lock2 = tryLock(id2);
+                if (lock2 != null) {
+                    return new MoveLock(id1, id2, owner);
+                }
+                lock1.close();
+            }
+
             LockSupport.parkNanos(interval);
             interval = Math.min(2 * interval, WAIT_MAX);
         }
-
-        return () -> {
-            unlock(id1, owner);
-            unlock(id2, owner);
-        };
     }
 
     public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
@@ -84,15 +88,10 @@ public class LockService {
     }
 
     @Nullable
-    public ExtendableLock tryLock(ResourceDescription resource) {
-        return tryLock(redisKey(resource));
-    }
-
-    @Nullable
-    public ExtendableLock tryLock(String key) {
+    public Lock tryLock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
-        return tryLock(id, owner) ? new ExtendableLock(id, owner) : null;
+        return tryLock(id, owner) ? new Lock(id, owner) : null;
     }
 
     private boolean tryLock(String id, long owner) {
@@ -109,28 +108,6 @@ public class LockService {
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
                         return true
                         """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
-    }
-
-    private boolean tryLock(String id1, String id2, long owner) {
-        return script.eval(RScript.Mode.READ_WRITE,
-                """
-                        local time = redis.call('time')
-                        local now = time[1] * 1000000 + time[2]
-                        local deadline1 = tonumber(redis.call('hget', KEYS[1], 'deadline'))
-                        local deadline2 = tonumber(redis.call('hget', KEYS[2], 'deadline'))
-                        
-                        if (deadline1 ~= nil and now < deadline1) then
-                          return false
-                        end
-                        
-                        if (deadline2 ~= nil and now < deadline2) then
-                          return false
-                        end
-                        
-                        redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
-                        redis.call('hset', KEYS[2], 'owner', ARGV[1], 'deadline', now + ARGV[2])
-                        return true
-                        """, RScript.ReturnType.BOOLEAN, List.of(id1, id2), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
     private boolean tryExtend(String id, long owner) {
@@ -175,13 +152,21 @@ public class LockService {
         return "lock:" + key;
     }
 
-    public interface Lock extends AutoCloseable {
+    @AllArgsConstructor
+    public class MoveLock implements AutoCloseable {
+        private final String id1;
+        private final String id2;
+        private final long owner;
+
         @Override
-        void close();
+        public void close() {
+            unlock(id1, owner);
+            unlock(id2, owner);
+        }
     }
 
     @AllArgsConstructor
-    public final class ExtendableLock implements Lock {
+    public final class Lock implements AutoCloseable {
         private final String id;
         private final long owner;
 

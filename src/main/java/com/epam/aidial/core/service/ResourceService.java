@@ -9,7 +9,6 @@ import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.EtagHeader;
-import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -323,7 +322,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag, boolean overwrite) {
-        try (LockService.Lock ignored = lockService.lock(from, to)) {
+        try (LockService.MoveLock ignored = lockService.lock(from, to)) {
             String body = getResource(from, false);
 
             if (body == null) {

@@ -41,7 +41,7 @@ public class UploadFileController extends AccessControlBaseController {
                     String contentType = upload.contentType();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
 
-                    LockService.ExtendableLock lock = proxy.getLockService().lock(resource);
+                    LockService.Lock lock = proxy.getLockService().lock(resource);
                     try {
                         etag.validate(() -> proxy.getStorage().getEtag(resource));
 

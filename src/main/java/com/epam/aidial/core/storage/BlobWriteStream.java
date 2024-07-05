@@ -33,7 +33,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private final Vertx vertx;
     private final BlobStorage storage;
-    private final LockService.ExtendableLock lock;
+    private final LockService.Lock lock;
     private final ResourceDescription resource;
     private final String contentType;
     private final EtagBuilder etagBuilder = new EtagBuilder();
@@ -58,7 +58,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     public BlobWriteStream(Vertx vertx,
                            BlobStorage storage,
-                           LockService.ExtendableLock lock,
+                           LockService.Lock lock,
                            ResourceDescription resource,
                            String contentType) {
         this.vertx = vertx;

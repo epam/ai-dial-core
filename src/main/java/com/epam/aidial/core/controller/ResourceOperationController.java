@@ -73,7 +73,7 @@ public class ResourceOperationController {
                     }
 
                     EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
-                    try (LockService.Lock ignored = lockService.lock(sourceResource, destinationResource)) {
+                    try (LockService.MoveLock ignored = lockService.lock(sourceResource, destinationResource)) {
                         return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
 
                             resourceOperationService.moveResource(

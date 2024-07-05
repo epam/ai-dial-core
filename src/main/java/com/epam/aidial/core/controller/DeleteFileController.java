@@ -40,7 +40,7 @@ public class DeleteFileController extends AccessControlBaseController {
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
-            try (LockService.ExtendableLock ignored = proxy.getLockService().lock(resource)) {
+            try (LockService.Lock ignored = proxy.getLockService().lock(resource)) {
                 etag.validate(() -> storage.getEtag(resource));
                 return lockService.underBucketLock(bucketLocation, () -> {
                     invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);

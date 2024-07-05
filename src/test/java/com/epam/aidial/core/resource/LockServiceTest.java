@@ -56,7 +56,7 @@ class LockServiceTest {
     @Test
     void testLock() {
         for (int i = 0; i < 10; i++) {
-            LockService.ExtendableLock lock = service.lock("key");
+            LockService.Lock lock = service.lock("key");
             Assertions.assertNull(service.tryLock("key"));
             lock.close();
 
