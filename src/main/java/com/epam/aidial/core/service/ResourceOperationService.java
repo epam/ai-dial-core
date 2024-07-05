@@ -68,7 +68,7 @@ public class ResourceOperationService {
     private void deleteResource(ResourceDescription resource) {
         switch (resource.getType()) {
             case FILE -> storage.delete(resource.getAbsoluteFilePath());
-            case CONVERSATION, PROMPT, APPLICATION -> resourceService.deleteResource(resource, null);
+            case CONVERSATION, PROMPT, APPLICATION -> resourceService.deleteResource(resource, EtagHeader.ANY);
             default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
         }
     }
