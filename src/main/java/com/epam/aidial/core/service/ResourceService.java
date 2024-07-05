@@ -288,7 +288,7 @@ public class ResourceService implements AutoCloseable {
             if (newBody != null) {
                 // update resource only if body changed
                 if (!newBody.equals(oldBody)) {
-                    putResource(descriptor, newBody, null, true, false);
+                    putResource(descriptor, newBody, EtagHeader.ANY, true, false);
                 }
             }
         }

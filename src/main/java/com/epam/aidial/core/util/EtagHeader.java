@@ -26,6 +26,7 @@ public class EtagHeader {
 
         String etag = etagSupplier.get();
         if (etag == null) {
+            // Resource doesn't exist
             return;
         }
 
@@ -36,7 +37,7 @@ public class EtagHeader {
 
     public static EtagHeader fromRequest(HttpServerRequest request) {
         String etag = request.getHeader(HttpHeaders.IF_MATCH);
-        if (etag == null || "*".equals(etag.strip())) {
+        if (StringUtils.isBlank(etag) || "*".equals(etag.strip())) {
             return ANY;
         }
 
