@@ -8,6 +8,7 @@ import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import com.epam.aidial.core.util.EtagBuilder;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.Vertx;
@@ -242,12 +243,12 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescription descriptor, String body, String etag, boolean overwrite) {
+            ResourceDescription descriptor, String body, EtagHeader etag, boolean overwrite) {
         return putResource(descriptor, body, etag, overwrite, true);
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescription descriptor, String body, String etag, boolean overwrite, boolean lock) {
+            ResourceDescription descriptor, String body, EtagHeader etag, boolean overwrite, boolean lock) {
         String redisKey = lockService.redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
@@ -262,7 +263,7 @@ public class ResourceService implements AutoCloseable {
                     return null;
                 }
 
-                HttpException.validateEtag(etag, result.etag);
+                etag.validate(result.etag);
             }
 
             long updatedAt = time();
@@ -293,7 +294,7 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public boolean deleteResource(ResourceDescription descriptor, String etag) {
+    public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag) {
         String redisKey = lockService.redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
@@ -307,7 +308,7 @@ public class ResourceService implements AutoCloseable {
                 return false;
             }
 
-            HttpException.validateEtag(etag, result.etag);
+            etag.validate(result.etag);
 
             redisPut(redisKey, new Result("", Long.MIN_VALUE, Long.MIN_VALUE, false, false, ""));
             blobDelete(blobKey);
@@ -317,19 +318,21 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public boolean copyResource(ResourceDescription from, ResourceDescription to) {
-        return copyResource(from, to, true);
+    public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag) {
+        return copyResource(from, to, etag, true);
     }
 
-    public boolean copyResource(ResourceDescription from, ResourceDescription to, boolean overwrite) {
-        String body = getResource(from);
+    public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag, boolean overwrite) {
+        try (LockService.Lock ignored = lockService.lock(from, to)) {
+            String body = getResource(from, false);
 
-        if (body == null) {
-            return false;
+            if (body == null) {
+                return false;
+            }
+
+            ResourceItemMetadata metadata = putResource(to, body, etag, overwrite, false);
+            return metadata != null;
         }
-
-        ResourceItemMetadata metadata = putResource(to, body, null, overwrite);
-        return metadata != null;
     }
 
     private Void sync() {

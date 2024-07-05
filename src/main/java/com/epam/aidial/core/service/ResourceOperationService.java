@@ -3,6 +3,7 @@ package com.epam.aidial.core.service;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ResourceUtil;
 import lombok.AllArgsConstructor;
 
@@ -14,7 +15,13 @@ public class ResourceOperationService {
     private final InvitationService invitationService;
     private final ShareService shareService;
 
-    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
+    public void moveResource(
+            String bucket,
+            String location,
+            ResourceDescription source,
+            ResourceDescription destination,
+            EtagHeader etag,
+            boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -38,7 +45,7 @@ public class ResourceOperationService {
                 storage.copy(sourceResourcePath, destinationResourcePath);
             }
             case CONVERSATION, PROMPT, APPLICATION -> {
-                boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
+                boolean copied = resourceService.copyResource(source, destination, etag, overwriteIfExists);
                 if (!copied) {
                     throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                             .formatted(sourceResourceUrl, destinationResourceUrl));

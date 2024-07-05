@@ -16,6 +16,7 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -508,7 +509,7 @@ public class PublicationService {
             ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
 
-            if (!copyResource(from, to)) {
+            if (!copyResource(from, to, EtagHeader.ANY)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
         }
@@ -522,7 +523,7 @@ public class PublicationService {
             ResourceDescription from = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
 
-            if (!copyResource(from, to)) {
+            if (!copyResource(from, to, EtagHeader.ANY)) {
                 throw new IllegalStateException("Can't copy review resource from: " + from.getUrl() + " to target: " + to.getUrl());
             }
         }
@@ -594,7 +595,7 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-            deleteResource(descriptor);
+            deleteResource(descriptor, EtagHeader.ANY);
         }
     }
 
@@ -602,7 +603,7 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
-            deleteResource(descriptor);
+            deleteResource(descriptor, EtagHeader.ANY);
         }
     }
 
@@ -614,18 +615,18 @@ public class PublicationService {
         };
     }
 
-    private boolean copyResource(ResourceDescription from, ResourceDescription to) {
+    private boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag) {
         return switch (from.getType()) {
             case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to, etag);
             default -> throw new IllegalStateException("Unsupported type: " + from.getType());
         };
     }
 
-    private void deleteResource(ResourceDescription descriptor) {
+    private void deleteResource(ResourceDescription descriptor, EtagHeader etag) {
         switch (descriptor.getType()) {
             case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor, null);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor, etag);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }

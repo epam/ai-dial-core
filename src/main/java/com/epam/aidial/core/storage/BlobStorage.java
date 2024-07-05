@@ -7,6 +7,7 @@ import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.credential.CredentialProvider;
 import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.buffer.Buffer;
@@ -189,13 +190,9 @@ public class BlobStorage implements Closeable {
         return blobStore.blobMetadata(bucketName, storageLocation);
     }
 
-    public void validateEtag(ResourceDescription resource, String etag) {
-        if (etag != null) {
-            BlobMetadata meta = meta(resource.getAbsoluteFilePath());
-            if (meta != null) {
-                HttpException.validateEtag(etag, ResourceUtil.extractEtag(meta.getUserMetadata()));
-            }
-        }
+    public String getEtag(ResourceDescription resource) {
+        BlobMetadata meta = meta(resource.getAbsoluteFilePath());
+        return meta != null ? ResourceUtil.extractEtag(meta.getUserMetadata()) : null;
     }
 
     /**

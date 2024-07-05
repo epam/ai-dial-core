@@ -14,6 +14,7 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -153,12 +154,11 @@ public class ResourceController extends AccessControlBaseController {
 
         String ifNoneMatch = context.getRequest().getHeader(HttpHeaders.IF_NONE_MATCH);
         boolean overwrite = (ifNoneMatch == null);
-        String etag = context.getRequest().getHeader(HttpHeaders.IF_MATCH);
-
         if (ifNoneMatch != null && !ifNoneMatch.equals("*")) {
             return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
         }
 
+        EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
         return context.getRequest().body().compose(bytes -> {
                     if (bytes.length() > contentLimit) {
                         String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
@@ -215,7 +215,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        String etag = context.getRequest().getHeader(HttpHeaders.IF_MATCH);
+        EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
         return vertx.executeBlocking(() -> {
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();

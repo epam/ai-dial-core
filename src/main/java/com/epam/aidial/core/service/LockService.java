@@ -38,23 +38,42 @@ public class LockService {
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 
-    public Lock lock(ResourceDescription resource) {
+    public ExtendableLock lock(ResourceDescription resource) {
         return lock(redisKey(resource));
     }
 
-    public Lock lock(String key) {
+    public ExtendableLock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
-        long ttl = tryLock(id, owner);
-        long interval = WAIT_MIN;
 
-        while (ttl > 0) {
+        long interval = WAIT_MIN;
+        while (!tryLock(id, owner)) {
             LockSupport.parkNanos(interval);
             interval = Math.min(2 * interval, WAIT_MAX);
-            ttl = tryLock(id, owner);
         }
 
-        return new Lock(id, owner);
+        return new ExtendableLock(id, owner);
+    }
+
+    public Lock lock(ResourceDescription resource1, ResourceDescription resource2) {
+        return lock(redisKey(resource1), redisKey(resource2));
+    }
+
+    public Lock lock(String key1, String key2) {
+        String id1 = id(key1);
+        String id2 = id(key2);
+        long owner = ThreadLocalRandom.current().nextLong();
+
+        long interval = WAIT_MIN;
+        while (!tryLock(id1, id2, owner)) {
+            LockSupport.parkNanos(interval);
+            interval = Math.min(2 * interval, WAIT_MAX);
+        }
+
+        return () -> {
+            unlock(id1, owner);
+            unlock(id2, owner);
+        };
     }
 
     public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
@@ -65,14 +84,18 @@ public class LockService {
     }
 
     @Nullable
-    public Lock tryLock(String key) {
-        String id = id(key);
-        long owner = ThreadLocalRandom.current().nextLong();
-        long ttl = tryLock(id, owner);
-        return (ttl == 0) ? new Lock(id, owner) : null;
+    public ExtendableLock tryLock(ResourceDescription resource) {
+        return tryLock(redisKey(resource));
     }
 
-    private long tryLock(String id, long owner) {
+    @Nullable
+    public ExtendableLock tryLock(String key) {
+        String id = id(key);
+        long owner = ThreadLocalRandom.current().nextLong();
+        return tryLock(id, owner) ? new ExtendableLock(id, owner) : null;
+    }
+
+    private boolean tryLock(String id, long owner) {
         return script.eval(RScript.Mode.READ_WRITE,
                 """
                         local time = redis.call('time')
@@ -80,12 +103,34 @@ public class LockService {
                         local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
                         
                         if (deadline ~= nil and now < deadline) then
-                          return deadline - now
+                          return false
                         end
                         
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
-                        return 0
-                        """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
+                        return true
+                        """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
+    }
+
+    private boolean tryLock(String id1, String id2, long owner) {
+        return script.eval(RScript.Mode.READ_WRITE,
+                """
+                        local time = redis.call('time')
+                        local now = time[1] * 1000000 + time[2]
+                        local deadline1 = tonumber(redis.call('hget', KEYS[1], 'deadline'))
+                        local deadline2 = tonumber(redis.call('hget', KEYS[2], 'deadline'))
+                        
+                        if (deadline1 ~= nil and now < deadline1) then
+                          return false
+                        end
+                        
+                        if (deadline2 ~= nil and now < deadline2) then
+                          return false
+                        end
+                        
+                        redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
+                        redis.call('hset', KEYS[2], 'owner', ARGV[1], 'deadline', now + ARGV[2])
+                        return true
+                        """, RScript.ReturnType.BOOLEAN, List.of(id1, id2), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
     private boolean tryExtend(String id, long owner) {
@@ -130,8 +175,13 @@ public class LockService {
         return "lock:" + key;
     }
 
+    public interface Lock extends AutoCloseable {
+        @Override
+        void close();
+    }
+
     @AllArgsConstructor
-    public final class Lock implements AutoCloseable {
+    public final class ExtendableLock implements Lock {
         private final String id;
         private final long owner;
 

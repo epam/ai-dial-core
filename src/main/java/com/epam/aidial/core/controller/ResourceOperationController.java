@@ -8,6 +8,7 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -19,7 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 public class ResourceOperationController {
 
     private final ProxyContext context;
-    private final Proxy proxy;
     private final Vertx vertx;
     private final EncryptionService encryptionService;
     private final ResourceOperationService resourceOperationService;
@@ -27,7 +27,6 @@ public class ResourceOperationController {
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.proxy = proxy;
         this.vertx = proxy.getVertx();
         this.encryptionService = proxy.getEncryptionService();
         this.resourceOperationService = proxy.getResourceOperationService();
@@ -73,10 +72,15 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
                     }
 
-                    return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
-                        resourceOperationService.moveResource(bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
-                        return null;
-                    }), false);
+                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+                    try (LockService.Lock ignored = lockService.lock(sourceResource, destinationResource)) {
+                        return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
+
+                            resourceOperationService.moveResource(
+                                    bucket, bucketLocation, sourceResource, destinationResource, etag, request.isOverwrite());
+                            return null;
+                        }), false);
+                    }
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);

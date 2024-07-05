@@ -1,7 +1,8 @@
 package com.epam.aidial.core.util;
 
+import lombok.SneakyThrows;
+
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -20,12 +21,9 @@ public class EtagBuilder {
                 .collect(Collectors.joining());
     }
 
+    @SneakyThrows
     public MessageDigest getDigest() {
-        try {
-            return MessageDigest.getInstance("MD5");
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
+        return MessageDigest.getInstance("MD5");
     }
 
     public static String generateEtag(byte[] bytes) {

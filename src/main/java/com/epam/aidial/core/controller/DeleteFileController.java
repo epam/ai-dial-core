@@ -7,10 +7,10 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -34,14 +34,14 @@ public class DeleteFileController extends AccessControlBaseController {
         }
 
         String absoluteFilePath = resource.getAbsoluteFilePath();
+        EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
 
         BlobStorage storage = proxy.getStorage();
         Future<Void> result = proxy.getVertx().executeBlocking(() -> {
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
-            try (LockService.Lock ignored = proxy.getLockService().lock(resource)) {
-                String etag = context.getRequest().getHeader(HttpHeaders.IF_MATCH);
-                storage.validateEtag(resource, etag);
+            try (LockService.ExtendableLock ignored = proxy.getLockService().lock(resource)) {
+                etag.validate(() -> storage.getEtag(resource));
                 return lockService.underBucketLock(bucketLocation, () -> {
                     invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                     shareService.revokeSharedResource(bucketName, bucketLocation, resource);

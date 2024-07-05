@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
@@ -32,6 +33,7 @@ public class UploadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
 
+        EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
         Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
@@ -39,9 +41,9 @@ public class UploadFileController extends AccessControlBaseController {
                     String contentType = upload.contentType();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
 
-                    LockService.Lock lock = proxy.getLockService().lock(resource);
+                    LockService.ExtendableLock lock = proxy.getLockService().lock(resource);
                     try {
-                        proxy.getStorage().validateEtag(resource, context.getRequest().getHeader(HttpHeaders.IF_MATCH));
+                        etag.validate(() -> proxy.getStorage().getEtag(resource));
 
                         BlobWriteStream writeStream = new BlobWriteStream(
                                 proxy.getVertx(),
