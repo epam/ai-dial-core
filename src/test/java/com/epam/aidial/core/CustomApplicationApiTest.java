@@ -477,7 +477,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "function" : "EQUAL",
                      "source" : "roles",
                      "targets" : [ "user" ]
-                   } ]
+                   } ],
+                   "etag" : "e734101362b8728e0a8f21f1b3bc51b4"
                 }
                 """);
 
