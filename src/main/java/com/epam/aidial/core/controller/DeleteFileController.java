@@ -41,7 +41,7 @@ public class DeleteFileController extends AccessControlBaseController {
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
             try (LockService.Lock ignored = proxy.getLockService().lock(resource)) {
-                etag.validate(() -> storage.getEtag(resource));
+                etag.validate(() -> storage.getEtag(resource.getAbsoluteFilePath()));
                 return lockService.underBucketLock(bucketLocation, () -> {
                     invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                     shareService.revokeSharedResource(bucketName, bucketLocation, resource);

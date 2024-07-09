@@ -20,7 +20,6 @@ public class ResourceOperationService {
             String location,
             ResourceDescription source,
             ResourceDescription destination,
-            EtagHeader etag,
             boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
@@ -45,7 +44,7 @@ public class ResourceOperationService {
                 storage.copy(sourceResourcePath, destinationResourcePath);
             }
             case CONVERSATION, PROMPT, APPLICATION -> {
-                boolean copied = resourceService.copyResource(source, destination, etag, overwriteIfExists);
+                boolean copied = resourceService.copyResource(source, destination, EtagHeader.ANY, overwriteIfExists, false);
                 if (!copied) {
                     throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                             .formatted(sourceResourceUrl, destinationResourceUrl));
@@ -68,7 +67,7 @@ public class ResourceOperationService {
     private void deleteResource(ResourceDescription resource) {
         switch (resource.getType()) {
             case FILE -> storage.delete(resource.getAbsoluteFilePath());
-            case CONVERSATION, PROMPT, APPLICATION -> resourceService.deleteResource(resource, EtagHeader.ANY);
+            case CONVERSATION, PROMPT, APPLICATION -> resourceService.deleteResource(resource, EtagHeader.ANY, false);
             default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
         }
     }

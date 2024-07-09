@@ -294,10 +294,14 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag) {
+        return deleteResource(descriptor, etag, true);
+    }
+
+    public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag, boolean lock) {
         String redisKey = lockService.redisKey(descriptor);
         String blobKey = blobKey(descriptor);
 
-        try (var ignore = lockService.lock(redisKey)) {
+        try (var ignore = lock ? lockService.lock(redisKey) : null) {
             Result result = redisGet(redisKey, false);
             if (result == null) {
                 result = blobGet(blobKey, false);
@@ -318,11 +322,11 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag) {
-        return copyResource(from, to, etag, true);
+        return copyResource(from, to, etag, true, true);
     }
 
-    public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag, boolean overwrite) {
-        try (LockService.MoveLock ignored = lockService.lock(from, to)) {
+    public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag, boolean overwrite, boolean lock) {
+        try (LockService.MoveLock ignored = lock ? lockService.lock(from, to) : null) {
             String body = getResource(from, false);
 
             if (body == null) {

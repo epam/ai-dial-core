@@ -43,7 +43,7 @@ public class UploadFileController extends AccessControlBaseController {
 
                     LockService.Lock lock = proxy.getLockService().lock(resource);
                     try {
-                        etag.validate(() -> proxy.getStorage().getEtag(resource));
+                        etag.validate(() -> proxy.getStorage().getEtag(resource.getAbsoluteFilePath()));
 
                         BlobWriteStream writeStream = new BlobWriteStream(
                                 proxy.getVertx(),

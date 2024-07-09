@@ -174,6 +174,7 @@ public class ResourceController extends AccessControlBaseController {
                     if (metadata == null) {
                         context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
                     } else {
+                        context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
                         context.respond(HttpStatus.OK, metadata);
                     }
                 })

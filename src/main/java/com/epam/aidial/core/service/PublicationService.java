@@ -16,8 +16,10 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.epam.aidial.core.util.ResourceUtil;
 import com.epam.aidial.core.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -87,6 +90,10 @@ public class PublicationService {
 
         for (Publication publication : publications.values()) {
             leaveMetadata(publication);
+
+            if (publication.getEtag() == null) {
+                publication.setEtag(ResourceUtil.DEFAULT_ETAG);
+            }
         }
 
         return publications.values();
@@ -138,6 +145,10 @@ public class PublicationService {
             throw new ResourceNotFoundException("No publication: " + resource.getUrl());
         }
 
+        if (publication.getEtag() == null) {
+            publication.setEtag(ResourceUtil.DEFAULT_ETAG);
+        }
+
         return publication;
     }
 
@@ -179,7 +190,7 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication deletePublication(ResourceDescription resource) {
+    public Publication deletePublication(ResourceDescription resource, EtagHeader etag) {
         if (resource.getType() != ResourceType.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -187,7 +198,12 @@ public class PublicationService {
         resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
             Publication publication = publications.remove(resource.getUrl());
-            return (publication == null) ? body : encodePublications(publications);
+            if (publication == null) {
+                return body;
+            }
+
+            etag.validate(Objects.requireNonNull(publication.getEtag(), ResourceUtil.DEFAULT_ETAG));
+            return encodePublications(publications);
         });
 
         MutableObject<Publication> reference = new MutableObject<>();
@@ -199,6 +215,7 @@ public class PublicationService {
                 throw new ResourceNotFoundException("No publication: " + resource.getUrl());
             }
 
+            etag.validate(Objects.requireNonNull(publication.getEtag(), ResourceUtil.DEFAULT_ETAG));
             reference.setValue(publication);
             return encodePublications(publications);
         });
@@ -216,8 +233,10 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication approvePublication(ResourceDescription resource) {
+    public Publication approvePublication(ResourceDescription resource, EtagHeader etag) {
         Publication publication = getPublication(resource);
+        etag.validate(publication.getEtag());
+
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
@@ -236,13 +255,10 @@ public class PublicationService {
 
         resources.computeResource(publications(resource), body -> {
             Map<String, Publication> publications = decodePublications(body);
-            Publication previous = publications.put(resource.getUrl(), publication);
-
-            if (!publication.equals(previous)) {
-                throw new ResourceNotFoundException("Publication changed during approving: " + resource.getUrl());
-            }
-
             publication.setStatus(Publication.Status.APPROVED);
+            publication.setEtag(generateEtag(publication));
+            publications.put(resource.getUrl(), publication);
+
             return encodePublications(publications);
         });
 
@@ -267,7 +283,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication rejectPublication(ResourceDescription resource, RejectPublicationRequest request) {
+    public Publication rejectPublication(ResourceDescription resource, RejectPublicationRequest request, EtagHeader etag) {
         if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -280,6 +296,7 @@ public class PublicationService {
             if (publication == null) {
                 throw new ResourceNotFoundException("No publication: " + resource.getUrl());
             }
+            etag.validate(Objects.requireNonNull(publication.getEtag(), ResourceUtil.DEFAULT_ETAG));
 
             if (publication.getStatus() != Publication.Status.PENDING) {
                 throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
@@ -287,6 +304,7 @@ public class PublicationService {
 
             reference.setValue(publication);
             publication.setStatus(Publication.Status.REJECTED);
+            publication.setEtag(generateEtag(publication));
             return encodePublications(publications);
         });
 
@@ -343,6 +361,7 @@ public class PublicationService {
         publication.setTargetFolder(targetFolder);
         publication.setCreatedAt(clock.getAsLong());
         publication.setStatus(Publication.Status.PENDING);
+        publication.setEtag(generateEtag(publication));
 
         Set<String> urls = new HashSet<>();
         for (Publication.Resource resource : publication.getResources()) {
@@ -509,7 +528,7 @@ public class PublicationService {
             ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
 
-            if (!copyResource(from, to, EtagHeader.ANY)) {
+            if (!copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
         }
@@ -523,7 +542,7 @@ public class PublicationService {
             ResourceDescription from = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
 
-            if (!copyResource(from, to, EtagHeader.ANY)) {
+            if (!copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy review resource from: " + from.getUrl() + " to target: " + to.getUrl());
             }
         }
@@ -595,7 +614,7 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-            deleteResource(descriptor, EtagHeader.ANY);
+            deleteResource(descriptor);
         }
     }
 
@@ -603,7 +622,7 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
-            deleteResource(descriptor, EtagHeader.ANY);
+            deleteResource(descriptor);
         }
     }
 
@@ -615,18 +634,18 @@ public class PublicationService {
         };
     }
 
-    private boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag) {
+    private boolean copyResource(ResourceDescription from, ResourceDescription to) {
         return switch (from.getType()) {
             case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to, etag);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to, EtagHeader.ANY);
             default -> throw new IllegalStateException("Unsupported type: " + from.getType());
         };
     }
 
-    private void deleteResource(ResourceDescription descriptor, EtagHeader etag) {
+    private void deleteResource(ResourceDescription descriptor) {
         switch (descriptor.getType()) {
             case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor, etag);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor, EtagHeader.ANY);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }
@@ -648,6 +667,7 @@ public class PublicationService {
 
     private static Publication newMetadata(Publication publication) {
         return new Publication()
+                .setEtag(publication.getEtag())
                 .setUrl(publication.getUrl())
                 .setName(publication.getName())
                 .setTargetFolder(publication.getTargetFolder())
@@ -672,5 +692,9 @@ public class PublicationService {
 
     private static String encodePublications(Map<String, Publication> publications) {
         return ProxyUtil.convertToString(publications);
+    }
+
+    private static String generateEtag(Publication publication) {
+        return EtagBuilder.generateEtag(ProxyUtil.convertToString(publication).getBytes());
     }
 }

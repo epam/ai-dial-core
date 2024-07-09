@@ -8,7 +8,6 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -72,12 +71,11 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
                     }
 
-                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     try (LockService.MoveLock ignored = lockService.lock(sourceResource, destinationResource)) {
                         return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
 
                             resourceOperationService.moveResource(
-                                    bucket, bucketLocation, sourceResource, destinationResource, etag, request.isOverwrite());
+                                    bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
                             return null;
                         }), false);
                     }

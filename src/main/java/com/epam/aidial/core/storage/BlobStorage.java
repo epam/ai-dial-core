@@ -190,8 +190,8 @@ public class BlobStorage implements Closeable {
         return blobStore.blobMetadata(bucketName, storageLocation);
     }
 
-    public String getEtag(ResourceDescription resource) {
-        BlobMetadata meta = meta(resource.getAbsoluteFilePath());
+    public String getEtag(String filePath) {
+        BlobMetadata meta = meta(filePath);
         return meta != null ? ResourceUtil.extractEtag(meta.getUserMetadata()) : null;
     }
 
