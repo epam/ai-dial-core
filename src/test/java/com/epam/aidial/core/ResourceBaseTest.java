@@ -14,6 +14,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
+import org.apache.http.NameValuePair;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
@@ -31,10 +32,12 @@ import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -296,11 +299,12 @@ public class ResourceBaseTest {
         try (CloseableHttpResponse response = client.execute(request)) {
             int status = response.getStatusLine().getStatusCode();
             String answer = EntityUtils.toString(response.getEntity());
-            return new Response(status, answer);
+            return new Response(status, answer, Arrays.stream(response.getAllHeaders())
+                    .collect(Collectors.toUnmodifiableMap(NameValuePair::getName, NameValuePair::getValue)));
         }
     }
 
-    record Response(int status, String body) {
+    record Response(int status, String body, Map<String, String> headers) {
         public boolean ok() {
             return status() == 200;
         }

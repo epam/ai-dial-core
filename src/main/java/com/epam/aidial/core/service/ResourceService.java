@@ -274,7 +274,10 @@ public class ResourceService implements AutoCloseable {
                 blobPut(blobKey, "", createdAt, updatedAt, newEtag); // create an empty object for listing
             }
 
-            return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+            return new ResourceItemMetadata(descriptor)
+                    .setCreatedAt(createdAt)
+                    .setUpdatedAt(updatedAt)
+                    .setEtag(newEtag);
         }
     }
 

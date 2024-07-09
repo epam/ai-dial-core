@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.ThreadLocalRandom;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 @Slf4j
 class ResourceApiTest extends ResourceBaseTest {
 
@@ -55,6 +57,35 @@ class ResourceApiTest extends ResourceBaseTest {
 
         response = metadata("/folder/");
         verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
+    }
+
+    @Test
+    public void testIfMatch() {
+        Response response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
+        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+        verifyNotExact(response, 200, "\"etag\":\"70edd26b3686de5efcdae93fcc87c2bb\"");
+
+        response = metadata("/folder/conversation");
+        verifyNotExact(response, 200, "\"etag\":\"70edd26b3686de5efcdae93fcc87c2bb\"");
+
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "123");
+        verifyNotExact(response, 412, "ETag 123 is rejected");
+
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "70edd26b3686de5efcdae93fcc87c2bb");
+        assertEquals("82833ed7a10a4f99253fccdef4091ad9", response.headers().get("etag"));
+        verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
+
+        response = metadata("/folder/conversation");
+        verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
+
+        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "123");
+        verify(response, 412, "ETag 123 is rejected");
+
+        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "82833ed7a10a4f99253fccdef4091ad9");
+        verify(response, 200, "");
     }
 
     @Test
