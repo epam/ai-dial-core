@@ -1,15 +1,15 @@
 <config>
     <appender name="console" factory="com.epam.deltix.gflog.core.appender.ConsoleAppenderFactory"/>
     <appender name="file" factory="com.epam.deltix.gflog.core.appender.DailyRollingFileAppenderFactory"
-              bufferCapacity="32m" file="log/aidial.log" maxFiles="10" maxFileSize="1g">
+              bufferCapacity="32m" file="${env:AIDIAL_LOG_FILE:-log/aidial.log}" maxFiles="10" maxFileSize="1g">
         <layout template="%m%n"/>
     </appender>
 
-    <logger level="INFO">
+    <logger level="${env:AIDIAL_LOG_LEVEL:-INFO}">
         <appender-ref ref="console"/>
     </logger>
 
-    <logger level="INFO" name="aidial.log">
+    <logger level="${env:AIDIAL_LOG_LEVEL:-INFO}" name="aidial.log">
         <appender-ref ref="file"/>
     </logger>
 
