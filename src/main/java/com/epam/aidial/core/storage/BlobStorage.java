@@ -225,7 +225,9 @@ public class BlobStorage implements Closeable {
         } else {
             // listing file
             if (filesMetadata.size() == 1) {
-                return filesMetadata.get(0);
+                BlobMetadata fullMetadata = meta(resource.getAbsoluteFilePath());
+                return ((FileMetadata) filesMetadata.get(0))
+                        .setEtag(ResourceUtil.extractEtag(fullMetadata.getUserMetadata()));
             }
             return null;
         }

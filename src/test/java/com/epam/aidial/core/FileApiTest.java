@@ -30,6 +30,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(VertxExtension.class)
 @Slf4j
@@ -869,6 +870,130 @@ public class FileApiTest extends ResourceBaseTest {
         });
     }
 
+
+    @Test
+    public void testIfMatch(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(7);
+        WebClient client = WebClient.create(vertx);
+        String newContent = "NEW CONTENT";
+        String newEtag = "bb6ed8b95d44dba4f8e4a99ebaca9a00";
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify no files
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(ResourceFolderMetadata.class))
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertTrue(response.body().getItems().isEmpty());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload a test file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(TEST_FILE_ETAG, response.getHeader(HttpHeaders.ETAG));
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // update the test file with incorrect ETag
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_MATCH, "123")
+                    .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(412, response.statusCode());
+                                    assertEquals("ETag 123 is rejected", response.bodyAsString());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // update the test file with correct ETag
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_MATCH, TEST_FILE_ETAG)
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("test_file.txt", newContent, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(newEtag, response.getHeader(HttpHeaders.ETAG));
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify uploaded file is listed with new etag
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(newEtag, response.body().getEtag());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // delete the test file with incorrect ETag
+            client.delete(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_MATCH, TEST_FILE_ETAG)
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(412, response.statusCode());
+                            assertEquals("ETag %s is rejected".formatted(TEST_FILE_ETAG), response.bodyAsString());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).andThen((result) -> {
+            // delete the test file with correct ETag
+            client.delete(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_MATCH, newEtag)
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
 
     private static MultipartForm generateMultipartForm(String fileName, String content) {
         return generateMultipartForm(fileName, content, "text/plan");

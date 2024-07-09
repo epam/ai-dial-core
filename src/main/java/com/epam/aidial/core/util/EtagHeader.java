@@ -12,8 +12,9 @@ import java.util.stream.Collectors;
 
 @AllArgsConstructor
 public class EtagHeader {
-    public static final EtagHeader ANY = new EtagHeader(Set.of());
+    public static final EtagHeader ANY = new EtagHeader(Set.of(), "");
     private final Set<String> tags;
+    private final String raw;
 
     public void validate(String etag) {
         validate(() -> etag);
@@ -31,7 +32,7 @@ public class EtagHeader {
         }
 
         if (!tags.contains(etag)) {
-            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "ETag %s is outdated".formatted(etag));
+            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "ETag %s is rejected".formatted(raw));
         }
     }
 
@@ -44,6 +45,6 @@ public class EtagHeader {
         Set<String> parsedTags = Arrays.stream(etag.split(","))
                 .map(tag -> StringUtils.strip(tag, "\""))
                 .collect(Collectors.toUnmodifiableSet());
-        return new EtagHeader(parsedTags);
+        return new EtagHeader(parsedTags, etag);
     }
 }
