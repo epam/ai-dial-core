@@ -12,11 +12,14 @@ import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
+import com.epam.aidial.core.service.CustomApplicationService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.NotificationService;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
@@ -83,6 +86,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AccessService accessService;
     private final LockService lockService;
     private final ResourceOperationService resourceOperationService;
+    private final RuleService ruleService;
+    private final NotificationService notificationService;
+    private final CustomApplicationService customApplicationService;
     private final String version;
 
     @Override
@@ -147,7 +153,9 @@ public class Proxy implements Handler<HttpServerRequest> {
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
         log.debug("Authorization header: {}", authorization);
-        ApiKeyData apiKeyData;
+        Future<AuthorizationResult> authorizationResultFuture;
+
+        request.pause();
         if (apiKey == null && authorization == null) {
             respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
             return;
@@ -155,25 +163,28 @@ public class Proxy implements Handler<HttpServerRequest> {
             respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
             return;
         } else if (apiKey != null) {
-            apiKeyData = apiKeyStore.getApiKeyData(apiKey);
-            // Special case handling. OpenAI client sends both API key and Auth headers even if a caller sets just API Key only
-            // Auth header is set to the same value as API Key header
-            // ignore auth header in this case
-            authorization = null;
-            if (apiKeyData == null) {
-                respond(request, HttpStatus.UNAUTHORIZED, "Unknown api key");
-                return;
-            }
+            authorizationResultFuture = apiKeyStore.getApiKeyData(apiKey)
+                    .onFailure(error -> onGettingApiKeyDataFailure(error, request))
+                    .compose(apiKeyData -> {
+                        if (apiKeyData == null) {
+                            String errorMessage = "Unknown api key";
+                            respond(request, HttpStatus.UNAUTHORIZED, errorMessage);
+                            return Future.failedFuture(errorMessage);
+                        }
+                        return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
+                    });
         } else {
-            apiKeyData = new ApiKeyData();
+            authorizationResultFuture = tokenValidator.extractClaims(authorization)
+                    .onFailure(error -> onExtractClaimsFailure(error, request))
+                    .map(extractedClaims -> new AuthorizationResult(new ApiKeyData(), extractedClaims));
         }
 
-        request.pause();
-        Future<ExtractedClaims> extractedClaims = tokenValidator.extractClaims(authorization);
-
-        extractedClaims.onFailure(error -> onExtractClaimsFailure(error, request))
-                .compose(claims -> onExtractClaimsSuccess(claims, config, request, apiKeyData, traceId, spanId))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId))
                 .onComplete(ignore -> request.resume());
+    }
+
+    private record AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
+
     }
 
     private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
@@ -181,9 +192,14 @@ public class Proxy implements Handler<HttpServerRequest> {
         respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
     }
 
+    private void onGettingApiKeyDataFailure(Throwable error, HttpServerRequest request) {
+        log.error("Can't find data associated with API key", error);
+        respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
+    }
+
     @SneakyThrows
-    private Future<?> onExtractClaimsSuccess(ExtractedClaims extractedClaims, Config config,
-                                        HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
+    private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims, Config config,
+                                                 HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);

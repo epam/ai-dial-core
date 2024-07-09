@@ -119,11 +119,16 @@ public final class FileConfigStore implements ConfigStore {
         return ProxyUtil.MAPPER.convertValue(tree, Config.class);
     }
 
+    @SneakyThrows
     private static InputStream openStream(String path) {
         try {
             return new BufferedInputStream(new FileInputStream(path));
         } catch (FileNotFoundException e) {
-            return ConfigStore.class.getClassLoader().getResourceAsStream(path);
+            InputStream stream = ConfigStore.class.getClassLoader().getResourceAsStream(path);
+            if (stream == null) {
+                throw new FileNotFoundException("File not found: " + path);
+            }
+            return stream;
         }
     }
 

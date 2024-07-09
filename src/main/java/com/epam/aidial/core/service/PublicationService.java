@@ -3,14 +3,16 @@ package com.epam.aidial.core.service;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.Notification;
 import com.epam.aidial.core.data.Publication;
+import com.epam.aidial.core.data.RejectPublicationRequest;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.ResourceUrl;
 import com.epam.aidial.core.data.Rule;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.security.RuleMatcher;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -19,8 +21,8 @@ import com.epam.aidial.core.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.mutable.MutableObject;
-import org.apache.commons.lang3.tuple.Pair;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,8 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -43,37 +43,30 @@ import static com.epam.aidial.core.storage.BlobStorageUtil.PUBLIC_LOCATION;
 public class PublicationService {
 
     private static final String PUBLICATIONS_NAME = "publications";
-    private static final String RULES_NAME = "rules";
 
     private static final TypeReference<Map<String, Publication>> PUBLICATIONS_TYPE = new TypeReference<>() {
-    };
-
-    private static final TypeReference<Map<String, List<Rule>>> RULES_TYPE = new TypeReference<>() {
     };
 
     private static final ResourceDescription PUBLIC_PUBLICATIONS = ResourceDescription.fromDecoded(
             ResourceType.PUBLICATION, PUBLIC_BUCKET, PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
-    private static final ResourceDescription PUBLIC_RULES = ResourceDescription.fromDecoded(
-            ResourceType.RULES, PUBLIC_BUCKET, PUBLIC_LOCATION, RULES_NAME);
+    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
+            ResourceType.PROMPT, ResourceType.APPLICATION);
 
-    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT);
-
-    /**
-     * Key is updated time from the metadata. Value is decoded map (folder path, list of rules).
-     */
-    private final AtomicReference<Pair<Long, Map<String, List<Rule>>>> cachedRules = new AtomicReference<>();
     private final EncryptionService encryption;
     private final ResourceService resources;
+    private final AccessService accessService;
+    private final RuleService ruleService;
+    private final NotificationService notificationService;
     private final BlobStorage files;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
-    public boolean isReviewResource(ResourceDescription resource) {
+    public static boolean isReviewResource(ResourceDescription resource) {
         return resource.isPrivate() && resource.getBucketLocation().contains(PUBLICATIONS_NAME);
     }
 
-    public boolean hasReviewAccess(ProxyContext context, ResourceDescription resource) {
+    public static boolean hasReviewAccess(ProxyContext context, ResourceDescription resource) {
         if (isReviewResource(resource)) {
             String location = BlobStorageUtil.buildInitiatorBucket(context);
             String reviewLocation = location + PUBLICATIONS_NAME + PATH_SEPARATOR;
@@ -81,55 +74,6 @@ public class PublicationService {
         }
 
         return false;
-    }
-
-    public boolean hasPublicAccess(ProxyContext context, ResourceDescription resource) {
-        if (!resource.isPublic()) {
-            return false;
-        }
-
-        Map<String, List<Rule>> rules = getCachedRules();
-        Map<String, Boolean> cache = new HashMap<>();
-
-        return evaluate(context, resource, rules, cache);
-    }
-
-    public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {
-        if (!folder.isPublic() || !folder.isFolder()) {
-            return;
-        }
-
-        Map<String, List<Rule>> rules = getCachedRules();
-        Map<String, Boolean> cache = new HashMap<>();
-        cache.put(ruleUrl(folder), true);
-
-        List<? extends MetadataBase> filtered = metadata.getItems().stream().filter(item -> {
-            ResourceDescription resource = ResourceDescription.fromPublicUrl(item.getUrl());
-            return evaluate(context, resource, rules, cache);
-        }).toList();
-
-        metadata.setItems(filtered);
-    }
-
-    public Map<String, List<Rule>> listRules(ResourceDescription resource) {
-        if (!resource.isFolder() || !resource.isPublic()) {
-            throw new IllegalArgumentException("Bad rule url: " + resource.getUrl());
-        }
-
-        Map<String, List<Rule>> rules = getCachedRules();
-        Map<String, List<Rule>> result = new TreeMap<>();
-
-        while (resource != null) {
-            String url = ruleUrl(resource);;
-            List<Rule> list = rules.get(url);
-            resource = resource.getParent();
-
-            if (list != null) {
-                result.put(url, list);
-            }
-        }
-
-        return result;
     }
 
     public Collection<Publication> listPublications(ResourceDescription resource) {
@@ -196,19 +140,22 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication createPublication(ResourceDescription bucket, Publication publication) {
-        if (bucket.getType() != ResourceType.PUBLICATION || bucket.isPublic() || !bucket.isRootFolder()) {
-            throw new IllegalArgumentException("Bad publication bucket: " + bucket.getUrl());
-        }
+    public Publication createPublication(ProxyContext context, Publication publication) {
+        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String bucket = encryption.encrypt(bucketLocation);
 
-        preparePublication(bucket, publication);
+        prepareAndValidatePublicationRequest(context, bucket, bucketLocation, publication);
 
-        checkSourceResources(publication);
-        checkTargetResources(publication);
+        List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
+                .filter(resource -> resource.getAction() == Publication.ResourceAction.ADD)
+                .toList();
 
-        copySourceToReviewResources(publication);
+        // copy resources as is
+        copySourceToReviewResources(resourcesToAdd);
+        // replace links
+        replaceSourceToReviewLinks(resourcesToAdd);
 
-        resources.computeResource(publications(bucket), body -> {
+        resources.computeResource(publications(bucket, bucketLocation), body -> {
             Map<String, Publication> publications = decodePublications(body);
 
             if (publications.put(publication.getUrl(), publication) != null) {
@@ -231,37 +178,40 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication deletePublication(ResourceDescription resource, boolean isAdmin) {
+    public Publication deletePublication(ResourceDescription resource) {
         if (resource.getType() != ResourceType.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
 
-        // get publication state
-        Map<String, Publication> userPublications = decodePublications(resources.getResource(publications(resource)));
-        Publication publication = userPublications.get(resource.getUrl());
+        resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
+            Map<String, Publication> publications = decodePublications(body);
+            Publication publication = publications.remove(resource.getUrl());
+            return (publication == null) ? body : encodePublications(publications);
+        });
 
-        if (publication == null) {
-            throw new ResourceNotFoundException("No publication: " + resource.getUrl());
-        }
+        MutableObject<Publication> reference = new MutableObject<>();
+        resources.computeResource(publications(resource), body -> {
+            Map<String, Publication> publications = decodePublications(body);
+            Publication publication = publications.remove(resource.getUrl());
 
-        // if admin - delete from any state, if user - delete only PENDING/REJECTED publications
-        if (isAdmin || isSafeForDeletion(publication)) {
-            publication = cleanUpPublications(resource);
-            Publication.Status status = publication.getStatus();
-
-            if (status == Publication.Status.PENDING) {
-                deleteReviewResources(publication);
+            if (publication == null) {
+                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
             }
 
-            if (status == Publication.Status.APPROVED || status == Publication.Status.REQUESTED_FOR_DELETION) {
-                deletePublicResources(publication);
-            }
+            reference.setValue(publication);
+            return encodePublications(publications);
+        });
 
-            return publication;
+        Publication publication = reference.getValue();
+
+        if (publication.getStatus() == Publication.Status.PENDING) {
+            List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
+                    .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                    .toList();
+            deleteReviewResources(resourcesToAdd);
         }
 
-        // if user and resources already published - move publication for REQUESTED_FOR_DELETION state
-        return preparePublicationForDeletion(resource, publication);
+        return publication;
     }
 
     @Nullable
@@ -271,8 +221,17 @@ public class PublicationService {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
 
-        checkReviewResources(publication);
-        checkTargetResources(publication);
+        List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
+                .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                .toList();
+
+        List<Publication.Resource> resourcesToDelete = publication.getResources().stream()
+                .filter(i -> i.getAction() == Publication.ResourceAction.DELETE)
+                .toList();
+
+        checkReviewResources(resourcesToAdd);
+        checkTargetResources(resourcesToAdd, false);
+        checkTargetResources(resourcesToDelete, true);
 
         resources.computeResource(publications(resource), body -> {
             Map<String, Publication> publications = decodePublications(body);
@@ -292,22 +251,22 @@ public class PublicationService {
             return (removed == null) ? body : encodePublications(publications);
         });
 
-        if (publication.getRules() != null) {
-            resources.computeResource(PUBLIC_RULES, body -> {
-                Map<String, List<Rule>> rules = decodeRules(body);
-                List<Rule> previous = rules.put(publication.getTargetUrl(), publication.getRules());
-                return (publication.getRules().equals(previous)) ? body : encodeRules(rules);
-            });
-        }
+        ruleService.storeRules(publication);
 
-        copyReviewToTargetResources(publication);
-        deleteReviewResources(publication);
+        copyReviewToTargetResources(resourcesToAdd);
+        replaceReviewToTargetLinks(resourcesToAdd);
+        deleteReviewResources(resourcesToAdd);
+        deletePublicResources(resourcesToDelete);
+
+        String notificationMessage = "Your request has been approved by admin";
+        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
 
         return publication;
     }
 
     @Nullable
-    public Publication rejectPublication(ResourceDescription resource) {
+    public Publication rejectPublication(ResourceDescription resource, RejectPublicationRequest request) {
         if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -321,15 +280,12 @@ public class PublicationService {
                 throw new ResourceNotFoundException("No publication: " + resource.getUrl());
             }
 
-            boolean isPending = publication.getStatus() == Publication.Status.PENDING;
-            if (!isPending && publication.getStatus() != Publication.Status.REQUESTED_FOR_DELETION) {
+            if (publication.getStatus() != Publication.Status.PENDING) {
                 throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
             }
 
             reference.setValue(publication);
-            // if publication is PENDING - finalize status to REJECTED,
-            // if REQUESTED_FOR_DELETION - rollback to APPROVED state, because admin do to want to approve user's request
-            publication.setStatus(isPending ? Publication.Status.REJECTED : Publication.Status.APPROVED);
+            publication.setStatus(Publication.Status.REJECTED);
             return encodePublications(publications);
         });
 
@@ -340,192 +296,216 @@ public class PublicationService {
         });
 
         Publication publication = reference.getValue();
-        deleteReviewResources(publication);
+        List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
+                .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                .toList();
+        deleteReviewResources(resourcesToAdd);
+
+        String rejectReason = request.comment();
+        String notificationMessage = "Your request has been rejected by admin";
+        notificationMessage = rejectReason != null ? notificationMessage + ": " + rejectReason : notificationMessage;
+        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+
         return publication;
     }
 
-    private void preparePublication(ResourceDescription bucket, Publication publication) {
-        if (publication.getTargetUrl() == null) {
-            throw new IllegalArgumentException("Publication \"targetUrl\" is missing");
+    private void prepareAndValidatePublicationRequest(ProxyContext context, String bucketName, String bucketLocation, Publication publication) {
+        String targetFolder = publication.getTargetFolder();
+        if (targetFolder == null) {
+            throw new IllegalArgumentException("Publication \"targetFolder\" is missing");
         }
 
-        if (publication.getResources() == null || publication.getResources().isEmpty()) {
-            throw new IllegalArgumentException("Publication \"resources\" is missing");
+        // rules to the root publication folder are not allowed
+        if (targetFolder.equals("public/") && publication.getRules() != null && !publication.getRules().isEmpty()) {
+            throw new IllegalArgumentException("Rules are not allowed for root targetFolder");
         }
 
-        ResourceUrl targetFolder = ResourceUrl.parse(publication.getTargetUrl());
+        // publication must contain resources or rule or both
+        if ((publication.getResources() == null || publication.getResources().isEmpty()) && publication.getRules() == null) {
+            throw new IllegalArgumentException("Publication must have at least one resource or rule");
+        }
 
-        if (!targetFolder.startsWith(PUBLIC_BUCKET) || !targetFolder.isFolder()) {
+        ResourceUrl targetFolderUrl = ResourceUrl.parse(publication.getTargetFolder());
+
+        if (!targetFolderUrl.startsWith(PUBLIC_BUCKET) || !targetFolderUrl.isFolder()) {
             throw new IllegalArgumentException("Publication \"targetUrl\" must start with: %s and ends with: %s"
                     .formatted(PUBLIC_BUCKET, PATH_SEPARATOR));
         }
 
         String id = UrlUtil.encodePath(ids.get());
-        String reviewBucket = encodeReviewBucket(bucket, id);
+        String publicationUrl = String.join(PATH_SEPARATOR, "publications", bucketName, id);
+        String reviewBucket = encodeReviewBucket(bucketLocation, id);
+        targetFolder = targetFolderUrl.getUrl();
 
-        publication.setUrl(bucket.getUrl() + id);
-        publication.setTargetUrl(targetFolder.getUrl());
+        publication.setUrl(publicationUrl);
+        publication.setTargetFolder(targetFolder);
         publication.setCreatedAt(clock.getAsLong());
         publication.setStatus(Publication.Status.PENDING);
 
         Set<String> urls = new HashSet<>();
-
         for (Publication.Resource resource : publication.getResources()) {
-            ResourceDescription source = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), bucket);
-            ResourceDescription target = ResourceDescription.fromPublicUrl(resource.getTargetUrl());
-
-            String sourceUrl = source.getUrl();
-            String targetUrl = target.getUrl();
-
-            if (source.isFolder()) {
-                throw new IllegalArgumentException("Source resource is folder: " + sourceUrl);
+            Publication.ResourceAction action = resource.getAction();
+            if (action == null) {
+                throw new IllegalArgumentException("Resource \"action\" is missing");
             }
 
-            if (target.isFolder()) {
-                throw new IllegalArgumentException("Target resource is folder: " + targetUrl);
-            }
-
-            if (!ALLOWED_RESOURCES.contains(source.getType())) {
-                throw new IllegalArgumentException("Source resource type is not supported: " + sourceUrl);
-            }
-
-            if (source.getType() != target.getType()) {
-                throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
-            }
-
-            String targetSuffix = targetUrl.substring(source.getType().getGroup().length() + 1);
-
-            if (!targetSuffix.startsWith(publication.getTargetUrl())) {
-                throw new IllegalArgumentException("Target resource folder does not match with target folder: " + targetUrl);
+            if (action == Publication.ResourceAction.ADD) {
+                validateResourceForAddition(context, resource, targetFolder, reviewBucket, urls);
+            } else if (action == Publication.ResourceAction.DELETE) {
+                validateResourceForDeletion(resource, targetFolder, urls);
             } else {
-                targetSuffix = targetSuffix.substring(publication.getTargetUrl().length());
+                throw new UnsupportedOperationException("Unsupported resource action: " + action);
             }
-
-            String reviewUrl = source.getType().getGroup() + PATH_SEPARATOR
-                    + reviewBucket + PATH_SEPARATOR + targetSuffix;
-
-            if (!urls.add(sourceUrl)) {
-                throw new IllegalArgumentException("Source resources have duplicate urls: " + sourceUrl);
-            }
-
-            if (!urls.add(targetUrl)) {
-                throw new IllegalArgumentException("Target resources have duplicate urls: " + targetUrl);
-            }
-
-            if (!urls.add(reviewUrl)) {
-                throw new IllegalArgumentException("Review resources have duplicate urls: " + reviewUrl);
-            }
-
-            resource.setSourceUrl(sourceUrl);
-            resource.setTargetUrl(targetUrl);
-            resource.setReviewUrl(reviewUrl);
         }
 
+        Set<ResourceDescription> targetResources = publication.getResources().stream()
+                .map(resource -> ResourceDescription.fromPublicUrl(resource.getTargetUrl()))
+                .collect(Collectors.toUnmodifiableSet());
+
+        // validate if user has access to all target resources
+        boolean hasPublicAccess = accessService.hasPublicAccess(targetResources, context);
+        if (!hasPublicAccess) {
+            throw new PermissionDeniedException("User don't have permissions to the provided target resources");
+        }
+
+        validateRules(publication);
+    }
+
+    private void validateResourceForAddition(ProxyContext context, Publication.Resource resource, String targetFolder,
+                                             String reviewBucket, Set<String> urls) {
+        ResourceDescription source = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
+        ResourceDescription target = ResourceDescription.fromPublicUrl(resource.getTargetUrl());
+
+        String sourceUrl = source.getUrl();
+        String targetUrl = target.getUrl();
+
+        if (!accessService.hasReadAccess(source, context)) {
+            throw new PermissionDeniedException("You don't have permission to access resource " + sourceUrl);
+        }
+
+        if (source.isFolder()) {
+            throw new IllegalArgumentException("Source resource is folder: " + sourceUrl);
+        }
+
+        if (target.isFolder()) {
+            throw new IllegalArgumentException("Target resource is folder: " + targetUrl);
+        }
+
+        if (!ALLOWED_RESOURCES.contains(source.getType())) {
+            throw new IllegalArgumentException("Source resource type is not supported: " + sourceUrl);
+        }
+
+        if (source.getType() != target.getType()) {
+            throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
+        }
+
+        String targetSuffix = targetUrl.substring(source.getType().getGroup().length() + 1);
+
+        if (!targetSuffix.startsWith(targetFolder)) {
+            throw new IllegalArgumentException("Target resource folder does not match with target folder: " + targetUrl);
+        } else {
+            targetSuffix = targetSuffix.substring(targetFolder.length());
+        }
+
+        if (!checkResource(source)) {
+            throw new IllegalArgumentException("Source resource does not exists: " + sourceUrl);
+        }
+
+        if (checkResource(target)) {
+            throw new IllegalArgumentException("Target resource already exists: " + targetUrl);
+        }
+
+        String reviewUrl = source.getType().getGroup() + PATH_SEPARATOR
+                + reviewBucket + PATH_SEPARATOR + targetSuffix;
+
+        if (!urls.add(sourceUrl)) {
+            throw new IllegalArgumentException("Source resources have duplicate urls: " + sourceUrl);
+        }
+
+        if (!urls.add(targetUrl)) {
+            throw new IllegalArgumentException("Target resources have duplicate urls: " + targetUrl);
+        }
+
+        if (!urls.add(reviewUrl)) {
+            throw new IllegalArgumentException("Review resources have duplicate urls: " + reviewUrl);
+        }
+
+        resource.setSourceUrl(sourceUrl);
+        resource.setTargetUrl(targetUrl);
+        resource.setReviewUrl(reviewUrl);
+    }
+
+    private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls) {
+        String targetUrl = resource.getTargetUrl();
+        ResourceDescription target = ResourceDescription.fromPublicUrl(targetUrl);
+
+        if (target.isFolder()) {
+            throw new IllegalArgumentException("Target resource is folder: " + targetUrl);
+        }
+
+        String targetSuffix = targetUrl.substring(target.getType().getGroup().length() + 1);
+        if (!targetSuffix.startsWith(targetFolder)) {
+            throw new IllegalArgumentException("Target resource folder does not match with target folder: " + targetUrl);
+        }
+
+        if (!urls.add(targetUrl)) {
+            throw new IllegalArgumentException("Target resources have duplicate urls: " + targetUrl);
+        }
+
+        if (!checkResource(target)) {
+            throw new IllegalArgumentException("Target resource does not exists: " + targetUrl);
+        }
+
+        resource.setTargetUrl(targetUrl);
+    }
+
+    private void validateRules(Publication publication) {
         if (publication.getRules() != null) {
             for (Rule rule : publication.getRules()) {
+                Rule.Function function = rule.getFunction();
+                if (function == null) {
+                    throw new IllegalArgumentException("Rule does not have function");
+                }
+
                 if (rule.getSource() == null) {
                     throw new IllegalArgumentException("Rule does not have source");
                 }
 
-                if (rule.getTargets() == null || rule.getTargets().isEmpty()) {
-                    throw new IllegalArgumentException("Rule does not have targets");
+                // function TRUE or FALSE do not require targets
+                if (function != Rule.Function.TRUE && function != Rule.Function.FALSE) {
+                    if (rule.getTargets() == null || rule.getTargets().isEmpty()) {
+                        throw new IllegalArgumentException("Rule %s does not have targets".formatted(function));
+                    }
                 }
-
-                if (rule.getFunction() == null) {
-                    throw new IllegalArgumentException("Rule does not have function");
-                }
             }
         }
     }
 
-    private Publication cleanUpPublications(ResourceDescription resource) {
-        MutableObject<Publication> reference = new MutableObject<>();
-        resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
-            Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.remove(resource.getUrl());
-            return (publication == null) ? body : encodePublications(publications);
-        });
-
-        resources.computeResource(publications(resource), body -> {
-            Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.remove(resource.getUrl());
-
-            if (publication == null) {
-                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
-            }
-
-            reference.setValue(publication);
-            return encodePublications(publications);
-        });
-        return reference.getValue();
-    }
-
-    private Publication preparePublicationForDeletion(ResourceDescription resource, Publication publication) {
-        if (publication.getStatus() != Publication.Status.APPROVED) {
-            throw new IllegalStateException("Expected APPROVED publication, but got " + publication.getStatus());
-        }
-        publication.setStatus(Publication.Status.REQUESTED_FOR_DELETION);
-        MutableObject<Publication> reference = new MutableObject<>();
-        resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
-            Map<String, Publication> publications = decodePublications(body);
-            publications.put(resource.getUrl(), publication);
-            return encodePublications(publications);
-        });
-
-        resources.computeResource(publications(resource), body -> {
-            Map<String, Publication> publications = decodePublications(body);
-            Publication userPublication = publications.get(resource.getUrl());
-
-            if (userPublication == null) {
-                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
-            }
-
-            userPublication.setStatus(Publication.Status.REQUESTED_FOR_DELETION);
-            reference.setValue(userPublication);
-            return encodePublications(publications);
-        });
-        return reference.getValue();
-    }
-
-    private static boolean isSafeForDeletion(Publication publication) {
-        return (publication.getStatus() == Publication.Status.PENDING) || (publication.getStatus() == Publication.Status.REJECTED);
-    }
-
-    private void checkSourceResources(Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
-            String url = resource.getSourceUrl();
-            ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-
-            if (!checkResource(descriptor)) {
-                throw new IllegalArgumentException("Source resource does not exist: " + descriptor.getUrl());
-            }
-        }
-    }
-
-    private void checkReviewResources(Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
+    private void checkReviewResources(List<Publication.Resource> resources) {
+        for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-
             if (!checkResource(descriptor)) {
                 throw new IllegalArgumentException("Review resource does not exist: " + descriptor.getUrl());
             }
         }
     }
 
-    private void checkTargetResources(Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
+    private void checkTargetResources(List<Publication.Resource> resources, boolean exists) {
+        for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
 
-            if (checkResource(descriptor)) {
-                throw new IllegalArgumentException("Target resource already exists: " + descriptor.getUrl());
+            if (checkResource(descriptor) != exists) {
+                String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
+                throw new IllegalArgumentException(errorMessage);
             }
         }
     }
 
-    private void copySourceToReviewResources(Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
+    private void copySourceToReviewResources(List<Publication.Resource> resources) {
+        for (Publication.Resource resource : resources) {
             String sourceUrl = resource.getSourceUrl();
             String reviewUrl = resource.getReviewUrl();
 
@@ -538,8 +518,8 @@ public class PublicationService {
         }
     }
 
-    private void copyReviewToTargetResources(Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
+    private void copyReviewToTargetResources(List<Publication.Resource> resources) {
+        for (Publication.Resource resource : resources) {
             String reviewUrl = resource.getReviewUrl();
             String targetUrl = resource.getTargetUrl();
 
@@ -552,16 +532,78 @@ public class PublicationService {
         }
     }
 
-    private void deleteReviewResources(Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
+    private void replaceSourceToReviewLinks(List<Publication.Resource> resources) {
+        List<ResourceDescription> reviewConversations = new ArrayList<>();
+        List<ResourceDescription> reviewPublications = new ArrayList<>();
+        Map<String, String> attachmentsMap = new HashMap<>();
+        for (Publication.Resource resource : resources) {
+            String sourceUrl = resource.getSourceUrl();
+            String reviewUrl = resource.getReviewUrl();
+
+            ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
+            ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
+
+            collectLinksForReplacement(reviewConversations, reviewPublications, attachmentsMap, from, to);
+        }
+
+        for (ResourceDescription reviewConversation : reviewConversations) {
+            this.resources.computeResource(reviewConversation, body ->
+                    PublicationUtil.replaceConversationLinks(body, reviewConversation, attachmentsMap)
+            );
+        }
+
+        for (ResourceDescription reviewPublication : reviewPublications) {
+            this.resources.computeResource(reviewPublication, body -> PublicationUtil.replaceApplicationIdentity(body, reviewPublication));
+        }
+    }
+
+    private void replaceReviewToTargetLinks(List<Publication.Resource> resources) {
+        List<ResourceDescription> publicConversations = new ArrayList<>();
+        List<ResourceDescription> publicApplications = new ArrayList<>();
+        Map<String, String> attachmentsMap = new HashMap<>();
+        for (Publication.Resource resource : resources) {
+            String reviewUrl = resource.getReviewUrl();
+            String targetUrl = resource.getTargetUrl();
+
+            ResourceDescription from = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
+            ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
+
+            collectLinksForReplacement(publicConversations, publicApplications, attachmentsMap, from, to);
+        }
+
+        for (ResourceDescription publicConversation : publicConversations) {
+            this.resources.computeResource(publicConversation, body ->
+                    PublicationUtil.replaceConversationLinks(body, publicConversation, attachmentsMap)
+            );
+        }
+
+        for (ResourceDescription publicApplication : publicApplications) {
+            this.resources.computeResource(publicApplication, body -> PublicationUtil.replaceApplicationIdentity(body, publicApplication));
+        }
+    }
+
+    private void collectLinksForReplacement(List<ResourceDescription> publicConversations, List<ResourceDescription> publicApplications,
+                                            Map<String, String> attachmentsMap, ResourceDescription from, ResourceDescription to) {
+        ResourceType type = from.getType();
+        if (type == ResourceType.CONVERSATION) {
+            publicConversations.add(to);
+        } else if (type == ResourceType.FILE) {
+            attachmentsMap.put(from.getUrl(), to.getUrl());
+        } else if (type == ResourceType.APPLICATION) {
+            publicApplications.add(to);
+        }
+    }
+
+    private void deleteReviewResources(List<Publication.Resource> resources) {
+        for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
             deleteResource(descriptor);
         }
     }
 
-    private void deletePublicResources(Publication publication) {
-        for (Publication.Resource resource : publication.getResources()) {
+    private void deletePublicResources(List<Publication.Resource> resources) {
+        for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
             deleteResource(descriptor);
@@ -571,7 +613,7 @@ public class PublicationService {
     private boolean checkResource(ResourceDescription descriptor) {
         return switch (descriptor.getType()) {
             case FILE -> files.exists(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.hasResource(descriptor);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.hasResource(descriptor);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         };
     }
@@ -579,7 +621,7 @@ public class PublicationService {
     private boolean copyResource(ResourceDescription from, ResourceDescription to) {
         return switch (from.getType()) {
             case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.copyResource(from, to);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
             default -> throw new IllegalStateException("Unsupported type: " + from.getType());
         };
     }
@@ -587,71 +629,17 @@ public class PublicationService {
     private void deleteResource(ResourceDescription descriptor) {
         switch (descriptor.getType()) {
             case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION -> resources.deleteResource(descriptor);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }
 
-    private String encodeReviewBucket(ResourceDescription bucket, String id) {
-        String path = bucket.getBucketLocation()
+    private String encodeReviewBucket(String bucketLocation, String id) {
+        String path = bucketLocation
                 + PUBLICATIONS_NAME + PATH_SEPARATOR
                 + id + PATH_SEPARATOR;
 
         return encryption.encrypt(path);
-    }
-
-    private Map<String, List<Rule>> getCachedRules() {
-        ResourceItemMetadata meta = resources.getResourceMetadata(PUBLIC_RULES);
-        long key = (meta == null) ? Long.MIN_VALUE : meta.getUpdatedAt();
-        Pair<Long, Map<String, List<Rule>>> current = cachedRules.get();
-
-        if (current == null || current.getKey() != key) {
-            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES);
-            Pair<Long, Map<String, List<Rule>>> next = (resource == null)
-                    ? Pair.of(Long.MIN_VALUE, decodeRules(null))
-                    : Pair.of(resource.getKey().getUpdatedAt(), decodeRules(resource.getValue()));
-
-            cachedRules.compareAndSet(current, next);
-            current = next;
-        }
-
-        return current.getValue();
-    }
-
-    private static boolean evaluate(ProxyContext context,
-                                    ResourceDescription resource,
-                                    Map<String, List<Rule>> rules,
-                                    Map<String, Boolean> cache) {
-
-        if (resource != null && !resource.isFolder()) {
-            resource = resource.getParent();
-        }
-
-        if (resource == null) {
-            return true;
-        }
-
-        String folderUrl = ruleUrl(resource);
-        Boolean evaluated = cache.get(folderUrl);
-
-        if (evaluated != null) {
-            return evaluated;
-        }
-
-        evaluated = evaluate(context, resource.getParent(), rules, cache);
-
-        if (evaluated) {
-            List<Rule> folderRules = rules.get(folderUrl);
-            evaluated = folderRules == null || RuleMatcher.match(context, folderRules);
-        }
-
-        cache.put(folderUrl, evaluated);
-        return evaluated;
-    }
-
-    private static String ruleUrl(ResourceDescription resource) {
-        String prefix = resource.getType().getGroup();
-        return resource.getUrl().substring(prefix.length() + 1);
     }
 
     /**
@@ -664,8 +652,10 @@ public class PublicationService {
     private static Publication newMetadata(Publication publication) {
         return new Publication()
                 .setUrl(publication.getUrl())
-                .setTargetUrl(publication.getTargetUrl())
+                .setName(publication.getName())
+                .setTargetFolder(publication.getTargetFolder())
                 .setStatus(publication.getStatus())
+                .setResourceTypes(publication.getResourceTypes())
                 .setCreatedAt(publication.getCreatedAt());
     }
 
@@ -685,14 +675,5 @@ public class PublicationService {
 
     private static String encodePublications(Map<String, Publication> publications) {
         return ProxyUtil.convertToString(publications);
-    }
-
-    private static Map<String, List<Rule>> decodeRules(String json) {
-        Map<String, List<Rule>> rules = ProxyUtil.convertToObject(json, RULES_TYPE);
-        return (rules == null) ? new LinkedHashMap<>() : rules;
-    }
-
-    private static String encodeRules(Map<String, List<Rule>> rules) {
-        return ProxyUtil.convertToString(rules);
     }
 }

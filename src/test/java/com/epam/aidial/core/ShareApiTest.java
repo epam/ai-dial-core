@@ -100,7 +100,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     } ]
                 }
                 """);
@@ -120,7 +121,145 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
+                    } ]
+                }
+                """);
+
+        // verify user2 has no shared_by_me resources
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+    }
+
+    @Test
+    public void testShareForWrite() {
+        // check no conversations shared with me
+        Response response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // check no conversations shared by me
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // create conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40",
+                      "permissions": [ "WRITE" ]
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // verify invitation details
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), null, null);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
+
+        // verify user2 cannot update the conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_2, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 cannot read the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user2 can now update the conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_2, "Api-key", "proxyKey2");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
+
+        // verify user1 has no shared_with_me resources
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // verify user2 has shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources" : [ {
+                    "name" : "conversation 1@",
+                    "parentPath" : "folder",
+                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
+                    "nodeType" : "ITEM",
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "WRITE" ]
+                    } ]
+                }
+                """);
+
+        // verify user1 has shared_by_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources" : [ {
+                    "name" : "conversation 1@",
+                    "parentPath" : "folder",
+                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
+                    "nodeType" : "ITEM",
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "WRITE" ]
                     } ]
                 }
                 """);
@@ -186,6 +325,10 @@ public class ShareApiTest extends ResourceBaseTest {
         InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
         assertNotNull(invitationLink);
 
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+        verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
+
         // verify user2 do not have access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
         verify(response, 403);
@@ -209,6 +352,13 @@ public class ShareApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyJson(response, 200, """
+                {
+                  "invitations" : [ ]
+                }
+                """);
 
         // verify user2 do not have access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
@@ -263,6 +413,297 @@ public class ShareApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "resources": []
+                }
+                """);
+    }
+
+    @Test
+    public void testPartiallyRevokeSharedAccess() {
+        // check no conversations shared with me
+        Response response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // check no conversations shared by me
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // create conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
+                      "permissions": [ "READ", "WRITE" ]
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+
+        // verify user2 do not have access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user2 cannot update the conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", CONVERSATION_BODY_2, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_1);
+
+        // verify user2 can update the conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", CONVERSATION_BODY_2, "Api-key", "proxyKey2");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+
+        // revoke share access
+        response = operationRequest("/v1/ops/resource/share/revoke", """
+                {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%40",
+                      "permissions": [ "WRITE" ]
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+        verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
+
+        // verify user2 still has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_2);
+
+        // verify user2 no longer able to update the conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", CONVERSATION_BODY_1, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user2 still has shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources": [
+                    {
+                      "name": "conversation@",
+                      "parentPath": "folder",
+                      "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
+                      "nodeType": "ITEM",
+                      "resourceType": "CONVERSATION",
+                      "permissions": [ "READ" ]
+                    }
+                  ]
+                }
+                """);
+
+        // verify user1 still has shared_by_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": [
+                    {
+                      "name": "conversation@",
+                      "parentPath": "folder",
+                      "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
+                      "nodeType": "ITEM",
+                      "resourceType": "CONVERSATION",
+                      "permissions": [ "READ" ]
+                    }
+                  ]
+                }
+                """);
+    }
+
+    @Test
+    public void testPartiallyRevokeSharedResources() {
+        // check no conversations shared with me
+        Response response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // check no conversations shared by me
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // create conversation
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation@", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+
+        // create conversation 2
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation2@", CONVERSATION_BODY_2);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@\"");
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@"
+                    },
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@\"");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@\"");
+
+        // verify user2 do not have access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user2 do not have access to the conversation 2
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation2@", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_1);
+
+        // verify user2 has access to the conversation 2
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation2@", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_2);
+
+        // revoke share access
+        response = operationRequest("/v1/ops/resource/share/revoke", """
+                {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%40"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@\"");
+
+        // verify user2 no longer has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation@", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user2 still has access to the conversation 2
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation2@", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_2);
+
+        // verify user2 still has shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources": [
+                    {
+                      "name": "conversation2@",
+                      "parentPath": "folder",
+                      "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@",
+                      "nodeType": "ITEM",
+                      "resourceType": "CONVERSATION",
+                      "permissions": [ "READ" ]
+                    }
+                  ]
+                }
+                """);
+
+        // verify user1 still has shared_by_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": [
+                    {
+                      "name": "conversation2@",
+                      "parentPath": "folder",
+                      "bucket": "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@",
+                      "nodeType": "ITEM",
+                      "resourceType": "CONVERSATION",
+                      "permissions": [ "READ" ]
+                    }
+                  ]
                 }
                 """);
     }
@@ -901,7 +1342,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -909,7 +1351,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -930,7 +1373,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -938,7 +1382,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -1041,7 +1486,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/prompt",
                     "nodeType" : "ITEM",
-                    "resourceType" : "PROMPT"
+                    "resourceType" : "PROMPT",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -1049,7 +1495,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -1070,7 +1517,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/prompt",
                     "nodeType" : "ITEM",
-                    "resourceType" : "PROMPT"
+                    "resourceType" : "PROMPT",
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -1078,7 +1526,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION"
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -1133,5 +1582,60 @@ public class ShareApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 400);
+    }
+
+    @Test
+    public void testShareFolderWithMetadata() {
+        // check no conversations shared with me
+        Response response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // check no conversations shared by me
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // create conversation1
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation1", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation1\"");
+
+        // create conversation2
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation2", CONVERSATION_BODY_2);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2\"");
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/"
+                    },
+                    {
+                      "url": "metadata/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
     }
 }

@@ -40,6 +40,7 @@ public class RouteController implements Controller {
     public Future<?> handle() {
         Route route = selectRoute();
         if (route == null) {
+            log.warn("RouteController can't find a route to proceed the request: {}", getRequestUri());
             context.respond(HttpStatus.BAD_GATEWAY, "No route");
             return Future.succeededFuture();
         }
@@ -50,6 +51,7 @@ public class RouteController implements Controller {
             UpstreamRoute upstreamRoute = proxy.getUpstreamBalancer().balance(upstreamProvider);
 
             if (!upstreamRoute.hasNext()) {
+                log.warn("RouteController can't find a upstream route to proceed the request: {}", getRequestUri());
                 context.respond(HttpStatus.BAD_GATEWAY, "No route");
                 return Future.succeededFuture();
             }
@@ -66,12 +68,18 @@ public class RouteController implements Controller {
         return Future.succeededFuture();
     }
 
+    String getRequestUri() {
+        HttpServerRequest request = context.getRequest();
+        return request.uri();
+    }
+
     @SneakyThrows
     private Future<?> sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
 
         if (!route.hasNext()) {
+            log.warn("RouteController can't find a upstream route to proceed the request: {}", getRequestUri());
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 

@@ -20,7 +20,7 @@ public class ResourceItemMetadata extends MetadataBase {
     private Long updatedAt;
 
     public ResourceItemMetadata(ResourceType type, String bucket, String name, String path, String url) {
-        super(name, path, bucket, url, NodeType.ITEM, type);
+        super(name, path, bucket, url, NodeType.ITEM, type, null);
     }
 
     public ResourceItemMetadata(ResourceDescription resource) {

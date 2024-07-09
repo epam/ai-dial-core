@@ -56,6 +56,30 @@ public class ResourceDescription {
         return builder.toString();
     }
 
+    public String getDecodedUrl() {
+        StringBuilder builder = new StringBuilder();
+        builder.append(type.getGroup())
+                .append(BlobStorageUtil.PATH_SEPARATOR)
+                .append(bucketName)
+                .append(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (!parentFolders.isEmpty()) {
+            String parentPath = String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
+            builder.append(parentPath)
+                    .append(BlobStorageUtil.PATH_SEPARATOR);
+        }
+
+        if (name != null) {
+            builder.append(name);
+
+            if (isFolder) {
+                builder.append(BlobStorageUtil.PATH_SEPARATOR);
+            }
+        }
+
+        return builder.toString();
+    }
+
     public String getAbsoluteFilePath() {
         StringBuilder builder = new StringBuilder();
         builder.append(bucketLocation)
@@ -180,6 +204,11 @@ public class ResourceDescription {
         return fromUrl(url, null, null, encryption);
     }
 
+    @Override
+    public String toString() {
+        return getUrl();
+    }
+
     /**
      *
      * @param url - resource url, e.g. files/bucket/folder/file.txt
@@ -202,7 +231,7 @@ public class ResourceDescription {
         }
 
         if (parts.length == 2 && !url.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
-            throw new IllegalArgumentException("Url must start resource/bucket/, but: " + BlobStorageUtil.PATH_SEPARATOR + ": " + url);
+            throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
         }
 
         ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));

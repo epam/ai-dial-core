@@ -2,11 +2,13 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.data.ApplicationData;
 import com.epam.aidial.core.data.Conversation;
+import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
-import com.epam.aidial.core.data.ResourceLink;
-import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
@@ -22,8 +24,7 @@ import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -35,22 +36,24 @@ public class ResourceController extends AccessControlBaseController {
     private final LockService lockService;
     private final InvitationService invitationService;
     private final boolean metadata;
+    private final AccessService accessService;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
-        // PUT and DELETE require full access, GET - not
+        // PUT and DELETE require write access, GET - read
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.shareService = proxy.getShareService();
+        this.accessService = proxy.getAccessService();
         this.lockService = proxy.getLockService();
         this.invitationService = proxy.getInvitationService();
         this.metadata = metadata;
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription descriptor) {
+    protected Future<?> handle(ResourceDescription descriptor, boolean hasWriteAccess) {
         if (context.getRequest().method() == HttpMethod.GET) {
-            return metadata ? getMetadata(descriptor) : getResource(descriptor);
+            return metadata ? getMetadata(descriptor) : getResource(descriptor, hasWriteAccess);
         }
 
         if (context.getRequest().method() == HttpMethod.PUT) {
@@ -60,8 +63,15 @@ public class ResourceController extends AccessControlBaseController {
         if (context.getRequest().method() == HttpMethod.DELETE) {
             return deleteResource(descriptor);
         }
+        log.warn("Unsupported HTTP method for accessing resource {}", descriptor.getUrl());
+        return context.respond(HttpStatus.BAD_REQUEST, "Unsupported HTTP method");
+    }
 
-        return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+    private String getContentType() {
+        String acceptType = context.getRequest().getHeader(HttpHeaders.ACCEPT);
+        return acceptType != null && metadata && acceptType.contains(MetadataBase.MIME_TYPE)
+                ? MetadataBase.MIME_TYPE
+                : "application/json";
     }
 
     private Future<?> getMetadata(ResourceDescription descriptor) {
@@ -80,13 +90,16 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive))
+        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
-                        proxy.getAccessService().filterForbidden(context, descriptor, result);
-                        context.respond(HttpStatus.OK, result);
+                        accessService.filterForbidden(context, descriptor, result);
+                        if (context.getBooleanRequestQueryParam("permissions")) {
+                            accessService.populatePermissions(context, descriptor.getBucketLocation(), List.of(result));
+                        }
+                        context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
                 .onFailure(error -> {
@@ -95,17 +108,24 @@ public class ResourceController extends AccessControlBaseController {
                 });
     }
 
-    private Future<?> getResource(ResourceDescription descriptor) {
+    private Future<?> getResource(ResourceDescription descriptor, boolean hasWriteAccess) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> service.getResource(descriptor))
+        return vertx.executeBlocking(() -> service.getResource(descriptor), false)
                 .onSuccess(body -> {
                     if (body == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
-                        context.respond(HttpStatus.OK, body);
+                        // if resource type is application and caller has no write access - return application data
+                        if (descriptor.getType() == ResourceType.APPLICATION && !hasWriteAccess) {
+                            Application application = ProxyUtil.convertToObject(body, Application.class, true);
+                            ApplicationData applicationData = ApplicationUtil.mapApplication(application);
+                            context.respond(HttpStatus.OK, ProxyUtil.convertToString(applicationData));
+                        } else {
+                            context.respond(HttpStatus.OK, body);
+                        }
                     }
                 })
                 .onFailure(error -> {
@@ -144,16 +164,10 @@ public class ResourceController extends AccessControlBaseController {
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
                     }
 
-                    String body = bytes.toString(StandardCharsets.UTF_8);
-
                     ResourceType resourceType = descriptor.getType();
-                    switch (resourceType) {
-                        case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
-                        case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
-                        default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
-                    }
+                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite));
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {
@@ -174,23 +188,41 @@ public class ResourceController extends AccessControlBaseController {
                 });
     }
 
+    private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body) {
+        switch (resourceType) {
+            case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
+            case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+            case APPLICATION -> {
+                Application application = ProxyUtil.convertToObject(body, Application.class, true);
+                if (application != null) {
+                    // replace application name with it's url
+                    application.setName(descriptor.getUrl());
+                    // defining user roles in custom applications are not allowed
+                    application.setUserRoles(null);
+                    // forward auth token is not allowed for custom applications
+                    application.setForwardAuthToken(false);
+                    body = ProxyUtil.convertToString(application, true);
+                }
+            }
+            default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
+        }
+        return body;
+    }
+
     private Future<?> deleteResource(ResourceDescription descriptor) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
         return vertx.executeBlocking(() -> {
-                    Set<ResourceLink> resourceLinks = new HashSet<>();
-                    resourceLinks.add(new ResourceLink(descriptor.getUrl()));
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
-                        invitationService.cleanUpResourceLinks(bucketName, bucketLocation, resourceLinks);
-                        shareService.revokeSharedAccess(bucketName, bucketLocation,
-                                new ResourceLinkCollection(resourceLinks));
+                        invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
+                        shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
                         return service.deleteResource(descriptor);
                     });
-                })
+                }, false)
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);

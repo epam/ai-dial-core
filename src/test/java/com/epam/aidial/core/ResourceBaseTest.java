@@ -2,7 +2,9 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
+import com.epam.aidial.core.service.NotificationService;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,6 +33,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -86,6 +89,8 @@ public class ResourceBaseTest {
 
     int serverPort;
     ApiKeyStore apiKeyStore;
+    NotificationService notificationService;
+    EncryptionService encryptionService;
 
     AccessTokenValidator validator = Mockito.mock(AccessTokenValidator.class);
 
@@ -95,7 +100,7 @@ public class ResourceBaseTest {
             testDir = FileUtil.baseTestPath(ResourceApiTest.class);
             FileUtil.createDir(testDir.resolve("test"));
 
-            redis = RedisServer.builder()
+            redis = RedisServer.newRedisServer()
                     .port(16370)
                     .setting("bind 127.0.0.1")
                     .setting("maxmemory 16M")
@@ -144,7 +149,7 @@ public class ResourceBaseTest {
                         }
 
                         if (authorization.equals("user") || authorization.equals("admin")) {
-                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization), authorization));
+                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization), authorization, Map.of("title", List.of("Manager"))));
                         }
 
                         return Future.failedFuture("Not authorized");
@@ -158,6 +163,8 @@ public class ResourceBaseTest {
             dial.start();
             serverPort = dial.getServer().actualPort();
             apiKeyStore = dial.getProxy().getApiKeyStore();
+            notificationService = dial.getProxy().getNotificationService();
+            encryptionService = dial.getProxy().getEncryptionService();
 
             Response response = send(HttpMethod.GET, "/v1/bucket", null, "");
             assertEquals(response.status, 200);

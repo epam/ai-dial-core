@@ -118,7 +118,7 @@ public class ResourceService implements AutoCloseable {
                 : getResourceMetadata(descriptor);
     }
 
-    private ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
+    public ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
         PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
 
@@ -154,9 +154,10 @@ public class ResourceService implements AutoCloseable {
             return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
         }).toList();
 
-        return new ResourceFolderMetadata(descriptor, resources).setNextToken(set.getNextMarker());
+        return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
     }
 
+    @Nullable
     public ResourceItemMetadata getResourceMetadata(ResourceDescription descriptor) {
         if (descriptor.isFolder()) {
             throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
@@ -341,7 +342,12 @@ public class ResourceService implements AutoCloseable {
 
             Result result = redisGet(redisKey, false);
             if (result == null || result.synced) {
-                redis.getMap(redisKey, StringCodec.INSTANCE).expireIfNotSet(cacheExpiration);
+                RMap<Object, Object> map = redis.getMap(redisKey, StringCodec.INSTANCE);
+                long ttl = map.remainTimeToLive();
+                // according to the documentation, -1 means expiration is not set
+                if (ttl == -1) {
+                    map.expire(cacheExpiration);
+                }
                 redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
                 return;
             }

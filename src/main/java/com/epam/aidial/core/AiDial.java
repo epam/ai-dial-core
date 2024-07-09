@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.cache.CacheClientFactory;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.config.FileConfigStore;
@@ -11,11 +12,14 @@ import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.CustomApplicationService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.NotificationService;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
@@ -42,10 +46,7 @@ import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
-import org.redisson.config.Config;
-import org.redisson.config.ConfigSupport;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -93,13 +94,11 @@ public class AiDial {
             vertx = Vertx.vertx(vertxOptions);
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
-            ApiKeyStore apiKeyStore = new ApiKeyStore();
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             LogStore logStore = new GfLogStore(vertx);
             UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
 
             if (accessTokenValidator == null) {
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
             }
 
             if (storage == null) {
@@ -109,22 +108,31 @@ public class AiDial {
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker();
 
-            redis = openRedis();
+            redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
             resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, storage);
-            PublicationService publicationService = new PublicationService(encryptionService, resourceService, storage, generator, clock);
             ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, storage, invitationService, shareService);
-
-            AccessService accessService = new AccessService(encryptionService, shareService, publicationService, settings("access"));
+            RuleService ruleService = new RuleService(resourceService);
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
+            NotificationService notificationService = new NotificationService(resourceService, encryptionService);
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
+                    ruleService, notificationService, storage, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
+
+            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
+
+            CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
+                    resourceService, shareService, accessService, settings("applications"));
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, publicationService, accessService, lockService, resourceOperationService, version());
+                    shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
+                    notificationService, customApplicationService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -135,18 +143,6 @@ public class AiDial {
             stop();
             throw e;
         }
-    }
-
-    private RedissonClient openRedis() throws IOException {
-        JsonObject conf = settings("redis");
-        if (conf.isEmpty()) {
-            throw new IllegalArgumentException("Redis configuration not found");
-        }
-
-        ConfigSupport support = new ConfigSupport();
-        Config config = support.fromJSON(conf.toString(), Config.class);
-
-        return Redisson.create(config);
     }
 
     @VisibleForTesting

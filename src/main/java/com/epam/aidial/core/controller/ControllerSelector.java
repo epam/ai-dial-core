@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 @UtilityClass
 public class ControllerSelector {
 
-    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/([^/]+)/(completions|chat/completions|embeddings)$");
+    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(.+?)/(completions|chat/completions|embeddings)$");
     private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/([^/]+)$");
     private static final Pattern PATTERN_DEPLOYMENTS = Pattern.compile("^/+openai/deployments$");
 
@@ -29,7 +29,7 @@ public class ControllerSelector {
     private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/([^/]+)$");
     private static final Pattern PATTERN_ASSISTANTS = Pattern.compile("^/+openai/assistants$");
 
-    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/([^/]+)$");
+    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
 
 
@@ -38,14 +38,14 @@ public class ControllerSelector {
     private static final Pattern PATTERN_FILES = Pattern.compile("^/v1/files/[a-zA-Z0-9]+/.*");
     private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("^/v1/metadata/files/[a-zA-Z0-9]+/.*");
 
-    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts)/[a-zA-Z0-9]+/.*");
-    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts)/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
 
-    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/([^/]+)/rate$");
-    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/([^/]+)/tokenize$");
-    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/([^/]+)/truncate_prompt$");
-
-    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/([^/]+)/configuration$");
+    // deployment feature patterns
+    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/(.+?)/rate$");
+    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/(.+?)/tokenize$");
+    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/(.+?)/truncate_prompt$");
+    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/(.+?)/configuration$");
 
     private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
@@ -57,6 +57,8 @@ public class ControllerSelector {
     private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move)$");
 
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
+
+    private static final Pattern NOTIFICATIONS = Pattern.compile("^/v1/ops/notification/(list|delete)$");
 
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = context.getRequest().path();
@@ -133,14 +135,14 @@ public class ControllerSelector {
 
         match = match(PATTERN_APPLICATION, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             String application = UrlUtil.decodePath(match.group(1));
             return () -> controller.getApplication(application);
         }
 
         match = match(PATTERN_APPLICATIONS, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             return controller::getApplications;
         }
 
@@ -298,6 +300,18 @@ public class ControllerSelector {
         if (match != null) {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listPublishedResources;
+        }
+
+        match = match(NOTIFICATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            NotificationController controller = new NotificationController(proxy, context);
+
+            return switch (operation) {
+                case "list" -> controller::listNotifications;
+                case "delete" -> controller::deleteNotification;
+                default -> null;
+            };
         }
 
         return null;
