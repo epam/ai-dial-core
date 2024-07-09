@@ -37,7 +37,10 @@ public class EtagHeader {
     }
 
     public static EtagHeader fromRequest(HttpServerRequest request) {
-        String etag = request.getHeader(HttpHeaders.IF_MATCH);
+        return fromHeader(request.getHeader(HttpHeaders.IF_MATCH));
+    }
+
+    static EtagHeader fromHeader(String etag) {
         if (StringUtils.isBlank(etag) || "*".equals(etag.strip())) {
             return ANY;
         }
