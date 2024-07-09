@@ -31,8 +31,9 @@ configurations.all {
 dependencies {
     implementation 'com.google.protobuf:protobuf-java:3.19.6'
     implementation 'org.slf4j:slf4j-api:1.7.32'
-    implementation 'com.epam.deltix:gflog-api:3.0.5'
-    implementation 'com.epam.deltix:gflog-core:3.0.5'
+    implementation 'com.epam.deltix:gflog-api:3.0.6'
+    implementation 'com.epam.deltix:gflog-core:3.0.6'
+    runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.6'
     implementation 'io.vertx:vertx-core:4.4.6'
     implementation 'io.vertx:vertx-config:4.4.6'
     implementation 'io.vertx:vertx-opentelemetry:4.4.6'
@@ -52,10 +53,6 @@ dependencies {
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
     implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
     implementation group: 'com.azure', name: 'azure-identity', version: '1.11.2'
-
-
-
-    runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.5'
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
     testImplementation 'commons-io:commons-io:2.11.0'
