@@ -19,13 +19,11 @@ import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpHeaders;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -77,10 +75,7 @@ public class PublicationController {
                     checkAccess(resource, true);
                     return vertx.executeBlocking(() -> publicationService.getPublication(resource), false);
                 })
-                .onSuccess(publication -> {
-                    context.getResponse().putHeader(HttpHeaders.ETAG, publication.getEtag());
-                    context.respond(HttpStatus.OK, publication);
-                })
+                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't get publication", error));
 
         return Future.succeededFuture();
@@ -91,14 +86,9 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     Publication publication = ProxyUtil.convertToObject(body, Publication.class);
-                    return vertx.executeBlocking(() ->
-                            lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.createPublication(context, publication)), false);
+                    return vertx.executeBlocking(() -> publicationService.createPublication(context, publication), false);
                 })
-                .onSuccess(publication -> {
-                    context.getResponse().putHeader(HttpHeaders.ETAG, publication.getEtag());
-                    context.respond(HttpStatus.OK, publication);
-                })
+                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't create publication", error));
 
         return Future.succeededFuture();
@@ -108,13 +98,10 @@ public class PublicationController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, true);
-                    return vertx.executeBlocking(() ->
-                            lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.deletePublication(resource, etag)), false);
+                    return vertx.executeBlocking(() -> publicationService.deletePublication(resource), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete publication", error));
@@ -126,18 +113,14 @@ public class PublicationController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, false);
                     return vertx.executeBlocking(() ->
                             lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.approvePublication(resource, etag)), false);
+                                    () -> publicationService.approvePublication(resource)), false);
                 })
-                .onSuccess(publication -> {
-                    context.getResponse().putHeader(HttpHeaders.ETAG, publication.getEtag());
-                    context.respond(HttpStatus.OK, publication);
-                })
+                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't approve publication", error));
 
         return Future.succeededFuture();
@@ -147,19 +130,13 @@ public class PublicationController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     RejectPublicationRequest request = ProxyUtil.convertToObject(body, RejectPublicationRequest.class);
                     String url = request.url();
                     ResourceDescription resource = decodePublication(url, false);
                     checkAccess(resource, false);
-                    return vertx.executeBlocking(() ->
-                            lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
-                                    () -> publicationService.rejectPublication(resource, request, etag)), false);
+                    return vertx.executeBlocking(() -> publicationService.rejectPublication(resource, request), false);
                 })
-                .onSuccess(publication -> {
-                    context.getResponse().putHeader(HttpHeaders.ETAG, publication.getEtag());
-                    context.respond(HttpStatus.OK, publication);
-                })
+                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't reject publication", error));
 
         return Future.succeededFuture();

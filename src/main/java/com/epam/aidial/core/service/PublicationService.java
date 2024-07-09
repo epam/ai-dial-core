@@ -16,10 +16,8 @@ import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ProxyUtil;
-import com.epam.aidial.core.util.ResourceUtil;
 import com.epam.aidial.core.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +30,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -90,10 +87,6 @@ public class PublicationService {
 
         for (Publication publication : publications.values()) {
             leaveMetadata(publication);
-
-            if (publication.getEtag() == null) {
-                publication.setEtag(ResourceUtil.DEFAULT_ETAG);
-            }
         }
 
         return publications.values();
@@ -145,10 +138,6 @@ public class PublicationService {
             throw new ResourceNotFoundException("No publication: " + resource.getUrl());
         }
 
-        if (publication.getEtag() == null) {
-            publication.setEtag(ResourceUtil.DEFAULT_ETAG);
-        }
-
         return publication;
     }
 
@@ -190,7 +179,7 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication deletePublication(ResourceDescription resource, EtagHeader etag) {
+    public Publication deletePublication(ResourceDescription resource) {
         if (resource.getType() != ResourceType.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -198,12 +187,7 @@ public class PublicationService {
         resources.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
             Publication publication = publications.remove(resource.getUrl());
-            if (publication == null) {
-                return body;
-            }
-
-            etag.validate(Objects.requireNonNull(publication.getEtag(), ResourceUtil.DEFAULT_ETAG));
-            return encodePublications(publications);
+            return (publication == null) ? body : encodePublications(publications);
         });
 
         MutableObject<Publication> reference = new MutableObject<>();
@@ -215,7 +199,6 @@ public class PublicationService {
                 throw new ResourceNotFoundException("No publication: " + resource.getUrl());
             }
 
-            etag.validate(Objects.requireNonNull(publication.getEtag(), ResourceUtil.DEFAULT_ETAG));
             reference.setValue(publication);
             return encodePublications(publications);
         });
@@ -233,10 +216,8 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication approvePublication(ResourceDescription resource, EtagHeader etag) {
+    public Publication approvePublication(ResourceDescription resource) {
         Publication publication = getPublication(resource);
-        etag.validate(publication.getEtag());
-
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
@@ -255,10 +236,13 @@ public class PublicationService {
 
         resources.computeResource(publications(resource), body -> {
             Map<String, Publication> publications = decodePublications(body);
-            publication.setStatus(Publication.Status.APPROVED);
-            publication.setEtag(generateEtag(publication));
-            publications.put(resource.getUrl(), publication);
+            Publication previous = publications.put(resource.getUrl(), publication);
 
+            if (!publication.equals(previous)) {
+                throw new ResourceNotFoundException("Publication changed during approving: " + resource.getUrl());
+            }
+
+            publication.setStatus(Publication.Status.APPROVED);
             return encodePublications(publications);
         });
 
@@ -283,7 +267,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication rejectPublication(ResourceDescription resource, RejectPublicationRequest request, EtagHeader etag) {
+    public Publication rejectPublication(ResourceDescription resource, RejectPublicationRequest request) {
         if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -296,7 +280,6 @@ public class PublicationService {
             if (publication == null) {
                 throw new ResourceNotFoundException("No publication: " + resource.getUrl());
             }
-            etag.validate(Objects.requireNonNull(publication.getEtag(), ResourceUtil.DEFAULT_ETAG));
 
             if (publication.getStatus() != Publication.Status.PENDING) {
                 throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
@@ -304,7 +287,6 @@ public class PublicationService {
 
             reference.setValue(publication);
             publication.setStatus(Publication.Status.REJECTED);
-            publication.setEtag(generateEtag(publication));
             return encodePublications(publications);
         });
 
@@ -361,7 +343,6 @@ public class PublicationService {
         publication.setTargetFolder(targetFolder);
         publication.setCreatedAt(clock.getAsLong());
         publication.setStatus(Publication.Status.PENDING);
-        publication.setEtag(generateEtag(publication));
 
         Set<String> urls = new HashSet<>();
         for (Publication.Resource resource : publication.getResources()) {
@@ -671,7 +652,6 @@ public class PublicationService {
 
     private static Publication newMetadata(Publication publication) {
         return new Publication()
-                .setEtag(publication.getEtag())
                 .setUrl(publication.getUrl())
                 .setName(publication.getName())
                 .setTargetFolder(publication.getTargetFolder())
@@ -696,9 +676,5 @@ public class PublicationService {
 
     private static String encodePublications(Map<String, Publication> publications) {
         return ProxyUtil.convertToString(publications);
-    }
-
-    private static String generateEtag(Publication publication) {
-        return EtagBuilder.generateEtag(ProxyUtil.convertToString(publication).getBytes());
     }
 }

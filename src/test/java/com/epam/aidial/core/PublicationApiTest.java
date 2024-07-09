@@ -50,8 +50,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 "function" : "EQUAL",
                 "source" : "roles",
                 "targets" : [ "user" ]
-              } ],
-              "etag" : "5d771f7a1ad48287b9484111aa4604de"
+              } ]
             }
             """;
 
@@ -88,8 +87,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
-                    "resourceTypes" : [ "CONVERSATION" ],
-                    "etag" : "5d771f7a1ad48287b9484111aa4604de"
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                 }
                 """);
@@ -163,8 +161,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
-                   "rules" : [],
-                   "etag" : "5763d30a2ba16c5432908b6f4a7c6388"
+                   "rules" : []
                 }
                 """);
 
@@ -181,8 +178,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder":"public/folder/",
                     "status":"APPROVED",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ],
-                    "etag" : "5763d30a2ba16c5432908b6f4a7c6388"
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -214,16 +210,14 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "5763d30a2ba16c5432908b6f4a7c6388"
+                        "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                          "targetFolder":"public/folder/",
                         "status" : "PENDING",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "f72b4fcbb9906e93525fbe726064ee24"
+                        "resourceTypes" : [ "CONVERSATION" ]
                       }
                     ]
                 }
@@ -250,8 +244,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder":"public/folder/",
                     "status":"PENDING",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ],
-                    "etag" : "f72b4fcbb9906e93525fbe726064ee24"
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -297,16 +290,14 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "5763d30a2ba16c5432908b6f4a7c6388"
+                        "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "5f6cb46289c1474b2e8dc81446bc61fd"
+                        "resourceTypes" : [ "CONVERSATION" ]
                       }
                     ]
                 }
@@ -374,8 +365,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
-                   "rules" : [],
-                   "etag": "5763d30a2ba16c5432908b6f4a7c6388"
+                   "rules" : []
                 }
                 """);
 
@@ -392,8 +382,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder":"public/folder/",
                     "status":"APPROVED",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ],
-                    "etag" : "5763d30a2ba16c5432908b6f4a7c6388"
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -440,16 +429,14 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "5763d30a2ba16c5432908b6f4a7c6388"
+                        "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                         "targetFolder":"public/folder/",
                         "status" : "PENDING",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "0c28b12696234148ac7179067bc1e3d9"
+                        "resourceTypes" : [ "CONVERSATION" ]
                       }
                     ]
                 }
@@ -476,8 +463,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status":"PENDING",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ],
-                    "etag" : "0c28b12696234148ac7179067bc1e3d9"
+                    "resourceTypes" : [ "CONVERSATION" ]
                     }]
                 }
                 """);
@@ -514,16 +500,14 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "5763d30a2ba16c5432908b6f4a7c6388"
+                        "resourceTypes" : [ "CONVERSATION" ]
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                         "targetFolder" : "public/folder/",
                         "status" : "REJECTED",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ],
-                        "etag" : "87f18a6d9971dbc55173629b6ad7d43c"
+                        "resourceTypes" : [ "CONVERSATION" ]
                       }
                     ]
                 }
@@ -596,8 +580,7 @@ class PublicationApiTest extends ResourceBaseTest {
                      "function" : "EQUAL",
                      "source" : "roles",
                      "targets" : [ "user" ]
-                   } ],
-                   "etag" : "70ad8bb6114833196dd4a35bb705134d"
+                   } ]
                 }
                 """);
 
@@ -668,8 +651,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "function" : "EQUAL",
                     "source" : "roles",
                     "targets" : [ "user" ]
-                  } ],
-                  "etag" : "b3797c3be91c9d2fabe299931ec3b8d5"
+                  } ]
                 }
                 """);
 
@@ -949,8 +931,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
-                    "resourceTypes" : [ "CONVERSATION" ],
-                    "etag" : "5d771f7a1ad48287b9484111aa4604de"
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                  }
                 """);
@@ -1011,8 +992,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "function" : "CONTAIN",
                     "source" : "title",
                     "targets" : [ "Engineer" ]
-                  } ],
-                  "etag" : "346dad4502971e74ab367c3d75e73250"
+                  } ]
                 }
                 """);
 
@@ -1034,8 +1014,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "function" : "CONTAIN",
                     "source" : "title",
                     "targets" : [ "Engineer" ]
-                   } ],
-                   "etag" : "3abd6c5c623fcda91c1bd0c108565599"
+                   } ]
                 }
                 """);
 
@@ -1173,8 +1152,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
-                    "resourceTypes" : [ "CONVERSATION" ],
-                    "etag" : "5d771f7a1ad48287b9484111aa4604de"
+                    "resourceTypes" : [ "CONVERSATION" ]
                   } ]
                  }
                 """);
@@ -1257,8 +1235,7 @@ class PublicationApiTest extends ResourceBaseTest {
                       "source": "title",
                       "targets": ["Engineer"]
                     }
-                  ],
-                  "etag" : "4f8bedf82cb3ec5fa2ca1492ce4c64ef"
+                  ]
                 }
                 """);
     }
