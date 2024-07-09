@@ -483,16 +483,20 @@ public class PublicationService {
     private void validateRules(Publication publication) {
         if (publication.getRules() != null) {
             for (Rule rule : publication.getRules()) {
+                Rule.Function function = rule.getFunction();
+                if (function == null) {
+                    throw new IllegalArgumentException("Rule does not have function");
+                }
+
                 if (rule.getSource() == null) {
                     throw new IllegalArgumentException("Rule does not have source");
                 }
 
-                if (rule.getTargets() == null || rule.getTargets().isEmpty()) {
-                    throw new IllegalArgumentException("Rule does not have targets");
-                }
-
-                if (rule.getFunction() == null) {
-                    throw new IllegalArgumentException("Rule does not have function");
+                // function TRUE or FALSE do not require targets
+                if (function != Rule.Function.TRUE && function != Rule.Function.FALSE) {
+                    if (rule.getTargets() == null || rule.getTargets().isEmpty()) {
+                        throw new IllegalArgumentException("Rule %s does not have targets".formatted(function));
+                    }
                 }
             }
         }

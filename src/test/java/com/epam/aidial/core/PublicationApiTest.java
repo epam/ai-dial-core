@@ -1325,4 +1325,96 @@ class PublicationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 400);
     }
+
+    @Test
+    void testPublicationRuleWithoutTargets() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication name",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "conversations/%s/my/folder/conversation",
+                          "targetUrl": "conversations/public/folder/conversation"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE",
+                          "targets": []
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication name",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "conversations/%s/my/folder/conversation",
+                          "targetUrl": "conversations/public/folder/conversation"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication name",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "conversations/%s/my/folder/conversation",
+                          "targetUrl": "conversations/public/folder/conversation"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "CONTAIN",
+                          "targets": []
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        verify(response, 400, "Rule CONTAIN does not have targets");
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication name",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "conversations/%s/my/folder/conversation",
+                          "targetUrl": "conversations/public/folder/conversation"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "CONTAIN"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        verify(response, 400, "Rule CONTAIN does not have targets");
+    }
 }
