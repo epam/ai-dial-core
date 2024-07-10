@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'com.epam.aidial'
-version = "0.13.0-rc"
+version = "0.13.0"
 
 java {
     toolchain {
