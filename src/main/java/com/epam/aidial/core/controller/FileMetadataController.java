@@ -4,6 +4,7 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.security.AccessService;
+import com.epam.aidial.core.service.FileService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
@@ -16,10 +17,12 @@ import java.util.List;
 @Slf4j
 public class FileMetadataController extends AccessControlBaseController {
     private final AccessService accessService;
+    private final FileService fileService;
 
     public FileMetadataController(Proxy proxy, ProxyContext context) {
         super(proxy, context, false);
         accessService = proxy.getAccessService();
+        fileService = proxy.getFileService();
     }
 
     private String getContentType() {
@@ -40,7 +43,9 @@ public class FileMetadataController extends AccessControlBaseController {
         }
         return proxy.getVertx().executeBlocking(() -> {
             try {
-                MetadataBase metadata = storage.listMetadata(resource, token, limit, recursive);
+                MetadataBase metadata = resource.isFolder()
+                        ? storage.listMetadata(resource, token, limit, recursive)
+                        : fileService.getMetadata(resource);
                 if (metadata != null) {
                     accessService.filterForbidden(context, resource, metadata);
                     if (context.getBooleanRequestQueryParam("permissions")) {

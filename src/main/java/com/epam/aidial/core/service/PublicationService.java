@@ -622,7 +622,7 @@ public class PublicationService {
     private boolean copyResource(ResourceDescription from, ResourceDescription to) {
         return switch (from.getType()) {
             case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to, EtagHeader.ANY);
+            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
             default -> throw new IllegalStateException("Unsupported type: " + from.getType());
         };
     }

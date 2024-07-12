@@ -2,6 +2,7 @@ package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.service.CacheService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
@@ -22,7 +23,6 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -46,13 +46,16 @@ public class ApiKeyStoreTest {
     @Mock
     private BlobStorage blobStorage;
 
+    @Mock
+    private CacheService cacheService;
+
     private ApiKeyStore store;
 
     @BeforeAll
     public static void beforeAll() throws IOException {
         redisServer = RedisServer.newRedisServer()
                 .port(16370)
-                .setting("bind 127.0.0.1")
+                .bind("127.0.0.1")
                 .setting("maxmemory 16M")
                 .setting("maxmemory-policy volatile-lfu")
                 .build();
@@ -96,7 +99,7 @@ public class ApiKeyStoreTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(blobStorage, cacheService, lockService, new JsonObject(resourceConfig));
         store = new ApiKeyStore(resourceService, vertx);
     }
 

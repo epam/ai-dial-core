@@ -18,6 +18,8 @@ import java.util.stream.Collectors;
 @UtilityClass
 public class ResourceUtil {
     public static final String ETAG_ATTRIBUTE = "etag";
+    public static final String CREATED_AT_ATTRIBUTE = "created_at";
+    public static final String UPDATED_AT_ATTRIBUTE = "updated_at";
     // Default ETag for old records
     public static final String DEFAULT_ETAG = "0";
 

@@ -2,7 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.FileService;
 import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
@@ -40,35 +40,34 @@ public class UploadFileController extends AccessControlBaseController {
                 .uploadHandler(upload -> {
                     String contentType = upload.contentType();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-
-                    LockService.Lock lock = proxy.getLockService().lock(resource);
+                    FileService fileService = proxy.getFileService();
+                    BlobWriteStream writeStream = new BlobWriteStream(
+                            proxy.getVertx(),
+                            proxy.getStorage(),
+                            fileService,
+                            resource,
+                            etag,
+                            contentType);
                     try {
-                        etag.validate(() -> proxy.getStorage().getEtag(resource.getAbsoluteFilePath()));
-
-                        BlobWriteStream writeStream = new BlobWriteStream(
-                                proxy.getVertx(),
-                                proxy.getStorage(),
-                                lock,
-                                resource,
-                                contentType);
+                        etag.validate(() -> fileService.getMetadata(resource).getEtag());
                         pipe.to(writeStream, result);
-
-                        result.future()
-                                .onComplete(complete -> lock.close())
-                                .onSuccess(success -> {
-                                    context.getResponse().putHeader(HttpHeaders.ETAG, writeStream.getMetadata().getEtag());
-                                    context.respond(HttpStatus.OK, writeStream.getMetadata());
-                                })
-                                .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath())));
-                    } catch (Throwable error) {
-                        lock.close();
-                        if (error instanceof HttpException exception) {
-                            context.respond(exception.getStatus(), exception.getMessage());
-                        } else {
-                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-                        }
+                    } catch (HttpException e) {
+                        result.fail(e);
                     }
+
+                    result.future()
+                            .onSuccess(success -> {
+                                context.getResponse().putHeader(HttpHeaders.ETAG, writeStream.getMetadata().getEtag());
+                                context.respond(HttpStatus.OK, writeStream.getMetadata());
+                            })
+                            .onFailure(error -> {
+                                writeStream.abortUpload(error);
+                                if (error instanceof HttpException exception) {
+                                    context.respond(exception.getStatus(), exception.getMessage());
+                                } else {
+                                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                                }
+                            });
                 });
 
         return result.future();

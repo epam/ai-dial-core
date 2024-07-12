@@ -71,14 +71,10 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
                     }
 
-                    try (LockService.MoveLock ignored = lockService.lock(sourceResource, destinationResource)) {
-                        return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
-
-                            resourceOperationService.moveResource(
-                                    bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
-                            return null;
-                        }), false);
-                    }
+                    return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
+                        resourceOperationService.moveResource(bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
+                        return null;
+                    }), false);
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);

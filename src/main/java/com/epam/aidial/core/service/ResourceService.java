@@ -4,13 +4,11 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.BlobStorage;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ResourceUtil;
-import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -21,97 +19,42 @@ import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
-import org.redisson.api.RMap;
-import org.redisson.api.RScoredSortedSet;
-import org.redisson.api.RedissonClient;
-import org.redisson.client.codec.StringCodec;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
 @Slf4j
-public class ResourceService implements AutoCloseable {
-    private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists", ResourceUtil.ETAG_ATTRIBUTE);
-    private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists", ResourceUtil.ETAG_ATTRIBUTE);
-
-    private static final Result BLOB_NOT_FOUND = new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false, "");
-
-    private final Vertx vertx;
-    private final RedissonClient redis;
+public class ResourceService {
     private final BlobStorage blobStore;
     private final LockService lockService;
+    private final CacheService cacheService;
     @Getter
     private final int maxSize;
-    private final long syncTimer;
-    private final long syncDelay;
-    private final int syncBatch;
-    private final Duration cacheExpiration;
-    private final int compressionMinSize;
-    private final String prefix;
-    private final String resourceQueue;
 
-    public ResourceService(Vertx vertx,
-                           RedissonClient redis,
-                           BlobStorage blobStore,
-                           LockService lockService,
-                           JsonObject settings,
-                           String prefix) {
-        this(vertx, redis, blobStore, lockService,
-                settings.getInteger("maxSize"),
-                settings.getLong("syncPeriod"),
-                settings.getLong("syncDelay"),
-                settings.getInteger("syncBatch"),
-                settings.getLong("cacheExpiration"),
-                settings.getInteger("compressionMinSize"),
-                prefix
-        );
+    public ResourceService(
+            BlobStorage blobStore,
+            CacheService cacheService,
+            LockService lockService,
+            JsonObject settings) {
+        this(blobStore, cacheService, lockService, settings.getInteger("maxSize"));
     }
 
     /**
      * @param maxSize            - max allowed size in bytes for a resource.
-     * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
-     * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
-     * @param syncBatch          - how many resources to sync in one go.
-     * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
-     * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
      */
-    public ResourceService(Vertx vertx,
-                           RedissonClient redis,
-                           BlobStorage blobStore,
-                           LockService lockService,
-                           int maxSize,
-                           long syncPeriod,
-                           long syncDelay,
-                           int syncBatch,
-                           long cacheExpiration,
-                           int compressionMinSize,
-                           String prefix) {
-        this.vertx = vertx;
-        this.redis = redis;
+    public ResourceService(
+            BlobStorage blobStore,
+            CacheService cacheService,
+            LockService lockService,
+            int maxSize) {
         this.blobStore = blobStore;
         this.lockService = lockService;
+        this.cacheService = cacheService;
         this.maxSize = maxSize;
-        this.syncDelay = syncDelay;
-        this.syncBatch = syncBatch;
-        this.cacheExpiration = Duration.ofMillis(cacheExpiration);
-        this.compressionMinSize = compressionMinSize;
-        this.prefix = prefix;
-        this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
-
-        // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
-        this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
-    }
-
-    @Override
-    public void close() {
-        vertx.cancelTimer(syncTimer);
     }
 
     @Nullable
@@ -168,32 +111,34 @@ public class ResourceService implements AutoCloseable {
 
         String redisKey = lockService.redisKey(descriptor);
         String blobKey = blobKey(descriptor);
-        Result result = redisGet(redisKey, false);
+        CacheService.Result<CacheService.ItemMetadata> result = cacheService.getMetadata(redisKey);
 
         if (result == null) {
-            result = blobGet(blobKey, false);
+            return blobGet(blobKey, false).map(
+                    item -> toResourceItemMetadata(descriptor, item.metadata()));
         }
 
-        if (!result.exists) {
-            return null;
-        }
+        return result.map(metadata -> toResourceItemMetadata(descriptor, metadata));
+    }
 
+    private static ResourceItemMetadata toResourceItemMetadata(
+            ResourceDescription descriptor, CacheService.ItemMetadata metadata) {
         return new ResourceItemMetadata(descriptor)
-                .setCreatedAt(result.createdAt)
-                .setUpdatedAt(result.updatedAt)
-                .setEtag(result.etag);
+                .setCreatedAt(metadata.createdAt())
+                .setUpdatedAt(metadata.updatedAt())
+                .setEtag(metadata.etag());
     }
 
     public boolean hasResource(ResourceDescription descriptor) {
         String redisKey = lockService.redisKey(descriptor);
-        Result result = redisGet(redisKey, false);
+        CacheService.Result<CacheService.ItemMetadata> result = cacheService.getMetadata(redisKey);
 
         if (result == null) {
             String blobKey = blobKey(descriptor);
             return blobExists(blobKey);
         }
 
-        return result.exists;
+        return result.exists();
     }
 
     @Nullable
@@ -204,30 +149,22 @@ public class ResourceService implements AutoCloseable {
     @Nullable
     public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
         String redisKey = lockService.redisKey(descriptor);
-        Result result = redisGet(redisKey, true);
+        CacheService.Result<CacheService.Item<String>> result = cacheService.getString(redisKey);
 
         if (result == null) {
             try (var ignore = lock ? lockService.lock(redisKey) : null) {
-                result = redisGet(redisKey, true);
+                result = cacheService.getString(redisKey);
 
                 if (result == null) {
                     String blobKey = blobKey(descriptor);
                     result = blobGet(blobKey, true);
-                    redisPut(redisKey, result);
+                    cacheService.cacheString(redisKey, result.value());
                 }
             }
         }
 
-        if (result.exists) {
-            ResourceItemMetadata metadata = new ResourceItemMetadata(descriptor)
-                    .setCreatedAt(result.createdAt)
-                    .setUpdatedAt(result.updatedAt)
-                    .setEtag(result.etag);
-
-            return Pair.of(metadata, result.body);
-        }
-
-        return null;
+        return result.map(item ->
+                Pair.of(toResourceItemMetadata(descriptor, item.metadata()), item.body()));
     }
 
     @Nullable
@@ -252,26 +189,31 @@ public class ResourceService implements AutoCloseable {
         String blobKey = blobKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
-            Result result = redisGet(redisKey, false);
-            if (result == null) {
-                result = blobGet(blobKey, false);
-            }
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
-            if (result.exists) {
+            if (metadata != null) {
                 if (!overwrite) {
                     return null;
                 }
 
-                etag.validate(result.etag);
+                etag.validate(metadata.getEtag());
             }
 
-            long updatedAt = time();
-            long createdAt = result.exists ? result.createdAt : updatedAt;
+            long updatedAt = System.currentTimeMillis();
+            long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
             String newEtag = EtagBuilder.generateEtag(body.getBytes());
-            redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true, newEtag));
+            CacheService.ItemMetadata newMetadata = CacheService.ItemMetadata.builder()
+                    .etag(newEtag)
+                    .createdAt(createdAt)
+                    .updatedAt(updatedAt)
+                    .contentType("application/json")
+                    .build();
+            CacheService.Item<String> item = new CacheService.Item<>(newMetadata, body);
+            cacheService.saveString(redisKey, item);
 
-            if (!result.exists) {
-                blobPut(blobKey, "", createdAt, updatedAt, newEtag); // create an empty object for listing
+            if (metadata == null) {
+                // create an empty object for listing
+                cacheService.saveStub(redisKey, newMetadata);
             }
 
             return new ResourceItemMetadata(descriptor)
@@ -302,94 +244,36 @@ public class ResourceService implements AutoCloseable {
 
     public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag, boolean lock) {
         String redisKey = lockService.redisKey(descriptor);
-        String blobKey = blobKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
-            Result result = redisGet(redisKey, false);
-            if (result == null) {
-                result = blobGet(blobKey, false);
-            }
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
-            if (!result.exists) {
+            if (metadata == null) {
                 return false;
             }
 
-            etag.validate(result.etag);
+            etag.validate(metadata.getEtag());
 
-            redisPut(redisKey, new Result("", Long.MIN_VALUE, Long.MIN_VALUE, false, false, ""));
-            blobDelete(blobKey);
-            redisSync(redisKey);
+            cacheService.delete(redisKey);
+            cacheService.flush(redisKey);
 
             return true;
         }
     }
 
-    public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag) {
-        return copyResource(from, to, etag, true, true);
+    public boolean copyResource(ResourceDescription from, ResourceDescription to) {
+        return copyResource(from, to, true);
     }
 
-    public boolean copyResource(ResourceDescription from, ResourceDescription to, EtagHeader etag, boolean overwrite, boolean lock) {
-        try (LockService.MoveLock ignored = lock ? lockService.lock(from, to) : null) {
-            String body = getResource(from, false);
+    public boolean copyResource(ResourceDescription from, ResourceDescription to, boolean overwrite) {
+        String body = getResource(from);
 
-            if (body == null) {
-                return false;
-            }
-
-            ResourceItemMetadata metadata = putResource(to, body, etag, overwrite, false);
-            return metadata != null;
-        }
-    }
-
-    private Void sync() {
-        log.debug("Syncing");
-        try {
-            RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
-            long now = time();
-
-            for (String redisKey : set.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, syncBatch)) {
-                sync(redisKey);
-            }
-        } catch (Throwable e) {
-            log.warn("Failed to sync:", e);
+        if (body == null) {
+            return false;
         }
 
-        return null;
-    }
-
-    private void sync(String redisKey) {
-        log.debug("Syncing resource: {}", redisKey);
-        try (var lock = lockService.tryLock(redisKey)) {
-            if (lock == null) {
-                return;
-            }
-
-            Result result = redisGet(redisKey, false);
-            if (result == null || result.synced) {
-                RMap<Object, Object> map = redis.getMap(redisKey, StringCodec.INSTANCE);
-                long ttl = map.remainTimeToLive();
-                // according to the documentation, -1 means expiration is not set
-                if (ttl == -1) {
-                    map.expire(cacheExpiration);
-                }
-                redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
-                return;
-            }
-
-            String blobKey = blobKeyFromRedisKey(redisKey);
-            if (result.exists) {
-                log.debug("Syncing resource: {}. Blob updating", redisKey);
-                result = redisGet(redisKey, true);
-                blobPut(blobKey, result.body, result.createdAt, result.updatedAt, result.etag);
-            } else {
-                log.debug("Syncing resource: {}. Blob deleting", redisKey);
-                blobDelete(blobKey);
-            }
-
-            redisSync(redisKey);
-        } catch (Throwable e) {
-            log.warn("Failed to sync resource: {}", redisKey, e);
-        }
+        ResourceItemMetadata metadata = putResource(to, body, EtagHeader.ANY, overwrite);
+        return metadata != null;
     }
 
     private boolean blobExists(String key) {
@@ -397,7 +281,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @SneakyThrows
-    private Result blobGet(String key, boolean withBody) {
+    private CacheService.Result<CacheService.Item<String>> blobGet(String key, boolean withBody) {
         Blob blob = null;
         BlobMetadata meta;
 
@@ -409,12 +293,14 @@ public class ResourceService implements AutoCloseable {
         }
 
         if (meta == null) {
-            return BLOB_NOT_FOUND;
+            return CacheService.Result.empty();
         }
 
+        String etag = ResourceUtil.extractEtag(meta.getUserMetadata());
         long createdAt = Long.parseLong(meta.getUserMetadata().get("created_at"));
         long updatedAt = Long.parseLong(meta.getUserMetadata().get("updated_at"));
-        String etag = ResourceUtil.extractEtag(meta.getUserMetadata());
+        String contentType = meta.getContentMetadata().getContentType();
+        long contentLength = meta.getContentMetadata().getContentLength();
 
         String body = "";
 
@@ -429,99 +315,12 @@ public class ResourceService implements AutoCloseable {
             }
         }
 
-        return new Result(body, createdAt, updatedAt, true, true, etag);
-    }
-
-    private void blobPut(String key, String body, long createdAt, long updatedAt, String etag) {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        String encoding = null;
-
-        if (bytes.length >= compressionMinSize) {
-            encoding = "gzip";
-            bytes = Compression.compress(encoding, bytes);
-        }
-
-        Map<String, String> metadata = Map.of(
-                "created_at", Long.toString(createdAt),
-                "updated_at", Long.toString(updatedAt),
-                ResourceUtil.ETAG_ATTRIBUTE, etag
-        );
-        blobStore.store(key, "application/json", encoding, metadata, bytes);
-    }
-
-    private void blobDelete(String key) {
-        blobStore.delete(key);
+        return new CacheService.Result<>(new CacheService.Item<>(
+                new CacheService.ItemMetadata(etag, createdAt, updatedAt, contentType, contentLength),
+                body));
     }
 
     private static String blobKey(ResourceDescription descriptor) {
         return descriptor.getAbsoluteFilePath();
-    }
-
-    private String blobKeyFromRedisKey(String redisKey) {
-        // redis key may have prefix, we need to subtract it, because BlobStore manage prefix on its own
-        int delimiterIndex = redisKey.indexOf(":");
-        int prefixChars = prefix != null ? prefix.length() + 1 : 0;
-        return redisKey.substring(prefixChars + delimiterIndex + 1);
-    }
-
-    @Nullable
-    private Result redisGet(String key, boolean withBody) {
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-        Map<String, String> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
-
-        if (fields.isEmpty()) {
-            return null;
-        }
-
-        String body = fields.get("body");
-        long createdAt = Long.parseLong(fields.get("created_at"));
-        long updatedAt = Long.parseLong(fields.get("updated_at"));
-        boolean synced = Boolean.parseBoolean(Objects.requireNonNull(fields.get("synced")));
-        boolean exists = Boolean.parseBoolean(Objects.requireNonNull(fields.get("exists")));
-        String etag = ResourceUtil.extractEtag(fields);
-
-        return new Result(body, createdAt, updatedAt, synced, exists, etag);
-    }
-
-    private void redisPut(String key, Result result) {
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
-        set.add(time() + syncDelay, key); // add resource to sync set before changing because calls below can fail
-
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-
-        if (!result.synced) {
-            map.clearExpire();
-        }
-
-        Map<String, String> fields = Map.of(
-                "body", result.body,
-                "created_at", Long.toString(result.createdAt),
-                "updated_at", Long.toString(result.updatedAt),
-                "synced", Boolean.toString(result.synced),
-                "exists", Boolean.toString(result.exists),
-                ResourceUtil.ETAG_ATTRIBUTE, result.etag
-        );
-        map.putAll(fields);
-
-        if (result.synced) { // cleanup because it is already synced
-            map.expire(cacheExpiration);
-            set.remove(key);
-        }
-    }
-
-    private void redisSync(String key) {
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-        map.put("synced", "true");
-        map.expire(cacheExpiration);
-
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
-        set.remove(key);
-    }
-
-    private static long time() {
-        return System.currentTimeMillis();
-    }
-
-    private record Result(String body, long createdAt, long updatedAt, boolean synced, boolean exists, String etag) {
     }
 }

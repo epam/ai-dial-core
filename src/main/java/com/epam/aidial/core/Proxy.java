@@ -13,6 +13,7 @@ import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.FileService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.NotificationService;
@@ -89,6 +90,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final RuleService ruleService;
     private final NotificationService notificationService;
     private final CustomApplicationService customApplicationService;
+    private final FileService fileService;
     private final String version;
 
     @Override

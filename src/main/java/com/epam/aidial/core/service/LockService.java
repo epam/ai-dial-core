@@ -2,7 +2,6 @@ package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
@@ -38,10 +37,6 @@ public class LockService {
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 
-    public Lock lock(ResourceDescription resource) {
-        return lock(redisKey(resource));
-    }
-
     public Lock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
@@ -52,30 +47,7 @@ public class LockService {
             interval = Math.min(2 * interval, WAIT_MAX);
         }
 
-        return new Lock(id, owner);
-    }
-
-    public MoveLock lock(ResourceDescription resource1, ResourceDescription resource2) {
-        return lock(redisKey(resource1), redisKey(resource2));
-    }
-
-    private MoveLock lock(String key1, String key2) {
-        String id1 = id(key1);
-        String id2 = id(key2);
-        long owner = ThreadLocalRandom.current().nextLong();
-
-        long interval = WAIT_MIN;
-        while (true) {
-            if (tryLock(id1, owner)) {
-                if (tryLock(id2, owner)) {
-                    return new MoveLock(id1, id2, owner);
-                }
-                unlock(id1, owner);
-            }
-
-            LockSupport.parkNanos(interval);
-            interval = Math.min(2 * interval, WAIT_MAX);
-        }
+        return () -> unlock(id, owner);
     }
 
     public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
@@ -89,7 +61,7 @@ public class LockService {
     public Lock tryLock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
-        return tryLock(id, owner) ? new Lock(id, owner) : null;
+        return tryLock(id, owner) ? () -> unlock(id, owner) : null;
     }
 
     private boolean tryLock(String id, long owner) {
@@ -150,33 +122,8 @@ public class LockService {
         return "lock:" + key;
     }
 
-    @AllArgsConstructor
-    public class MoveLock implements AutoCloseable {
-        private final String id1;
-        private final String id2;
-        private final long owner;
-
+    public interface Lock extends AutoCloseable {
         @Override
-        public void close() {
-            unlock(id1, owner);
-            unlock(id2, owner);
-        }
-    }
-
-    @AllArgsConstructor
-    public final class Lock implements AutoCloseable {
-        private final String id;
-        private final long owner;
-
-        public void extend() {
-            if (!LockService.this.tryExtend(id, owner)) {
-                throw new IllegalStateException("Failed to acquire storage lock");
-            }
-        }
-
-        @Override
-        public void close() {
-            unlock(id, owner);
-        }
+        void close();
     }
 }

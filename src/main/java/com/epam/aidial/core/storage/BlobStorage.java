@@ -126,17 +126,6 @@ public class BlobStorage implements Closeable {
      *
      * @param absoluteFilePath absolute path according to the bucket, for example: Users/user1/files/input/file.txt
      * @param contentType      MIME type of the content, for example: text/csv
-     * @param data             whole content data
-     */
-    public void store(String absoluteFilePath, String contentType, Buffer data, String etag) {
-        store(absoluteFilePath, contentType, null, Map.of(ResourceUtil.ETAG_ATTRIBUTE, etag), new BufferPayload(data));
-    }
-
-    /**
-     * Upload file in a single request
-     *
-     * @param absoluteFilePath absolute path according to the bucket, for example: Users/user1/files/input/file.txt
-     * @param contentType      MIME type of the content, for example: text/csv
      * @param contentEncoding  content encoding, e.g. gzip/brotli/deflate
      * @param data             whole content data
      */
@@ -188,11 +177,6 @@ public class BlobStorage implements Closeable {
         return blobStore.blobMetadata(bucketName, storageLocation);
     }
 
-    public String getEtag(String filePath) {
-        BlobMetadata meta = meta(filePath);
-        return meta != null ? ResourceUtil.extractEtag(meta.getUserMetadata()) : null;
-    }
-
     /**
      * Delete file content from blob store
      *
@@ -223,9 +207,7 @@ public class BlobStorage implements Closeable {
         } else {
             // listing file
             if (filesMetadata.size() == 1) {
-                BlobMetadata fullMetadata = meta(resource.getAbsoluteFilePath());
-                return ((FileMetadata) filesMetadata.get(0))
-                        .setEtag(ResourceUtil.extractEtag(fullMetadata.getUserMetadata()));
+                return filesMetadata.get(0);
             }
             return null;
         }
