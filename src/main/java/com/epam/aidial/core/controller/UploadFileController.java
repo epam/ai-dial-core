@@ -49,7 +49,7 @@ public class UploadFileController extends AccessControlBaseController {
                             etag,
                             contentType);
                     try {
-                        etag.validate(() -> fileService.getMetadata(resource).getEtag());
+                        etag.validate(() -> fileService.getEtag(resource));
                         pipe.to(writeStream, result);
                     } catch (HttpException e) {
                         result.fail(e);

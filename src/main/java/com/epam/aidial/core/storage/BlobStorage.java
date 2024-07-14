@@ -99,8 +99,8 @@ public class BlobStorage implements Closeable {
      * @param buffer    data
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, Buffer buffer) {
-        return blobStore.uploadMultipartPart(multipart, part, new BufferPayload(buffer));
+    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, byte[] bytes) {
+        return blobStore.uploadMultipartPart(multipart, part, new ByteArrayPayload(bytes));
     }
 
     /**

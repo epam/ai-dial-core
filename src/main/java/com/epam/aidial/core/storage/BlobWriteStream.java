@@ -113,14 +113,13 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     throw new RuntimeException(exception);
                 }
 
-                Buffer lastChunk = chunkBuffer.slice(0, position);
-                byte[] lastChunkBytes = lastChunk.getBytes();
-                String newEtag = etagBuilder.append(lastChunkBytes).build();
+                byte[] lastChunk = chunkBuffer.slice(0, position).getBytes();
+                String newEtag = etagBuilder.append(lastChunk).build();
                 metadata = new FileMetadata(resource, bytesHandled, contentType)
                         .setEtag(newEtag);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
-                    fileService.putFile(resource, lastChunkBytes, contentType, newEtag, etag);
+                    fileService.putFile(resource, lastChunk, contentType, newEtag, etag);
                 } else {
                     if (position != 0) {
                         MultipartPart part = blobStorage.storeMultipartPart(mpu, ++chunkNumber, lastChunk);
@@ -165,8 +164,8 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     if (mpu == null) {
                         mpu = blobStorage.initMultipartUpload(resource.getAbsoluteFilePath(), contentType);
                     }
-                    Buffer chunk = chunkBuffer.slice(0, position);
-                    etagBuilder.append(chunk.getBytes());
+                    byte[] chunk = chunkBuffer.slice(0, position).getBytes();
+                    etagBuilder.append(chunk);
                     MultipartPart part = blobStorage.storeMultipartPart(mpu, ++chunkNumber, chunk);
                     parts.add(part);
                     position = 0;

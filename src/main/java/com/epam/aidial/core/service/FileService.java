@@ -1,6 +1,7 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.data.FileMetadata;
+import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
@@ -13,6 +14,7 @@ import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.io.MutableContentMetadata;
 import org.jclouds.io.Payload;
 
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -70,6 +72,16 @@ public class FileService {
         }
     }
 
+    @Nullable
+    public String getEtag(ResourceDescription resource) {
+        FileMetadata metadata = getMetadata(resource);
+        if (metadata == null) {
+            return null;
+        }
+
+        return metadata.getEtag();
+    }
+
     public FileMetadata getMetadata(ResourceDescription resource) {
         String key = lockService.redisKey(resource);
         CacheService.Result<CacheService.ItemMetadata> metadata = cacheService.getMetadata(key);
@@ -115,7 +127,7 @@ public class FileService {
     public void putFile(ResourceDescription resource, MultipartUpload mpu, List<MultipartPart> parts, EtagHeader etag) {
         String key = lockService.redisKey(resource);
         try (LockService.Lock ignored = lockService.lock(key)) {
-            etag.validate(() -> getMetadata(resource).getEtag());
+            etag.validate(() -> getEtag(resource));
 
             cacheService.flush(key);
             blobStorage.completeMultipartUpload(mpu, parts);
@@ -125,7 +137,7 @@ public class FileService {
     public void deleteFile(ResourceDescription resource, EtagHeader etag) {
         String key = lockService.redisKey(resource);
         try (LockService.Lock ignored = lockService.lock(key)) {
-            etag.validate(() -> getMetadata(resource).getEtag());
+            etag.validate(() -> getEtag(resource));
 
             cacheService.delete(key);
             cacheService.flush(key);
