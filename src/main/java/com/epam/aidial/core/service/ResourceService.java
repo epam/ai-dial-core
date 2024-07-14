@@ -216,10 +216,7 @@ public class ResourceService {
                 cacheService.saveStub(redisKey, newMetadata);
             }
 
-            return new ResourceItemMetadata(descriptor)
-                    .setCreatedAt(createdAt)
-                    .setUpdatedAt(updatedAt)
-                    .setEtag(newEtag);
+            return toResourceItemMetadata(descriptor, newMetadata);
         }
     }
 

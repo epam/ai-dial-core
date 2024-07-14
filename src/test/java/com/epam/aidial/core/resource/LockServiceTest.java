@@ -23,7 +23,7 @@ class LockServiceTest {
         try {
             server = RedisServer.newRedisServer()
                     .port(16371)
-                    .setting("bind 127.0.0.1")
+                    .bind("127.0.0.1")
                     .setting("maxmemory 4M")
                     .setting("maxmemory-policy volatile-lfu")
                     .build();

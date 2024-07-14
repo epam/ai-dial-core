@@ -58,9 +58,6 @@ public class RateLimiterTest {
     private BlobStorage blobStorage;
 
     @Mock
-    private CacheService cacheService;
-
-    @Mock
     private HttpServerRequest request;
 
     private RateLimiter rateLimiter;
@@ -69,7 +66,7 @@ public class RateLimiterTest {
     public static void beforeAll() throws IOException {
         redisServer = RedisServer.newRedisServer()
                 .port(16370)
-                .setting("bind 127.0.0.1")
+                .bind("127.0.0.1")
                 .setting("maxmemory 16M")
                 .setting("maxmemory-policy volatile-lfu")
                 .build();
@@ -113,7 +110,10 @@ public class RateLimiterTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(blobStorage, cacheService, lockService, new JsonObject(resourceConfig));
+
+        JsonObject settings = new JsonObject(resourceConfig);
+        CacheService cacheService = new CacheService(vertx, redissonClient, blobStorage, lockService, settings, null);
+        ResourceService resourceService = new ResourceService(blobStorage, cacheService, lockService, settings);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 

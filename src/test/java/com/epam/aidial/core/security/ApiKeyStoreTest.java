@@ -46,9 +46,6 @@ public class ApiKeyStoreTest {
     @Mock
     private BlobStorage blobStorage;
 
-    @Mock
-    private CacheService cacheService;
-
     private ApiKeyStore store;
 
     @BeforeAll
@@ -99,7 +96,9 @@ public class ApiKeyStoreTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(blobStorage, cacheService, lockService, new JsonObject(resourceConfig));
+        JsonObject settings = new JsonObject(resourceConfig);
+        CacheService cacheService = new CacheService(vertx, redissonClient, blobStorage, lockService, settings, null);
+        ResourceService resourceService = new ResourceService(blobStorage, cacheService, lockService, settings);
         store = new ApiKeyStore(resourceService, vertx);
     }
 
