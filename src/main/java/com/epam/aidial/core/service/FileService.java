@@ -140,7 +140,6 @@ public class FileService {
             etag.validate(() -> getEtag(resource));
 
             cacheService.delete(key);
-            cacheService.flush(key);
         }
     }
 

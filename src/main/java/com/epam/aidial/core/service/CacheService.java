@@ -238,6 +238,7 @@ public class CacheService implements AutoCloseable {
 
     public void delete(String key) {
         putString(key, null, false);
+        sync(key);
     }
 
     private void putString(String key, @Nullable Item<String> item, boolean synced) {
