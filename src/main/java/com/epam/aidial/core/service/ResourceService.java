@@ -113,12 +113,11 @@ public class ResourceService {
         }
 
         String redisKey = lockService.redisKey(descriptor);
-        String blobKey = blobKey(descriptor);
         CacheService.Result<CacheService.ItemMetadata> result = cacheService.getMetadata(redisKey);
 
         if (result == null) {
-            return blobGet(blobKey, false).map(
-                    item -> toResourceItemMetadata(descriptor, item.metadata()));
+            String blobKey = blobKey(descriptor);
+            return blobGet(blobKey, false).map(item -> toResourceItemMetadata(descriptor, item.metadata()));
         }
 
         return result.map(metadata -> toResourceItemMetadata(descriptor, metadata));
@@ -239,17 +238,15 @@ public class ResourceService {
 
     public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag) {
         String redisKey = lockService.redisKey(descriptor);
-        String blobKey = blobKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
-            CacheService.Result<CacheService.ItemMetadata> result = cacheService.getMetadata(redisKey);
-            boolean exists = (result == null) ? blobExists(blobKey) : result.exists();
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
-            if (!exists) {
+            if (metadata == null) {
                 return false;
             }
 
-            etag.validate(result.value().etag());
+            etag.validate(metadata.getEtag());
 
             cacheService.delete(redisKey);
 
