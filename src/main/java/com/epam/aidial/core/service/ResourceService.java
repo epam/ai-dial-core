@@ -27,6 +27,9 @@ import java.util.Map;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
+import static com.epam.aidial.core.util.ResourceUtil.CREATED_AT_ATTRIBUTE;
+import static com.epam.aidial.core.util.ResourceUtil.UPDATED_AT_ATTRIBUTE;
+
 @Slf4j
 public class ResourceService {
     private final BlobStorage blobStore;
@@ -85,8 +88,8 @@ public class ResourceService {
             Long updatedAt = null;
 
             if (metadata != null) {
-                createdAt = metadata.containsKey("created_at") ? Long.parseLong(metadata.get("created_at")) : null;
-                updatedAt = metadata.containsKey("updated_at") ? Long.parseLong(metadata.get("updated_at")) : null;
+                createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
+                updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
             }
 
             if (createdAt == null && meta.getCreationDate() != null) {
@@ -290,10 +293,8 @@ public class ResourceService {
         }
 
         String etag = ResourceUtil.extractEtag(meta.getUserMetadata());
-        long createdAt = Long.parseLong(meta.getUserMetadata().get("created_at"));
-        long updatedAt = Long.parseLong(meta.getUserMetadata().get("updated_at"));
-        String contentType = meta.getContentMetadata().getContentType();
-        long contentLength = meta.getContentMetadata().getContentLength();
+        long createdAt = Long.parseLong(meta.getUserMetadata().get(CREATED_AT_ATTRIBUTE));
+        long updatedAt = Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE));
 
         String body = "";
 
@@ -309,7 +310,11 @@ public class ResourceService {
         }
 
         return new CacheService.Result<>(new CacheService.Item<>(
-                new CacheService.ItemMetadata(etag, createdAt, updatedAt, contentType, contentLength),
+                CacheService.ItemMetadata.builder()
+                        .etag(etag)
+                        .createdAt(createdAt)
+                        .updatedAt(updatedAt)
+                        .build(),
                 body));
     }
 

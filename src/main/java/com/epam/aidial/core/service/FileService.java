@@ -1,7 +1,6 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.data.FileMetadata;
-import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
@@ -14,12 +13,12 @@ import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.io.MutableContentMetadata;
 import org.jclouds.io.Payload;
 
-import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import javax.annotation.Nullable;
 
 @AllArgsConstructor
 public class FileService {

@@ -8,7 +8,6 @@ import com.google.common.collect.Sets;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Builder;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RMap;
@@ -57,8 +56,6 @@ public class CacheService implements AutoCloseable {
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
-    @Getter
-    private final int maxSize;
     private final long syncTimer;
     private final long syncDelay;
     private final int syncBatch;
@@ -74,7 +71,6 @@ public class CacheService implements AutoCloseable {
                            JsonObject settings,
                            String prefix) {
         this(vertx, redis, blobStore, lockService,
-                settings.getInteger("maxSize"),
                 settings.getLong("syncPeriod"),
                 settings.getLong("syncDelay"),
                 settings.getInteger("syncBatch"),
@@ -85,7 +81,6 @@ public class CacheService implements AutoCloseable {
     }
 
     /**
-     * @param maxSize            - max allowed size in bytes for a resource.
      * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
      * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
      * @param syncBatch          - how many resources to sync in one go.
@@ -96,7 +91,6 @@ public class CacheService implements AutoCloseable {
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
-                           int maxSize,
                            long syncPeriod,
                            long syncDelay,
                            int syncBatch,
@@ -107,7 +101,6 @@ public class CacheService implements AutoCloseable {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
-        this.maxSize = maxSize;
         this.syncDelay = syncDelay;
         this.syncBatch = syncBatch;
         this.cacheExpiration = Duration.ofMillis(cacheExpiration);
@@ -396,7 +389,7 @@ public class CacheService implements AutoCloseable {
 
     private RMap<String, String> redisSync(String key) {
         RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-        map.put("synced", "true");
+        map.put(SYNCED_ATTRIBUTE, "true");
         map.expire(cacheExpiration);
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
