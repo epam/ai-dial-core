@@ -30,7 +30,7 @@ import java.util.List;
 @Slf4j
 public class BlobWriteStream implements WriteStream<Buffer> {
 
-    private static final int MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
+    private static final int MIN_PART_SIZE_BYTES = FileService.MAX_CACHE_ITEM_IN_BYTES;
 
     private final Vertx vertx;
     private final BlobStorage blobStorage;

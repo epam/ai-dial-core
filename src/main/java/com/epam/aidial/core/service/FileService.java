@@ -22,7 +22,7 @@ import javax.annotation.Nullable;
 
 @AllArgsConstructor
 public class FileService {
-    private static final int MAX_CACHE_ITEM_IN_BYTES = 5 * 1024 * 1024;
+    public static final int MAX_CACHE_ITEM_IN_BYTES = 5 * 1024 * 1024;
 
     private final BlobStorage blobStorage;
     private final CacheService cacheService;
