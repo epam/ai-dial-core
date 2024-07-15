@@ -21,12 +21,12 @@ public class EtagBuilder {
                 .collect(Collectors.joining());
     }
 
-    @SneakyThrows
-    public MessageDigest getDigest() {
-        return MessageDigest.getInstance("MD5");
-    }
-
     public static String generateEtag(byte[] bytes) {
         return new EtagBuilder().append(bytes).build();
+    }
+
+    @SneakyThrows
+    private static MessageDigest getDigest() {
+        return MessageDigest.getInstance("MD5");
     }
 }
