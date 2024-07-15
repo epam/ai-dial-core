@@ -13,6 +13,7 @@ import io.vertx.core.json.JsonObject;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
@@ -151,22 +152,23 @@ public class ResourceService {
     @Nullable
     public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
         String redisKey = cacheService.redisKey(descriptor);
-        CacheService.Result<CacheService.Item<String>> result = cacheService.getString(redisKey);
+        CacheService.Result<CacheService.Item> result = cacheService.getItem(redisKey);
 
         if (result == null) {
             try (var ignore = lock ? lockService.lock(redisKey) : null) {
-                result = cacheService.getString(redisKey);
+                result = cacheService.getItem(redisKey);
 
                 if (result == null) {
                     String blobKey = blobKey(descriptor);
                     result = blobGet(blobKey, true);
-                    cacheService.cacheString(redisKey, result.value());
+                    cacheService.cacheItem(redisKey, result.value());
                 }
             }
         }
 
-        return result.map(item ->
-                Pair.of(toResourceItemMetadata(descriptor, item.metadata()), item.body()));
+        return result.map(item -> Pair.of(
+                toResourceItemMetadata(descriptor, item.metadata()),
+                new String(item.body(), StandardCharsets.UTF_8)));
     }
 
     @Nullable
@@ -202,15 +204,16 @@ public class ResourceService {
 
             long updatedAt = System.currentTimeMillis();
             long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
-            String newEtag = EtagBuilder.generateEtag(body.getBytes());
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            String newEtag = EtagBuilder.generateEtag(bytes);
             CacheService.ItemMetadata newMetadata = CacheService.ItemMetadata.builder()
                     .etag(newEtag)
                     .createdAt(createdAt)
                     .updatedAt(updatedAt)
                     .contentType("application/json")
                     .build();
-            CacheService.Item<String> item = new CacheService.Item<>(newMetadata, body);
-            cacheService.saveString(redisKey, item);
+            CacheService.Item item = new CacheService.Item(newMetadata, bytes);
+            cacheService.saveItem(redisKey, item);
 
             if (metadata == null) {
                 // create an empty object for listing
@@ -274,7 +277,7 @@ public class ResourceService {
     }
 
     @SneakyThrows
-    private CacheService.Result<CacheService.Item<String>> blobGet(String key, boolean withBody) {
+    private CacheService.Result<CacheService.Item> blobGet(String key, boolean withBody) {
         Blob blob = null;
         BlobMetadata meta;
 
@@ -293,20 +296,19 @@ public class ResourceService {
         long createdAt = Long.parseLong(meta.getUserMetadata().get(CREATED_AT_ATTRIBUTE));
         long updatedAt = Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE));
 
-        String body = "";
+        byte[] body = ArrayUtils.EMPTY_BYTE_ARRAY;
 
         if (blob != null) {
             String encoding = meta.getContentMetadata().getContentEncoding();
             try (InputStream stream = blob.getPayload().openStream()) {
-                byte[] payload = stream.readAllBytes();
+                body = stream.readAllBytes();
                 if (encoding != null) {
-                    payload = Compression.decompress(encoding, payload);
+                    body = Compression.decompress(encoding, body);
                 }
-                body = new String(payload, StandardCharsets.UTF_8);
             }
         }
 
-        return new CacheService.Result<>(new CacheService.Item<>(
+        return new CacheService.Result<>(new CacheService.Item(
                 CacheService.ItemMetadata.builder()
                         .etag(etag)
                         .createdAt(createdAt)

@@ -30,13 +30,13 @@ public class FileService {
 
     public FileStream getFile(ResourceDescription resource) throws IOException {
         String key = cacheService.redisKey(resource);
-        CacheService.Result<CacheService.Item<byte[]>> cacheItem = cacheService.getBytes(key);
+        CacheService.Result<CacheService.Item> cacheItem = cacheService.getItem(key);
         if (cacheItem != null) {
             return cacheItem.map(FileStream::fromCacheItem);
         }
 
         try (LockService.Lock ignored = lockService.lock(key)) {
-            cacheItem = cacheService.getBytes(key);
+            cacheItem = cacheService.getItem(key);
             if (cacheItem != null) {
                 return cacheItem.map(FileStream::fromCacheItem);
             }
@@ -55,14 +55,14 @@ public class FileService {
 
             if (length <= MAX_CACHE_ITEM_IN_BYTES) {
                 try (InputStream inputStream = payload.openStream()) {
-                    CacheService.Item<byte[]> item = new CacheService.Item<>(
+                    CacheService.Item item = new CacheService.Item(
                             CacheService.ItemMetadata.builder()
                                     .etag(etag)
                                     .contentType(contentType)
                                     .contentLength(length)
                                     .build(),
                             inputStream.readAllBytes());
-                    cacheService.cacheBytes(key, item);
+                    cacheService.cacheItem(key, item);
                     return FileStream.fromCacheItem(item);
                 }
             }
@@ -114,8 +114,8 @@ public class FileService {
                     .contentType(contentType)
                     .contentLength((long) bytes.length)
                     .build();
-            CacheService.Item<byte[]> item = new CacheService.Item<>(newMetadata, bytes);
-            cacheService.saveBytes(key, item);
+            CacheService.Item item = new CacheService.Item(newMetadata, bytes);
+            cacheService.saveItem(key, item);
             if (metadata == null) {
                 // create an empty object for listing
                 cacheService.saveStub(key, newMetadata);
@@ -160,7 +160,7 @@ public class FileService {
             inputStream.close();
         }
 
-        private static FileStream fromCacheItem(CacheService.Item<byte[]> item) {
+        private static FileStream fromCacheItem(CacheService.Item item) {
             byte[] body = item.body();
             CacheService.ItemMetadata metadata = item.metadata();
             return new FileStream(

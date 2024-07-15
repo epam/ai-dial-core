@@ -4,21 +4,23 @@ import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
+import com.epam.aidial.core.util.RedisUtil;
 import com.epam.aidial.core.util.ResourceUtil;
 import com.google.common.collect.Sets;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.ByteArrayCodec;
+import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
+import org.redisson.codec.CompositeCodec;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -32,7 +34,6 @@ public class CacheService implements AutoCloseable {
     private static final String BODY_ATTRIBUTE = "body";
     public static final String CONTENT_TYPE_ATTRIBUTE = "content_type";
     public static final String CONTENT_LENGTH_ATTRIBUTE = "content_length";
-    private static final String BINARY_ATTRIBUTE = "binary";
     private static final String SYNCED_ATTRIBUTE = "synced";
     private static final String EXISTS_ATTRIBUTE = "exists";
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of(
@@ -41,17 +42,17 @@ public class CacheService implements AutoCloseable {
             ResourceUtil.UPDATED_AT_ATTRIBUTE,
             CONTENT_TYPE_ATTRIBUTE,
             CONTENT_LENGTH_ATTRIBUTE,
-            BINARY_ATTRIBUTE,
             SYNCED_ATTRIBUTE,
             EXISTS_ATTRIBUTE);
     private static final Set<String> REDIS_FIELDS = Sets.union(
             Set.of(BODY_ATTRIBUTE),
             REDIS_FIELDS_NO_BODY);
+    private static final Codec REDIS_MAP_CODEC = new CompositeCodec(
+            StringCodec.INSTANCE,
+            ByteArrayCodec.INSTANCE);
 
-    private static final Base64.Encoder BASE64_ENCODER = Base64.getEncoder();
-    private static final Base64.Decoder BASE64_DECODER = Base64.getDecoder();
-    private static final Record NOT_FOUND = new Record(null, false, true);
-    private static final Record DELETED = new Record(null, false, false);
+    private static final Record DELETED_SYNCED = new Record(null, true);
+    private static final Record DELETED_NOT_SYNCED = new Record(null, false);
 
     private final Vertx vertx;
     private final RedissonClient redis;
@@ -142,11 +143,11 @@ public class CacheService implements AutoCloseable {
         return null;
     }
 
-    private RMap<String, String> sync(String redisKey) {
+    private RMap<String, byte[]> sync(String redisKey) {
         log.debug("Syncing resource: {}", redisKey);
         Record cacheRecord = redisGet(redisKey, false);
         if (cacheRecord == null || cacheRecord.synced) {
-            RMap<String, String> map = redis.getMap(redisKey, StringCodec.INSTANCE);
+            RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
             long ttl = map.remainTimeToLive();
             // according to the documentation, -1 means expiration is not set
             if (ttl == -1) {
@@ -170,17 +171,12 @@ public class CacheService implements AutoCloseable {
     }
 
     private void blobPut(String key, Record cacheRecord) {
-        byte[] bytes;
         String encoding = null;
-        Item<String> item = cacheRecord.item;
-        if (cacheRecord.binary) {
-            bytes = BASE64_DECODER.decode(item.body);
-        } else {
-            bytes = item.body.getBytes(StandardCharsets.UTF_8);
-            if (bytes.length >= compressionMinSize) {
-                encoding = "gzip";
-                bytes = Compression.compress(encoding, bytes);
-            }
+        Item item = cacheRecord.item;
+        byte[] bytes = item.body;
+        if (bytes.length >= compressionMinSize) {
+            encoding = "gzip";
+            bytes = Compression.compress(encoding, bytes);
         }
 
         blobStore.store(key, item.metadata.contentType, encoding, toAttributesMap(item.metadata), bytes);
@@ -188,7 +184,7 @@ public class CacheService implements AutoCloseable {
 
     public void saveStub(String key, ItemMetadata metadata) {
         String blobKey = blobKeyFromRedisKey(key);
-        blobStore.store(blobKey, metadata.contentType, null, toAttributesMap(metadata), new byte[0]);
+        blobStore.store(blobKey, metadata.contentType, null, toAttributesMap(metadata), ArrayUtils.EMPTY_BYTE_ARRAY);
     }
 
     private static Map<String, String> toAttributesMap(ItemMetadata metadata) {
@@ -215,51 +211,29 @@ public class CacheService implements AutoCloseable {
         return redisKey.substring(prefixChars + delimiterIndex + 1);
     }
 
-    public void saveString(String key, @Nullable Item<String> item) {
-        putString(key, item, false);
+    public void saveItem(String key, Item item) {
+        redisPut(key, new Record(item, false));
     }
 
-    public void cacheString(String key, @Nullable Item<String> item) {
-        putString(key, item, true);
-    }
-
-    public void saveBytes(String key, @Nullable Item<byte[]> item) {
-        putBytes(key, item, false);
-    }
-
-    public void cacheBytes(String key, @Nullable Item<byte[]> item) {
-        putBytes(key, item, true);
+    public void cacheItem(String key, @Nullable Item item) {
+        if (item == null) {
+            cacheMissing(key);
+        } else {
+            redisPut(key, new Record(item, true));
+        }
     }
 
     public void cacheMissing(String key) {
-        putString(key, null, true);
+        redisPut(key, DELETED_SYNCED);
     }
 
     public void delete(String key) {
-        putString(key, null, false);
+        redisPut(key, DELETED_NOT_SYNCED);
         sync(key);
     }
 
-    private void putString(String key, @Nullable Item<String> item, boolean synced) {
-        if (item == null) {
-            redisPut(key, synced ? NOT_FOUND : DELETED);
-        } else {
-            Record cacheRecord = new Record(item, false, synced);
-            redisPut(key, cacheRecord);
-        }
-    }
-
-    private void putBytes(String key, @Nullable Item<byte[]> item, boolean synced) {
-        if (item == null) {
-            redisPut(key, synced ? NOT_FOUND : DELETED);
-        } else {
-            String body = BASE64_ENCODER.encodeToString(item.body);
-            putString(key, item.withBody(body), synced);
-        }
-    }
-
     public void flush(String key) {
-        RMap<String, String> map = sync(key);
+        RMap<String, byte[]> map = sync(key);
         map.delete();
     }
 
@@ -278,7 +252,7 @@ public class CacheService implements AutoCloseable {
     }
 
     @Nullable
-    public Result<Item<String>> getString(String key) {
+    public Result<Item> getItem(String key) {
         Record cacheRecord = redisGet(key, true);
         if (cacheRecord == null) {
             return null;
@@ -292,49 +266,29 @@ public class CacheService implements AutoCloseable {
     }
 
     @Nullable
-    public Result<Item<byte[]>> getBytes(String key) {
-        Record cacheRecord = redisGet(key, true);
-        if (cacheRecord == null) {
-            return null;
-        }
-
-        if (!cacheRecord.exists()) {
-            return Result.empty();
-        }
-
-        if (cacheRecord.binary) {
-            throw new IllegalStateException("The value at %s is not an array".formatted(key));
-        }
-
-        return new Result<>(cacheRecord.item.withBody(BASE64_DECODER.decode(cacheRecord.item.body)));
-    }
-
-    @Nullable
     private Record redisGet(String key, boolean withBody) {
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-        Map<String, String> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
+        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
+        Map<String, byte[]> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
 
         if (fields.isEmpty()) {
             return null;
         }
 
-        boolean exists = Boolean.parseBoolean(Objects.requireNonNull(fields.get(EXISTS_ATTRIBUTE)));
-        boolean binary = Boolean.parseBoolean(Objects.requireNonNull(fields.get(BINARY_ATTRIBUTE)));
-        boolean synced = Boolean.parseBoolean(Objects.requireNonNull(fields.get(SYNCED_ATTRIBUTE)));
+        boolean exists = Objects.requireNonNull(RedisUtil.redisToBoolean(fields.get(EXISTS_ATTRIBUTE)));
+        boolean synced = Objects.requireNonNull(RedisUtil.redisToBoolean(fields.get(SYNCED_ATTRIBUTE)));
         if (!exists) {
-            return new Record(null, binary, synced);
+            return new Record(null, synced);
         }
 
-        String body = fields.get(BODY_ATTRIBUTE);
-        String etag = ResourceUtil.extractEtag(fields);
-        String contentType = StringUtils.defaultIfEmpty(fields.get(CONTENT_TYPE_ATTRIBUTE), null);
-        Long contentLength = nullIfEmpty(fields.get(CONTENT_LENGTH_ATTRIBUTE));
-        Long createdAt = nullIfEmpty(fields.get(ResourceUtil.CREATED_AT_ATTRIBUTE));
-        Long updatedAt = nullIfEmpty(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
+        byte[] body = fields.get(BODY_ATTRIBUTE);
+        String etag = RedisUtil.redisToString(fields.get(ResourceUtil.ETAG_ATTRIBUTE), ResourceUtil.DEFAULT_ETAG);
+        String contentType = RedisUtil.redisToString(fields.get(CONTENT_TYPE_ATTRIBUTE), null);
+        Long contentLength = RedisUtil.redisToLong(fields.get(CONTENT_LENGTH_ATTRIBUTE));
+        Long createdAt = RedisUtil.redisToLong(fields.get(ResourceUtil.CREATED_AT_ATTRIBUTE));
+        Long updatedAt = RedisUtil.redisToLong(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
 
         return new Record(
-                new Item<>(new ItemMetadata(etag, createdAt, updatedAt, contentType, contentLength), body),
-                binary,
+                new Item(new ItemMetadata(etag, createdAt, updatedAt, contentType, contentLength), body),
                 synced);
     }
 
@@ -342,29 +296,28 @@ public class CacheService implements AutoCloseable {
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.add(time() + syncDelay, key); // add resource to sync set before changing because calls below can fail
 
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
+        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
 
         if (!cacheRecord.synced) {
             map.clearExpire();
         }
 
-        Map<String, String> fields = new HashMap<>();
+        Map<String, byte[]> fields = new HashMap<>();
         if (cacheRecord.exists()) {
-            Item<String> item = cacheRecord.item;
+            Item item = cacheRecord.item;
             fields.put(BODY_ATTRIBUTE, item.body);
             ItemMetadata metadata = item.metadata;
-            fields.put(ResourceUtil.ETAG_ATTRIBUTE, metadata.etag);
-            fields.put(ResourceUtil.CREATED_AT_ATTRIBUTE, emptyIfNull(metadata.createdAt));
-            fields.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, emptyIfNull(metadata.updatedAt));
-            fields.put(CONTENT_TYPE_ATTRIBUTE, emptyIfNull(metadata.contentType));
-            fields.put(CONTENT_LENGTH_ATTRIBUTE, emptyIfNull(metadata.contentLength));
-            fields.put(EXISTS_ATTRIBUTE, String.valueOf(true));
+            fields.put(ResourceUtil.ETAG_ATTRIBUTE, RedisUtil.stringToRedis(metadata.etag));
+            fields.put(ResourceUtil.CREATED_AT_ATTRIBUTE, RedisUtil.longToRedis(metadata.createdAt));
+            fields.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, RedisUtil.longToRedis(metadata.updatedAt));
+            fields.put(CONTENT_TYPE_ATTRIBUTE, RedisUtil.stringToRedis(metadata.contentType));
+            fields.put(CONTENT_LENGTH_ATTRIBUTE, RedisUtil.longToRedis(metadata.contentLength));
+            fields.put(EXISTS_ATTRIBUTE, RedisUtil.booleanToRedis(true));
         } else {
-            REDIS_FIELDS.forEach(field -> fields.put(field, ""));
-            fields.put(EXISTS_ATTRIBUTE, String.valueOf(false));
+            REDIS_FIELDS.forEach(field -> fields.put(field, RedisUtil.EMPTY_ARRAY));
+            fields.put(EXISTS_ATTRIBUTE, RedisUtil.booleanToRedis(false));
         }
-        fields.put(BINARY_ATTRIBUTE, Boolean.toString(cacheRecord.binary));
-        fields.put(SYNCED_ATTRIBUTE, Boolean.toString(cacheRecord.synced));
+        fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(cacheRecord.synced));
         map.putAll(fields);
 
         if (cacheRecord.synced) { // cleanup because it is already synced
@@ -373,29 +326,9 @@ public class CacheService implements AutoCloseable {
         }
     }
 
-    private static String emptyIfNull(Long value) {
-        if (value != null) {
-            return Long.toString(value);
-        }
-
-        return "";
-    }
-
-    private static String emptyIfNull(String value) {
-        return Objects.requireNonNullElse(value, "");
-    }
-
-    private static Long nullIfEmpty(String value) {
-        if (StringUtils.isEmpty(value)) {
-            return null;
-        }
-
-        return Long.parseLong(value);
-    }
-
-    private RMap<String, String> redisSync(String key) {
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-        map.put(SYNCED_ATTRIBUTE, "true");
+    private RMap<String, byte[]> redisSync(String key) {
+        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
+        map.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(true));
         map.expire(cacheExpiration);
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
@@ -408,10 +341,7 @@ public class CacheService implements AutoCloseable {
         return System.currentTimeMillis();
     }
 
-    private record Record(
-            Item<String> item,
-            boolean binary,
-            boolean synced) {
+    private record Record(Item item, boolean synced) {
         public boolean exists() {
             return item != null;
         }
@@ -439,9 +369,6 @@ public class CacheService implements AutoCloseable {
         }
     }
 
-    public record Item<T>(ItemMetadata metadata, T body) {
-        public <R> Item<R> withBody(R body) {
-            return new Item<>(metadata, body);
-        }
+    public record Item(ItemMetadata metadata, byte[] body) {
     }
 }
