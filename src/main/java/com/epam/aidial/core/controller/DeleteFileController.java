@@ -41,9 +41,9 @@ public class DeleteFileController extends AccessControlBaseController {
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
             return lockService.underBucketLock(bucketLocation, () -> {
-                fileService.deleteFile(resource, etag);
                 invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                 shareService.revokeSharedResource(bucketName, bucketLocation, resource);
+                fileService.deleteFile(resource, etag);
 
                 return null;
             });
