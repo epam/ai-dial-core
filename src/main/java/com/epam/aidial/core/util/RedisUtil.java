@@ -10,10 +10,10 @@ import java.util.function.Function;
 
 @UtilityClass
 public class RedisUtil {
-    private final Charset STRING_ENCODING = StandardCharsets.UTF_8;
-    private final byte[] BOOLEAN_TRUE_ARRAY = new byte[]{1};
-    private final byte[] BOOLEAN_FALSE_ARRAY = new byte[]{0};
-    public final byte[] EMPTY_ARRAY = ArrayUtils.EMPTY_BYTE_ARRAY;
+    private static final Charset STRING_ENCODING = StandardCharsets.UTF_8;
+    private static final byte[] BOOLEAN_TRUE_ARRAY = new byte[]{1};
+    private static final byte[] BOOLEAN_FALSE_ARRAY = new byte[]{0};
+    public static final byte[] EMPTY_ARRAY = ArrayUtils.EMPTY_BYTE_ARRAY;
 
     public byte[] booleanToRedis(Boolean value) {
         return javaToRedis(value, v -> v ? BOOLEAN_TRUE_ARRAY : BOOLEAN_FALSE_ARRAY);
