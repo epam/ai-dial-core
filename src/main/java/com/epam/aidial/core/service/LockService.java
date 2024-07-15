@@ -74,23 +74,6 @@ public class LockService {
                         """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
-    private boolean tryExtend(String id, long owner) {
-        return script.eval(RScript.Mode.READ_WRITE,
-                """
-                        local time = redis.call('time')
-                        local now = time[1] * 1000000 + time[2]
-                        local data = redis.call('hmget', KEYS[1], 'owner', 'deadline')
-                        local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
-                        
-                        if (data[1] == ARGV[1] and deadline ~= nil and now < deadline) then
-                          redis.call('hset', KEYS[1], 'deadline', now + ARGV[2])
-                          return true
-                        end
-                        
-                        return false
-                        """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
-    }
-
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
