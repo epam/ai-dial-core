@@ -94,11 +94,11 @@ public class BlobStorage implements Closeable {
      *
      * @param multipart MultipartUpload that chunk related to
      * @param part      chunk number, starting from 1
-     * @param buffer    data
+     * @param data    data
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, byte[] bytes) {
-        return blobStore.uploadMultipartPart(multipart, part, new ByteArrayPayload(bytes));
+    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, byte[] data) {
+        return blobStore.uploadMultipartPart(multipart, part, new ByteArrayPayload(data));
     }
 
     /**
@@ -133,19 +133,10 @@ public class BlobStorage implements Closeable {
             String contentEncoding,
             Map<String, String> metadata,
             byte[] data) {
-        store(absoluteFilePath, contentType, contentEncoding, metadata, new ByteArrayPayload(data));
-    }
-
-    private void store(
-            String absoluteFilePath,
-            String contentType,
-            String contentEncoding,
-            Map<String, String> metadata,
-            Payload data) {
         String storageLocation = getStorageLocation(absoluteFilePath);
         Blob blob = blobStore.blobBuilder(storageLocation)
-                .payload(data)
-                .contentLength(data.getContentMetadata().getContentLength())
+                .payload(new ByteArrayPayload(data))
+                .contentLength(data.length)
                 .contentType(contentType)
                 .contentEncoding(contentEncoding)
                 .userMetadata(metadata)
