@@ -3,9 +3,16 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.function.BaseFunction;
+import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsFn;
+import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
+import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -17,42 +24,64 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
 @Slf4j
 public class InterceptorController {
 
     private final Proxy proxy;
     private final ProxyContext context;
 
+    private final List<BaseFunction<ObjectNode>> enhancementFunctions;
+
     public InterceptorController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
+        this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context));
     }
 
     public Future<?> handle() {
-
-        return proxy.getVertx().executeBlocking(() -> {
-            proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
-            return null;
-        }, false).map(ignore -> {
-            handleInterceptor();
-            return null;
-        }).onFailure(error -> log.error("Can't assign per-request API Key to interceptor", error));
-    }
-
-    private void handleInterceptor() {
         log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
+        return context.getRequest().body()
+                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    handleRequestBody(body);
+                    return null;
+                }, false).onFailure(this::handleError))
                 .onFailure(this::handleRequestBodyError);
+    }
+
+    private void handleError(Throwable error) {
+        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
+        respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
+        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+            Throwable error = ProxyUtil.processChain(tree, enhancementFunctions);
+            if (error != null) {
+                finalizeRequest();
+                return;
+            }
+        } catch (IOException e) {
+            respond(HttpStatus.BAD_REQUEST);
+            log.warn("Can't parse JSON request body. Trace: {}. Span: {}. Error:",
+                    context.getTraceId(), context.getSpanId(), e);
+            return;
+        }
+        sendRequest();
+    }
+
+    private void sendRequest() {
         String uri = context.getDeployment().getEndpoint();
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
@@ -161,6 +190,11 @@ public class InterceptorController {
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         finalizeRequest();
+    }
+
+    private void respond(HttpStatus status) {
+        finalizeRequest();
+        context.respond(status);
     }
 
     private void respond(HttpStatus status, Object result) {

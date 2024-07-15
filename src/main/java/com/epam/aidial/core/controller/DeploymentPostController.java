@@ -158,11 +158,6 @@ public class DeploymentPostController {
 
             setupProxyApiKeyData();
 
-            // copy attached folders and files to proxy api key data
-            ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
-            proxyApiKeyData.getAttachedFiles().addAll(apiKeyData.getAttachedFiles());
-            proxyApiKeyData.getAttachedFolders().addAll(apiKeyData.getAttachedFolders());
-
             InterceptorController controller = new InterceptorController(proxy, context);
             return controller.handle();
         } else { // all interceptors are completed we should call the initial deployment
