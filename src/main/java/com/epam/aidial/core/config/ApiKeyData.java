@@ -34,10 +34,16 @@ public class ApiKeyData {
     // list of attached file URLs collected from conversation history of the current request
     private Set<String> attachedFiles = new HashSet<>();
     private List<String> attachedFolders = new ArrayList<>();
-    // deployment name of the source(application/assistant/model) associated with the current request
+    // deployment name of the source(application/assistant/model/interceptor) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request
     private List<String> executionPath;
+    // List of interceptors copied from the deployment config
+    private List<String> interceptors;
+    // Index to track which interceptor is called next
+    private int interceptorIndex = -1;
+    // deployment triggers interceptors
+    private String initialDeployment;
 
     public ApiKeyData() {
     }
@@ -45,6 +51,14 @@ public class ApiKeyData {
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
+        proxyApiKeyData.setInterceptors(context.getInterceptors());
+        proxyApiKeyData.setInterceptorIndex(apiKeyData.getInterceptorIndex() + 1); // move to next interceptor
+        if (context.getInitialDeployment() != null) {
+            proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
+        } else {
+            proxyApiKeyData.setInitialDeployment(apiKeyData.getInitialDeployment());
+        }
+
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());

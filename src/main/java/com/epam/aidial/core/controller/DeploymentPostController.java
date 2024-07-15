@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
@@ -78,7 +79,14 @@ public class DeploymentPostController {
         if (!StringUtils.containsIgnoreCase(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
+        // handle a special deployment `interceptor`
+        if ("interceptor".equals(deploymentId)) {
+            return handleInterceptor(deploymentApi);
+        }
+        return handleDeployment(deploymentId, deploymentApi);
+    }
 
+    private Future<?> handleDeployment(String deploymentId, String deploymentApi) {
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
         boolean isValidDeployment = isValidDeploymentApi(deployment, deploymentApi);
 
@@ -96,7 +104,7 @@ public class DeploymentPostController {
             deploymentFuture = Future.succeededFuture(deployment);
         } else {
             deploymentFuture = proxy.getVertx().executeBlocking(() ->
-               applicationService.getCustomApplication(deploymentId, context), false);
+                    applicationService.getCustomApplication(deploymentId, context), false);
         }
 
         return deploymentFuture
@@ -109,7 +117,8 @@ public class DeploymentPostController {
                     return dep;
                 })
                 .compose(dep -> {
-                    if (dep instanceof Model) {
+
+                    if (dep instanceof Model && !context.hasNextInterceptor()) {
                         return proxy.getRateLimiter().limit(context);
                     } else {
                         return Future.succeededFuture(RateLimitResult.SUCCESS);
@@ -117,7 +126,12 @@ public class DeploymentPostController {
                 })
                 .map(rateLimitResult -> {
                     if (rateLimitResult.status() == HttpStatus.OK) {
-                        handleRateLimitSuccess(deploymentId);
+                        if (!context.hasNextInterceptor()) {
+                            handleRateLimitSuccess(deploymentId);
+                        } else {
+                            context.setInitialDeployment(context.getDeployment().getName());
+                            handleInterceptor(deploymentApi);
+                        }
                     } else {
                         handleRateLimitHit(deploymentId, rateLimitResult);
                     }
@@ -127,6 +141,26 @@ public class DeploymentPostController {
                     handleRequestError(deploymentId, error);
                     return null;
                 });
+    }
+
+    private Future<?> handleInterceptor(String deploymentApi) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        List<String> interceptors = context.getInterceptors();
+        int nextIndex = apiKeyData.getInterceptorIndex() + 1;
+        if (nextIndex < interceptors.size()) {
+            String interceptorName = interceptors.get(nextIndex);
+            Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
+            if (interceptor == null) {
+                log.warn("Interceptor is not found for the given name: {}", interceptorName);
+                return respond(HttpStatus.NOT_FOUND, "Interceptor is not found");
+            }
+            context.setDeployment(interceptor);
+            setupProxyApiKeyData();
+            InterceptorController controller = new InterceptorController(proxy, context);
+            return controller.handle();
+        } else { // all interceptors are completed we should call the initial deployment
+            return handleDeployment(apiKeyData.getInitialDeployment(), deploymentApi);
+        }
     }
 
     private void handleRequestError(String deploymentId, Throwable error) {
@@ -172,9 +206,6 @@ public class DeploymentPostController {
                 .onFailure(this::handleRequestBodyError);
     }
 
-    /**
-     * The method uses blocking calls and should not be used in the event loop thread.
-     */
     private void setupProxyApiKeyData() {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);

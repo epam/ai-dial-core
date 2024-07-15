@@ -67,6 +67,8 @@ public class ProxyContext {
     private long responseBodyTimestamp;
     private ExtractedClaims extractedClaims;
     private ApiKeyData proxyApiKeyData;
+    // deployment triggers interceptors
+    private String initialDeployment;
 
     public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.config = config;
@@ -137,5 +139,21 @@ public class ProxyContext {
 
     public boolean getBooleanRequestQueryParam(String name) {
         return Boolean.parseBoolean(request.getParam(name, "false"));
+    }
+
+    public List<String> getInterceptors() {
+        List<String> interceptors = apiKeyData.getInterceptors();
+        if (interceptors != null) {
+            return interceptors;
+        }
+        return deployment == null ? List.of() : deployment.getInterceptors();
+    }
+
+    public boolean hasNextInterceptor() {
+        if (apiKeyData.getInterceptors() == null) { // call deployment directly
+            return !deployment.getInterceptors().isEmpty();
+        } else { // if all interceptors are completed then call the deployment
+            return apiKeyData.getInterceptorIndex() < apiKeyData.getInterceptors().size();
+        }
     }
 }
