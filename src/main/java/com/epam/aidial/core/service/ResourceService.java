@@ -112,7 +112,7 @@ public class ResourceService {
             throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
         }
 
-        String redisKey = lockService.redisKey(descriptor);
+        String redisKey = cacheService.redisKey(descriptor);
         CacheService.Result<CacheService.ItemMetadata> result = cacheService.getMetadata(redisKey);
 
         if (result == null) {
@@ -132,7 +132,7 @@ public class ResourceService {
     }
 
     public boolean hasResource(ResourceDescription descriptor) {
-        String redisKey = lockService.redisKey(descriptor);
+        String redisKey = cacheService.redisKey(descriptor);
         CacheService.Result<CacheService.ItemMetadata> result = cacheService.getMetadata(redisKey);
 
         if (result == null) {
@@ -150,7 +150,7 @@ public class ResourceService {
 
     @Nullable
     public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
-        String redisKey = lockService.redisKey(descriptor);
+        String redisKey = cacheService.redisKey(descriptor);
         CacheService.Result<CacheService.Item<String>> result = cacheService.getString(redisKey);
 
         if (result == null) {
@@ -187,7 +187,7 @@ public class ResourceService {
 
     public ResourceItemMetadata putResource(
             ResourceDescription descriptor, String body, EtagHeader etag, boolean overwrite, boolean lock) {
-        String redisKey = lockService.redisKey(descriptor);
+        String redisKey = cacheService.redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
@@ -222,7 +222,7 @@ public class ResourceService {
     }
 
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
-        String redisKey = lockService.redisKey(descriptor);
+        String redisKey = cacheService.redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
             String oldBody = getResource(descriptor, false);
@@ -237,7 +237,7 @@ public class ResourceService {
     }
 
     public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag) {
-        String redisKey = lockService.redisKey(descriptor);
+        String redisKey = cacheService.redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);

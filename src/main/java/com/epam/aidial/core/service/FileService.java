@@ -29,7 +29,7 @@ public class FileService {
     private final LockService lockService;
 
     public FileStream getFile(ResourceDescription resource) throws IOException {
-        String key = lockService.redisKey(resource);
+        String key = cacheService.redisKey(resource);
         CacheService.Result<CacheService.Item<byte[]>> cacheItem = cacheService.getBytes(key);
         if (cacheItem != null) {
             return cacheItem.map(FileStream::fromCacheItem);
@@ -82,7 +82,7 @@ public class FileService {
     }
 
     public FileMetadata getMetadata(ResourceDescription resource) {
-        String key = lockService.redisKey(resource);
+        String key = cacheService.redisKey(resource);
         CacheService.Result<CacheService.ItemMetadata> metadata = cacheService.getMetadata(key);
         if (metadata != null) {
             return fileMetadataFromCacheItemMetadata(resource, metadata);
@@ -102,7 +102,7 @@ public class FileService {
 
     public void putFile(
             ResourceDescription resource, byte[] bytes, String contentType, String newEtag, EtagHeader etag) {
-        String key = lockService.redisKey(resource);
+        String key = cacheService.redisKey(resource);
         try (LockService.Lock ignored = lockService.lock(key)) {
             FileMetadata metadata = getMetadata(resource);
             if (metadata != null) {
@@ -124,7 +124,7 @@ public class FileService {
     }
 
     public void putFile(ResourceDescription resource, MultipartUpload mpu, List<MultipartPart> parts, EtagHeader etag) {
-        String key = lockService.redisKey(resource);
+        String key = cacheService.redisKey(resource);
         try (LockService.Lock ignored = lockService.lock(key)) {
             etag.validate(() -> getEtag(resource));
 
@@ -134,7 +134,7 @@ public class FileService {
     }
 
     public void deleteFile(ResourceDescription resource, EtagHeader etag) {
-        String key = lockService.redisKey(resource);
+        String key = cacheService.redisKey(resource);
         try (LockService.Lock ignored = lockService.lock(key)) {
             etag.validate(() -> getEtag(resource));
 

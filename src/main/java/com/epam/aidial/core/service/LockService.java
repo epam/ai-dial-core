@@ -1,7 +1,6 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.storage.BlobStorageUtil;
-import com.epam.aidial.core.storage.ResourceDescription;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
@@ -30,11 +29,6 @@ public class LockService {
     public LockService(RedissonClient redis, @Nullable String prefix) {
         this.prefix = prefix;
         this.script = redis.getScript(StringCodec.INSTANCE);
-    }
-
-    public String redisKey(ResourceDescription descriptor) {
-        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
-        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 
     public Lock lock(String key) {

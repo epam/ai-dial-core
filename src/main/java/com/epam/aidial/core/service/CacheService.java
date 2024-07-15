@@ -2,6 +2,7 @@ package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import com.epam.aidial.core.util.ResourceUtil;
 import com.google.common.collect.Sets;
@@ -200,6 +201,11 @@ public class CacheService implements AutoCloseable {
         }
         result.put(ResourceUtil.ETAG_ATTRIBUTE, metadata.etag);
         return result;
+    }
+
+    public String redisKey(ResourceDescription descriptor) {
+        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
+        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 
     private String blobKeyFromRedisKey(String redisKey) {
