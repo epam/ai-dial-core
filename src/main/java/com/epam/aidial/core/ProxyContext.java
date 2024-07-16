@@ -69,6 +69,7 @@ public class ProxyContext {
     private ApiKeyData proxyApiKeyData;
     // deployment triggers interceptors
     private String initialDeployment;
+    private String initialDeploymentApi;
 
     public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.config = config;
@@ -155,5 +156,13 @@ public class ProxyContext {
         } else { // if all interceptors are completed then call the deployment
             return apiKeyData.getInterceptorIndex() < apiKeyData.getInterceptors().size();
         }
+    }
+
+    public String getInitialDeployment() {
+        return initialDeployment == null ? apiKeyData.getInitialDeployment() : initialDeployment;
+    }
+
+    public String getInitialDeploymentApi() {
+        return initialDeploymentApi == null ? apiKeyData.getInitialDeploymentApi() : initialDeploymentApi;
     }
 }

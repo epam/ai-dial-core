@@ -44,6 +44,7 @@ public class ApiKeyData {
     private int interceptorIndex = -1;
     // deployment triggers interceptors
     private String initialDeployment;
+    private String initialDeploymentApi;
 
     public ApiKeyData() {
     }
@@ -53,11 +54,8 @@ public class ApiKeyData {
         List<String> currentPath;
         proxyApiKeyData.setInterceptors(context.getInterceptors());
         proxyApiKeyData.setInterceptorIndex(apiKeyData.getInterceptorIndex() + 1); // move to next interceptor
-        if (context.getInitialDeployment() != null) {
-            proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
-        } else {
-            proxyApiKeyData.setInitialDeployment(apiKeyData.getInitialDeployment());
-        }
+        proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
+        proxyApiKeyData.setInitialDeploymentApi(context.getInitialDeploymentApi());
 
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());

@@ -81,7 +81,7 @@ public class DeploymentPostController {
         }
         // handle a special deployment `interceptor`
         if ("interceptor".equals(deploymentId)) {
-            return handleInterceptor(deploymentApi);
+            return handleInterceptor();
         }
         return handleDeployment(deploymentId, deploymentApi);
     }
@@ -126,8 +126,9 @@ public class DeploymentPostController {
                 .map(rateLimitResult -> {
                     if (rateLimitResult.status() == HttpStatus.OK) {
                         if (context.hasNextInterceptor()) {
-                            context.setInitialDeployment(context.getDeployment().getName());
-                            handleInterceptor(deploymentApi);
+                            context.setInitialDeployment(deploymentId);
+                            context.setInitialDeploymentApi(deploymentApi);
+                            handleInterceptor();
                         } else {
                             handleRateLimitSuccess(deploymentId);
                         }
@@ -142,7 +143,7 @@ public class DeploymentPostController {
                 });
     }
 
-    private Future<?> handleInterceptor(String deploymentApi) {
+    private Future<?> handleInterceptor() {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> interceptors = context.getInterceptors();
         int nextIndex = apiKeyData.getInterceptorIndex() + 1;
@@ -160,7 +161,7 @@ public class DeploymentPostController {
             InterceptorController controller = new InterceptorController(proxy, context);
             return controller.handle();
         } else { // all interceptors are completed we should call the initial deployment
-            return handleDeployment(apiKeyData.getInitialDeployment(), deploymentApi);
+            return handleDeployment(apiKeyData.getInitialDeployment(), apiKeyData.getInitialDeploymentApi());
         }
     }
 
