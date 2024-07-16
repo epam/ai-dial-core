@@ -97,10 +97,10 @@ public class ProxyUtilTest {
                         ],
                         "stages": [
                             {
-                               "index": 0,
-                               "name": "stage1",
-                               "status": "completed",
-                               "attachments": [
+                                "index": 0,
+                                "name": "stage1",
+                                "status": "completed",
+                                "attachments": [
                                     {
                                         "type": "application/octet-stream",
                                         "title": "LICENSE",
@@ -111,7 +111,7 @@ public class ProxyUtilTest {
                                         "title": "LICENSE",
                                         "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1"
                                     }
-                               ]
+                                ]
                             }
                         ]
                       }
@@ -174,6 +174,28 @@ public class ProxyUtilTest {
         String content = """
                 {
                   "input": "some input",
+                  "custom_input": [
+                    "test text 1",
+                    {
+                      "type": "image/png",
+                      "data": "data:image/png;base64,iVBORw0KGg"
+                    },
+                    {
+                      "type": "image/png",
+                      "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png"
+                    },
+                    [
+                      "test text 2",
+                      {
+                        "type": "image/png",
+                        "data": "data:image/png;base64,iVBORw0KGg"
+                      },
+                      {
+                        "type": "video/mp4",
+                        "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4"
+                      }
+                    ]
+                  ],
                   "user": "user_id"
                 }
                 """;
@@ -181,7 +203,13 @@ public class ProxyUtilTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
 
-        assertTrue(apiKeyData.getAttachedFiles().isEmpty());
+        assertEquals(
+                Set.of(
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png",
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4"
+                ),
+                apiKeyData.getAttachedFiles()
+        );
     }
 
     @Test
