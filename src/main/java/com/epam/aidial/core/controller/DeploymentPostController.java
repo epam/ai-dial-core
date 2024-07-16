@@ -104,7 +104,7 @@ public class DeploymentPostController {
             deploymentFuture = Future.succeededFuture(deployment);
         } else {
             deploymentFuture = proxy.getVertx().executeBlocking(() ->
-                    applicationService.getCustomApplication(deploymentId, context), false);
+               applicationService.getCustomApplication(deploymentId, context), false);
         }
 
         return deploymentFuture
@@ -117,7 +117,6 @@ public class DeploymentPostController {
                     return dep;
                 })
                 .compose(dep -> {
-
                     if (dep instanceof Model && !context.hasNextInterceptor()) {
                         return proxy.getRateLimiter().limit(context);
                     } else {
@@ -126,11 +125,11 @@ public class DeploymentPostController {
                 })
                 .map(rateLimitResult -> {
                     if (rateLimitResult.status() == HttpStatus.OK) {
-                        if (!context.hasNextInterceptor()) {
-                            handleRateLimitSuccess(deploymentId);
-                        } else {
+                        if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(context.getDeployment().getName());
                             handleInterceptor(deploymentApi);
+                        } else {
+                            handleRateLimitSuccess(deploymentId);
                         }
                     } else {
                         handleRateLimitHit(deploymentId, rateLimitResult);
