@@ -11,6 +11,16 @@ class ResourceApiTest extends ResourceBaseTest {
 
     @Test
     void testWorkflow() {
+        EventStream events = subscribe("""
+                 {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                    }
+                  ]
+                 }
+                """);
+
         Response response = resourceRequest(HttpMethod.GET, "/folder/conversation");
         verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
@@ -55,6 +65,35 @@ class ResourceApiTest extends ResourceBaseTest {
 
         response = metadata("/folder/");
         verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
+
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation2", CONVERSATION_BODY_2);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2\"");
+
+        verifyJsonNotExact("""
+                {
+                  "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                  "action" : "CREATE",
+                  "timestamp" : "@ignore"
+                }
+                """, events.take());
+
+        verifyJsonNotExact("""
+                {
+                  "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                  "action" : "UPDATE",
+                  "timestamp" : "@ignore"
+                }
+                """, events.take());
+
+        verifyJsonNotExact("""
+                {
+                  "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                  "action" : "DELETE",
+                  "timestamp" : "@ignore"
+                }
+                """, events.take());
+
+        events.close();
     }
 
     @Test
@@ -134,5 +173,44 @@ class ResourceApiTest extends ResourceBaseTest {
 
             throw new IllegalStateException("Unreachable code");
         }
+    }
+
+    @Test
+    void testInvalidSubscription() {
+        Response response = operationRequest("/v1/ops/resource/subscribe", """
+                 {
+                  "resources": [
+                    {
+                      "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                    }
+                  ]
+                 }
+                """);
+
+        verify(response, 400, "resource type is not supported: publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+
+        response = operationRequest("/v1/ops/resource/subscribe", """
+                 {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/"
+                    }
+                  ]
+                 }
+                """);
+
+        verify(response, 400, "resource folder is not supported: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/");
+
+        response = operationRequest("/v1/ops/resource/subscribe", """
+                 {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                    }
+                  ]
+                 }
+                """, "api-key", "proxyKey2");
+
+        verify(response, 403, "resource is not allowed: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
     }
 }
