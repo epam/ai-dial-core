@@ -123,15 +123,15 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                         parts.add(part);
                     }
 
-                    mpu.blobMetadata().getUserMetadata().put(
-                            ResourceUtil.ETAG_ATTRIBUTE, etagBuilder.append(lastChunk).build());
+                    String newEtag = etagBuilder.append(lastChunk).build();
+                    mpu.blobMetadata().getUserMetadata().put(ResourceUtil.ETAG_ATTRIBUTE, newEtag);
                     resourceService.putFile(resource, mpu, parts, etag);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 
                 return null;
             }
-        }, false);
+        });
         result.onComplete(asyncResult -> {
             if (handler != null) {
                 handler.handle(asyncResult);
@@ -175,7 +175,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
             }
             return null;
-        }, false);
+        });
 
         return this;
     }
