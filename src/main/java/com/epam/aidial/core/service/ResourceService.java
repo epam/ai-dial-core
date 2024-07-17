@@ -679,10 +679,10 @@ public class ResourceService implements AutoCloseable {
             fields.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, RedisUtil.longToRedis(result.updatedAt));
             fields.put(CONTENT_TYPE_ATTRIBUTE, RedisUtil.stringToRedis(result.contentType));
             fields.put(CONTENT_LENGTH_ATTRIBUTE, RedisUtil.longToRedis(result.contentLength));
-            fields.put(EXISTS_ATTRIBUTE, RedisUtil.booleanToRedis(true));
+            fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
         } else {
             REDIS_FIELDS.forEach(field -> fields.put(field, RedisUtil.EMPTY_ARRAY));
-            fields.put(EXISTS_ATTRIBUTE, RedisUtil.booleanToRedis(false));
+            fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_FALSE_ARRAY);
         }
         fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(result.synced));
         map.putAll(fields);
@@ -695,7 +695,7 @@ public class ResourceService implements AutoCloseable {
 
     private RMap<String, byte[]> redisSync(String key) {
         RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
-        map.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(true));
+        map.put(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
         map.expire(cacheExpiration);
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);

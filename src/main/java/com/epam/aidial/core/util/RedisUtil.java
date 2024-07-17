@@ -6,13 +6,14 @@ import org.apache.commons.lang3.ArrayUtils;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.function.Function;
 
 @UtilityClass
 public class RedisUtil {
     private static final Charset STRING_ENCODING = StandardCharsets.UTF_8;
-    private static final byte[] BOOLEAN_TRUE_ARRAY = new byte[]{1};
-    private static final byte[] BOOLEAN_FALSE_ARRAY = new byte[]{0};
+    public static final byte[] BOOLEAN_TRUE_ARRAY = "true".getBytes(STRING_ENCODING);
+    public static final byte[] BOOLEAN_FALSE_ARRAY = "false".getBytes(STRING_ENCODING);
     public static final byte[] EMPTY_ARRAY = ArrayUtils.EMPTY_BYTE_ARRAY;
 
     public byte[] booleanToRedis(Boolean value) {
@@ -28,7 +29,7 @@ public class RedisUtil {
     }
 
     public Boolean redisToBoolean(byte[] data) {
-        return redisToJava(data, null, d -> d[0] == 1);
+        return redisToJava(data, null, d -> Arrays.equals(d, BOOLEAN_TRUE_ARRAY));
     }
 
     public String redisToString(byte[] data, String defaultValue) {

@@ -235,11 +235,7 @@ public class ResourceController extends AccessControlBaseController {
                 })
                 .onFailure(error -> {
                     log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
-                    if (error instanceof HttpException exception) {
-                        context.respond(exception.getStatus(), exception.getMessage());
-                    } else {
-                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-                    }
+                    context.respond(error, "");
                 });
     }
 }

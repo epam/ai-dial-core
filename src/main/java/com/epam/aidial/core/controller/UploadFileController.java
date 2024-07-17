@@ -42,7 +42,7 @@ public class UploadFileController extends AccessControlBaseController {
                                 context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
                                 context.respond(HttpStatus.OK, metadata);
                             })
-                            .onFailure(context::respond);
+                            .onFailure(error -> context.respond(error, error.getMessage()));
                 });
 
         return null;
