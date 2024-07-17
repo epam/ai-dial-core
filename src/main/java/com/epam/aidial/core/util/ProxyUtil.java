@@ -93,6 +93,35 @@ public class ProxyUtil {
     }
 
     public static void collectAttachedFiles(ObjectNode tree, Consumer<String> consumer) {
+        collectAttachedFilesChatCompletion(tree, consumer);
+        collectAttachedFilesEmbeddings(tree, consumer);
+    }
+
+    private static void collectAttachedFilesEmbeddings(ObjectNode tree, Consumer<String> consumer) {
+        JsonNode inputs = tree.get("custom_input");
+
+        if (inputs == null) {
+            return;
+        }
+
+        if (inputs.isArray()) {
+            for (int i = 0; i < inputs.size(); i++) {
+                collectAttachedFilesCustomInput(inputs.get(i), consumer);
+            }
+        }
+    }
+
+    private static void collectAttachedFilesCustomInput(JsonNode input, Consumer<String> consumer) {
+        if (input.isObject()) {
+            collectAttachedFile(input, consumer);
+        } else if (input.isArray()) {
+            for (int i = 0; i < input.size(); i++) {
+                collectAttachedFilesCustomInput(input.get(i), consumer);
+            }
+        }
+    }
+
+    private static void collectAttachedFilesChatCompletion(ObjectNode tree, Consumer<String> consumer) {
         ArrayNode messages = (ArrayNode) tree.get("messages");
         if (messages == null) {
             return;
