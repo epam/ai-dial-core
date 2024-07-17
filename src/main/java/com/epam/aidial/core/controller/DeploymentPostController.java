@@ -128,6 +128,7 @@ public class DeploymentPostController {
                         if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(deploymentId);
                             context.setInitialDeploymentApi(deploymentApi);
+                            context.setInterceptors(context.getDeployment().getInterceptors());
                             handleInterceptor();
                         } else {
                             handleRateLimitSuccess(deploymentId);

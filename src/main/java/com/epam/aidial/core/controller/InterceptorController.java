@@ -48,12 +48,13 @@ public class InterceptorController {
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        return context.getRequest().body()
+        context.getRequest().body()
                 .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
                     handleRequestBody(body);
                     return null;
                 }, false).onFailure(this::handleError))
                 .onFailure(this::handleRequestBodyError);
+        return Future.succeededFuture();
     }
 
     private void handleError(Throwable error) {
