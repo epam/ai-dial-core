@@ -12,9 +12,7 @@ import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.service.CacheService;
 import com.epam.aidial.core.service.CustomApplicationService;
-import com.epam.aidial.core.service.FileService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.NotificationService;
@@ -79,9 +77,7 @@ public class AiDial {
     private AccessTokenValidator accessTokenValidator;
 
     private BlobStorage storage;
-    private CacheService cacheService;
     private ResourceService resourceService;
-    private FileService fileService;
 
     private LongSupplier clock = System::currentTimeMillis;
     private Supplier<String> generator = () -> UUID.randomUUID().toString().replace("-", "");
@@ -115,9 +111,7 @@ public class AiDial {
             redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            cacheService = new CacheService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
-            resourceService = new ResourceService(storage, cacheService, lockService, settings("resources"));
-            fileService = new FileService(storage, cacheService, lockService);
+            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, storage);
             ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, storage, invitationService, shareService);
@@ -138,7 +132,7 @@ public class AiDial {
                     rateLimiter, upstreamBalancer, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, customApplicationService, fileService, version());
+                    notificationService, customApplicationService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -156,7 +150,7 @@ public class AiDial {
         try {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
-            close(cacheService);
+            close(resourceService);
             close(vertx, Vertx::close);
             close(storage);
             close(redis);

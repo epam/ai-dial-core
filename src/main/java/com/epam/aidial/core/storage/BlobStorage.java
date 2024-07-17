@@ -3,8 +3,6 @@ package com.epam.aidial.core.storage;
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.data.ResourceFolderMetadata;
-import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.credential.CredentialProvider;
 import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
 import lombok.Getter;
@@ -27,7 +25,6 @@ import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.io.ContentMetadata;
 import org.jclouds.io.ContentMetadataBuilder;
-import org.jclouds.io.Payload;
 import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import org.jclouds.io.payloads.ByteArrayPayload;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
@@ -181,27 +178,6 @@ public class BlobStorage implements Closeable {
         return true;
     }
 
-    /**
-     * List all files/folder metadata for a given resource
-     */
-    public MetadataBase listMetadata(ResourceDescription resource, String afterMarker, int maxResults, boolean recursive) {
-        ListContainerOptions options = buildListContainerOptions(resource.getAbsoluteFilePath(), maxResults, recursive, afterMarker);
-        PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
-        List<MetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
-
-        // listing folder
-        if (resource.isFolder()) {
-            boolean isEmpty = filesMetadata.isEmpty() && !resource.isRootFolder();
-            return isEmpty ? null : new ResourceFolderMetadata(resource, filesMetadata, list.getNextMarker());
-        } else {
-            // listing file
-            if (filesMetadata.size() == 1) {
-                return filesMetadata.get(0);
-            }
-            return null;
-        }
-    }
-
     public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults, boolean recursive) {
         ListContainerOptions options = buildListContainerOptions(absoluteFilePath, maxResults, recursive, afterMarker);
 
@@ -252,32 +228,17 @@ public class BlobStorage implements Closeable {
         return options;
     }
 
-    private MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
-        String bucketName = resource.getBucketName();
-        ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
-                resource.getBucketLocation(), metadata.getName());
-
-        return switch (metadata.getType()) {
-            case BLOB -> {
-                String blobContentType = ((BlobMetadata) metadata).getContentMetadata().getContentType();
-                if (blobContentType != null && blobContentType.equals(DEFAULT_CONTENT_TYPE)) {
-                    blobContentType = BlobStorageUtil.getContentType(metadata.getName());
-                }
-
-                yield new FileMetadata(resultResource, metadata.getSize(), blobContentType);
+    public static MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
+        if (metadata instanceof BlobMetadata blobMetadata) {
+            String blobContentType = blobMetadata.getContentMetadata().getContentType();
+            if (DEFAULT_CONTENT_TYPE.equals(blobContentType)) {
+                blobContentType = BlobStorageUtil.getContentType(blobMetadata.getName());
             }
-            case FOLDER, RELATIVE_PATH -> new ResourceFolderMetadata(resultResource);
-            case CONTAINER -> throw new IllegalArgumentException("Can't list container");
-        };
-    }
 
-    private ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
-        // bucketLocation + resourceType + /
-        int bucketAndResourceCharsLength = bucketLocation.length() + resourceType.getGroup().length() + 1;
-        // bucketAndResourceCharsLength or bucketAndResourceCharsLength + prefix + /
-        int charsToSkip = prefix == null ? bucketAndResourceCharsLength : prefix.length() + 1 + bucketAndResourceCharsLength;
-        String relativeFilePath = absoluteFilePath.substring(charsToSkip);
-        return ResourceDescription.fromDecoded(resourceType, bucketName, bucketLocation, relativeFilePath);
+            return new FileMetadata(resource, blobMetadata.getSize(), blobContentType);
+        }
+
+        return new FileMetadata(resource, metadata.getSize(), BlobStorageUtil.getContentType(metadata.getName()));
     }
 
     private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {

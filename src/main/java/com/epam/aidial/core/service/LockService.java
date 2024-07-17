@@ -34,11 +34,13 @@ public class LockService {
     public Lock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
-
+        long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
-        while (!tryLock(id, owner)) {
+
+        while (ttl > 0) {
             LockSupport.parkNanos(interval);
-            interval = Math.min(2 * interval, WAIT_MAX);
+            interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
+            ttl = tryLock(id, owner);
         }
 
         return () -> unlock(id, owner);
@@ -55,10 +57,11 @@ public class LockService {
     public Lock tryLock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
-        return tryLock(id, owner) ? () -> unlock(id, owner) : null;
+        long ttl = tryLock(id, owner);
+        return (ttl == 0) ? () -> unlock(id, owner) : null;
     }
 
-    private boolean tryLock(String id, long owner) {
+    private long tryLock(String id, long owner) {
         return script.eval(RScript.Mode.READ_WRITE,
                 """
                         local time = redis.call('time')
@@ -66,12 +69,12 @@ public class LockService {
                         local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
                         
                         if (deadline ~= nil and now < deadline) then
-                          return false
+                          return deadline - now
                         end
                         
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
-                        return true
-                        """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
+                        return 0
+                        """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
     private void unlock(String id, long owner) {

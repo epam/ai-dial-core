@@ -2,9 +2,9 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.service.FileService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
@@ -19,14 +19,14 @@ public class DeleteFileController extends AccessControlBaseController {
     private final ShareService shareService;
     private final InvitationService invitationService;
     private final LockService lockService;
-    private final FileService fileService;
+    private final ResourceService resourceService;
 
     public DeleteFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
         this.shareService = proxy.getShareService();
         this.invitationService = proxy.getInvitationService();
         this.lockService = proxy.getLockService();
-        this.fileService = proxy.getFileService();
+        this.resourceService = proxy.getResourceService();
     }
 
     @Override
@@ -43,7 +43,7 @@ public class DeleteFileController extends AccessControlBaseController {
             return lockService.underBucketLock(bucketLocation, () -> {
                 invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                 shareService.revokeSharedResource(bucketName, bucketLocation, resource);
-                fileService.deleteFile(resource, etag);
+                resourceService.deleteResource(resource, etag);
 
                 return null;
             });

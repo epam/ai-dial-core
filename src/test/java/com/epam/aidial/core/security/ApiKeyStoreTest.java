@@ -2,7 +2,6 @@ package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Key;
-import com.epam.aidial.core.service.CacheService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
@@ -96,9 +95,7 @@ public class ApiKeyStoreTest {
                     "compressionMinSize": 256
                   }
                 """;
-        JsonObject settings = new JsonObject(resourceConfig);
-        CacheService cacheService = new CacheService(vertx, redissonClient, blobStorage, lockService, settings, null);
-        ResourceService resourceService = new ResourceService(blobStorage, cacheService, lockService, settings);
+        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
         store = new ApiKeyStore(resourceService, vertx);
     }
 

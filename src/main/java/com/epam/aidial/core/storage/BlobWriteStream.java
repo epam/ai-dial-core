@@ -1,10 +1,6 @@
 package com.epam.aidial.core.storage;
 
-import com.epam.aidial.core.data.FileMetadata;
-import com.epam.aidial.core.data.ResourceItemMetadata;
-import com.epam.aidial.core.service.FileService;
 import com.epam.aidial.core.util.EtagBuilder;
-import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ResourceUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -30,45 +26,42 @@ import java.util.List;
 @Slf4j
 public class BlobWriteStream implements WriteStream<Buffer> {
 
-    private static final int MIN_PART_SIZE_BYTES = FileService.MAX_CACHE_ITEM_IN_BYTES;
+    private static final int MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
     private final Vertx vertx;
     private final BlobStorage blobStorage;
-    private final FileService fileService;
     private final ResourceDescription resource;
-    private final EtagHeader etag;
     private final String contentType;
-    private final EtagBuilder etagBuilder = new EtagBuilder();
 
     private final Buffer chunkBuffer = Buffer.buffer();
     private int chunkSize = MIN_PART_SIZE_BYTES;
     private int position;
+    @Getter
     private MultipartUpload mpu;
+    private EtagBuilder etagBuilder;
     private int chunkNumber = 0;
     @Getter
-    private ResourceItemMetadata metadata;
+    private byte[] bytes;
 
     private Throwable exception;
 
     private Handler<Throwable> errorHandler;
 
+    @Getter
     private final List<MultipartPart> parts = new ArrayList<>();
 
     private boolean isBufferFull;
 
+    @Getter
     private long bytesHandled;
 
     public BlobWriteStream(Vertx vertx,
                            BlobStorage blobStorage,
-                           FileService fileService,
                            ResourceDescription resource,
-                           EtagHeader etag,
                            String contentType) {
         this.vertx = vertx;
         this.blobStorage = blobStorage;
-        this.fileService = fileService;
         this.resource = resource;
-        this.etag = etag;
         this.contentType = contentType != null ? contentType : BlobStorageUtil.getContentType(resource.getName());
     }
 
@@ -114,20 +107,15 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
 
                 byte[] lastChunk = chunkBuffer.slice(0, position).getBytes();
-                String newEtag = etagBuilder.append(lastChunk).build();
-                metadata = new FileMetadata(resource, bytesHandled, contentType)
-                        .setEtag(newEtag);
                 if (mpu == null) {
-                    log.info("Resource is too small for multipart upload, sending as a regular blob");
-                    fileService.putFile(resource, lastChunk, contentType, newEtag, etag);
+                    bytes = lastChunk;
                 } else {
                     if (position != 0) {
                         MultipartPart part = blobStorage.storeMultipartPart(mpu, ++chunkNumber, lastChunk);
                         parts.add(part);
                     }
+                    String newEtag = etagBuilder.append(lastChunk).build();
                     mpu.blobMetadata().getUserMetadata().put(ResourceUtil.ETAG_ATTRIBUTE, newEtag);
-                    fileService.putFile(resource, mpu, parts, etag);
-                    log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 
                 return null;
@@ -163,6 +151,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 try {
                     if (mpu == null) {
                         mpu = blobStorage.initMultipartUpload(resource.getAbsoluteFilePath(), contentType);
+                        etagBuilder = new EtagBuilder();
                     }
                     byte[] chunk = chunkBuffer.slice(0, position).getBytes();
                     etagBuilder.append(chunk);

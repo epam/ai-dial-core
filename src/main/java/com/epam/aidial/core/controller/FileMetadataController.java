@@ -4,8 +4,7 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.security.AccessService;
-import com.epam.aidial.core.service.FileService;
-import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
@@ -16,13 +15,9 @@ import java.util.List;
 
 @Slf4j
 public class FileMetadataController extends AccessControlBaseController {
-    private final AccessService accessService;
-    private final FileService fileService;
 
     public FileMetadataController(Proxy proxy, ProxyContext context) {
         super(proxy, context, false);
-        accessService = proxy.getAccessService();
-        fileService = proxy.getFileService();
     }
 
     private String getContentType() {
@@ -34,7 +29,8 @@ public class FileMetadataController extends AccessControlBaseController {
 
     @Override
     protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
-        BlobStorage storage = proxy.getStorage();
+        ResourceService resourceService = proxy.getResourceService();
+        AccessService accessService = proxy.getAccessService();
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
@@ -43,9 +39,7 @@ public class FileMetadataController extends AccessControlBaseController {
         }
         return proxy.getVertx().executeBlocking(() -> {
             try {
-                MetadataBase metadata = resource.isFolder()
-                        ? storage.listMetadata(resource, token, limit, recursive)
-                        : fileService.getMetadata(resource);
+                MetadataBase metadata = resourceService.getMetadata(resource, token, limit, recursive);
                 if (metadata != null) {
                     accessService.filterForbidden(context, resource, metadata);
                     if (context.getBooleanRequestQueryParam("permissions")) {
