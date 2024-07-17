@@ -8,7 +8,6 @@ import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
-import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;

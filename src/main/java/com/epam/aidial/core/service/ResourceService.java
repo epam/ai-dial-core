@@ -8,21 +8,15 @@ import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
-import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.EtagHeader;
-import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.RedisUtil;
 import com.epam.aidial.core.util.ResourceUtil;
 import com.google.common.collect.Sets;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.streams.Pipe;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -31,6 +25,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
+import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
@@ -188,7 +183,7 @@ public class ResourceService implements AutoCloseable {
             }
 
             if (description.getType() == ResourceType.FILE) {
-                return BlobStorage.buildFileMetadata(description, meta);
+                return BlobStorage.buildFileMetadata(description, (BlobMetadata) meta);
             } else {
                 Long createdAt = null;
                 Long updatedAt = null;
@@ -379,7 +374,17 @@ public class ResourceService implements AutoCloseable {
             Long createdAt = metadata == null ? (Long) updatedAt : metadata.getCreatedAt();
             String newEtag = EtagBuilder.generateEtag(body);
             Result result = new Result(body, newEtag, createdAt, updatedAt, contentType, (long) body.length, false);
-            redisPut(redisKey, result);
+            if (body.length <= maxSize) {
+                redisPut(redisKey, result);
+                if (metadata == null) {
+                    String blobKey = blobKey(descriptor);
+                    blobPut(blobKey, result.toStub()); // create an empty object for listing
+                }
+            } else {
+                flushToBlobStore(redisKey);
+                String blobKey = blobKey(descriptor);
+                blobPut(blobKey, result);
+            }
 
             ResourceEvent event = new ResourceEvent()
                     .setUrl(descriptor.getUrl())
@@ -388,8 +393,6 @@ public class ResourceService implements AutoCloseable {
 
             if (metadata == null) {
                 event.setAction(ResourceEvent.Action.CREATE);
-                String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result.toStub()); // create an empty object for listing
             }
 
             topic.publish(event);
@@ -399,49 +402,23 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public Future<FileMetadata> putFile(
-            ResourceDescription descriptor, Pipe<Buffer> pipe, EtagHeader etag, String contentType) {
+    public FileMetadata putFile(ResourceDescription descriptor, byte[] body, EtagHeader etag, String contentType) {
         if (descriptor.getType() != ResourceType.FILE) {
             throw new IllegalArgumentException("Expected a file, got %s".formatted(descriptor.getType()));
         }
 
-        Promise<Void> promise = Promise.promise();
-        BlobWriteStream writeStream = new BlobWriteStream(vertx, blobStore, descriptor, contentType);
-        try {
+        return (FileMetadata) putResource(descriptor, body, etag, contentType, true, true);
+    }
+
+    public void putFile(
+            ResourceDescription descriptor, MultipartUpload multipartUpload, List<MultipartPart> parts, EtagHeader etag) {
+        String redisKey = redisKey(descriptor);
+        try (var ignore = lockService.lock(redisKey)) {
             etag.validate(() -> getEtag(descriptor));
-            pipe.to(writeStream, promise);
-        } catch (HttpException e) {
-            promise.fail(e);
+
+            flushToBlobStore(redisKey);
+            blobStore.completeMultipartUpload(multipartUpload, parts);
         }
-
-        return promise.future().map(v -> {
-            MultipartUpload mpu = writeStream.getMpu();
-            if (mpu == null) {
-                log.info("Resource is too small for multipart upload, sending as a regular blob");
-                byte[] body = writeStream.getBytes();
-                if (body.length <= maxSize) {
-                    return (FileMetadata) putResource(descriptor, body, etag, contentType, true, true);
-                }
-
-                String blobKey = blobKey(descriptor);
-                Result result = Result.builder()
-                        .etag(EtagBuilder.generateEtag(body))
-                        .body(body)
-                        .contentType(contentType)
-                        .contentLength((long) body.length)
-                        .build();
-                blobPut(blobKey, result);
-
-                return toFileMetadata(descriptor, result);
-            } else {
-                flushToBlobStore(descriptor);
-
-                blobStore.completeMultipartUpload(mpu, writeStream.getParts());
-                log.info("Multipart upload committed, bytes handled {}", writeStream.getBytesHandled());
-
-                return new FileMetadata();
-            }
-        }).onFailure(writeStream::abortUpload);
     }
 
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
@@ -490,14 +467,35 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean copyResource(ResourceDescription from, ResourceDescription to, boolean overwrite) {
-        String body = getResource(from);
-
-        if (body == null) {
-            return false;
+        if (from.equals(to)) {
+            return overwrite;
         }
 
-        ResourceItemMetadata metadata = putResource(to, body, EtagHeader.ANY, overwrite);
-        return metadata != null;
+        String fromRedisKey = redisKey(from);
+        String toRedisKey = redisKey(to);
+        Pair<String, String> sortedPair = toOrderedPair(fromRedisKey, toRedisKey);
+        try (LockService.Lock ignored1 = lockService.lock(sortedPair.getLeft());
+             LockService.Lock ignored2 = lockService.lock(sortedPair.getRight())) {
+            ResourceItemMetadata fromMetadata = getResourceMetadata(from);
+            if (fromMetadata == null) {
+                return false;
+            }
+
+            ResourceItemMetadata toMetadata = getResourceMetadata(to);
+            if (toMetadata == null || overwrite) {
+                flushToBlobStore(fromRedisKey);
+                flushToBlobStore(toRedisKey);
+                blobStore.copy(blobKey(from), blobKey(to));
+
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    private Pair<String, String> toOrderedPair(String a, String b) {
+        return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
     }
 
     private Void sync() {
@@ -713,12 +711,12 @@ public class ResourceService implements AutoCloseable {
         return System.currentTimeMillis();
     }
 
-    private void flushToBlobStore(ResourceDescription descriptor) {
-        RMap<String, byte[]> map = sync(redisKey(descriptor));
+    private void flushToBlobStore(String redisKey) {
+        RMap<String, byte[]> map = sync(redisKey);
         map.delete();
     }
 
-    private String getEtag(ResourceDescription descriptor) {
+    public String getEtag(ResourceDescription descriptor) {
         ResourceItemMetadata metadata = getResourceMetadata(descriptor);
         if (metadata == null) {
             return null;

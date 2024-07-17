@@ -113,13 +113,13 @@ public class AiDial {
             LockService lockService = new LockService(redis, storage.getPrefix());
             resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, storage);
-            ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, storage, invitationService, shareService);
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
+            ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, invitationService, shareService);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, storage, generator, clock);
+                    ruleService, notificationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);

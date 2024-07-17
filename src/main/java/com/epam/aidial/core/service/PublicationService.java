@@ -13,7 +13,6 @@ import com.epam.aidial.core.data.ResourceUrl;
 import com.epam.aidial.core.data.Rule;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
@@ -59,7 +58,6 @@ public class PublicationService {
     private final AccessService accessService;
     private final RuleService ruleService;
     private final NotificationService notificationService;
-    private final BlobStorage files;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -613,24 +611,21 @@ public class PublicationService {
 
     private boolean checkResource(ResourceDescription descriptor) {
         return switch (descriptor.getType()) {
-            case FILE -> files.exists(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.hasResource(descriptor);
+            case FILE, PROMPT, CONVERSATION, APPLICATION -> resources.hasResource(descriptor);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         };
     }
 
     private boolean copyResource(ResourceDescription from, ResourceDescription to) {
         return switch (from.getType()) {
-            case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
+            case FILE, PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
             default -> throw new IllegalStateException("Unsupported type: " + from.getType());
         };
     }
 
     private void deleteResource(ResourceDescription descriptor) {
         switch (descriptor.getType()) {
-            case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor, EtagHeader.ANY);
+            case FILE, PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor, EtagHeader.ANY);
             default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }

@@ -14,10 +14,12 @@ import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
+import org.jclouds.blobstore.domain.MutableStorageMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.Tier;
 import org.jclouds.blobstore.domain.internal.BlobMetadataImpl;
+import org.jclouds.blobstore.domain.internal.MutableBlobMetadataImpl;
 import org.jclouds.blobstore.domain.internal.MutableStorageMetadataImpl;
 import org.jclouds.blobstore.domain.internal.PageSetImpl;
 import org.jclouds.blobstore.options.CopyOptions;
@@ -33,8 +35,6 @@ import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -187,13 +187,15 @@ public class BlobStorage implements Closeable {
         }
         // if prefix defined - subtract it from blob key
         String nextMarker = originalSet.getNextMarker();
-        Set<MutableStorageMetadataImpl> resultSet = originalSet.stream()
-                .map(MutableStorageMetadataImpl::new)
+        List<MutableStorageMetadata> resultSet = originalSet.stream()
                 .map(metadata -> {
-                    metadata.setName(removePrefix(metadata.getName()));
-                    return metadata;
+                    MutableStorageMetadata mutableMetadata = metadata instanceof BlobMetadata blobMetadata
+                            ? new MutableBlobMetadataImpl(blobMetadata)
+                            : new MutableStorageMetadataImpl(metadata);
+                    mutableMetadata.setName(removePrefix(metadata.getName()));
+                    return mutableMetadata;
                 })
-                .collect(Collectors.toSet());
+                .toList();
 
         return new PageSetImpl<>(resultSet, nextMarker);
     }
@@ -228,17 +230,13 @@ public class BlobStorage implements Closeable {
         return options;
     }
 
-    public static MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
-        if (metadata instanceof BlobMetadata blobMetadata) {
-            String blobContentType = blobMetadata.getContentMetadata().getContentType();
-            if (DEFAULT_CONTENT_TYPE.equals(blobContentType)) {
-                blobContentType = BlobStorageUtil.getContentType(blobMetadata.getName());
-            }
-
-            return new FileMetadata(resource, blobMetadata.getSize(), blobContentType);
+    public static MetadataBase buildFileMetadata(ResourceDescription resource, BlobMetadata metadata) {
+        String blobContentType = metadata.getContentMetadata().getContentType();
+        if (DEFAULT_CONTENT_TYPE.equals(blobContentType)) {
+            blobContentType = BlobStorageUtil.getContentType(metadata.getName());
         }
 
-        return new FileMetadata(resource, metadata.getSize(), BlobStorageUtil.getContentType(metadata.getName()));
+        return new FileMetadata(resource, metadata.getSize(), blobContentType);
     }
 
     private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {

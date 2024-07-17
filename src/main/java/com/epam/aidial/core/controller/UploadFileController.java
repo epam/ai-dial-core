@@ -2,11 +2,15 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
+import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.streams.Pipe;
@@ -31,20 +35,41 @@ public class UploadFileController extends AccessControlBaseController {
         }
 
         EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+        Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
                 .uploadHandler(upload -> {
                     String contentType = upload.contentType();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
                     ResourceService resourceService = proxy.getResourceService();
-                    resourceService.putFile(resource, pipe, etag, contentType)
-                            .onSuccess(metadata -> {
+                    BlobWriteStream writeStream = new BlobWriteStream(
+                            proxy.getVertx(),
+                            resourceService,
+                            proxy.getStorage(),
+                            resource,
+                            etag,
+                            contentType);
+
+                    try {
+                        etag.validate(() -> resourceService.getEtag(resource));
+                        pipe.to(writeStream, result);
+                    } catch (HttpException e) {
+                        result.fail(e);
+                    }
+
+                    result.future()
+                            .onSuccess(success -> {
+                                FileMetadata metadata = writeStream.getMetadata();
                                 context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
                                 context.respond(HttpStatus.OK, metadata);
                             })
-                            .onFailure(error -> context.respond(error, error.getMessage()));
+                            .onFailure(error -> {
+                                writeStream.abortUpload(error);
+                                context.respond(error,
+                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                            });
                 });
 
-        return null;
+        return result.future();
     }
 }
