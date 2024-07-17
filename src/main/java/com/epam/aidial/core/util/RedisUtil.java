@@ -1,12 +1,10 @@
 package com.epam.aidial.core.util;
 
-import com.google.common.primitives.Longs;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.function.Function;
 
 @UtilityClass
@@ -21,23 +19,23 @@ public class RedisUtil {
     }
 
     public byte[] longToRedis(Long value) {
-        return javaToRedis(value, Longs::toByteArray);
+        return javaToRedis(value, v -> toBytes(Long.toString(v)));
     }
 
     public byte[] stringToRedis(String value) {
-        return javaToRedis(value, v -> value.getBytes(STRING_ENCODING));
+        return javaToRedis(value, RedisUtil::toBytes);
     }
 
     public Boolean redisToBoolean(byte[] data) {
-        return redisToJava(data, null, d -> Arrays.equals(d, BOOLEAN_TRUE_ARRAY));
+        return redisToJava(data, null, d -> Boolean.parseBoolean(toString(d)));
     }
 
     public String redisToString(byte[] data, String defaultValue) {
-        return redisToJava(data, defaultValue, d -> new String(d, STRING_ENCODING));
+        return redisToJava(data, defaultValue, RedisUtil::toString);
     }
 
     public Long redisToLong(byte[] data) {
-        return redisToJava(data, null, Longs::fromByteArray);
+        return redisToJava(data, null, v -> Long.parseLong(toString(v)));
     }
 
     private <T> byte[] javaToRedis(T value, Function<T, byte[]> serializer) {
@@ -54,5 +52,13 @@ public class RedisUtil {
         }
 
         return deserializer.apply(data);
+    }
+
+    private static String toString(byte[] bytes) {
+        return new String(bytes, STRING_ENCODING);
+    }
+
+    public static byte[] toBytes(String input) {
+        return input.getBytes(STRING_ENCODING);
     }
 }
