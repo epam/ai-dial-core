@@ -1,10 +1,14 @@
 package com.epam.aidial.core.service;
 
+import com.epam.aidial.core.data.ResourceEvent;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ResourceUtil;
 import lombok.AllArgsConstructor;
+
+import java.util.Collection;
+import java.util.function.Consumer;
 
 @AllArgsConstructor
 public class ResourceOperationService {
@@ -13,6 +17,11 @@ public class ResourceOperationService {
     private final BlobStorage storage;
     private final InvitationService invitationService;
     private final ShareService shareService;
+
+    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
+                                                         Consumer<ResourceEvent> subscriber) {
+        return resourceService.subscribeResources(resources, subscriber);
+    }
 
     public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
