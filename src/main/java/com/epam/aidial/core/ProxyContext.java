@@ -68,6 +68,11 @@ public class ProxyContext {
     private long responseBodyTimestamp;
     private ExtractedClaims extractedClaims;
     private ApiKeyData proxyApiKeyData;
+    // deployment triggers interceptors
+    private String initialDeployment;
+    private String initialDeploymentApi;
+    // List of interceptors copied from the deployment config
+    private List<String> interceptors;
 
     public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.config = config;
@@ -144,5 +149,25 @@ public class ProxyContext {
 
     public boolean getBooleanRequestQueryParam(String name) {
         return Boolean.parseBoolean(request.getParam(name, "false"));
+    }
+
+    public List<String> getInterceptors() {
+        return interceptors == null ? apiKeyData.getInterceptors() : interceptors;
+    }
+
+    public boolean hasNextInterceptor() {
+        if (apiKeyData.getInterceptors() == null) { // initial call to the deployment
+            return !deployment.getInterceptors().isEmpty();
+        } else { // make sure if a next interceptor is available from the list
+            return apiKeyData.getInterceptorIndex() + 1 < apiKeyData.getInterceptors().size();
+        }
+    }
+
+    public String getInitialDeployment() {
+        return initialDeployment == null ? apiKeyData.getInitialDeployment() : initialDeployment;
+    }
+
+    public String getInitialDeploymentApi() {
+        return initialDeploymentApi == null ? apiKeyData.getInitialDeploymentApi() : initialDeploymentApi;
     }
 }
