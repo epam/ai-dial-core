@@ -102,15 +102,7 @@ public class ResourceOperationController {
 
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
-        Consumer<ResourceEvent> subscriber = event -> {
-            try {
-                String json = ProxyUtil.convertToString(event);
-                response.write("data: " + json + "\n\n");
-            } catch (Throwable e) {
-                log.warn("Can't send resource event", e);
-                response.reset();
-            }
-        };
+        Consumer<ResourceEvent> subscriber = this::sendSubscriptionEvent;
 
         context.getRequest()
                 .body()
@@ -162,6 +154,22 @@ public class ResourceOperationController {
         });
 
         return resources;
+    }
+
+    private void sendSubscriptionEvent(ResourceEvent event) {
+        HttpServerResponse response = context.getResponse();
+
+        try {
+            ResourceDescription resource = ResourceDescription.fromAnyUrl(event.getUrl(), encryptionService);
+
+            if (accessService.hasReadAccess(resource, context)) {
+                String json = ProxyUtil.convertToString(event);
+                response.write("data: " + json + "\n\n");
+            }
+        } catch (Throwable e) {
+            log.warn("Can't send resource event", e);
+            response.reset();
+        }
     }
 
     private void handleServiceError(Throwable error) {
