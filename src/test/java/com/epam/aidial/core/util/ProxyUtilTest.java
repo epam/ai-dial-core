@@ -170,7 +170,7 @@ public class ProxyUtilTest {
     }
 
     @Test
-    public void testCollectAttachedFiles_EmbeddingRequest() throws IOException {
+    public void testCollectAttachedFiles_EmbeddingRequest_valid() throws IOException {
         String content = """
                 {
                   "input": "some input",
@@ -211,6 +211,23 @@ public class ProxyUtilTest {
                 apiKeyData.getAttachedFiles()
         );
     }
+
+    @Test
+    public void testCollectAttachedFiles_EmbeddingRequest_invalid() throws IOException {
+        String content = """
+                {
+                  "input": "some input",
+                  "custom_input": "invalid_custom_input",
+                  "user": "user_id"
+                }
+                """;
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
+        ApiKeyData apiKeyData = new ApiKeyData();
+        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
+
+        assertTrue(apiKeyData.getAttachedFiles().isEmpty());
+    }
+
 
     @Test
     public void testPromptSchemaValidation() {

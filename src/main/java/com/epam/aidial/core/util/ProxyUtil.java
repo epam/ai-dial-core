@@ -98,13 +98,16 @@ public class ProxyUtil {
     }
 
     private static void collectAttachedFilesEmbeddings(ObjectNode tree, Consumer<String> consumer) {
-        ArrayNode inputs = (ArrayNode) tree.get("custom_input");
+        JsonNode inputs = tree.get("custom_input");
+
         if (inputs == null) {
             return;
         }
 
-        for (int i = 0; i < inputs.size(); i++) {
-            collectAttachedFilesCustomInput(inputs.get(i), consumer);
+        if (inputs.isArray()) {
+            for (int i = 0; i < inputs.size(); i++) {
+                collectAttachedFilesCustomInput(inputs.get(i), consumer);
+            }
         }
     }
 
@@ -112,9 +115,8 @@ public class ProxyUtil {
         if (input.isObject()) {
             collectAttachedFile(input, consumer);
         } else if (input.isArray()) {
-            ArrayNode arrayInput = (ArrayNode) input;
-            for (int i = 0; i < arrayInput.size(); i++) {
-                collectAttachedFilesCustomInput(arrayInput.get(i), consumer);
+            for (int i = 0; i < input.size(); i++) {
+                collectAttachedFilesCustomInput(input.get(i), consumer);
             }
         }
     }
