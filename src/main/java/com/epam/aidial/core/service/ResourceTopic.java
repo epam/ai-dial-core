@@ -65,7 +65,7 @@ public class ResourceTopic {
             try {
                 subscription.subscriber.accept(event);
             } catch (Throwable e) {
-                log.warn("Can't notify about resource event", e);
+                log.warn("Can't notify subscriber", e);
             }
         }
     }
