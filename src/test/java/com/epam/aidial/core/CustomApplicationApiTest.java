@@ -101,7 +101,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"c24476a60a58a7fa9674346211915cec"
+                "etag":"b0296c6000416621866da183f543c787"
                 }
                 """);
 
