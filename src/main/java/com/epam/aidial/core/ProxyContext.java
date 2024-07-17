@@ -8,6 +8,7 @@ import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
+import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
@@ -125,6 +126,12 @@ public class ProxyContext {
         }
 
         return response.setStatusCode(status.getCode()).end(body);
+    }
+
+    public Future<Void> respond(Throwable error) {
+        return error instanceof HttpException exception
+                ? respond(exception.getStatus(), exception.getMessage())
+                : respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
     }
 
     public String getProject() {

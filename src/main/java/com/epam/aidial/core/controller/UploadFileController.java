@@ -5,7 +5,6 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
-import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -43,13 +42,7 @@ public class UploadFileController extends AccessControlBaseController {
                                 context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
                                 context.respond(HttpStatus.OK, metadata);
                             })
-                            .onFailure(error -> {
-                                if (error instanceof HttpException exception) {
-                                    context.respond(exception.getStatus(), exception.getMessage());
-                                } else {
-                                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-                                }
-                            });
+                            .onFailure(context::respond);
                 });
 
         return null;
