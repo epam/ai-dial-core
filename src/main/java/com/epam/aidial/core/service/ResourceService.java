@@ -345,6 +345,43 @@ public class ResourceService implements AutoCloseable {
         return putResource(descriptor, bytes, etag, "application/json", overwrite, lock);
     }
 
+    private ResourceItemMetadata putResource(
+            ResourceDescription descriptor,
+            byte[] body,
+            EtagHeader etag,
+            String contentType,
+            boolean overwrite,
+            boolean lock) {
+        String redisKey = redisKey(descriptor);
+
+        try (var ignore = lock ? lockService.lock(redisKey) : null) {
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+
+            if (metadata != null) {
+                if (!overwrite) {
+                    return null;
+                }
+
+                etag.validate(metadata.getEtag());
+            }
+
+            long updatedAt = System.currentTimeMillis();
+            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            String newEtag = EtagBuilder.generateEtag(body);
+            Result result = new Result(body, newEtag, createdAt, updatedAt, contentType, (long) body.length, false);
+            redisPut(redisKey, result);
+
+            if (metadata == null) {
+                String blobKey = blobKey(descriptor);
+                blobPut(blobKey, result.toStub()); // create an empty object for listing
+            }
+
+            return descriptor.getType() == ResourceType.FILE
+                    ? toFileMetadata(descriptor, result)
+                    : toResourceItemMetadata(descriptor, result);
+        }
+    }
+
     public Future<FileMetadata> putFile(
             ResourceDescription descriptor, Pipe<Buffer> pipe, EtagHeader etag, String contentType) {
         if (descriptor.getType() != ResourceType.FILE) {
@@ -388,43 +425,6 @@ public class ResourceService implements AutoCloseable {
                 return new FileMetadata();
             }
         }).onFailure(writeStream::abortUpload);
-    }
-
-    private ResourceItemMetadata putResource(
-            ResourceDescription descriptor,
-            byte[] body,
-            EtagHeader etag,
-            String contentType,
-            boolean overwrite,
-            boolean lock) {
-        String redisKey = redisKey(descriptor);
-
-        try (var ignore = lock ? lockService.lock(redisKey) : null) {
-            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
-
-            if (metadata != null) {
-                if (!overwrite) {
-                    return null;
-                }
-
-                etag.validate(metadata.getEtag());
-            }
-
-            long updatedAt = System.currentTimeMillis();
-            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
-            String newEtag = EtagBuilder.generateEtag(body);
-            Result result = new Result(body, newEtag, createdAt, updatedAt, contentType, (long) body.length, false);
-            redisPut(redisKey, result);
-
-            if (metadata == null) {
-                String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result.toStub()); // create an empty object for listing
-            }
-
-            return descriptor.getType() == ResourceType.FILE
-                    ? toFileMetadata(descriptor, result)
-                    : toResourceItemMetadata(descriptor, result);
-        }
     }
 
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
