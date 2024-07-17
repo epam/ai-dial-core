@@ -29,7 +29,7 @@ import java.util.List;
 @Slf4j
 public class BlobWriteStream implements WriteStream<Buffer> {
 
-    private static final int MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
+    public static final int MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
     private final Vertx vertx;
     private final ResourceService resourceService;
@@ -93,15 +93,23 @@ public class BlobWriteStream implements WriteStream<Buffer> {
             return;
         }
 
-        int length = data.length();
-        chunkBuffer.setBuffer(position, data);
-        position += length;
-        bytesHandled += length;
-        if (position > chunkSize) {
-            isBufferFull = true;
-        }
+        Future<Void> result = vertx.executeBlocking(() -> {
+            synchronized (BlobWriteStream.this) {
+                if (bytesHandled == 0) {
+                    etag.validate(() -> resourceService.getEtag(resource));
+                }
+                int length = data.length();
+                chunkBuffer.setBuffer(position, data);
+                position += length;
+                bytesHandled += length;
+                if (position > chunkSize) {
+                    isBufferFull = true;
+                }
+            }
 
-        handler.handle(Future.succeededFuture());
+            return null;
+        });
+        result.onComplete(handler);
     }
 
     @Override
@@ -113,7 +121,6 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
 
                 byte[] lastChunk = chunkBuffer.slice(0, position).getBytes();
-                metadata = new FileMetadata(resource, bytesHandled, contentType);
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
                     metadata = resourceService.putFile(resource, lastChunk, etag, contentType);
@@ -124,17 +131,23 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
 
                     String newEtag = etagBuilder.append(lastChunk).build();
+                    metadata = (FileMetadata) new FileMetadata(resource, bytesHandled, contentType).setEtag(newEtag);
                     mpu.blobMetadata().getUserMetadata().put(ResourceUtil.ETAG_ATTRIBUTE, newEtag);
-                    resourceService.putFile(resource, mpu, parts, etag);
+                    resourceService.completeMultipartUpload(resource, mpu, parts, etag);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 
                 return null;
             }
         });
-        result.onComplete(asyncResult -> {
+        result.onSuccess(success -> {
             if (handler != null) {
-                handler.handle(asyncResult);
+                handler.handle(Future.succeededFuture());
+            }
+        }).onFailure(error -> {
+            abortUpload(error);
+            if (handler != null) {
+                handler.handle(Future.failedFuture(error));
             }
         });
     }

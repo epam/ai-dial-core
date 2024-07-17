@@ -39,23 +39,11 @@ public class UploadFileController extends AccessControlBaseController {
         context.getRequest()
                 .setExpectMultipart(true)
                 .uploadHandler(upload -> {
+                    ResourceService resourceService = proxy.getResourceService();
                     String contentType = upload.contentType();
                     Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                    ResourceService resourceService = proxy.getResourceService();
-                    BlobWriteStream writeStream = new BlobWriteStream(
-                            proxy.getVertx(),
-                            resourceService,
-                            proxy.getStorage(),
-                            resource,
-                            etag,
-                            contentType);
-
-                    try {
-                        etag.validate(() -> resourceService.getEtag(resource));
-                        pipe.to(writeStream, result);
-                    } catch (HttpException e) {
-                        result.fail(e);
-                    }
+                    BlobWriteStream writeStream = resourceService.getFileWriteStream(resource, etag, contentType);
+                    pipe.to(writeStream, result);
 
                     result.future()
                             .onSuccess(success -> {
@@ -63,11 +51,8 @@ public class UploadFileController extends AccessControlBaseController {
                                 context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
                                 context.respond(HttpStatus.OK, metadata);
                             })
-                            .onFailure(error -> {
-                                writeStream.abortUpload(error);
-                                context.respond(error,
-                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
-                            });
+                            .onFailure(error -> context.respond(error,
+                                    "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath())));
                 });
 
         return result.future();

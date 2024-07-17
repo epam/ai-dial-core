@@ -8,6 +8,7 @@ import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import com.epam.aidial.core.util.EtagBuilder;
@@ -410,7 +411,7 @@ public class ResourceService implements AutoCloseable {
         return (FileMetadata) putResource(descriptor, body, etag, contentType, true, true);
     }
 
-    public void putFile(
+    public void completeMultipartUpload(
             ResourceDescription descriptor, MultipartUpload multipartUpload, List<MultipartPart> parts, EtagHeader etag) {
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
@@ -419,6 +420,10 @@ public class ResourceService implements AutoCloseable {
             flushToBlobStore(redisKey);
             blobStore.completeMultipartUpload(multipartUpload, parts);
         }
+    }
+
+    public BlobWriteStream getFileWriteStream(ResourceDescription descriptor, EtagHeader etag, String contentType) {
+        return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
     }
 
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {

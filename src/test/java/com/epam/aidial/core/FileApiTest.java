@@ -8,6 +8,7 @@ import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -351,6 +353,71 @@ public class FileApiTest extends ResourceBaseTest {
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
                     .sendMultipartForm(generateMultipartForm("файл.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(expectedFileMetadata, response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify uploaded file can be listed
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(ProxyUtil.MAPPER.writeValueAsString(expectedFolderMetadata), response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
+    public void testBigFileUpload(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        byte[] content = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
+        IntStream.range(0, content.length).forEach(i -> content[i] = (byte) i);
+        Set<ResourceAccessType> permissions = ResourceAccessType.ALL;
+        FileMetadata expectedFileMetadata = (FileMetadata) new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                "file.bin", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin", content.length, "application/x-binary")
+                .setEtag("682fdfa22b3f97021b6d3cc3f00baa2b");
+        MetadataBase expectedFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                        null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                        List.of(newFileMetadata(expectedFileMetadata).setPermissions(permissions)))
+                .setPermissions(permissions);
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify no files
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(ResourceFolderMetadata.class))
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(List.of(), response.body().getItems());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.bin", content, "application/x-binary"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
@@ -1001,6 +1068,10 @@ public class FileApiTest extends ResourceBaseTest {
 
     private static MultipartForm generateMultipartForm(String fileName, String content, String contentType) {
         return MultipartForm.create().textFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
+    }
+
+    private static MultipartForm generateMultipartForm(String fileName, byte[] content, String contentType) {
+        return MultipartForm.create().binaryFileUpload("attachment", fileName, Buffer.buffer(content), contentType);
     }
 
     private static FileMetadata newFileMetadata(FileMetadata expectedFileMetadata) {
