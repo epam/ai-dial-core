@@ -366,7 +366,7 @@ public class ResourceService implements AutoCloseable {
             }
 
             long updatedAt = System.currentTimeMillis();
-            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            Long createdAt = metadata == null ? (Long) updatedAt : metadata.getCreatedAt();
             String newEtag = EtagBuilder.generateEtag(body);
             Result result = new Result(body, newEtag, createdAt, updatedAt, contentType, (long) body.length, false);
             redisPut(redisKey, result);
