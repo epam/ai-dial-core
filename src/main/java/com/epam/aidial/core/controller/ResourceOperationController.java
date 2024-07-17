@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 public class ResourceOperationController {
 
     private static final Set<ResourceType> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
-            ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT);
+            /*ResourceType.FILE,*/ ResourceType.CONVERSATION, ResourceType.PROMPT);
 
     private final ProxyContext context;
     private final Vertx vertx;

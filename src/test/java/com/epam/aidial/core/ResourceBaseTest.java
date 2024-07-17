@@ -229,16 +229,7 @@ public class ResourceBaseTest {
 
     static void verifyJsonNotExact(Response response, int status, String body) {
         assertEquals(status, response.status());
-        try {
-            JsonNode expected = ProxyUtil.MAPPER.readTree(body);
-            JsonNode actual = ProxyUtil.MAPPER.readTree(response.body());
-
-            if (new NotExactComparator().compare(expected, actual) != 0) {
-                Assertions.assertEquals(expected.toPrettyString(), actual.toPrettyString());
-            }
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
+        verifyJsonNotExact(body, response.body);
     }
 
     static void verifyJsonNotExact(String expected, String actual) {
