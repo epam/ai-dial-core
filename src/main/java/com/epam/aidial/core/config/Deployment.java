@@ -27,4 +27,8 @@ public abstract class Deployment {
      * Default parameters are applied if a request doesn't contain them in OpenAI chat/completions API call.
      */
     private Map<String, Object> defaults = Map.of();
+    /**
+     * List of interceptors to be called for the deployment
+     */
+    private List<String> interceptors = List.of();
 }

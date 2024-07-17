@@ -43,7 +43,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "icon_url":"http://application1/icon.svg",
                 "description":"My Custom Application Description",
                 "forward_auth_token":false,
-                "defaults": {}
+                "defaults": {},
+                "interceptors": []
                 }
                 """);
 
@@ -175,7 +176,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                  "rate_endpoint": "http://application1/rate",
                  "configuration_endpoint": "http://application1/configuration"
                  },
-                "defaults": {}
+                "defaults": {},
+                "interceptors": []
                 }
                 """);
 
