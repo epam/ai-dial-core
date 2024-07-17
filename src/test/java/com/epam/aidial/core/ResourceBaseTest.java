@@ -10,7 +10,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.Future;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -23,7 +27,7 @@ import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -31,12 +35,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -112,7 +122,7 @@ public class ResourceBaseTest {
                     .build();
             redis.start();
 
-            client = HttpClientBuilder.create().build();
+            client = HttpClients.createDefault();
 
             String overrides = """
                     {
@@ -223,12 +233,16 @@ public class ResourceBaseTest {
 
     static void verifyJsonNotExact(Response response, int status, String body) {
         assertEquals(status, response.status());
-        try {
-            JsonNode expected = ProxyUtil.MAPPER.readTree(body);
-            JsonNode actual = ProxyUtil.MAPPER.readTree(response.body());
+        verifyJsonNotExact(body, response.body);
+    }
 
-            if (new NotExactComparator().compare(expected, actual) != 0) {
-                Assertions.assertEquals(expected.toPrettyString(), actual.toPrettyString());
+    static void verifyJsonNotExact(String expected, String actual) {
+        try {
+            JsonNode expectedTree = ProxyUtil.MAPPER.readTree(expected);
+            JsonNode actualTree = ProxyUtil.MAPPER.readTree(actual);
+
+            if (new NotExactComparator().compare(expectedTree, actualTree) != 0) {
+                Assertions.assertEquals(expectedTree.toPrettyString(), actualTree.toPrettyString());
             }
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
@@ -304,9 +318,84 @@ public class ResourceBaseTest {
         }
     }
 
+    @SneakyThrows
+    EventStream subscribe(String body, String... headers) {
+        String uri = "http://127.0.0.1:" + serverPort + "/v1/ops/resource/subscribe";
+        CompletableFuture<HttpClientRequest> requestFuture = new CompletableFuture<>();
+
+        dial.getClient().request(new RequestOptions().setAbsoluteURI(uri).setMethod(HttpMethod.POST))
+                .onSuccess(requestFuture::complete)
+                .onFailure(requestFuture::completeExceptionally);
+
+        HttpClientRequest request = requestFuture.get(10, TimeUnit.SECONDS);
+        boolean isAuthorized = false;
+
+        for (int i = 0; i < headers.length; i += 2) {
+            String key = headers[i];
+            String value = headers[i + 1];
+            request.putHeader(key, value);
+            isAuthorized = key.equalsIgnoreCase("authorization") || key.equalsIgnoreCase("api-key");
+        }
+
+        if (!isAuthorized) {
+            request.putHeader("api-key", "proxyKey1");
+        }
+
+        CompletableFuture<HttpClientResponse> responseFuture = new CompletableFuture<>();
+        request.send(body)
+                .onSuccess(responseFuture::complete)
+                .onFailure(responseFuture::completeExceptionally);
+
+        HttpClientResponse response = responseFuture.get(10, TimeUnit.SECONDS);
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertEquals("text/event-stream", response.getHeader(HttpHeaders.CONTENT_TYPE));
+
+        EventStream stream = new EventStream(response);
+        response.handler(event -> {
+            String text = event.toString(StandardCharsets.UTF_8);
+            stream.add(text);
+        });
+
+        return stream;
+    }
+
     record Response(int status, String body, Map<String, String> headers) {
         public boolean ok() {
             return status() == 200;
+        }
+    }
+
+    static class EventStream implements AutoCloseable {
+        AtomicBoolean active = new AtomicBoolean(true);
+        BlockingQueue<String> events = new LinkedBlockingQueue<>();
+        HttpClientResponse response;
+
+        private EventStream(HttpClientResponse response) {
+            this.response = response;
+        }
+
+        private void add(String event) {
+            if (active.get()) {
+                Assertions.assertTrue(event.startsWith("data:"));
+                Assertions.assertTrue(event.endsWith("\n\n"));
+                String message = event.substring("data:".length(), event.length() - "\n\n".length()).trim();
+                events.add(message);
+            }
+        }
+
+        @SneakyThrows
+        public String take() {
+            String event = events.poll(10, TimeUnit.SECONDS);
+            assertNotNull(event, "No event received");
+            return event;
+        }
+
+        @Override
+        @SneakyThrows
+        public void close() {
+            active.set(false);
+            response.request().reset();
+            Assertions.assertIterableEquals(List.of(), events);
         }
     }
 
@@ -323,7 +412,7 @@ public class ResourceBaseTest {
                     return -1;
                 }
 
-                for (Iterator<String> iterator = actual.fieldNames(); iterator.hasNext();) {
+                for (Iterator<String> iterator = actual.fieldNames(); iterator.hasNext(); ) {
                     String name = iterator.next();
                     JsonNode left = expected.get(name);
                     JsonNode right = actual.get(name);

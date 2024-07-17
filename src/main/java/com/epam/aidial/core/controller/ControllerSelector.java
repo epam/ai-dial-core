@@ -54,7 +54,7 @@ public class ControllerSelector {
     private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
     private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
-    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move)$");
+    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move|subscribe)$");
 
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
 
@@ -292,8 +292,14 @@ public class ControllerSelector {
 
         match = match(RESOURCE_OPERATIONS, path);
         if (match != null) {
+            String operation = match.group(1);
             ResourceOperationController controller = new ResourceOperationController(proxy, context);
-            return controller::move;
+
+            return switch (operation)  {
+                case "move" -> controller::move;
+                case "subscribe" -> controller::subscribe;
+                default -> null;
+            };
         }
 
         match = match(PUBLISHED_RESOURCES, path);

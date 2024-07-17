@@ -2,6 +2,7 @@ package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.ResourceEvent;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
@@ -49,11 +50,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
@@ -86,6 +89,7 @@ public class ResourceService implements AutoCloseable {
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
+    private final ResourceTopic topic;
     @Getter
     private final int maxSize;
     private final long syncTimer;
@@ -136,6 +140,7 @@ public class ResourceService implements AutoCloseable {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
+        this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = maxSize;
         this.syncDelay = syncDelay;
         this.syncBatch = syncBatch;
@@ -151,6 +156,11 @@ public class ResourceService implements AutoCloseable {
     @Override
     public void close() {
         vertx.cancelTimer(syncTimer);
+    }
+
+    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
+                                                         Consumer<ResourceEvent> subscriber) {
+        return topic.subscribe(resources, subscriber);
     }
 
     @Nullable
@@ -371,11 +381,18 @@ public class ResourceService implements AutoCloseable {
             Result result = new Result(body, newEtag, createdAt, updatedAt, contentType, (long) body.length, false);
             redisPut(redisKey, result);
 
+            ResourceEvent event = new ResourceEvent()
+                    .setUrl(descriptor.getUrl())
+                    .setAction(ResourceEvent.Action.UPDATE)
+                    .setTimestamp(updatedAt);
+
             if (metadata == null) {
+                event.setAction(ResourceEvent.Action.CREATE);
                 String blobKey = blobKey(descriptor);
                 blobPut(blobKey, result.toStub()); // create an empty object for listing
             }
 
+            topic.publish(event);
             return descriptor.getType() == ResourceType.FILE
                     ? toFileMetadata(descriptor, result)
                     : toResourceItemMetadata(descriptor, result);
@@ -458,6 +475,12 @@ public class ResourceService implements AutoCloseable {
             blobDelete(blobKey(descriptor));
             redisSync(redisKey);
 
+            ResourceEvent event = new ResourceEvent()
+                    .setUrl(descriptor.getUrl())
+                    .setAction(ResourceEvent.Action.DELETE)
+                    .setTimestamp(time());
+
+            topic.publish(event);
             return true;
         }
     }
