@@ -46,7 +46,7 @@ public abstract class AccessControlBaseController {
     }
 
     /**
-     * @return a future to read the request body after its completion.
+     * @return a successful future to read the request body after its completion.
      */
     protected abstract Future<?> handle(ResourceDescription resource, boolean hasWriteAccess);
 }
