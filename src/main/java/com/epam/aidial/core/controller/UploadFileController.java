@@ -51,8 +51,11 @@ public class UploadFileController extends AccessControlBaseController {
                                 context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
                                 context.respond(HttpStatus.OK, metadata);
                             })
-                            .onFailure(error -> context.respond(error,
-                                    "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath())));
+                            .onFailure(error -> {
+                                writeStream.abortUpload(error);
+                                context.respond(error,
+                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                            });
                 });
 
         return result.future();

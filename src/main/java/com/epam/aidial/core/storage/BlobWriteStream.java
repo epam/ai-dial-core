@@ -85,19 +85,19 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     }
 
     @Override
-    public synchronized void write(Buffer data, Handler<AsyncResult<Void>> handler) {
-        // exception might be thrown during drain handling, if so we need to stop processing chunks
-        // upload abortion will be handled in the end
-        if (exception != null) {
-            handler.handle(Future.failedFuture(exception));
-            return;
-        }
-
+    public void write(Buffer data, Handler<AsyncResult<Void>> handler) {
         Future<Void> result = vertx.executeBlocking(() -> {
             synchronized (BlobWriteStream.this) {
+                // exception might be thrown during drain handling, if so we need to stop processing chunks
+                // upload abortion will be handled in the end
+                if (exception != null) {
+                    throw new RuntimeException(exception);
+                }
+
                 if (bytesHandled == 0) {
                     etag.validate(() -> resourceService.getEtag(resource));
                 }
+
                 int length = data.length();
                 chunkBuffer.setBuffer(position, data);
                 position += length;
@@ -105,9 +105,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 if (position > chunkSize) {
                     isBufferFull = true;
                 }
-            }
 
-            return null;
+                return null;
+            }
         });
         result.onComplete(handler);
     }
@@ -140,16 +140,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 return null;
             }
         });
-        result.onSuccess(success -> {
-            if (handler != null) {
-                handler.handle(Future.succeededFuture());
-            }
-        }).onFailure(error -> {
-            abortUpload(error);
-            if (handler != null) {
-                handler.handle(Future.failedFuture(error));
-            }
-        });
+        result.onComplete(handler);
     }
 
     @Override
