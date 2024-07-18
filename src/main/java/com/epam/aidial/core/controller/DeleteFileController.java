@@ -35,20 +35,20 @@ public class DeleteFileController extends AccessControlBaseController {
 
         BlobStorage storage = proxy.getStorage();
         proxy.getVertx().executeBlocking(() -> {
-                    String bucketName = resource.getBucketName();
-                    String bucketLocation = resource.getBucketLocation();
-                    try {
-                        return lockService.underBucketLock(bucketLocation, () -> {
-                            invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
-                            shareService.revokeSharedResource(bucketName, bucketLocation, resource);
-                            storage.delete(absoluteFilePath);
-                            return null;
-                        });
-                    } catch (Exception ex) {
-                        log.error("Failed to delete file  %s/%s".formatted(bucketName, resource.getOriginalPath()), ex);
-                        throw new RuntimeException(ex);
-                    }
-                }, false)
+            String bucketName = resource.getBucketName();
+            String bucketLocation = resource.getBucketLocation();
+            try {
+                return lockService.underBucketLock(bucketLocation, () -> {
+                    invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
+                    shareService.revokeSharedResource(bucketName, bucketLocation, resource);
+                    storage.delete(absoluteFilePath);
+                    return null;
+                });
+            } catch (Exception ex) {
+                log.error("Failed to delete file  %s/%s".formatted(bucketName, resource.getOriginalPath()), ex);
+                throw new RuntimeException(ex);
+            }
+        }, false)
                 .onSuccess(success -> context.respond(HttpStatus.OK))
                 .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
 
