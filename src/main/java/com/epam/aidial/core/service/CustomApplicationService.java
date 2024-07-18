@@ -34,18 +34,18 @@ public class CustomApplicationService {
     private final JsonObject applicationsConfig;
 
     /**
-     * Loads a custom application from provided url with permission check
+     * Loads a custom application from provided decoded url with permission check
      *
-     * @param url - custom application url
+     * @param decodedUrl - custom application url
      * @return - custom application or null if invalid url provided or resource not found
      */
-    public Application getCustomApplication(String url, ProxyContext context) {
+    public Application getCustomApplication(String decodedUrl, ProxyContext context) {
         ResourceDescription resource;
         try {
-            resource = ResourceDescription.fromAnyUrl(url, encryptionService);
+            resource = ResourceDescription.fromAnyDecodedUrl(decodedUrl, encryptionService);
         } catch (Exception e) {
-            log.warn("Invalid resource url provided: {}", url);
-            throw new ResourceNotFoundException("Application %s not found".formatted(url));
+            log.warn("Invalid resource url provided: {}", decodedUrl);
+            throw new ResourceNotFoundException("Application %s not found".formatted(decodedUrl));
         }
 
         if (resource.getType() != ResourceType.APPLICATION) {
@@ -54,7 +54,7 @@ public class CustomApplicationService {
 
         boolean hasAccess = accessService.hasReadAccess(resource, context);
         if (!hasAccess) {
-            throw new PermissionDeniedException("User don't have access to the deployment " + url);
+            throw new PermissionDeniedException("User don't have access to the deployment " + resource.getUrl());
         }
 
         String applicationBody = resourceService.getResource(resource);

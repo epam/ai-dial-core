@@ -22,6 +22,7 @@ public class Config {
     private Map<String, Key> keys = new HashMap<>();
     private Map<String, Role> roles = new HashMap<>();
     private Set<Integer> retriableErrorCodes = Set.of();
+    private Map<String, Interceptor> interceptors = Map.of();
 
 
     public Deployment selectDeployment(String deploymentId) {

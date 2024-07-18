@@ -97,6 +97,12 @@ public final class FileConfigStore implements ConfigStore {
                 role.setName(name);
             }
 
+            for (Map.Entry<String, Interceptor> entry : config.getInterceptors().entrySet()) {
+                String name = entry.getKey();
+                Interceptor interceptor = entry.getValue();
+                interceptor.setName(name);
+            }
+
             this.config = config;
         } catch (Throwable e) {
             if (fail) {
