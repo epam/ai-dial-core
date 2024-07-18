@@ -116,7 +116,7 @@ public class GfLogStore implements LogStore {
 
         append(entry, ",\"assembled_response\":\"", false);
         Buffer responseBody = context.getResponseBody();
-        if (isStreamingResponse(responseBody)) {
+        if (ProxyUtil.isStreamingResponse(responseBody)) {
             append(entry, assembleStreamingResponse(responseBody), true);
         } else {
             append(entry, responseBody);
@@ -319,36 +319,4 @@ public class GfLogStore implements LogStore {
         }
     }
 
-    /**
-     * Determines if the given response is streaming.
-     * <p>
-     *     Streaming response is spitted into chunks. Each chunk starts with a new line and has a prefix: 'data:'.
-     *     For example<br/>
-     *     <code>
-     *         data: {content: "some text"}
-     *         \n\ndata: {content: "some text"}
-     *         \ndata: [DONE]
-     *     </code>
-     * </p>
-     *
-     * @param response byte array response.
-     * @return <code>true</code> is the response is streaming.
-     */
-    static boolean isStreamingResponse(Buffer response) {
-        int i = 0;
-        for (; i < response.length(); i++) {
-            byte b = response.getByte(i);
-            if (!Character.isWhitespace(b)) {
-                break;
-            }
-        }
-        String dataToken = "data:";
-        int j = 0;
-        for (; i < response.length() && j < dataToken.length(); i++, j++) {
-            if (dataToken.charAt(j) != response.getByte(i)) {
-                break;
-            }
-        }
-        return j == dataToken.length();
-    }
 }

@@ -199,10 +199,10 @@ public class DeploymentPostController {
         }
 
         setupProxyApiKeyData();
-        proxy.getTokenStatsTracker().startSpan(context);
 
         context.getRequest().body()
                 .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    proxy.getTokenStatsTracker().startSpan(context);
                     handleRequestBody(body);
                     return null;
                 }, false).onFailure(this::handleError))
@@ -340,8 +340,13 @@ public class DeploymentPostController {
             return;
         }
 
-        BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024));
+        BufferingReadStream responseStream;
+        int responseLength = ProxyUtil.contentLength(proxyResponse, 1024);
+        if (context.getDeployment() instanceof Model && proxyResponse.statusCode() == HttpStatus.OK.getCode()) {
+            responseStream = new BufferingReadStream(proxyResponse, responseLength, chunk -> proxy.getTokenStatsTracker().handleChunkResponse(chunk, context));
+        } else {
+            responseStream = new BufferingReadStream(proxyResponse, responseLength);
+        }
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -376,34 +381,10 @@ public class DeploymentPostController {
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
-        if (context.getDeployment() instanceof Model model) {
+        if (context.getDeployment() instanceof Model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
-                if (tokenUsage == null) {
-                    Pricing pricing = model.getPricing();
-                    if (pricing == null || "token".equals(pricing.getUnit())) {
-                        log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
-                                context.getTraceId(), context.getSpanId(),
-                                context.getProject(), context.getDeployment().getName(),
-                                context.getDeployment().getEndpoint(),
-                                context.getUpstreamRoute().get().getEndpoint(),
-                                context.getResponse().getStatusCode(),
-                                context.getResponseBody().length());
-                    }
-                    tokenUsage = new TokenUsage();
-                }
-                context.setTokenUsage(tokenUsage);
                 proxy.getRateLimiter().increase(context).onFailure(error -> log.warn("Failed to increase limit. Trace: {}. Span: {}",
                         context.getTraceId(), context.getSpanId(), error));
-                tokenUsageFuture = Future.succeededFuture(tokenUsage);
-                try {
-                    BigDecimal cost = ModelCostCalculator.calculate(context);
-                    tokenUsage.setCost(cost);
-                    tokenUsage.setAggCost(cost);
-                } catch (Throwable e) {
-                    log.warn("Failed to calculate cost for model={}. Trace: {}. Span: {}",
-                            context.getDeployment().getName(), context.getTraceId(), context.getSpanId(), e);
-                }
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
@@ -529,7 +510,7 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
-        proxy.getTokenStatsTracker().endSpan(context);
+        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred on ending span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.log;
 
+import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
@@ -42,7 +43,7 @@ public class GfLogStoreTest {
                   }
                 }
                 """;
-        assertFalse(GfLogStore.isStreamingResponse(Buffer.buffer(batchResponse)));
+        assertFalse(ProxyUtil.isStreamingResponse(Buffer.buffer(batchResponse)));
         String streamingResponse = """
                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
                  
@@ -63,7 +64,7 @@ public class GfLogStoreTest {
                        }
                  data: [DONE]
                  """;
-        assertTrue(GfLogStore.isStreamingResponse(Buffer.buffer(streamingResponse)));
+        assertTrue(ProxyUtil.isStreamingResponse(Buffer.buffer(streamingResponse)));
     }
 
     @Test

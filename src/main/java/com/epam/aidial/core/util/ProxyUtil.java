@@ -247,4 +247,41 @@ public class ProxyUtil {
         }
         return null;
     }
+
+    /**
+     * Determines if the given response is streaming.
+     * <p>
+     *     Streaming response is spitted into chunks. Each chunk starts with a new line and has a prefix: 'data:'.
+     *     For example<br/>
+     *     <code>
+     *         data: {content: "some text"}
+     *         \n\ndata: {content: "some text"}
+     *         \ndata: [DONE]
+     *     </code>
+     * </p>
+     *
+     * @param response byte array response.
+     * @return <code>true</code> is the response is streaming.
+     */
+    public static int lastIndexOfStartStreamingToken(Buffer response) {
+        int i = 0;
+        for (; i < response.length(); i++) {
+            byte b = response.getByte(i);
+            if (!Character.isWhitespace(b)) {
+                break;
+            }
+        }
+        String dataToken = "data:";
+        int j = 0;
+        for (; i < response.length() && j < dataToken.length(); i++, j++) {
+            if (dataToken.charAt(j) != response.getByte(i)) {
+                break;
+            }
+        }
+        return j == dataToken.length() ? i : -1;
+    }
+
+    public static boolean isStreamingResponse(Buffer response) {
+        return lastIndexOfStartStreamingToken(response) != -1;
+    }
 }

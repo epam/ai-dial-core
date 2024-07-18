@@ -1,5 +1,6 @@
 package com.epam.aidial.core.util;
 
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.Pipe;
@@ -7,6 +8,8 @@ import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.function.Function;
 
 @Slf4j
 @Getter
@@ -18,18 +21,24 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Handler<Buffer> chunkHandler;
     private Handler<Void> endHandler;
     private Handler<Throwable> exceptionHandler;
+    private Function<Buffer, Future<Void>> interceptor;
 
     private Throwable error;
     private boolean ended;
     private boolean reset;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
-        this(stream, 512);
+        this(stream, 512, null);
     }
 
     public BufferingReadStream(ReadStream<Buffer> stream, int initialSize) {
+        this(stream, initialSize, null);
+    }
+
+    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, Function<Buffer, Future<Void>> interceptor) {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
+        this.interceptor = interceptor;
 
         stream.handler(this::handleChunk);
         stream.endHandler(this::handleEnd);
@@ -111,7 +120,11 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     private synchronized void handleChunk(Buffer chunk) {
         content.appendBuffer(chunk);
-        notifyOnChunk(chunk);
+        if (interceptor != null) {
+            interceptor.apply(chunk).onComplete(ignore -> notifyOnChunk(chunk));
+        } else {
+            notifyOnChunk(chunk);
+        }
     }
 
     private synchronized void handleEnd(Void ignored) {

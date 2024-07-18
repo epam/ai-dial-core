@@ -1,11 +1,14 @@
 package com.epam.aidial.core.token;
 
+import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
 import io.vertx.core.Future;
-import org.junit.jupiter.api.BeforeEach;
+import io.vertx.core.Vertx;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -13,19 +16,19 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class TokenStatsTrackerTest {
 
-    private TokenStatsTracker tracker;
+    private Vertx vertx;
 
-    @BeforeEach
-    public void beforeEach() {
-        tracker = new TokenStatsTracker();
-    }
+    @Mock
+    private Proxy proxy;
+
+    @InjectMocks
+    private TokenStatsTracker tracker;
 
     /**
      * Tests the flow: chat back-end -> core -> app -> core -> model
@@ -41,8 +44,6 @@ public class TokenStatsTrackerTest {
         // chat calls app -> core starts span
         tracker.startSpan(chatBackend);
 
-        assertEquals(1, tracker.getTraces().size());
-        assertTrue(tracker.getTraces().containsKey(traceId));
 
         ProxyContext app = mock(ProxyContext.class);
         when(app.getSpanId()).thenReturn("app");
@@ -55,7 +56,6 @@ public class TokenStatsTrackerTest {
         // app calls model -> core starts span
         tracker.startSpan(app);
 
-        assertEquals(1, tracker.getTraces().size());
 
         TokenUsage modelTokenUsage = new TokenUsage();
         modelTokenUsage.setTotalTokens(100);
@@ -70,8 +70,6 @@ public class TokenStatsTrackerTest {
         // core ends span for request to model
         tracker.endSpan(app);
 
-        assertEquals(1, tracker.getTraces().size());
-
         // core receives response from app
         Future<TokenUsage> future = tracker.getTokenStats(chatBackend);
         assertNotNull(future);
@@ -84,6 +82,5 @@ public class TokenStatsTrackerTest {
 
         // core ends span for request to app
         tracker.endSpan(chatBackend);
-        assertEquals(0, tracker.getTraces().size());
     }
 }
