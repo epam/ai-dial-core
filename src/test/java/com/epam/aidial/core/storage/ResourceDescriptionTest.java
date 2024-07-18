@@ -1,6 +1,8 @@
 package com.epam.aidial.core.storage;
 
+import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.EncryptionService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -192,5 +194,27 @@ public class ResourceDescriptionTest {
         assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/public"));
         assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/public"));
         assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/private/"));
+    }
+
+    @Test
+    public void testFromAnyDecodedUrl() {
+        EncryptionService encryptionService = new EncryptionService(new Encryption("password", "salt"));
+        String location = "Users/User1/";
+        String bucket = encryptionService.encrypt(location);
+
+        ResourceDescription privateResource = ResourceDescription.fromAnyDecodedUrl("files/%s/my folder/some file".formatted(bucket), encryptionService);
+        assertEquals(ResourceType.FILE, privateResource.getType());
+        assertEquals(bucket, privateResource.getBucketName());
+        assertEquals(location, privateResource.getBucketLocation());
+        assertEquals("files/" + bucket + "/my%20folder/some%20file", privateResource.getUrl());
+        assertFalse(privateResource.isFolder());
+        assertTrue(privateResource.isPrivate());
+
+        ResourceDescription publicResource = ResourceDescription.fromAnyDecodedUrl("applications/public/my folder/some app", encryptionService);
+        assertEquals(ResourceType.APPLICATION, publicResource.getType());
+        assertEquals("public", publicResource.getBucketName());
+        assertEquals("applications/public/my%20folder/some%20app", publicResource.getUrl());
+        assertFalse(publicResource.isFolder());
+        assertTrue(publicResource.isPublic());
     }
 }
