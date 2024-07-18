@@ -124,8 +124,7 @@ public class ProxyContext {
                     body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
         }
 
-        response.setStatusCode(status.getCode()).end(body);
-        return Future.succeededFuture();
+        return response.setStatusCode(status.getCode()).end(body);
     }
 
     public String getProject() {
