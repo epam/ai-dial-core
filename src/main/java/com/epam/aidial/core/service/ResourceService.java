@@ -371,8 +371,8 @@ public class ResourceService implements AutoCloseable {
                 etag.validate(metadata.getEtag());
             }
 
-            long updatedAt = System.currentTimeMillis();
-            Long createdAt = metadata == null ? (Long) updatedAt : metadata.getCreatedAt();
+            Long updatedAt = time();
+            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
             String newEtag = EtagBuilder.generateEtag(body);
             Result result = new Result(body, newEtag, createdAt, updatedAt, contentType, (long) body.length, false);
             if (body.length <= maxSize) {
@@ -387,16 +387,10 @@ public class ResourceService implements AutoCloseable {
                 blobPut(blobKey, result);
             }
 
-            ResourceEvent event = new ResourceEvent()
-                    .setUrl(descriptor.getUrl())
-                    .setAction(ResourceEvent.Action.UPDATE)
-                    .setTimestamp(updatedAt);
-
-            if (metadata == null) {
-                event.setAction(ResourceEvent.Action.CREATE);
-            }
-
-            topic.publish(event);
+            ResourceEvent.Action action = metadata == null
+                    ? ResourceEvent.Action.CREATE
+                    : ResourceEvent.Action.UPDATE;
+            publishEvent(descriptor, action, updatedAt);
             return descriptor.getType() == ResourceType.FILE
                     ? toFileMetadata(descriptor, result)
                     : toResourceItemMetadata(descriptor, result);
@@ -411,19 +405,27 @@ public class ResourceService implements AutoCloseable {
         return (FileMetadata) putResource(descriptor, body, etag, contentType, true, true);
     }
 
-    public void completeMultipartUpload(
+    public BlobWriteStream beginFileUpload(ResourceDescription descriptor, EtagHeader etag, String contentType) {
+        return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
+    }
+
+    public void finishFileUpload(
             ResourceDescription descriptor, MultipartUpload multipartUpload, List<MultipartPart> parts, EtagHeader etag) {
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
-            etag.validate(() -> getEtag(descriptor));
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+            if (metadata != null) {
+                etag.validate(metadata.getEtag());
+            }
 
             flushToBlobStore(redisKey);
             blobStore.completeMultipartUpload(multipartUpload, parts);
-        }
-    }
 
-    public BlobWriteStream getFileWriteStream(ResourceDescription descriptor, EtagHeader etag, String contentType) {
-        return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
+            ResourceEvent.Action action = metadata == null
+                    ? ResourceEvent.Action.CREATE
+                    : ResourceEvent.Action.UPDATE;
+            publishEvent(descriptor, action, time());
+        }
     }
 
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
@@ -457,12 +459,7 @@ public class ResourceService implements AutoCloseable {
             blobDelete(blobKey(descriptor));
             redisSync(redisKey);
 
-            ResourceEvent event = new ResourceEvent()
-                    .setUrl(descriptor.getUrl())
-                    .setAction(ResourceEvent.Action.DELETE)
-                    .setTimestamp(time());
-
-            topic.publish(event);
+            publishEvent(descriptor, ResourceEvent.Action.DELETE, time());
             return true;
         }
     }
@@ -492,11 +489,24 @@ public class ResourceService implements AutoCloseable {
                 flushToBlobStore(toRedisKey);
                 blobStore.copy(blobKey(from), blobKey(to));
 
+                ResourceEvent.Action action = toMetadata == null
+                        ? ResourceEvent.Action.CREATE
+                        : ResourceEvent.Action.UPDATE;
+                publishEvent(to, action, time());
                 return true;
             }
 
             return false;
         }
+    }
+
+    public void publishEvent(ResourceDescription descriptor, ResourceEvent.Action action, long timestamp) {
+        ResourceEvent event = new ResourceEvent()
+                .setUrl(descriptor.getUrl())
+                .setAction(action)
+                .setTimestamp(timestamp);
+
+        topic.publish(event);
     }
 
     private Pair<String, String> toOrderedPair(String a, String b) {
