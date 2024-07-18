@@ -224,10 +224,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {
-        request.response().setStatusCode(status.getCode()).end();
+        respond(request, status, null);
     }
 
     private void respond(HttpServerRequest request, HttpStatus status, String body) {
-        request.response().setStatusCode(status.getCode()).end(body);
+        request.response().setStatusCode(status.getCode()).end(body == null ? "" : body);
     }
 }
