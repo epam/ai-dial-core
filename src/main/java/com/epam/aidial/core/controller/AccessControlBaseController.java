@@ -25,8 +25,7 @@ public abstract class AccessControlBaseController {
             resource = ResourceDescription.fromAnyUrl(resourceUrl, proxy.getEncryptionService());
         } catch (IllegalArgumentException e) {
             String errorMessage = e.getMessage() != null ? e.getMessage() : ("Invalid resource url provided: " + resourceUrl);
-            context.respond(HttpStatus.BAD_REQUEST, errorMessage);
-            return Future.succeededFuture();
+            return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
         return proxy.getVertx()
@@ -34,18 +33,20 @@ public abstract class AccessControlBaseController {
                     AccessService service = proxy.getAccessService();
                     return service.lookupPermissions(Set.of(resource), context).get(resource);
                 }, false)
-                .map(permissions -> {
+                .compose(permissions -> {
                     boolean hasAccess = permissions.contains(isWriteAccess
                             ? ResourceAccessType.WRITE : ResourceAccessType.READ);
                     if (hasAccess) {
-                        handle(resource, permissions.contains(ResourceAccessType.WRITE));
+                        return handle(resource, permissions.contains(ResourceAccessType.WRITE));
                     } else {
                         context.respond(HttpStatus.FORBIDDEN, "You don't have an access to: " + resourceUrl);
+                        return Future.succeededFuture();
                     }
-                    return null;
                 });
     }
 
+    /**
+     * @return a future to read the request body after its completion.
+     */
     protected abstract Future<?> handle(ResourceDescription resource, boolean hasWriteAccess);
-
 }

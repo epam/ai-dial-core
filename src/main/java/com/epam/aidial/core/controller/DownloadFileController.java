@@ -29,40 +29,38 @@ public class DownloadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");
         }
 
-        Future<Blob> blobFuture = proxy.getVertx().executeBlocking(() ->
-                proxy.getStorage().load(resource.getAbsoluteFilePath()), false);
+        proxy.getVertx().executeBlocking(() -> proxy.getStorage().load(resource.getAbsoluteFilePath()), false)
+                .compose(blob -> {
+                    if (blob == null) {
+                        return context.respond(HttpStatus.NOT_FOUND);
+                    }
 
-        Promise<Void> result = Promise.promise();
-        blobFuture.onSuccess(blob -> {
-            if (blob == null) {
-                context.respond(HttpStatus.NOT_FOUND);
-                result.complete();
-                return;
-            }
+                    Payload payload = blob.getPayload();
+                    MutableContentMetadata metadata = payload.getContentMetadata();
+                    String contentType = metadata.getContentType();
+                    Long length = metadata.getContentLength();
 
-            Payload payload = blob.getPayload();
-            MutableContentMetadata metadata = payload.getContentMetadata();
-            String contentType = metadata.getContentType();
-            Long length = metadata.getContentLength();
+                    HttpServerResponse response = context.getResponse()
+                            .putHeader(HttpHeaders.CONTENT_TYPE, contentType)
+                            // content-length removed by vertx
+                            .putHeader(HttpHeaders.CONTENT_LENGTH, length.toString());
 
-            HttpServerResponse response = context.getResponse()
-                    .putHeader(HttpHeaders.CONTENT_TYPE, contentType)
-                    // content-length removed by vertx
-                    .putHeader(HttpHeaders.CONTENT_LENGTH, length.toString());
+                    try {
+                        InputStreamReader stream = new InputStreamReader(proxy.getVertx(), payload.openStream());
+                        stream.pipeTo(response)
+                                .onFailure(error -> {
+                                    stream.close();
+                                    context.getResponse().reset();
+                                });
 
-            try {
-                InputStreamReader stream = new InputStreamReader(proxy.getVertx(), payload.openStream());
-                stream.pipeTo(response, result);
-                result.future().onFailure(error -> {
-                    stream.close();
-                    context.getResponse().reset();
-                });
-            } catch (IOException e) {
-                result.fail(e);
-            }
-        }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to fetch file with path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath())));
+                        return Future.succeededFuture();
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }).onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Failed to fetch file with path %s/%s".formatted(resource.getBucketName(),
+                                resource.getOriginalPath())));
 
-        return result.future();
+        return Future.succeededFuture();
     }
 }

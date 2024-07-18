@@ -30,8 +30,7 @@ public class AddonController {
         }
 
         AddonData data = createAddon(addon);
-        context.respond(HttpStatus.OK, data);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, data);
     }
 
     public Future<?> getAddons() {
@@ -48,8 +47,7 @@ public class AddonController {
         ListData<AddonData> list = new ListData<>();
         list.setData(addons);
 
-        context.respond(HttpStatus.OK, list);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, list);
     }
 
     private static AddonData createAddon(Addon addon) {
