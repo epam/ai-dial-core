@@ -2,6 +2,7 @@ package com.epam.aidial.core.util;
 
 import lombok.SneakyThrows;
 
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -10,6 +11,11 @@ public class EtagBuilder {
     private final MessageDigest digest = getDigest();
 
     public EtagBuilder append(byte[] bytes) {
+        digest.update(bytes);
+        return this;
+    }
+
+    public EtagBuilder append(ByteBuffer bytes) {
         digest.update(bytes);
         return this;
     }

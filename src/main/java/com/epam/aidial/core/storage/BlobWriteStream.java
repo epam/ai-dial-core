@@ -5,6 +5,8 @@ import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ResourceUtil;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -17,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
 
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -112,17 +115,21 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     throw new RuntimeException(exception);
                 }
 
-                byte[] lastChunk = chunkBuffer.slice(0, position).getBytes();
+                ByteBuf lastChunk = chunkBuffer.slice(0, position).getByteBuf();
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
-                    metadata = resourceService.putFile(resource, lastChunk, etag, contentType);
+                    try (InputStream chunkStream = new ByteBufInputStream(lastChunk)) {
+                        metadata = resourceService.putFile(resource, chunkStream.readAllBytes(), etag, contentType);
+                    }
                 } else {
                     if (position != 0) {
-                        MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, lastChunk);
-                        parts.add(part);
+                        try (InputStream chunkStream = new ByteBufInputStream(lastChunk.copy())) {
+                            MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkStream);
+                            parts.add(part);
+                        }
                     }
 
-                    String newEtag = etagBuilder.append(lastChunk).build();
+                    String newEtag = etagBuilder.append(lastChunk.nioBuffer()).build();
                     metadata = (FileMetadata) new FileMetadata(resource, bytesHandled, contentType).setEtag(newEtag);
                     mpu.blobMetadata().getUserMetadata().put(ResourceUtil.ETAG_ATTRIBUTE, newEtag);
                     resourceService.completeMultipartUpload(resource, mpu, parts, etag);
@@ -156,10 +163,13 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                         mpu = storage.initMultipartUpload(resource.getAbsoluteFilePath(), contentType);
                         etagBuilder = new EtagBuilder();
                     }
-                    byte[] chunk = chunkBuffer.slice(0, position).getBytes();
-                    etagBuilder.append(chunk);
-                    MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunk);
-                    parts.add(part);
+
+                    ByteBuf chunk = chunkBuffer.slice(0, position).getByteBuf();
+                    try (InputStream chunkStream = new ByteBufInputStream(chunk.copy())) {
+                        MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkStream);
+                        parts.add(part);
+                    }
+                    etagBuilder.append(chunk.nioBuffer());
                     position = 0;
                     isBufferFull = false;
                 } catch (Throwable ex) {

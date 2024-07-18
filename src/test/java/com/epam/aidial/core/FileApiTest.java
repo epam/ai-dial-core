@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.IntStream;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -315,7 +316,7 @@ public class FileApiTest extends ResourceBaseTest {
 
     @Test
     public void testFileUpload(Vertx vertx, VertxTestContext context) {
-        Checkpoint checkpoint = context.checkpoint(3);
+        Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
         Set<ResourceAccessType> permissions = ResourceAccessType.ALL;
@@ -364,6 +365,20 @@ public class FileApiTest extends ResourceBaseTest {
                     );
 
             return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // read test file
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> context.verify(() -> {
+                        assertEquals(200, response.statusCode());
+                        assertEquals(TEST_FILE_CONTENT, response.body());
+                        checkpoint.flag();
+                        promise.complete();
+                    })));
+
+            return promise.future();
         }).andThen((result) -> {
             // verify uploaded file can be listed
             client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
@@ -381,7 +396,7 @@ public class FileApiTest extends ResourceBaseTest {
 
     @Test
     public void testBigFileUpload(Vertx vertx, VertxTestContext context) {
-        Checkpoint checkpoint = context.checkpoint(3);
+        Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
         byte[] content = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
@@ -427,6 +442,20 @@ public class FileApiTest extends ResourceBaseTest {
                                 });
                             })
                     );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // read test file
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.buffer())
+                    .send(context.succeeding(response -> context.verify(() -> {
+                        assertEquals(200, response.statusCode());
+                        assertArrayEquals(content, response.body().getBytes());
+                        checkpoint.flag();
+                        promise.complete();
+                    })));
 
             return promise.future();
         }).andThen((result) -> {

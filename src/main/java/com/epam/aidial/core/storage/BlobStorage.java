@@ -29,9 +29,11 @@ import org.jclouds.io.ContentMetadata;
 import org.jclouds.io.ContentMetadataBuilder;
 import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import org.jclouds.io.payloads.ByteArrayPayload;
+import org.jclouds.io.payloads.InputStreamPayload;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -94,8 +96,8 @@ public class BlobStorage implements Closeable {
      * @param data    data
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, byte[] data) {
-        return blobStore.uploadMultipartPart(multipart, part, new ByteArrayPayload(data));
+    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, InputStream data) {
+        return blobStore.uploadMultipartPart(multipart, part, new InputStreamPayload(data));
     }
 
     /**
