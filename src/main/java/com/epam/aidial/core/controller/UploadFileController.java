@@ -9,7 +9,6 @@ import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.streams.Pipe;
@@ -33,30 +32,28 @@ public class UploadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
 
-        EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
-        Promise<Void> result = Promise.promise();
-        context.getRequest()
-                .setExpectMultipart(true)
-                .uploadHandler(upload -> {
-                    ResourceService resourceService = proxy.getResourceService();
-                    String contentType = upload.contentType();
-                    Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                    BlobWriteStream writeStream = resourceService.getFileWriteStream(resource, etag, contentType);
-                    pipe.to(writeStream, result);
-
-                    result.future()
-                            .onSuccess(success -> {
-                                FileMetadata metadata = writeStream.getMetadata();
-                                context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
-                                context.respond(HttpStatus.OK, metadata);
-                            })
-                            .onFailure(error -> {
-                                writeStream.abortUpload(error);
-                                context.respond(error,
-                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
-                            });
-                });
-
-        return result.future();
+        return proxy.getVertx().executeBlocking(() -> {
+            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+            etag.validate(() -> proxy.getResourceService().getEtag(resource));
+            return context.getRequest()
+                    .setExpectMultipart(true)
+                    .uploadHandler(upload -> {
+                        ResourceService resourceService = proxy.getResourceService();
+                        String contentType = upload.contentType();
+                        Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
+                        BlobWriteStream writeStream = resourceService.getFileWriteStream(resource, etag, contentType);
+                        pipe.to(writeStream)
+                                .onSuccess(success -> {
+                                    FileMetadata metadata = writeStream.getMetadata();
+                                    context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
+                                    context.respond(HttpStatus.OK, metadata);
+                                })
+                                .onFailure(error -> {
+                                    writeStream.abortUpload(error);
+                                    context.respond(error,
+                                            "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                                });
+                    });
+        }, false);
     }
 }

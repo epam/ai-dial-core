@@ -34,15 +34,15 @@ public abstract class AccessControlBaseController {
                     AccessService service = proxy.getAccessService();
                     return service.lookupPermissions(Set.of(resource), context).get(resource);
                 }, false)
-                .map(permissions -> {
+                .compose(permissions -> {
                     boolean hasAccess = permissions.contains(isWriteAccess
                             ? ResourceAccessType.WRITE : ResourceAccessType.READ);
                     if (hasAccess) {
-                        handle(resource, permissions.contains(ResourceAccessType.WRITE));
-                    } else {
-                        context.respond(HttpStatus.FORBIDDEN, "You don't have an access to: " + resourceUrl);
+                        return handle(resource, permissions.contains(ResourceAccessType.WRITE));
                     }
-                    return null;
+
+                    context.respond(HttpStatus.FORBIDDEN, "You don't have an access to: " + resourceUrl);
+                    return Future.succeededFuture();
                 });
     }
 

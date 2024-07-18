@@ -85,31 +85,23 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     }
 
     @Override
-    public void write(Buffer data, Handler<AsyncResult<Void>> handler) {
-        Future<Void> result = vertx.executeBlocking(() -> {
-            synchronized (BlobWriteStream.this) {
-                // exception might be thrown during drain handling, if so we need to stop processing chunks
-                // upload abortion will be handled in the end
-                if (exception != null) {
-                    throw new RuntimeException(exception);
-                }
+    public synchronized void write(Buffer data, Handler<AsyncResult<Void>> handler) {
+        // exception might be thrown during drain handling, if so we need to stop processing chunks
+        // upload abortion will be handled in the end
+        if (exception != null) {
+            handler.handle(Future.failedFuture(exception));
+            return;
+        }
 
-                if (bytesHandled == 0) {
-                    etag.validate(() -> resourceService.getEtag(resource));
-                }
+        int length = data.length();
+        chunkBuffer.setBuffer(position, data);
+        position += length;
+        bytesHandled += length;
+        if (position > chunkSize) {
+            isBufferFull = true;
+        }
 
-                int length = data.length();
-                chunkBuffer.setBuffer(position, data);
-                position += length;
-                bytesHandled += length;
-                if (position > chunkSize) {
-                    isBufferFull = true;
-                }
-
-                return null;
-            }
-        });
-        result.onComplete(handler);
+        handler.handle(Future.succeededFuture());
     }
 
     @Override
