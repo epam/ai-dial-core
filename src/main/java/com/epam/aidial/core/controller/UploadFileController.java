@@ -35,30 +35,27 @@ public class UploadFileController extends AccessControlBaseController {
 
         return proxy.getVertx().executeBlocking(() -> {
             EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
-            try {
-                etag.validate(() -> proxy.getResourceService().getEtag(resource));
-                return context.getRequest()
-                        .setExpectMultipart(true)
-                        .uploadHandler(upload -> {
-                            ResourceService resourceService = proxy.getResourceService();
-                            String contentType = upload.contentType();
-                            Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                            BlobWriteStream writeStream = resourceService.getFileWriteStream(resource, etag, contentType);
-                            pipe.to(writeStream)
-                                    .onSuccess(success -> {
-                                        FileMetadata metadata = writeStream.getMetadata();
-                                        context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
-                                        context.respond(HttpStatus.OK, metadata);
-                                    })
-                                    .onFailure(error -> {
-                                        writeStream.abortUpload(error);
-                                        context.respond(error,
-                                                "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
-                                    });
-                        });
-            } catch (HttpException e) {
-                return context.respond(e, e.getMessage());
-            }
-        }, false);
+            etag.validate(() -> proxy.getResourceService().getEtag(resource));
+            return context.getRequest()
+                    .setExpectMultipart(true)
+                    .uploadHandler(upload -> {
+                        ResourceService resourceService = proxy.getResourceService();
+                        String contentType = upload.contentType();
+                        Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
+                        BlobWriteStream writeStream = resourceService.getFileWriteStream(resource, etag, contentType);
+                        pipe.to(writeStream)
+                                .onSuccess(success -> {
+                                    FileMetadata metadata = writeStream.getMetadata();
+                                    context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
+                                    context.respond(HttpStatus.OK, metadata);
+                                })
+                                .onFailure(error -> {
+                                    writeStream.abortUpload(error);
+                                    context.respond(error,
+                                            "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                                });
+                    });
+        }, false)
+                .onFailure(error -> context.respond(error, error.getMessage()));
     }
 }

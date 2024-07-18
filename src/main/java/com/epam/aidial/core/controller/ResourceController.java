@@ -218,8 +218,8 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
         return vertx.executeBlocking(() -> {
+                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
