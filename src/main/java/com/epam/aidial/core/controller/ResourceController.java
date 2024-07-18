@@ -158,36 +158,38 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
         }
 
-        EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
-        return context.getRequest().body().compose(bytes -> {
-                    if (bytes.length() > contentLimit) {
-                        String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
-                        throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
-                    }
+        return vertx.executeBlocking(() -> {
+            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+            return context.getRequest().body().map(bytes -> {
+                        if (bytes.length() > contentLimit) {
+                            String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
+                            throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
+                        }
 
-                    ResourceType resourceType = descriptor.getType();
-                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
+                        ResourceType resourceType = descriptor.getType();
+                        String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag, overwrite), false);
-                })
-                .onSuccess((metadata) -> {
-                    if (metadata == null) {
-                        context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
-                    } else {
-                        context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
-                        context.respond(HttpStatus.OK, metadata);
-                    }
-                })
-                .onFailure(error -> {
-                    if (error instanceof HttpException exception) {
-                        context.respond(exception.getStatus(), exception.getMessage());
-                    } else if (error instanceof IllegalArgumentException badRequest) {
-                        context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
-                    } else {
-                        log.warn("Can't put resource: {}", descriptor.getUrl(), error);
-                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-                    }
-                });
+                        return service.putResource(descriptor, body, etag, overwrite);
+                    })
+                    .onSuccess((metadata) -> {
+                        if (metadata == null) {
+                            context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
+                        } else {
+                            context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
+                            context.respond(HttpStatus.OK, metadata);
+                        }
+                    })
+                    .onFailure(error -> {
+                        if (error instanceof HttpException exception) {
+                            context.respond(exception.getStatus(), exception.getMessage());
+                        } else if (error instanceof IllegalArgumentException badRequest) {
+                            context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
+                        } else {
+                            log.warn("Can't put resource: {}", descriptor.getUrl(), error);
+                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+                        }
+                    });
+        }, false);
     }
 
     private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body) {
