@@ -34,7 +34,7 @@ public class DeleteFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't delete a folder");
         }
 
-        Future<Void> result = proxy.getVertx().executeBlocking(() -> {
+        proxy.getVertx().executeBlocking(() -> {
             EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
@@ -45,13 +45,13 @@ public class DeleteFileController extends AccessControlBaseController {
 
                 return null;
             });
-        }, false);
-
-        return result
+        }, false)
                 .onSuccess(success -> context.respond(HttpStatus.OK))
                 .onFailure(error -> {
                     log.error("Failed to delete file  {}/{}", resource.getBucketName(), resource.getOriginalPath(), error);
                     context.respond(error, error.getMessage());
                 });
+
+        return Future.succeededFuture();
     }
 }

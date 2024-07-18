@@ -91,7 +91,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
+        vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -107,6 +107,8 @@ public class ResourceController extends AccessControlBaseController {
                     log.warn("Can't list resource: {}", descriptor.getUrl(), error);
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                 });
+
+        return Future.succeededFuture();
     }
 
     private Future<?> getResource(ResourceDescription descriptor, boolean hasWriteAccess) {
@@ -114,7 +116,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> service.getResource(descriptor), false)
+        vertx.executeBlocking(() -> service.getResource(descriptor), false)
                 .onSuccess(body -> {
                     if (body == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -133,6 +135,8 @@ public class ResourceController extends AccessControlBaseController {
                     log.warn("Can't get resource: {}", descriptor.getUrl(), error);
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                 });
+
+        return Future.succeededFuture();
     }
 
     private Future<?> putResource(ResourceDescription descriptor) {
@@ -154,42 +158,43 @@ public class ResourceController extends AccessControlBaseController {
 
         String ifNoneMatch = context.getRequest().getHeader(HttpHeaders.IF_NONE_MATCH);
         boolean overwrite = (ifNoneMatch == null);
+
         if (ifNoneMatch != null && !ifNoneMatch.equals("*")) {
             return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
         }
 
-        return vertx.executeBlocking(() -> {
-            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
-            return context.getRequest().body().map(bytes -> {
-                        if (bytes.length() > contentLimit) {
-                            String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
-                            throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
-                        }
+        context.getRequest().body().compose(bytes -> {
+                    if (bytes.length() > contentLimit) {
+                        String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
+                        throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
+                    }
 
-                        ResourceType resourceType = descriptor.getType();
-                        String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
+                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+                    ResourceType resourceType = descriptor.getType();
+                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
 
-                        return service.putResource(descriptor, body, etag, overwrite);
-                    })
-                    .onSuccess((metadata) -> {
-                        if (metadata == null) {
-                            context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
-                        } else {
-                            context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
-                            context.respond(HttpStatus.OK, metadata);
-                        }
-                    })
-                    .onFailure(error -> {
-                        if (error instanceof HttpException exception) {
-                            context.respond(exception.getStatus(), exception.getMessage());
-                        } else if (error instanceof IllegalArgumentException badRequest) {
-                            context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
-                        } else {
-                            log.warn("Can't put resource: {}", descriptor.getUrl(), error);
-                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-                        }
-                    });
-        }, false);
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag, overwrite), false);
+                })
+                .onSuccess((metadata) -> {
+                    if (metadata == null) {
+                        context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
+                    } else {
+                        context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
+                        context.respond(HttpStatus.OK, metadata);
+                    }
+                })
+                .onFailure(error -> {
+                    if (error instanceof HttpException exception) {
+                        context.respond(exception.getStatus(), exception.getMessage());
+                    } else if (error instanceof IllegalArgumentException badRequest) {
+                        context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
+                    } else {
+                        log.warn("Can't put resource: {}", descriptor.getUrl(), error);
+                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+                    }
+                });
+
+        return Future.succeededFuture();
     }
 
     private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body) {
@@ -218,7 +223,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> {
+        vertx.executeBlocking(() -> {
                     EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
@@ -239,5 +244,7 @@ public class ResourceController extends AccessControlBaseController {
                     log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
                     context.respond(error, "");
                 });
+
+        return Future.succeededFuture();
     }
 }

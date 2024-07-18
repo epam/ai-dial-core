@@ -7,7 +7,6 @@ import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
-import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -36,7 +35,7 @@ public class UploadFileController extends AccessControlBaseController {
         return proxy.getVertx().executeBlocking(() -> {
             EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
             etag.validate(() -> proxy.getResourceService().getEtag(resource));
-            return context.getRequest()
+            context.getRequest()
                     .setExpectMultipart(true)
                     .uploadHandler(upload -> {
                         ResourceService resourceService = proxy.getResourceService();
@@ -55,6 +54,8 @@ public class UploadFileController extends AccessControlBaseController {
                                             "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
                                 });
                     });
+
+            return Future.succeededFuture();
         }, false)
                 .onFailure(error -> context.respond(error, error.getMessage()));
     }
