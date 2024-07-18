@@ -358,6 +358,7 @@ public class FileApiTest extends ResourceBaseTest {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
                                     assertEquals(expectedFileMetadata, response.body());
+                                    assertEquals(TEST_FILE_ETAG, response.getHeader(HttpHeaders.ETAG));
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -374,6 +375,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> context.verify(() -> {
                         assertEquals(200, response.statusCode());
                         assertEquals(TEST_FILE_CONTENT, response.body());
+                        assertEquals(TEST_FILE_ETAG, response.getHeader(HttpHeaders.ETAG));
                         checkpoint.flag();
                         promise.complete();
                     })));
@@ -400,11 +402,12 @@ public class FileApiTest extends ResourceBaseTest {
         WebClient client = WebClient.create(vertx);
 
         byte[] content = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
+        String etag = "682fdfa22b3f97021b6d3cc3f00baa2b";
         IntStream.range(0, content.length).forEach(i -> content[i] = (byte) i);
         Set<ResourceAccessType> permissions = ResourceAccessType.ALL;
         FileMetadata expectedFileMetadata = (FileMetadata) new FileMetadata("7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                 "file.bin", null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin", content.length, "application/x-binary")
-                .setEtag("682fdfa22b3f97021b6d3cc3f00baa2b");
+                .setEtag(etag);
         MetadataBase expectedFolderMetadata = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
                         null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                         List.of(newFileMetadata(expectedFileMetadata).setPermissions(permissions)))
@@ -413,7 +416,7 @@ public class FileApiTest extends ResourceBaseTest {
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
-            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(ResourceFolderMetadata.class))
                     .send(context.succeeding(response -> {
@@ -437,6 +440,8 @@ public class FileApiTest extends ResourceBaseTest {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
                                     assertEquals(expectedFileMetadata, response.body());
+                                    assertEquals(etag, response.getHeader(HttpHeaders.ETAG));
+
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -453,6 +458,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> context.verify(() -> {
                         assertEquals(200, response.statusCode());
                         assertArrayEquals(content, response.body().getBytes());
+                        assertEquals(etag, response.getHeader(HttpHeaders.ETAG));
                         checkpoint.flag();
                         promise.complete();
                     })));
@@ -471,6 +477,109 @@ public class FileApiTest extends ResourceBaseTest {
                         });
                     }));
         });
+    }
+
+    @Test
+    public void testBigFileEvents(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(4);
+        WebClient client = WebClient.create(vertx);
+        EventStream events = subscribe("""
+                 {
+                  "resources": [
+                    {
+                      "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin"
+                    }
+                  ]
+                 }
+                """,
+                "Api-key", "proxyKey2");
+
+        byte[] content = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
+        IntStream.range(0, content.length).forEach(i -> content[i] = (byte) i);
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify no files
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(ResourceFolderMetadata.class))
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            assertEquals(List.of(), response.body().getItems());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.bin", content, "application/x-binary"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // update test file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.json(FileMetadata.class))
+                    .sendMultipartForm(generateMultipartForm("file.bin", content, "application/x-binary"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).andThen((result) -> {
+            // delete test file
+            client.delete(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
+                    .putHeader("Api-key", "proxyKey2")
+                    .send(context.succeeding(response -> context.verify(() -> {
+                        assertEquals(200, response.statusCode());
+
+                        checkpoint.flag();
+                    })));
+        });
+        verifyJsonNotExact("""
+                {
+                  "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
+                  "action" : "CREATE",
+                  "timestamp" : "@ignore"
+                }
+                """, events.take());
+        verifyJsonNotExact("""
+                {
+                  "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
+                  "action" : "UPDATE",
+                  "timestamp" : "@ignore"
+                }
+                """, events.take());
+        verifyJsonNotExact("""
+                {
+                  "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
+                  "action" : "DELETE",
+                  "timestamp" : "@ignore"
+                }
+                """, events.take());
+        events.close();
     }
 
     @Test
