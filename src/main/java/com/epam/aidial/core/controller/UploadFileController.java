@@ -59,7 +59,7 @@ public class UploadFileController extends AccessControlBaseController {
         }, false)
                 .otherwise(error -> {
                     context.respond(error, error.getMessage());
-                    return Future.succeededFuture();
+                    return null;
                 });
     }
 }
