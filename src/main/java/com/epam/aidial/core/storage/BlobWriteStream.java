@@ -123,7 +123,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
                 } else {
                     if (position != 0) {
-                        try (InputStream chunkStream = new ByteBufInputStream(lastChunk.copy())) {
+                        try (InputStream chunkStream = new ByteBufInputStream(lastChunk.duplicate())) {
                             MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkStream);
                             parts.add(part);
                         }
@@ -169,7 +169,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
 
                     ByteBuf chunk = chunkBuffer.slice(0, position).getByteBuf();
-                    try (InputStream chunkStream = new ByteBufInputStream(chunk.copy())) {
+                    try (InputStream chunkStream = new ByteBufInputStream(chunk.duplicate())) {
                         MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkStream);
                         parts.add(part);
                     }
