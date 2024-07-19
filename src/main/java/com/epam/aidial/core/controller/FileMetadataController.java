@@ -15,9 +15,13 @@ import java.util.List;
 
 @Slf4j
 public class FileMetadataController extends AccessControlBaseController {
+    private final ResourceService resourceService;
+    private final AccessService accessService;
 
     public FileMetadataController(Proxy proxy, ProxyContext context) {
         super(proxy, context, false);
+        this.resourceService = proxy.getResourceService();
+        this.accessService = proxy.getAccessService();
     }
 
     private String getContentType() {
@@ -29,8 +33,6 @@ public class FileMetadataController extends AccessControlBaseController {
 
     @Override
     protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
-        ResourceService resourceService = proxy.getResourceService();
-        AccessService accessService = proxy.getAccessService();
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));

@@ -17,9 +17,11 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UploadFileController extends AccessControlBaseController {
+    private final ResourceService resourceService;
 
     public UploadFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
+        this.resourceService = proxy.getResourceService();
     }
 
     @Override
@@ -38,7 +40,6 @@ public class UploadFileController extends AccessControlBaseController {
             context.getRequest()
                     .setExpectMultipart(true)
                     .uploadHandler(upload -> {
-                        ResourceService resourceService = proxy.getResourceService();
                         String contentType = upload.contentType();
                         Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
                         BlobWriteStream writeStream = resourceService.beginFileUpload(resource, etag, contentType);
