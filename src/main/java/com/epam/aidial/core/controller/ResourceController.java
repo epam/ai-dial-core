@@ -242,7 +242,7 @@ public class ResourceController extends AccessControlBaseController {
                 })
                 .onFailure(error -> {
                     log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
-                    context.respond(error, "");
+                    context.respond(error, error.getMessage());
                 });
 
         return Future.succeededFuture();
