@@ -20,7 +20,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class TokenStatsTrackerTest {
+public class DeploymentStatsTrackerTest {
 
     private Vertx vertx;
 
@@ -28,7 +28,7 @@ public class TokenStatsTrackerTest {
     private Proxy proxy;
 
     @InjectMocks
-    private TokenStatsTracker tracker;
+    private DeploymentCostStatsTracker tracker;
 
     /**
      * Tests the flow: chat back-end -> core -> app -> core -> model
@@ -57,26 +57,27 @@ public class TokenStatsTrackerTest {
         tracker.startSpan(app);
 
 
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
         TokenUsage modelTokenUsage = new TokenUsage();
         modelTokenUsage.setTotalTokens(100);
         modelTokenUsage.setCompletionTokens(80);
         modelTokenUsage.setPromptTokens(20);
-        modelTokenUsage.setCost(new BigDecimal("10.0"));
-        modelTokenUsage.setAggCost(new BigDecimal("10.0"));
+        deploymentCostStats.setCost(new BigDecimal("10.0"));
+        deploymentCostStats.setAggCost(new BigDecimal("10.0"));
 
         // core receives response from model
-        when(app.getTokenUsage()).thenReturn(modelTokenUsage);
+        when(app.getDeploymentCostStats()).thenReturn(deploymentCostStats);
 
         // core ends span for request to model
         tracker.endSpan(app);
 
         // core receives response from app
-        Future<TokenUsage> future = tracker.getTokenStats(chatBackend);
+        Future<DeploymentCostStats> future = tracker.getDeploymentStats(chatBackend);
         assertNotNull(future);
-        TokenUsage result = future.result();
-        assertEquals(100, result.getTotalTokens());
-        assertEquals(80, result.getCompletionTokens());
-        assertEquals(20, result.getPromptTokens());
+        DeploymentCostStats result = future.result();
+        assertEquals(100, result.getTokenUsage().getTotalTokens());
+        assertEquals(80, result.getTokenUsage().getCompletionTokens());
+        assertEquals(20, result.getTokenUsage().getPromptTokens());
         assertEquals(new BigDecimal("10.0"), result.getAggCost());
         assertNull(result.getCost());
 

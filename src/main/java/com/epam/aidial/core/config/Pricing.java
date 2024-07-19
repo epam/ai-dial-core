@@ -6,7 +6,7 @@ import lombok.Data;
 
 @Data
 public class Pricing {
-    private String unit;
+    private PricingUnit unit;
 
     @JsonDeserialize(using = DoubleStringDeserializer.class)
     private String prompt;

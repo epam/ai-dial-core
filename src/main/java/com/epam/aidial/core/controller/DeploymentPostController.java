@@ -8,11 +8,11 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
-import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.function.BaseFunction;
 import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.function.CollectModelStatsFn;
 import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
@@ -20,14 +20,13 @@ import com.epam.aidial.core.limiter.RateLimitResult;
 import com.epam.aidial.core.service.CustomApplicationService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceNotFoundException;
+import com.epam.aidial.core.token.DeploymentCostStats;
 import com.epam.aidial.core.token.TokenUsage;
-import com.epam.aidial.core.token.TokenUsageParser;
 import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
-import com.epam.aidial.core.util.ModelCostCalculator;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -47,7 +46,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -69,6 +67,7 @@ public class DeploymentPostController {
         this.context = context;
         this.applicationService = proxy.getCustomApplicationService();
         this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context),
+                new CollectModelStatsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context));
@@ -202,7 +201,7 @@ public class DeploymentPostController {
 
         context.getRequest().body()
                 .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                    proxy.getTokenStatsTracker().startSpan(context);
+                    proxy.getDeploymentCostStatsTracker().startSpan(context);
                     handleRequestBody(body);
                     return null;
                 }, false).onFailure(this::handleError))
@@ -343,7 +342,7 @@ public class DeploymentPostController {
         BufferingReadStream responseStream;
         int responseLength = ProxyUtil.contentLength(proxyResponse, 1024);
         if (context.getDeployment() instanceof Model && proxyResponse.statusCode() == HttpStatus.OK.getCode()) {
-            responseStream = new BufferingReadStream(proxyResponse, responseLength, chunk -> proxy.getTokenStatsTracker().handleChunkResponse(chunk, context));
+            responseStream = new BufferingReadStream(proxyResponse, responseLength, chunk -> proxy.getDeploymentCostStatsTracker().handleChunkResponse(chunk, context));
         } else {
             responseStream = new BufferingReadStream(proxyResponse, responseLength);
         }
@@ -380,14 +379,14 @@ public class DeploymentPostController {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
+        Future<DeploymentCostStats> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
                 proxy.getRateLimiter().increase(context).onFailure(error -> log.warn("Failed to increase limit. Trace: {}. Span: {}",
                         context.getTraceId(), context.getSpanId(), error));
             }
         } else {
-            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
+            tokenUsageFuture = proxy.getDeploymentCostStatsTracker().getDeploymentStats(context).andThen(result -> context.setDeploymentCostStats(result.result()));
         }
 
         tokenUsageFuture.onComplete(ignore -> {
@@ -407,7 +406,7 @@ public class DeploymentPostController {
                     context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
                     context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
                     context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                    context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+                    context.getDeploymentCostStats().getTokenUsage() == null ? "n/a" : context.getDeploymentCostStats().getTokenUsage());
 
             finalizeRequest();
         });
@@ -510,7 +509,7 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
-        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred on ending span", error));
+        proxy.getDeploymentCostStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred on ending span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)

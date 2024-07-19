@@ -4,6 +4,8 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingUnit;
+import com.epam.aidial.core.token.DeploymentCostStats;
 import com.epam.aidial.core.token.TokenUsage;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
@@ -39,7 +41,7 @@ public class ModelCostCalculatorTest {
     public void testCalculate_UnknownCostUnit() {
         Model model = new Model();
         Pricing pricing = new Pricing();
-        pricing.setUnit("unknown");
+        pricing.setUnit(null);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
         assertNull(ModelCostCalculator.calculate(context));
@@ -51,14 +53,16 @@ public class ModelCostCalculatorTest {
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
-        pricing.setUnit("token");
+        pricing.setUnit(PricingUnit.TOKEN);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
 
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setCompletionTokens(10);
         tokenUsage.setPromptTokens(10);
-        when(context.getTokenUsage()).thenReturn(tokenUsage);
+        deploymentCostStats.setTokenUsage(tokenUsage);
+        when(context.getDeploymentCostStats().getTokenUsage()).thenReturn(tokenUsage);
 
         assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context));
     }
@@ -70,7 +74,7 @@ public class ModelCostCalculatorTest {
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
-        pricing.setUnit("char_without_whitespace");
+        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
 
@@ -127,7 +131,7 @@ public class ModelCostCalculatorTest {
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
-        pricing.setUnit("char_without_whitespace");
+        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
 
@@ -165,7 +169,7 @@ public class ModelCostCalculatorTest {
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
-        pricing.setUnit("char_without_whitespace");
+        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
 
@@ -215,7 +219,7 @@ public class ModelCostCalculatorTest {
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
-        pricing.setUnit("char_without_whitespace");
+        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
 
@@ -265,7 +269,7 @@ public class ModelCostCalculatorTest {
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
-        pricing.setUnit("char_without_whitespace");
+        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
 
@@ -291,7 +295,7 @@ public class ModelCostCalculatorTest {
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
-        pricing.setUnit("char_without_whitespace");
+        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
 

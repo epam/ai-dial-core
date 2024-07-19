@@ -2,6 +2,7 @@ package com.epam.aidial.core.log;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.token.DeploymentCostStats;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.deltix.gflog.api.Log;
@@ -77,7 +78,8 @@ public class GfLogStore implements LogStore {
         append(entry, request.getHeader(Proxy.HEADER_JOB_TITLE), true);
         append(entry, "\"}", false);
 
-        TokenUsage tokenUsage = context.getTokenUsage();
+        DeploymentCostStats deploymentCostStats = context.getDeploymentCostStats();
+        TokenUsage tokenUsage = deploymentCostStats.getTokenUsage();
         if (tokenUsage != null) {
             append(entry, ",\"token_usage\":{", false);
             append(entry, "\"completion_tokens\":", false);
@@ -86,13 +88,13 @@ public class GfLogStore implements LogStore {
             append(entry, Long.toString(tokenUsage.getPromptTokens()), true);
             append(entry, ",\"total_tokens\":", false);
             append(entry, Long.toString(tokenUsage.getTotalTokens()), true);
-            if (tokenUsage.getCost() != null) {
+            if (deploymentCostStats.getCost() != null) {
                 append(entry, ",\"deployment_price\":", false);
-                append(entry, tokenUsage.getCost().toString(), true);
+                append(entry, deploymentCostStats.getCost().toString(), true);
             }
-            if (tokenUsage.getAggCost() != null) {
+            if (deploymentCostStats.getAggCost() != null) {
                 append(entry, ",\"price\":", false);
-                append(entry, tokenUsage.getAggCost().toString(), true);
+                append(entry, deploymentCostStats.getAggCost().toString(), true);
             }
             append(entry, "}", false);
         }

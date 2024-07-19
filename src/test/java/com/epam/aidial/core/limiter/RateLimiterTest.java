@@ -12,6 +12,7 @@ import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.token.DeploymentCostStats;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
@@ -229,9 +230,11 @@ public class RateLimiterTest {
             return Future.succeededFuture(callable.call());
         });
 
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(90);
-        proxyContext.setTokenUsage(tokenUsage);
+        deploymentCostStats.setTokenUsage(tokenUsage);
+        proxyContext.setDeploymentCostStats(deploymentCostStats);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -282,9 +285,11 @@ public class RateLimiterTest {
             return Future.succeededFuture(callable.call());
         });
 
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(90);
-        proxyContext.setTokenUsage(tokenUsage);
+        deploymentCostStats.setTokenUsage(tokenUsage);
+        proxyContext.setDeploymentCostStats(deploymentCostStats);
 
         Future<RateLimitResult> resultFuture = rateLimiter.limit(proxyContext);
         assertNotNull(resultFuture);
@@ -356,9 +361,11 @@ public class RateLimiterTest {
             return Future.succeededFuture(callable.call());
         });
 
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(150);
-        proxyContext.setTokenUsage(tokenUsage);
+        deploymentCostStats.setTokenUsage(tokenUsage);
+        proxyContext.setDeploymentCostStats(deploymentCostStats);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -398,9 +405,11 @@ public class RateLimiterTest {
             return Future.succeededFuture(callable.call());
         });
 
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(90);
-        proxyContext.setTokenUsage(tokenUsage);
+        deploymentCostStats.setTokenUsage(tokenUsage);
+        proxyContext.setDeploymentCostStats(deploymentCostStats);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -454,9 +463,11 @@ public class RateLimiterTest {
             return Future.succeededFuture(callable.call());
         });
 
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(150);
-        proxyContext.setTokenUsage(tokenUsage);
+        deploymentCostStats.setTokenUsage(tokenUsage);
+        proxyContext.setDeploymentCostStats(deploymentCostStats);
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);

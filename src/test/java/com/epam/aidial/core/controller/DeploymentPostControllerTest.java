@@ -9,8 +9,8 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.ApiKeyStore;
-import com.epam.aidial.core.token.TokenStatsTracker;
-import com.epam.aidial.core.token.TokenUsage;
+import com.epam.aidial.core.token.DeploymentCostStats;
+import com.epam.aidial.core.token.DeploymentCostStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
@@ -80,7 +80,7 @@ public class DeploymentPostControllerTest {
     private LogStore logStore;
 
     @Mock
-    private TokenStatsTracker tokenStatsTracker;
+    private DeploymentCostStatsTracker deploymentCostStatsTracker;
 
     @Mock
     private Vertx vertx;
@@ -92,7 +92,7 @@ public class DeploymentPostControllerTest {
     public void testUnsupportedContentType() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
 
         controller.handle("app1", "api");
 
@@ -110,7 +110,7 @@ public class DeploymentPostControllerTest {
         app.setUserRoles(Set.of("role1"));
         config.getApplications().put("app1", app);
         when(context.getConfig()).thenReturn(config);
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
 
         controller.handle("app1", "chat/completions");
 
@@ -127,7 +127,7 @@ public class DeploymentPostControllerTest {
         config.getApplications().put("app1", app);
         when(context.getConfig()).thenReturn(config);
         when(proxy.getVertx()).thenReturn(vertx);
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
         when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(null));
 
         controller.handle("unknown-app", "chat/completions");
@@ -153,7 +153,7 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
 
         controller.handle("app1", "chat/completions");
 
@@ -180,12 +180,12 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         controller.handle("app1", "chat/completions");
 
-        verify(tokenStatsTracker).startSpan(eq(context));
+        verify(deploymentCostStatsTracker).startSpan(eq(context));
     }
 
     @Test
@@ -337,15 +337,14 @@ public class DeploymentPostControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
         when(rateLimiter.increase(any(ProxyContext.class))).thenReturn(Future.succeededFuture());
 
         controller.handleResponse();
 
         verify(rateLimiter).increase(eq(context));
-        verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
-        verify(tokenStatsTracker).endSpan(eq(context));
+        verify(deploymentCostStatsTracker).endSpan(eq(context));
     }
 
     @Test
@@ -361,16 +360,15 @@ public class DeploymentPostControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(tokenStatsTracker.getTokenStats(eq(context))).thenReturn(Future.succeededFuture(new TokenUsage()));
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
+        when(deploymentCostStatsTracker.getDeploymentStats(eq(context))).thenReturn(Future.succeededFuture(new DeploymentCostStats()));
 
         controller.handleResponse();
 
         verify(rateLimiter, never()).increase(eq(context));
-        verify(tokenStatsTracker).getTokenStats(eq(context));
-        verify(context).setTokenUsage(any(TokenUsage.class));
+        verify(deploymentCostStatsTracker).getDeploymentStats(eq(context));
         verify(logStore).save(eq(context));
-        verify(tokenStatsTracker).endSpan(eq(context));
+        verify(deploymentCostStatsTracker).endSpan(eq(context));
     }
 
     @Test
@@ -394,12 +392,12 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         controller.handle("applications/bucket/app1", "chat/completions");
 
-        verify(tokenStatsTracker).startSpan(eq(context));
+        verify(deploymentCostStatsTracker).startSpan(eq(context));
     }
 
 }

@@ -100,7 +100,7 @@ public class ModelController {
             return null;
         }
         PricingData data = new PricingData();
-        data.setUnit(pricing.getUnit());
+        data.setUnit(pricing.getUnit().toString().toLowerCase());
         data.setPrompt(pricing.getPrompt());
         data.setCompletion(pricing.getCompletion());
         return data;

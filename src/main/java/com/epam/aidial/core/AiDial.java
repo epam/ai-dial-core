@@ -22,7 +22,7 @@ import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
-import com.epam.aidial.core.token.TokenStatsTracker;
+import com.epam.aidial.core.token.DeploymentCostStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
@@ -127,11 +127,11 @@ public class AiDial {
             CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
                     resourceService, shareService, accessService, settings("applications"));
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(resourceService, vertx);
+            DeploymentCostStatsTracker deploymentCostStatsTracker = new DeploymentCostStatsTracker(resourceService, vertx);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,
-                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
+                    storage, encryptionService, apiKeyStore, deploymentCostStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, customApplicationService, version());
 
