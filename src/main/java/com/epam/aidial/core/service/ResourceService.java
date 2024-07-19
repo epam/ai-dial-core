@@ -301,6 +301,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceStream getResourceStream(ResourceDescription resource) throws IOException {
+        if (resource.getType() != ResourceType.FILE) {
+            throw new IllegalArgumentException("Streaming is supported for files only");
+        }
+
         String key = redisKey(resource);
         Result result = redisGet(key, true);
         if (result != null) {
@@ -325,12 +329,9 @@ public class ResourceService implements AutoCloseable {
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
-            String encoding = metadata.getContentMetadata().getContentEncoding();
-            if (encoding != null || length <= maxSize) {
+            if (length <= maxSize) {
                 result = blobToResult(blob, metadata);
-                if (result.body.length <= maxSize) {
-                    redisPut(key, result);
-                }
+                redisPut(key, result);
                 return ResourceStream.fromResult(result);
             }
 
@@ -377,12 +378,12 @@ public class ResourceService implements AutoCloseable {
                 redisPut(redisKey, result);
                 if (metadata == null) {
                     String blobKey = blobKey(descriptor);
-                    blobPut(blobKey, result.toStub()); // create an empty object for listing
+                    blobPut(blobKey, result.toStub(), false); // create an empty object for listing
                 }
             } else {
                 flushToBlobStore(redisKey);
                 String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result);
+                blobPut(blobKey, result, descriptor.getType() != ResourceType.FILE);
             }
 
             ResourceEvent.Action action = metadata == null
@@ -553,7 +554,7 @@ public class ResourceService implements AutoCloseable {
         if (result.exists()) {
             log.debug("Syncing resource: {}. Blob updating", redisKey);
             result = redisGet(redisKey, true);
-            blobPut(blobKey, result);
+            blobPut(blobKey, result, !redisKey.startsWith("file:"));
         } else {
             log.debug("Syncing resource: {}. Blob deleting", redisKey);
             blobDelete(blobKey);
@@ -612,10 +613,10 @@ public class ResourceService implements AutoCloseable {
         return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, true);
     }
 
-    private void blobPut(String key, Result result) {
+    private void blobPut(String key, Result result, boolean compress) {
         String encoding = null;
         byte[] bytes = result.body;
-        if (bytes.length >= compressionMinSize) {
+        if (bytes.length >= compressionMinSize && compress) {
             encoding = "gzip";
             bytes = Compression.compress(encoding, bytes);
         }
