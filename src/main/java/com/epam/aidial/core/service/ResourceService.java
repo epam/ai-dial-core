@@ -500,7 +500,7 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public void publishEvent(ResourceDescription descriptor, ResourceEvent.Action action, long timestamp) {
+    private void publishEvent(ResourceDescription descriptor, ResourceEvent.Action action, long timestamp) {
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)
