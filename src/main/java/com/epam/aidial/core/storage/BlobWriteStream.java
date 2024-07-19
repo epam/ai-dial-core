@@ -139,11 +139,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 return null;
             }
         });
-        result.onComplete(asyncResult -> {
-            if (handler != null) {
-                handler.handle(asyncResult);
-            }
-        });
+        if (handler != null) {
+            result.onComplete(handler);
+        }
     }
 
     @Override
