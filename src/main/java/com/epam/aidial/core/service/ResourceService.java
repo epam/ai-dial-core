@@ -326,7 +326,7 @@ public class ResourceService implements AutoCloseable {
             Long length = metadata.getContentMetadata().getContentLength();
 
             String encoding = metadata.getContentMetadata().getContentEncoding();
-            if (encoding != null) {
+            if (encoding != null || length <= maxSize) {
                 result = blobToResult(blob, metadata);
                 if (result.body.length <= maxSize) {
                     redisPut(key, result);
