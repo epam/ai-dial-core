@@ -13,9 +13,9 @@ import com.epam.aidial.core.data.ResourceUrl;
 import com.epam.aidial.core.data.Rule;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.aidial.core.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -58,7 +58,6 @@ public class PublicationService {
     private final AccessService accessService;
     private final RuleService ruleService;
     private final NotificationService notificationService;
-    private final BlobStorage files;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -376,6 +375,7 @@ public class PublicationService {
                                              String reviewBucket, Set<String> urls) {
         ResourceDescription source = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
         ResourceDescription target = ResourceDescription.fromPublicUrl(resource.getTargetUrl());
+        verifyResourceType(source);
 
         String sourceUrl = source.getUrl();
         String targetUrl = target.getUrl();
@@ -392,10 +392,6 @@ public class PublicationService {
             throw new IllegalArgumentException("Target resource is folder: " + targetUrl);
         }
 
-        if (!ALLOWED_RESOURCES.contains(source.getType())) {
-            throw new IllegalArgumentException("Source resource type is not supported: " + sourceUrl);
-        }
-
         if (source.getType() != target.getType()) {
             throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
         }
@@ -408,11 +404,11 @@ public class PublicationService {
             targetSuffix = targetSuffix.substring(targetFolder.length());
         }
 
-        if (!checkResource(source)) {
+        if (!resources.hasResource(source)) {
             throw new IllegalArgumentException("Source resource does not exists: " + sourceUrl);
         }
 
-        if (checkResource(target)) {
+        if (resources.hasResource(target)) {
             throw new IllegalArgumentException("Target resource already exists: " + targetUrl);
         }
 
@@ -439,6 +435,7 @@ public class PublicationService {
     private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls) {
         String targetUrl = resource.getTargetUrl();
         ResourceDescription target = ResourceDescription.fromPublicUrl(targetUrl);
+        verifyResourceType(target);
 
         if (target.isFolder()) {
             throw new IllegalArgumentException("Target resource is folder: " + targetUrl);
@@ -453,7 +450,7 @@ public class PublicationService {
             throw new IllegalArgumentException("Target resources have duplicate urls: " + targetUrl);
         }
 
-        if (!checkResource(target)) {
+        if (!resources.hasResource(target)) {
             throw new IllegalArgumentException("Target resource does not exists: " + targetUrl);
         }
 
@@ -486,7 +483,8 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-            if (!checkResource(descriptor)) {
+            verifyResourceType(descriptor);
+            if (!this.resources.hasResource(descriptor)) {
                 throw new IllegalArgumentException("Review resource does not exist: " + descriptor.getUrl());
             }
         }
@@ -496,8 +494,9 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
+            verifyResourceType(descriptor);
 
-            if (checkResource(descriptor) != exists) {
+            if (this.resources.hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
                 throw new IllegalArgumentException(errorMessage);
             }
@@ -511,8 +510,9 @@ public class PublicationService {
 
             ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
+            verifyResourceType(from);
 
-            if (!copyResource(from, to)) {
+            if (!this.resources.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
         }
@@ -525,8 +525,9 @@ public class PublicationService {
 
             ResourceDescription from = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
+            verifyResourceType(from);
 
-            if (!copyResource(from, to)) {
+            if (!this.resources.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy review resource from: " + from.getUrl() + " to target: " + to.getUrl());
             }
         }
@@ -598,7 +599,8 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
-            deleteResource(descriptor);
+            verifyResourceType(descriptor);
+            this.resources.deleteResource(descriptor, EtagHeader.ANY);
         }
     }
 
@@ -606,31 +608,14 @@ public class PublicationService {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
-            deleteResource(descriptor);
+            verifyResourceType(descriptor);
+            this.resources.deleteResource(descriptor, EtagHeader.ANY);
         }
     }
 
-    private boolean checkResource(ResourceDescription descriptor) {
-        return switch (descriptor.getType()) {
-            case FILE -> files.exists(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.hasResource(descriptor);
-            default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
-        };
-    }
-
-    private boolean copyResource(ResourceDescription from, ResourceDescription to) {
-        return switch (from.getType()) {
-            case FILE -> files.copy(from.getAbsoluteFilePath(), to.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.copyResource(from, to);
-            default -> throw new IllegalStateException("Unsupported type: " + from.getType());
-        };
-    }
-
-    private void deleteResource(ResourceDescription descriptor) {
-        switch (descriptor.getType()) {
-            case FILE -> files.delete(descriptor.getAbsoluteFilePath());
-            case PROMPT, CONVERSATION, APPLICATION -> resources.deleteResource(descriptor);
-            default -> throw new IllegalStateException("Unsupported type: " + descriptor.getType());
+    private void verifyResourceType(ResourceDescription descriptor) {
+        if (!ALLOWED_RESOURCES.contains(descriptor.getType())) {
+            throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
     }
 

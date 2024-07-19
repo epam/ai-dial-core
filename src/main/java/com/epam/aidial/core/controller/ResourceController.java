@@ -14,6 +14,7 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -168,15 +169,17 @@ public class ResourceController extends AccessControlBaseController {
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
                     }
 
+                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     ResourceType resourceType = descriptor.getType();
                     String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite), false);
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag, overwrite), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {
                         context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
                     } else {
+                        context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
                         context.respond(HttpStatus.OK, metadata);
                     }
                 })
@@ -221,12 +224,13 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         vertx.executeBlocking(() -> {
+                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
                         shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
-                        return service.deleteResource(descriptor);
+                        return service.deleteResource(descriptor, etag);
                     });
                 }, false)
                 .onSuccess(deleted -> {
@@ -238,7 +242,7 @@ public class ResourceController extends AccessControlBaseController {
                 })
                 .onFailure(error -> {
                     log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+                    context.respond(error, error.getMessage());
                 });
 
         return Future.succeededFuture();

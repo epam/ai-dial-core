@@ -38,6 +38,36 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testMoveResourceToSameDestination() {
+        // upload resource
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
+        // verify move operation fails
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {
+                   "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                   "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                }
+                """);
+        verify(response, 400);
+
+        // verify move operation succeeds
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {
+                   "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                   "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                   "overwrite": true
+                }
+                """);
+        verify(response, 200);
+
+        // verify resource still can be downloaded
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+    }
+
+    @Test
     void testMoveResourceWorkflowWhenDestinationResourceExists() {
         // upload resource
         Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);

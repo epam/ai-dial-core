@@ -4,7 +4,7 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.security.AccessService;
-import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
@@ -15,11 +15,13 @@ import java.util.List;
 
 @Slf4j
 public class FileMetadataController extends AccessControlBaseController {
+    private final ResourceService resourceService;
     private final AccessService accessService;
 
     public FileMetadataController(Proxy proxy, ProxyContext context) {
         super(proxy, context, false);
-        accessService = proxy.getAccessService();
+        this.resourceService = proxy.getResourceService();
+        this.accessService = proxy.getAccessService();
     }
 
     private String getContentType() {
@@ -31,7 +33,6 @@ public class FileMetadataController extends AccessControlBaseController {
 
     @Override
     protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
-        BlobStorage storage = proxy.getStorage();
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
@@ -41,7 +42,7 @@ public class FileMetadataController extends AccessControlBaseController {
 
         proxy.getVertx().executeBlocking(() -> {
             try {
-                MetadataBase metadata = storage.listMetadata(resource, token, limit, recursive);
+                MetadataBase metadata = resourceService.getMetadata(resource, token, limit, recursive);
                 if (metadata != null) {
                     accessService.filterForbidden(context, resource, metadata);
                     if (context.getBooleanRequestQueryParam("permissions")) {

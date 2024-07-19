@@ -65,7 +65,7 @@ public class RateLimiterTest {
     public static void beforeAll() throws IOException {
         redisServer = RedisServer.newRedisServer()
                 .port(16370)
-                .setting("bind 127.0.0.1")
+                .bind("127.0.0.1")
                 .setting("maxmemory 16M")
                 .setting("maxmemory-policy volatile-lfu")
                 .build();

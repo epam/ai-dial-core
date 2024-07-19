@@ -4,9 +4,10 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
@@ -17,12 +18,14 @@ public class DeleteFileController extends AccessControlBaseController {
     private final ShareService shareService;
     private final InvitationService invitationService;
     private final LockService lockService;
+    private final ResourceService resourceService;
 
     public DeleteFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
         this.shareService = proxy.getShareService();
         this.invitationService = proxy.getInvitationService();
         this.lockService = proxy.getLockService();
+        this.resourceService = proxy.getResourceService();
     }
 
     @Override
@@ -31,26 +34,23 @@ public class DeleteFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't delete a folder");
         }
 
-        String absoluteFilePath = resource.getAbsoluteFilePath();
-
-        BlobStorage storage = proxy.getStorage();
         proxy.getVertx().executeBlocking(() -> {
+            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
-            try {
-                return lockService.underBucketLock(bucketLocation, () -> {
-                    invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
-                    shareService.revokeSharedResource(bucketName, bucketLocation, resource);
-                    storage.delete(absoluteFilePath);
-                    return null;
-                });
-            } catch (Exception ex) {
-                log.error("Failed to delete file  %s/%s".formatted(bucketName, resource.getOriginalPath()), ex);
-                throw new RuntimeException(ex);
-            }
+            return lockService.underBucketLock(bucketLocation, () -> {
+                invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
+                shareService.revokeSharedResource(bucketName, bucketLocation, resource);
+                resourceService.deleteResource(resource, etag);
+
+                return null;
+            });
         }, false)
                 .onSuccess(success -> context.respond(HttpStatus.OK))
-                .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
+                .onFailure(error -> {
+                    log.error("Failed to delete file  {}/{}", resource.getBucketName(), resource.getOriginalPath(), error);
+                    context.respond(error, error.getMessage());
+                });
 
         return Future.succeededFuture();
     }

@@ -26,6 +26,7 @@ public class Publication {
     List<Resource> resources;
     Set<ResourceType> resourceTypes;
     List<Rule> rules;
+    String etag;
 
     public enum Status {
         PENDING, APPROVED, REJECTED
