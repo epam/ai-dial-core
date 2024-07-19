@@ -46,6 +46,10 @@ public class ResourceOperationService {
                     .formatted(sourceResourceUrl, destinationResourceUrl));
         }
 
+        if (source.equals(destination)) {
+            return;
+        }
+
         // move source links to destination if any
         invitationService.moveResource(bucket, location, source, destination);
         // move shared access if any
