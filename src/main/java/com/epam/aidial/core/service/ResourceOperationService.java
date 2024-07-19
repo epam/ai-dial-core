@@ -7,10 +7,13 @@ import com.epam.aidial.core.util.EtagHeader;
 import lombok.AllArgsConstructor;
 
 import java.util.Collection;
+import java.util.Set;
 import java.util.function.Consumer;
 
 @AllArgsConstructor
 public class ResourceOperationService {
+    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
+            ResourceType.PROMPT, ResourceType.APPLICATION);
 
     private final ResourceService resourceService;
     private final InvitationService invitationService;
@@ -33,29 +36,21 @@ public class ResourceOperationService {
             throw new IllegalArgumentException("Source resource %s do not exists".formatted(sourceResourceUrl));
         }
 
-        ResourceType resourceType = source.getType();
-        switch (resourceType) {
-            case FILE, CONVERSATION, PROMPT, APPLICATION -> {
-                boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
-                if (!copied) {
-                    throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
-                            .formatted(sourceResourceUrl, destinationResourceUrl));
-                }
-            }
-            default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
+        if (!ALLOWED_RESOURCES.contains(source.getType())) {
+            throw new IllegalStateException("Unsupported type: " + source.getType());
         }
+
+        boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
+        if (!copied) {
+            throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
+                    .formatted(sourceResourceUrl, destinationResourceUrl));
+        }
+
         // move source links to destination if any
         invitationService.moveResource(bucket, location, source, destination);
         // move shared access if any
         shareService.moveSharedAccess(bucket, location, source, destination);
 
-        deleteResource(source);
-    }
-
-    private void deleteResource(ResourceDescription resource) {
-        switch (resource.getType()) {
-            case FILE, CONVERSATION, PROMPT, APPLICATION -> resourceService.deleteResource(resource, EtagHeader.ANY);
-            default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
-        }
+        resourceService.deleteResource(source, EtagHeader.ANY);
     }
 }
