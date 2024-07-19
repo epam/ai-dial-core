@@ -321,22 +321,20 @@ public class ResourceService implements AutoCloseable {
 
             Payload payload = blob.getPayload();
             BlobMetadata metadata = blob.getMetadata();
-            String etag = ResourceUtil.extractEtag(blob.getMetadata().getUserMetadata());
+            String etag = ResourceUtil.extractEtag(metadata.getUserMetadata());
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
-            if (length <= maxSize) {
+            String encoding = metadata.getContentMetadata().getContentEncoding();
+            if (encoding != null) {
                 result = blobToResult(blob, metadata);
-                redisPut(key, result);
+                if (result.body.length <= maxSize) {
+                    redisPut(key, result);
+                }
                 return ResourceStream.fromResult(result);
             }
 
-            String encoding = metadata.getContentMetadata().getContentEncoding();
-            return new ResourceStream(
-                    encoding == null ? payload.openStream() : Compression.decompress(encoding, payload.openStream()),
-                    etag,
-                    contentType,
-                    length);
+            return new ResourceStream(payload.openStream(), etag, contentType, length);
         }
     }
 
