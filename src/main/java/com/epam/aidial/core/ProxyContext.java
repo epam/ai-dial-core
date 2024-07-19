@@ -103,23 +103,23 @@ public class ProxyContext {
         }
     }
 
-    public Future<Void> respond(HttpStatus status) {
+    public Future<?> respond(HttpStatus status) {
         return respond(status, null);
     }
 
     @SneakyThrows
-    public Future<Void> respond(HttpStatus status, Object object) {
+    public Future<?> respond(HttpStatus status, Object object) {
         return respond(status, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON, object);
     }
 
     @SneakyThrows
-    public Future<Void> respond(HttpStatus status, String contentType, Object object) {
+    public Future<?> respond(HttpStatus status, String contentType, Object object) {
         String json = ProxyUtil.MAPPER.writeValueAsString(object);
         response.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
         return respond(status, json);
     }
 
-    public Future<Void> respond(HttpStatus status, String body) {
+    public Future<?> respond(HttpStatus status, String body) {
         if (body == null) {
             body = "";
         }

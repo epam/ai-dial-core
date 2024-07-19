@@ -29,7 +29,6 @@ public class UploadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
 
-        Promise<Void> result = Promise.promise();
         context.getRequest()
                 .setExpectMultipart(true)
                 .uploadHandler(upload -> {
@@ -40,9 +39,8 @@ public class UploadFileController extends AccessControlBaseController {
                             proxy.getStorage(),
                             resource,
                             contentType);
-                    pipe.to(writeStream, result);
 
-                    result.future()
+                    pipe.to(writeStream)
                             .onSuccess(success -> context.respond(HttpStatus.OK, writeStream.getMetadata()))
                             .onFailure(error -> {
                                 writeStream.abortUpload(error);
@@ -51,6 +49,6 @@ public class UploadFileController extends AccessControlBaseController {
                             });
                 });
 
-        return result.future();
+        return Future.succeededFuture();
     }
 }

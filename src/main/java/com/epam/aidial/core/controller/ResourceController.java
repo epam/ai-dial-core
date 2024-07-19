@@ -90,7 +90,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
+        vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -106,6 +106,8 @@ public class ResourceController extends AccessControlBaseController {
                     log.warn("Can't list resource: {}", descriptor.getUrl(), error);
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                 });
+
+        return Future.succeededFuture();
     }
 
     private Future<?> getResource(ResourceDescription descriptor, boolean hasWriteAccess) {
@@ -113,7 +115,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> service.getResource(descriptor), false)
+        vertx.executeBlocking(() -> service.getResource(descriptor), false)
                 .onSuccess(body -> {
                     if (body == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
@@ -132,6 +134,8 @@ public class ResourceController extends AccessControlBaseController {
                     log.warn("Can't get resource: {}", descriptor.getUrl(), error);
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                 });
+
+        return Future.succeededFuture();
     }
 
     private Future<?> putResource(ResourceDescription descriptor) {
@@ -158,7 +162,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
         }
 
-        return context.getRequest().body().compose(bytes -> {
+        context.getRequest().body().compose(bytes -> {
                     if (bytes.length() > contentLimit) {
                         String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
@@ -186,6 +190,8 @@ public class ResourceController extends AccessControlBaseController {
                         context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                     }
                 });
+
+        return Future.succeededFuture();
     }
 
     private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body) {
@@ -214,7 +220,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> {
+        vertx.executeBlocking(() -> {
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
                     return lockService.underBucketLock(bucketLocation, () -> {
@@ -234,5 +240,7 @@ public class ResourceController extends AccessControlBaseController {
                     log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                 });
+
+        return Future.succeededFuture();
     }
 }
