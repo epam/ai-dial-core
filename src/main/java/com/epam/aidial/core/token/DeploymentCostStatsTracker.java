@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
+import static com.epam.aidial.core.util.ProxyUtil.isStreamingResponseCompleted;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -102,6 +103,9 @@ public class DeploymentCostStatsTracker {
                         if (!isStreamingResponseCompleted) {
                             collectResponseLength(chunk, index, context, model.getType());
                         }
+                    }
+                    default -> {
+                        return Future.succeededFuture();
                     }
                 }
                 if (isStreamingResponse) {
@@ -205,17 +209,6 @@ public class DeploymentCostStatsTracker {
             deploymentStats.deploymentCostStats.increase(deploymentCostStats);
             parenSpanId = deploymentStats.parentSpanId;
         }
-    }
-
-    private boolean isStreamingResponseCompleted(Buffer chunk, int index) {
-        String done = "[DONE]";
-        int j = 0;
-        for (; index < chunk.length() && j < done.length(); index++, j++) {
-            if (done.charAt(j) != chunk.getByte(index)) {
-                break;
-            }
-        }
-        return j == done.length();
     }
 
     private static class TraceContext {

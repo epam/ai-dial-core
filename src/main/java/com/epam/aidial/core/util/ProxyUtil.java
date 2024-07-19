@@ -289,4 +289,15 @@ public class ProxyUtil {
     public static boolean isStreamingResponse(Buffer response) {
         return findFirstIndexOfContentInStreamingResponse(response) != -1;
     }
+
+    public static boolean isStreamingResponseCompleted(Buffer chunk, int index) {
+        String done = "[DONE]";
+        int j = 0;
+        for (; index < chunk.length() && j < done.length(); index++, j++) {
+            if (done.charAt(j) != chunk.getByte(index)) {
+                break;
+            }
+        }
+        return j == done.length();
+    }
 }

@@ -40,7 +40,7 @@ public class RateLimiter {
                 return Future.succeededFuture();
             }
 
-            TokenUsage usage = context.getDeploymentCostStats().getTokenUsage();
+            TokenUsage usage = context.getTokenUsage();
 
             if (usage == null || usage.getTotalTokens() <= 0) {
                 return Future.succeededFuture();

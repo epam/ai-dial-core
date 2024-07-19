@@ -79,8 +79,8 @@ public class GfLogStore implements LogStore {
         append(entry, "\"}", false);
 
         DeploymentCostStats deploymentCostStats = context.getDeploymentCostStats();
-        TokenUsage tokenUsage = deploymentCostStats.getTokenUsage();
-        if (tokenUsage != null) {
+        if (deploymentCostStats != null) {
+            TokenUsage tokenUsage = deploymentCostStats.getTokenUsage() == null ? new TokenUsage() : deploymentCostStats.getTokenUsage();
             append(entry, ",\"token_usage\":{", false);
             append(entry, "\"completion_tokens\":", false);
             append(entry, Long.toString(tokenUsage.getCompletionTokens()), true);

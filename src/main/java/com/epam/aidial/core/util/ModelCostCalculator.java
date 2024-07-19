@@ -34,7 +34,7 @@ public class ModelCostCalculator {
         }
 
         return switch (pricing.getUnit()) {
-            case TOKEN -> calculate(context.getDeploymentCostStats().getTokenUsage(), pricing.getPrompt(), pricing.getCompletion());
+            case TOKEN -> calculate(context.getTokenUsage(), pricing.getPrompt(), pricing.getCompletion());
             case CHAR_WITHOUT_WHITESPACE ->
                     calculate(context.getDeploymentCostStats(), pricing.getPrompt(), pricing.getCompletion());
         };

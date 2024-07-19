@@ -406,7 +406,7 @@ public class DeploymentPostController {
                     context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
                     context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
                     context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                    context.getDeploymentCostStats().getTokenUsage() == null ? "n/a" : context.getDeploymentCostStats().getTokenUsage());
+                    context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
 
             finalizeRequest();
         });

@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.token.DeploymentCostStats;
+import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
@@ -162,5 +163,9 @@ public class ProxyContext {
 
     public String getInitialDeploymentApi() {
         return initialDeploymentApi == null ? apiKeyData.getInitialDeploymentApi() : initialDeploymentApi;
+    }
+
+    public TokenUsage getTokenUsage() {
+        return deploymentCostStats == null ? null : deploymentCostStats.getTokenUsage();
     }
 }
