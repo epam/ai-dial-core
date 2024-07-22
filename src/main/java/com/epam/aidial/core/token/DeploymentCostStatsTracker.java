@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.PricingUnit;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ModelCostCalculator;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -79,7 +80,7 @@ public class DeploymentCostStatsTracker {
             if (apiKeyData.getPerRequestKey() == null) {
                 ResourceDescription resource = toResource(context.getTraceId());
                 return vertx.executeBlocking(() -> {
-                    resourceService.deleteResource(resource);
+                    resourceService.deleteResource(resource, EtagHeader.ANY);
                     return null;
                 }, false);
             } else {
