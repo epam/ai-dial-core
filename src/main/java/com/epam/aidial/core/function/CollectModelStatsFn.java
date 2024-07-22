@@ -11,9 +11,9 @@ public class CollectModelStatsFn extends BaseFunction<ObjectNode> {
 
     /**
      * The function doesn't validate anything just collects model stats from the request.
-     *
-     * @param requestBody the JSON request body
-     * @return the error is always <code>null</code>
+     * <p>
+     *     Note. The error is always <code>null</code>
+     * </p>
      */
     @Override
     public Throwable apply(ObjectNode requestBody) {

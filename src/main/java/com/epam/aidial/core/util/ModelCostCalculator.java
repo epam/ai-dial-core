@@ -24,7 +24,7 @@ public class ModelCostCalculator {
 
     public static BigDecimal calculate(ProxyContext context) {
         Deployment deployment = context.getDeployment();
-        if (!(deployment instanceof Model model)) {
+        if (!(deployment instanceof Model model) || context.getDeploymentCostStats() == null) {
             return null;
         }
 
@@ -95,7 +95,7 @@ public class ModelCostCalculator {
     }
 
 
-    public static RequestLengthResult getRequestContentLength(ModelType modelType, Buffer requestBody) {
+    public static int getRequestContentLength(ModelType modelType, Buffer requestBody) {
         try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
             return getRequestContentLength(modelType, tree);
@@ -104,7 +104,7 @@ public class ModelCostCalculator {
         }
     }
 
-    public static RequestLengthResult getRequestContentLength(ModelType modelType, ObjectNode tree) {
+    public static int getRequestContentLength(ModelType modelType, ObjectNode tree) {
         int len;
         if (modelType == ModelType.CHAT) {
             ArrayNode messages = (ArrayNode) tree.get("messages");
@@ -113,7 +113,7 @@ public class ModelCostCalculator {
                 JsonNode message = messages.get(i);
                 len += getLengthWithoutWhitespace(message.get("content").textValue());
             }
-            return new RequestLengthResult(len, tree.get("stream").asBoolean(false));
+            return len;
         } else {
             JsonNode input = tree.get("input");
             if (input instanceof ArrayNode array) {
@@ -125,7 +125,7 @@ public class ModelCostCalculator {
                 len = getLengthWithoutWhitespace(input.textValue());
             }
         }
-        return new RequestLengthResult(len, false);
+        return len;
     }
 
     private static int getLengthWithoutWhitespace(String s) {
@@ -139,10 +139,6 @@ public class ModelCostCalculator {
             }
         }
         return len;
-    }
-
-    public record RequestLengthResult(int length, boolean stream) {
-
     }
 
 }

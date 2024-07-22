@@ -62,21 +62,54 @@ public class ModelCostCalculatorTest {
         tokenUsage.setCompletionTokens(10);
         tokenUsage.setPromptTokens(10);
         deploymentCostStats.setTokenUsage(tokenUsage);
-        when(context.getDeploymentCostStats().getTokenUsage()).thenReturn(tokenUsage);
+        when(context.getDeploymentCostStats()).thenReturn(deploymentCostStats);
+        when(context.getTokenUsage()).thenReturn(tokenUsage);
 
         assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context));
     }
 
     @Test
-    public void testCalculate_LengthCost_Chat_StreamIsFalse_Success() {
+    public void testCalculate_CharWithoutWhitespace() {
         Model model = new Model();
-        model.setType(ModelType.CHAT);
         Pricing pricing = new Pricing();
         pricing.setPrompt("0.1");
         pricing.setCompletion("0.5");
         pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
+
+        DeploymentCostStats deploymentCostStats = new DeploymentCostStats();
+        deploymentCostStats.setResponseContentLength(10);
+        deploymentCostStats.setRequestContentLength(10);
+        when(context.getDeploymentCostStats()).thenReturn(deploymentCostStats);
+
+        assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context));
+    }
+
+    @Test
+    public void testGetRequestContentLength_Chat() {
+        String request = """
+                {
+                  "messages": [
+                    {
+                      "role": "system",
+                      "content": ""
+                    },
+                    {
+                      "role": "user",
+                      "content": "How are you?"
+                    }
+                  ],
+                  "max_tokens": 500,
+                  "temperature": 1,
+                  "stream": false
+                }
+                """;
+        assertEquals(10, ModelCostCalculator.getRequestContentLength(ModelType.CHAT, Buffer.buffer(request)));
+    }
+
+    @Test
+    public void testGetResponseContentLength_SingleResponse() {
 
         String response = """
                 {
@@ -100,217 +133,63 @@ public class ModelCostCalculatorTest {
                    "object": "chat.completion"
                  }
                 """;
-        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
-
-        String request = """
-                {
-                  "messages": [
-                    {
-                      "role": "system",
-                      "content": ""
-                    },
-                    {
-                      "role": "user",
-                      "content": "How are you?"
-                    }
-                  ],
-                  "max_tokens": 500,
-                  "temperature": 1,
-                  "stream": false
-                }
-                """;
-        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
-
-        assertEquals(new BigDecimal("13.0"), ModelCostCalculator.calculate(context));
+        assertEquals(24, ModelCostCalculator.getResponseContentLength(ModelType.CHAT, Buffer.buffer(response), false));
     }
 
     @Test
-    public void testCalculate_LengthCost_Chat_StreamIsFalse_Error() {
-        Model model = new Model();
-        model.setType(ModelType.CHAT);
-        Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
-        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
-        model.setPricing(pricing);
-        when(context.getDeployment()).thenReturn(model);
+    public void testGetResponseContentLength_Streaming() {
 
+        String response = """
+                {
+                    "id": "chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m",
+                    "object": "chat.completion.chunk",
+                    "created": 1687780896,
+                    "model": "gpt-35-turbo",
+                    "choices": [
+                      {
+                        "index": 0,
+                        "finish_reason": null,
+                        "delta": {
+                          "content": "this"
+                        }
+                      }
+                    ],
+                    "usage": null
+                  }
+                """;
+        assertEquals(4, ModelCostCalculator.getResponseContentLength(ModelType.CHAT, Buffer.buffer(response), true));
+    }
+
+    @Test
+    public void testGetResponseContentLength_Embedding() {
+        assertEquals(0, ModelCostCalculator.getResponseContentLength(ModelType.EMBEDDING, Buffer.buffer(""), false));
+    }
+
+    @Test
+    public void testGetResponseContentLength_Error() {
         String response = """
                 {"error": { "message": "message", "type": "type", "param": "param", "code": "code" } }
                 """;
-        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
-
-        String request = """
-                {
-                  "messages": [
-                    {
-                      "role": "system",
-                      "content": ""
-                    },
-                    {
-                      "role": "user",
-                      "content": "How are you?"
-                    }
-                  ],
-                  "max_tokens": 500,
-                  "temperature": 1,
-                  "stream": false
-                }
-                """;
-        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
-
-        assertEquals(new BigDecimal("1.0"), ModelCostCalculator.calculate(context));
+        assertEquals(0, ModelCostCalculator.getResponseContentLength(ModelType.CHAT, Buffer.buffer(response), false));
     }
 
     @Test
-    public void testCalculate_LengthCost_Chat_StreamIsTrue_Success() {
-        Model model = new Model();
-        model.setType(ModelType.CHAT);
-        Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
-        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
-        model.setPricing(pricing);
-        when(context.getDeployment()).thenReturn(model);
-
-        String response = """
-                data:   {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
-                 
-                 data:   {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"this"}}],"usage":null}
-                 
-                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" is "}}],"usage":null}
-                 
-                 
-                 
-                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"a text"}}],"usage":null}
-                 
-                 data: [DONE]
-                 
-                 
-                """;
-        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
-
-        String request = """
-                {
-                  "messages": [
-                    {
-                      "role": "system",
-                      "content": ""
-                    },
-                    {
-                      "role": "user",
-                      "content": "How are you?"
-                    }
-                  ],
-                  "max_tokens": 500,
-                  "temperature": 1,
-                  "stream": true
-                }
-                """;
-        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
-
-        assertEquals(new BigDecimal("6.5"), ModelCostCalculator.calculate(context));
-    }
-
-    @Test
-    public void testCalculate_LengthCost_Chat_StreamIsTrue_Error() {
-        Model model = new Model();
-        model.setType(ModelType.CHAT);
-        Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
-        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
-        model.setPricing(pricing);
-        when(context.getDeployment()).thenReturn(model);
-
-        String response = """
-                data:   {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
-                 
-                 data:   {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"this"}}],"usage":null}
-                 
-                 data: {"error": { "message": "message", "type": "type", "param": "param", "code": "code" } }
-                 
-                 
-                 
-                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"a text"}}],"usage":null}
-                 
-                 data: [DONE]
-                 
-                 
-                """;
-        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
-
-        String request = """
-                {
-                  "messages": [
-                    {
-                      "role": "system",
-                      "content": ""
-                    },
-                    {
-                      "role": "user",
-                      "content": "How are you?"
-                    }
-                  ],
-                  "max_tokens": 500,
-                  "temperature": 1,
-                  "stream": true
-                }
-                """;
-        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
-
-        assertEquals(new BigDecimal("5.5"), ModelCostCalculator.calculate(context));
-    }
-
-    @Test
-    public void testCalculate_LengthCost_EmbeddingInputIsArray() {
-        Model model = new Model();
-        model.setType(ModelType.EMBEDDING);
-        Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
-        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
-        model.setPricing(pricing);
-        when(context.getDeployment()).thenReturn(model);
-
-        String response = """
-                {}
-                """;
-        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
-
+    public void testGetRequestLength_EmbeddingInputIsArray() {
         String request = """
                 {
                   "input": ["text", "123"]
                 }
                 """;
-        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
-
-        assertEquals(new BigDecimal("0.7"), ModelCostCalculator.calculate(context));
+        assertEquals(7, ModelCostCalculator.getRequestContentLength(ModelType.EMBEDDING, Buffer.buffer(request)));
     }
 
     @Test
-    public void testCalculate_LengthCost_EmbeddingInputIsString() {
-        Model model = new Model();
-        model.setType(ModelType.EMBEDDING);
-        Pricing pricing = new Pricing();
-        pricing.setPrompt("0.1");
-        pricing.setCompletion("0.5");
-        pricing.setUnit(PricingUnit.CHAR_WITHOUT_WHITESPACE);
-        model.setPricing(pricing);
-        when(context.getDeployment()).thenReturn(model);
-
-        String response = """
-                {}
-                """;
-        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
-
+    public void testGetRequestLength_EmbeddingInputIsString() {
         String request = """
                 {
                   "input": "text"
                 }
                 """;
-        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
-
-        assertEquals(new BigDecimal("0.4"), ModelCostCalculator.calculate(context));
+        assertEquals(4, ModelCostCalculator.getRequestContentLength(ModelType.EMBEDDING, Buffer.buffer(request)));
     }
 }

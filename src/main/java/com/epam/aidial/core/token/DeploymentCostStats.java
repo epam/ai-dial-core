@@ -9,8 +9,8 @@ public class DeploymentCostStats {
     private TokenUsage tokenUsage;
     private BigDecimal cost;
     private BigDecimal aggCost;
-    private int requestContentLength = -1;
-    private int responseContentLength = -1;
+    private int requestContentLength;
+    private int responseContentLength;
 
     public void increase(DeploymentCostStats other) {
         if (other == null) {

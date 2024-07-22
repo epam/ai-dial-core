@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.Prompt;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -11,9 +12,11 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@SuppressWarnings("checkstyle:LineLength")
 public class ProxyUtilTest {
 
     @Test
@@ -337,6 +340,61 @@ public class ProxyUtilTest {
 
         error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject("12345", Conversation.class));
         assertEquals("Provided payload do not match required schema", error.getMessage());
+    }
+
+    @Test
+    public void testIsStreamingResponse() {
+        String batchResponse = """
+                {
+                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
+                  "object": "chat.completion",
+                  "created": 1687781517,
+                  "model": "gpt-35-turbo",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "finish_reason": "stop",
+                      "message": {
+                        "role": "assistant",
+                        "content": "As an AI language model, I do not have emotions like humans. However, I am functioning well and ready to assist you. How can I help you today?"
+                      }
+                    }
+                  ],
+                  "usage" \t\r : \t\r {
+                    "junk_string": "junk",
+                    "junk_integer" : 1,
+                    "junk_float" : 1.0,
+                    "junk_null" : null,
+                    "junk_true" : true,
+                    "junk_false" : false,
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  }
+                }
+                """;
+        assertFalse(ProxyUtil.isStreamingResponse(Buffer.buffer(batchResponse)));
+        String streamingResponse = """
+                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
+                 
+                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"As"}}],"usage":null}
+                 
+                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{}}],
+                         "usage" \n\t\r : \n\t\r {
+                             "junk_string": "junk",
+                             "junk_integer" : 1,
+                             "junk_float" : 1.0,
+                             "junk_null" : null,
+                             "junk_true" : true,
+                             "junk_false" : false,
+                             "completion_tokens": 10,
+                             "prompt_tokens": 20,
+                             "total_tokens": 30
+                           }
+                       }
+                 data: [DONE]
+                 """;
+        assertTrue(ProxyUtil.isStreamingResponse(Buffer.buffer(streamingResponse)));
     }
 
 }

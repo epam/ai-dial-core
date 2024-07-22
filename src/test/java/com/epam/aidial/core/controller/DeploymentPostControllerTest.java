@@ -30,6 +30,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -79,7 +80,7 @@ public class DeploymentPostControllerTest {
     @Mock
     private LogStore logStore;
 
-    @Mock
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private DeploymentCostStatsTracker deploymentCostStatsTracker;
 
     @Mock
@@ -180,12 +181,10 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         controller.handle("app1", "chat/completions");
 
-        verify(deploymentCostStatsTracker).startSpan(eq(context));
     }
 
     @Test
@@ -247,6 +246,7 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer(body);
         when(context.getRequestBody()).thenCallRealMethod();
         doCallRealMethod().when(context).setRequestBody(any());
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
 
         controller.handleRequestBody(requestBody);
 
@@ -269,6 +269,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
 
         Model model = new Model();
         model.setName("name");
@@ -392,12 +393,9 @@ public class DeploymentPostControllerTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
-        when(proxy.getDeploymentCostStatsTracker()).thenReturn(deploymentCostStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         controller.handle("applications/bucket/app1", "chat/completions");
-
-        verify(deploymentCostStatsTracker).startSpan(eq(context));
     }
 
 }

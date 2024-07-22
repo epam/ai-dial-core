@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -69,6 +70,9 @@ public class DeploymentCostStatsTracker {
         }
     }
 
+    /**
+     * Ends current span.
+     */
     public Future<Void> endSpan(ProxyContext context) {
         try {
             ApiKeyData apiKeyData = context.getApiKeyData();
@@ -79,6 +83,8 @@ public class DeploymentCostStatsTracker {
                     return null;
                 }, false);
             } else {
+                // we don't need to remove the span from trace context right now.
+                // we can do it later when the initial span is completed
                 return Future.succeededFuture();
             }
         } catch (Throwable e) {
@@ -92,7 +98,7 @@ public class DeploymentCostStatsTracker {
             if (deployment instanceof Model model) {
                 int index = ProxyUtil.findFirstIndexOfContentInStreamingResponse(chunk);
                 boolean isStreamingResponse = index != -1;
-                boolean isStreamingResponseCompleted = isStreamingResponseCompleted(chunk, index);
+                boolean isStreamingResponseCompleted = isStreamingResponse && isStreamingResponseCompleted(chunk, index);
                 Pricing pricing = model.getPricing();
                 if (pricing == null) {
                     return Future.succeededFuture();
@@ -104,9 +110,7 @@ public class DeploymentCostStatsTracker {
                             collectResponseLength(chunk, index, context, model.getType());
                         }
                     }
-                    default -> {
-                        return Future.succeededFuture();
-                    }
+                    default -> log.warn("Unsupported pricing unit {}", pricing.getUnit());
                 }
                 if (isStreamingResponse) {
                     if (isStreamingResponseCompleted(chunk, index)) {
@@ -163,9 +167,9 @@ public class DeploymentCostStatsTracker {
                 }
                 PricingUnit unit = pricing.getUnit();
                 if (unit == PricingUnit.CHAR_WITHOUT_WHITESPACE) {
-                    ModelCostCalculator.RequestLengthResult requestLengthResult = ModelCostCalculator
+                    int requestLength = ModelCostCalculator
                             .getRequestContentLength(model.getType(), requestBody);
-                    deploymentCostStats.setRequestContentLength(requestLengthResult.length());
+                    deploymentCostStats.setRequestContentLength(requestLength);
                 }
             }
         } catch (Throwable e) {
@@ -211,7 +215,8 @@ public class DeploymentCostStatsTracker {
         }
     }
 
-    private static class TraceContext {
+    @Data
+    public static class TraceContext {
         Map<String, DeploymentStats> spans = new HashMap<>();
 
         void addSpan(ProxyContext context) {
@@ -230,9 +235,13 @@ public class DeploymentCostStatsTracker {
         }
     }
 
-    private static class DeploymentStats {
+    @Data
+    public static class DeploymentStats {
         DeploymentCostStats deploymentCostStats;
         String parentSpanId;
+
+        public DeploymentStats() {
+        }
 
         public DeploymentStats(DeploymentCostStats deploymentCostStats, String parentSpanId) {
             this.deploymentCostStats = deploymentCostStats;
