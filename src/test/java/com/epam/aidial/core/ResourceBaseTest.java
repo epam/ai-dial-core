@@ -15,8 +15,10 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
+import org.apache.http.NameValuePair;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
@@ -35,6 +37,7 @@ import redis.embedded.RedisServer;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -44,6 +47,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -112,7 +116,7 @@ public class ResourceBaseTest {
 
             redis = RedisServer.newRedisServer()
                     .port(16370)
-                    .setting("bind 127.0.0.1")
+                    .bind("127.0.0.1")
                     .setting("maxmemory 16M")
                     .setting("maxmemory-policy volatile-lfu")
                     .build();
@@ -132,7 +136,7 @@ public class ResourceBaseTest {
                         "credential": "secret-key",
                         "prefix": "test-2",
                         "overrides": {
-                          "jclouds.filesystem.basedir": "%s"
+                          "jclouds.filesystem.basedir": %s
                         }
                       },
                       "redis": {
@@ -146,7 +150,7 @@ public class ResourceBaseTest {
                         "cacheExpiration": 100
                       }
                     }
-                    """.formatted(testDir);
+                    """.formatted(Json.encode(testDir.toString()));
 
             JsonObject settings = AiDial.settings()
                     .mergeIn(new JsonObject(overrides), true);
@@ -309,7 +313,8 @@ public class ResourceBaseTest {
         try (CloseableHttpResponse response = client.execute(request)) {
             int status = response.getStatusLine().getStatusCode();
             String answer = EntityUtils.toString(response.getEntity());
-            return new Response(status, answer);
+            return new Response(status, answer, Arrays.stream(response.getAllHeaders())
+                    .collect(Collectors.toUnmodifiableMap(NameValuePair::getName, NameValuePair::getValue)));
         }
     }
 
@@ -354,7 +359,7 @@ public class ResourceBaseTest {
         return stream;
     }
 
-    record Response(int status, String body) {
+    record Response(int status, String body, Map<String, String> headers) {
         public boolean ok() {
             return status() == 200;
         }

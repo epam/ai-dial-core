@@ -24,6 +24,7 @@ import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.DeploymentCostStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamBalancer;
+import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.opentelemetry.api.trace.Span;
@@ -101,8 +102,19 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void handleError(Throwable error, HttpServerRequest request) {
-        log.error("Can't handle request", error);
-        respond(request, HttpStatus.INTERNAL_SERVER_ERROR);
+        if (!request.response().ended()) {
+            HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+            String message = null;
+
+            if (error instanceof HttpException e) {
+                status = e.getStatus();
+                message = e.getMessage();
+            } else {
+                log.error("Can't handle request", error);
+            }
+
+            respond(request, status, message);
+        }
     }
 
     /**
@@ -212,10 +224,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {
-        request.response().setStatusCode(status.getCode()).end();
+        respond(request, status, null);
     }
 
     private void respond(HttpServerRequest request, HttpStatus status, String body) {
-        request.response().setStatusCode(status.getCode()).end(body);
+        request.response().setStatusCode(status.getCode()).end(body == null ? "" : body);
     }
 }

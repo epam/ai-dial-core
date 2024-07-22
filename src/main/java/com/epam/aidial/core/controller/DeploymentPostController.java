@@ -493,7 +493,7 @@ public class DeploymentPostController {
         return deployment.getName().equals(Config.ASSISTANT);
     }
 
-    private Future<Void> respond(HttpStatus status, String errorMessage) {
+    private Future<?> respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
         return context.respond(status, errorMessage);
     }

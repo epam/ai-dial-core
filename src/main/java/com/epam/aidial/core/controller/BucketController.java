@@ -29,7 +29,6 @@ public class BucketController {
             String encodedSourceDeployment = UrlUtil.encodePath(context.getSourceDeployment());
             appDataLocation = encryptedAppDataBucket + BlobStorageUtil.PATH_SEPARATOR + BlobStorageUtil.APPDATA_PATTERN.formatted(encodedSourceDeployment);
         }
-        context.respond(HttpStatus.OK, new Bucket(encryptedBucket, appDataLocation));
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, new Bucket(encryptedBucket, appDataLocation));
     }
 }

@@ -16,7 +16,6 @@ import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.data.SharedResources;
 import com.epam.aidial.core.data.SharedResourcesResponse;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -44,7 +43,6 @@ public class ShareService {
     private final ResourceService resourceService;
     private final InvitationService invitationService;
     private final EncryptionService encryptionService;
-    private final BlobStorage storage;
 
     /**
      * Returns a list of resources shared with user.
@@ -339,11 +337,11 @@ public class ShareService {
     }
 
     public void copySharedAccess(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
-        if (!hasResource(source)) {
+        if (!resourceService.hasResource(source)) {
             throw new IllegalArgumentException("source resource %s does not exists".formatted(source.getUrl()));
         }
 
-        if (!hasResource(destination)) {
+        if (!resourceService.hasResource(destination)) {
             throw new IllegalArgumentException("destination resource %s dos not exists".formatted(destination.getUrl()));
         }
 
@@ -445,10 +443,6 @@ public class ShareService {
 
     private ResourceDescription getResourceFromLink(String url) {
         return ResourceUtil.resourceFromUrl(url, encryptionService);
-    }
-
-    private boolean hasResource(ResourceDescription resource) {
-        return ResourceUtil.hasResource(resource, resourceService, storage);
     }
 
     private ResourceDescription getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {

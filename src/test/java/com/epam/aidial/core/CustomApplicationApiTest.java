@@ -29,7 +29,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "nodeType":"ITEM",
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
-                "updatedAt":"@ignore"
+                "updatedAt":"@ignore",
+                "etag":"b90580505e3dfc75a161265897763281"
                 }
                 """);
 
@@ -76,7 +77,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "nodeType":"ITEM",
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
-                "updatedAt":"@ignore"
+                "updatedAt":"@ignore",
+                "etag":"e9604836b59b14de6548952a14297f44"
                 }
                 """);
 
@@ -98,7 +100,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "nodeType":"ITEM",
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
-                "updatedAt":"@ignore"
+                "updatedAt":"@ignore",
+                "etag":"b0296c6000416621866da183f543c787"
                 }
                 """);
 
@@ -158,7 +161,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "nodeType":"ITEM",
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
-                "updatedAt":"@ignore"
+                "updatedAt":"@ignore",
+                "etag":"e9604836b59b14de6548952a14297f44"
                 }
                 """);
 
@@ -239,7 +243,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "nodeType":"ITEM",
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
-                "updatedAt":"@ignore"
+                "updatedAt":"@ignore",
+                "etag":"e9604836b59b14de6548952a14297f44"
                 }
                 """);
 

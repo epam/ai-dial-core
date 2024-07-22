@@ -22,7 +22,6 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -52,7 +51,7 @@ public class ApiKeyStoreTest {
     public static void beforeAll() throws IOException {
         redisServer = RedisServer.newRedisServer()
                 .port(16370)
-                .setting("bind 127.0.0.1")
+                .bind("127.0.0.1")
                 .setting("maxmemory 16M")
                 .setting("maxmemory-policy volatile-lfu")
                 .build();

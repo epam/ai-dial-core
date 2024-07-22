@@ -4,8 +4,6 @@ import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.service.ResourceService;
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import lombok.experimental.UtilityClass;
@@ -17,14 +15,11 @@ import java.util.stream.Collectors;
 
 @UtilityClass
 public class ResourceUtil {
-
-    public static boolean hasResource(ResourceDescription resource, ResourceService resourceService, BlobStorage storage) {
-        return switch (resource.getType()) {
-            case FILE -> storage.exists(resource.getAbsoluteFilePath());
-            case CONVERSATION, PROMPT, APPLICATION -> resourceService.hasResource(resource);
-            default -> throw new IllegalArgumentException("Unsupported resource type " + resource.getType());
-        };
-    }
+    public static final String ETAG_ATTRIBUTE = "etag";
+    public static final String CREATED_AT_ATTRIBUTE = "created_at";
+    public static final String UPDATED_AT_ATTRIBUTE = "updated_at";
+    // Default ETag for old records
+    public static final String DEFAULT_ETAG = "0";
 
     public ResourceType getResourceType(String url) {
         if (url == null) {
@@ -70,4 +65,7 @@ public class ResourceUtil {
         }
     }
 
+    public String extractEtag(Map<String, String> attributes) {
+        return attributes.getOrDefault(ETAG_ATTRIBUTE, DEFAULT_ETAG);
+    }
 }

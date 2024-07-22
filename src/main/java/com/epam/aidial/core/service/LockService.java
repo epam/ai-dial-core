@@ -1,6 +1,5 @@
 package com.epam.aidial.core.service;
 
-import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
@@ -40,7 +39,7 @@ public class LockService {
 
         while (ttl > 0) {
             LockSupport.parkNanos(interval);
-            interval = Math.min(2 * interval, WAIT_MAX);
+            interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
             ttl = tryLock(id, owner);
         }
 
@@ -68,11 +67,11 @@ public class LockService {
                         local time = redis.call('time')
                         local now = time[1] * 1000000 + time[2]
                         local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
-                                                
+                        
                         if (deadline ~= nil and now < deadline) then
                           return deadline - now
                         end
-                                                
+                        
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
                         return 0
                         """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
@@ -81,21 +80,21 @@ public class LockService {
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
-            log.error("Lock service failed to unlock: " + id);
+            log.error("Lock service failed to unlock: {}", id);
         }
     }
 
     private boolean tryUnlock(String id, long owner) {
         return script.eval(RScript.Mode.READ_WRITE,
-                """                      
-                        local owner = redis.call('hget', KEYS[1], 'owner')                 
-                                               
+                """
+                        local owner = redis.call('hget', KEYS[1], 'owner')
+                        
                         if (owner == ARGV[1]) then
                           redis.call('del', KEYS[1])
                           return true
-                        end   
-                                                
-                        return false            
+                        end
+                        
+                        return false
                         """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner));
     }
 

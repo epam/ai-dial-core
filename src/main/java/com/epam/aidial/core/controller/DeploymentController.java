@@ -37,8 +37,7 @@ public class DeploymentController {
         }
 
         DeploymentData data = createDeployment(model);
-        context.respond(HttpStatus.OK, data);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, data);
     }
 
     public Future<?> getDeployments() {
@@ -55,8 +54,7 @@ public class DeploymentController {
         ListData<DeploymentData> list = new ListData<>();
         list.setData(deployments);
 
-        context.respond(HttpStatus.OK, list);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, list);
     }
 
     public static boolean hasAccess(ProxyContext context, Deployment deployment) {

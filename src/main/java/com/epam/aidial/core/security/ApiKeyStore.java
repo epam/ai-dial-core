@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -54,7 +55,7 @@ public class ApiKeyStore {
         ResourceDescription resource = toResource(perRequestKey);
         data.setPerRequestKey(perRequestKey);
         String json = ProxyUtil.convertToString(data);
-        if (resourceService.putResource(resource, json, false, false) == null) {
+        if (resourceService.putResource(resource, json, EtagHeader.ANY, false, false) == null) {
             throw new IllegalStateException(String.format("API key %s already exists in the storage", perRequestKey));
         }
     }
@@ -85,7 +86,7 @@ public class ApiKeyStore {
         String apiKey = apiKeyData.getPerRequestKey();
         if (apiKey != null) {
             ResourceDescription resource = toResource(apiKey);
-            return vertx.executeBlocking(() -> resourceService.deleteResource(resource), false);
+            return vertx.executeBlocking(() -> resourceService.deleteResource(resource, EtagHeader.ANY), false);
         }
         return Future.succeededFuture(true);
     }

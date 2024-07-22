@@ -2,21 +2,26 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.FileMetadata;
+import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.impl.PipeImpl;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UploadFileController extends AccessControlBaseController {
+    private final ResourceService resourceService;
 
     public UploadFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
+        this.resourceService = proxy.getResourceService();
     }
 
     @Override
@@ -29,28 +34,33 @@ public class UploadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
 
-        Promise<Void> result = Promise.promise();
-        context.getRequest()
-                .setExpectMultipart(true)
-                .uploadHandler(upload -> {
-                    String contentType = upload.contentType();
-                    Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                    BlobWriteStream writeStream = new BlobWriteStream(
-                            proxy.getVertx(),
-                            proxy.getStorage(),
-                            resource,
-                            contentType);
-                    pipe.to(writeStream, result);
+        return proxy.getVertx().executeBlocking(() -> {
+            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+            etag.validate(() -> proxy.getResourceService().getEtag(resource));
+            context.getRequest()
+                    .setExpectMultipart(true)
+                    .uploadHandler(upload -> {
+                        String contentType = upload.contentType();
+                        Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
+                        BlobWriteStream writeStream = resourceService.beginFileUpload(resource, etag, contentType);
+                        pipe.to(writeStream)
+                                .onSuccess(success -> {
+                                    FileMetadata metadata = writeStream.getMetadata();
+                                    context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
+                                    context.respond(HttpStatus.OK, metadata);
+                                })
+                                .onFailure(error -> {
+                                    writeStream.abortUpload(error);
+                                    context.respond(error,
+                                            "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                                });
+                    });
 
-                    result.future()
-                            .onSuccess(success -> context.respond(HttpStatus.OK, writeStream.getMetadata()))
-                            .onFailure(error -> {
-                                writeStream.abortUpload(error);
-                                context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
-                            });
+            return Future.succeededFuture();
+        }, false)
+                .otherwise(error -> {
+                    context.respond(error, error.getMessage());
+                    return null;
                 });
-
-        return result.future();
     }
 }

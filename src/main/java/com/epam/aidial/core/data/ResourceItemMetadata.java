@@ -19,6 +19,9 @@ public class ResourceItemMetadata extends MetadataBase {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Long updatedAt;
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String etag;
+
     public ResourceItemMetadata(ResourceType type, String bucket, String name, String path, String url) {
         super(name, path, bucket, url, NodeType.ITEM, type, null);
     }
