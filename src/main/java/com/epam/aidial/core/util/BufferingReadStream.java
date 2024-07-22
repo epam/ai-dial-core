@@ -9,6 +9,8 @@ import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 
 @Slf4j
@@ -21,7 +23,8 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Handler<Buffer> chunkHandler;
     private Handler<Void> endHandler;
     private Handler<Throwable> exceptionHandler;
-    private Function<Buffer, Future<Void>> interceptor;
+    private final Function<Buffer, Future<Void>> interceptor;
+    private final List<Future<Void>> interceptorCallbacks;
 
     private Throwable error;
     private boolean ended;
@@ -39,6 +42,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
         this.interceptor = interceptor;
+        this.interceptorCallbacks = interceptor == null ? null : new ArrayList<>();
 
         stream.handler(this::handleChunk);
         stream.endHandler(this::handleEnd);
@@ -121,7 +125,8 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private synchronized void handleChunk(Buffer chunk) {
         content.appendBuffer(chunk);
         if (interceptor != null) {
-            interceptor.apply(chunk).onComplete(ignore -> notifyOnChunk(chunk));
+            Future<Void> future = interceptor.apply(chunk).andThen(ignore -> notifyOnChunk(chunk));
+            interceptorCallbacks.add(future);
         } else {
             notifyOnChunk(chunk);
         }
@@ -129,7 +134,11 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     private synchronized void handleEnd(Void ignored) {
         ended = true;
-        notifyOnEnd(ignored);
+        if (interceptorCallbacks != null) {
+            Future.all(interceptorCallbacks).onComplete(ignoredRes -> notifyOnEnd(ignored));
+        } else {
+            notifyOnEnd(ignored);
+        }
     }
 
     private synchronized void handleException(Throwable exception) {
