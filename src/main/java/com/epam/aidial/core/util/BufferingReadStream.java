@@ -106,6 +106,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     @Override
     public synchronized ReadStream<Buffer> handler(Handler<Buffer> handler) {
+        log.info("Setting chunk handler, nullable handler: " + (handler != null));
         chunkHandler = handler;
         return this;
     }
@@ -118,18 +119,19 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     @Override
     public synchronized ReadStream<Buffer> endHandler(Handler<Void> handler) {
+        log.info("Setting end handler, nullable handler: " + (handler != null));
         endHandler = handler;
         return this;
     }
 
     private synchronized void handleChunk(Buffer chunk) {
+        log.info("Handling chunk ");
         content.appendBuffer(chunk);
         if (interceptor != null) {
-            Future<Void> future = interceptor.apply(chunk).andThen(ignore -> notifyOnChunk(chunk));
+            Future<Void> future = interceptor.apply(chunk);
             interceptorCallbacks.add(future);
-        } else {
-            notifyOnChunk(chunk);
         }
+        notifyOnChunk(chunk);
     }
 
     private synchronized void handleEnd(Void ignored) {
@@ -148,22 +150,28 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     }
 
     private synchronized void notifyOnChunk(Buffer chunk) {
+        log.info("Notifying on chunk");
         if (chunkHandler != null) {
             try {
                 chunkHandler.handle(chunk);
             } catch (Throwable e) {
                 log.warn("Chunk handler threw exception buffering read stream: {}", e.getMessage());
             }
+        } else {
+            log.warn("Can't notify on chunk, chunkHandler - null");
         }
     }
 
     private synchronized void notifyOnEnd(Void ignored) {
+        log.info("Notifying on end");
         if (endHandler != null) {
             try {
                 endHandler.handle(ignored);
             } catch (Throwable e) {
                 log.warn("End handler threw exception buffering read stream: {}", e.getMessage());
             }
+        } else {
+            log.warn("Can't notify on end, endHandler - null");
         }
     }
 
