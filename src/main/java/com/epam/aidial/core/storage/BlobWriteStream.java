@@ -204,6 +204,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private static Payload bufferToPayload(ByteBuf buffer) {
         Payload payload = new InputStreamPayload(new ByteBufInputStream(buffer));
+        // Content length is required by S3BlobStore
         payload.getContentMetadata().setContentLength((long) buffer.readableBytes());
 
         return payload;
