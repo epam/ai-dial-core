@@ -342,7 +342,8 @@ public class DeploymentPostController {
         BufferingReadStream responseStream;
         int responseLength = ProxyUtil.contentLength(proxyResponse, 1024);
         if (context.getDeployment() instanceof Model && proxyResponse.statusCode() == HttpStatus.OK.getCode()) {
-            responseStream = new BufferingReadStream(proxyResponse, responseLength, chunk -> proxy.getDeploymentCostStatsTracker().handleChunkResponse(chunk, context));
+//            responseStream = new BufferingReadStream(proxyResponse, responseLength, chunk -> proxy.getDeploymentCostStatsTracker().handleChunkResponse(chunk, context));
+            responseStream = new BufferingReadStream(proxyResponse, responseLength);
         } else {
             responseStream = new BufferingReadStream(proxyResponse, responseLength);
         }
