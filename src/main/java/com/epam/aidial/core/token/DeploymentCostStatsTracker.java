@@ -56,40 +56,32 @@ public class DeploymentCostStatsTracker {
     }
 
     public Future<DeploymentCostStats> getDeploymentStats(ProxyContext context) {
-        try {
+        return vertx.executeBlocking(() -> {
             ResourceDescription resource = toResource(context.getTraceId());
-            return vertx.executeBlocking(() -> {
-                String json = resourceService.getResource(resource);
-                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
-                if (traceContext == null) {
-                    return null;
-                }
-                return traceContext.getStats(context);
-            }, false);
-        } catch (Throwable e) {
-            return Future.failedFuture(e);
-        }
+            String json = resourceService.getResource(resource);
+            TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
+            if (traceContext == null) {
+                return null;
+            }
+            return traceContext.getStats(context);
+        }, false);
     }
 
     /**
      * Ends current span.
      */
     public Future<Void> endSpan(ProxyContext context) {
-        try {
-            ApiKeyData apiKeyData = context.getApiKeyData();
-            if (apiKeyData.getPerRequestKey() == null) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        if (apiKeyData.getPerRequestKey() == null) {
+            return vertx.executeBlocking(() -> {
                 ResourceDescription resource = toResource(context.getTraceId());
-                return vertx.executeBlocking(() -> {
-                    resourceService.deleteResource(resource, EtagHeader.ANY);
-                    return null;
-                }, false);
-            } else {
-                // we don't need to remove the span from trace context right now.
-                // we can do it later when the initial span is completed
-                return Future.succeededFuture();
-            }
-        } catch (Throwable e) {
-            return Future.failedFuture(e);
+                resourceService.deleteResource(resource, EtagHeader.ANY);
+                return null;
+            }, false);
+        } else {
+            // we don't need to remove the span from trace context right now.
+            // we can do it later when the initial span is completed
+            return Future.succeededFuture();
         }
     }
 
@@ -195,25 +187,11 @@ public class DeploymentCostStatsTracker {
                 if (traceContext == null) {
                     return null;
                 }
-                updateStatsOnParents(traceContext, deploymentStats, context);
+                traceContext.updateStats(context.getSpanId(), deploymentStats);
                 return ProxyUtil.convertToString(traceContext);
             });
             return null;
         }, false);
-    }
-
-    private void updateStatsOnParents(TraceContext traceContext, DeploymentCostStats deploymentCostStats, ProxyContext context) {
-        DeploymentStats deploymentStats = traceContext.spans.get(context.getSpanId());
-        if (deploymentStats == null) {
-            return;
-        }
-        deploymentStats.deploymentCostStats = deploymentCostStats;
-        String parenSpanId = deploymentStats.parentSpanId;
-        while (parenSpanId != null) {
-            deploymentStats = traceContext.spans.get(parenSpanId);
-            deploymentStats.deploymentCostStats.increase(deploymentCostStats);
-            parenSpanId = deploymentStats.parentSpanId;
-        }
     }
 
     @Data
@@ -233,6 +211,20 @@ public class DeploymentCostStatsTracker {
                 return null;
             }
             return deploymentStats.deploymentCostStats;
+        }
+
+        void updateStats(String spanId, DeploymentCostStats deploymentCostStats) {
+            DeploymentStats deploymentStats = spans.get(spanId);
+            if (deploymentStats == null) {
+                return;
+            }
+            deploymentStats.deploymentCostStats = deploymentCostStats;
+            String parenSpanId = deploymentStats.parentSpanId;
+            while (parenSpanId != null) {
+                deploymentStats = spans.get(parenSpanId);
+                deploymentStats.deploymentCostStats.increase(deploymentCostStats);
+                parenSpanId = deploymentStats.parentSpanId;
+            }
         }
     }
 
