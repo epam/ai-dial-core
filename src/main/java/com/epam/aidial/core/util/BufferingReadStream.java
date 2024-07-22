@@ -154,6 +154,8 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             } catch (Throwable e) {
                 log.warn("Chunk handler threw exception buffering read stream: {}", e.getMessage());
             }
+        } else {
+            log.warn("Missed chunk {}", chunk.toString());
         }
     }
 
