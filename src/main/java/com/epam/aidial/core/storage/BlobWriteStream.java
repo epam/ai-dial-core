@@ -18,6 +18,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
+import org.jclouds.io.Payload;
+import org.jclouds.io.payloads.InputStreamPayload;
 
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -123,8 +125,8 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
                 } else {
                     if (position != 0) {
-                        try (InputStream chunkStream = new ByteBufInputStream(lastChunk.duplicate())) {
-                            MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkStream);
+                        try (Payload payload = bufferToPayload(lastChunk.duplicate())) {
+                            MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, payload);
                             parts.add(part);
                         }
                     }
@@ -167,8 +169,8 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
 
                     ByteBuf chunk = chunkBuffer.slice(0, position).getByteBuf();
-                    try (InputStream chunkStream = new ByteBufInputStream(chunk.duplicate())) {
-                        MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, chunkStream);
+                    try (Payload payload = bufferToPayload(chunk.duplicate())) {
+                        MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, payload);
                         parts.add(part);
                     }
                     etagBuilder.append(chunk.nioBuffer());
@@ -198,5 +200,13 @@ public class BlobWriteStream implements WriteStream<Buffer> {
         }
 
         log.warn("Multipart upload aborted", ex);
+    }
+
+    private static Payload bufferToPayload(ByteBuf buffer) {
+        Payload payload = new InputStreamPayload(new ByteBufInputStream(buffer));
+        // Content length is required by S3BlobStore
+        payload.getContentMetadata().setContentLength((long) buffer.readableBytes());
+
+        return payload;
     }
 }

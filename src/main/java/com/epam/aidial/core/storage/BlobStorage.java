@@ -27,13 +27,12 @@ import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.io.ContentMetadata;
 import org.jclouds.io.ContentMetadataBuilder;
+import org.jclouds.io.Payload;
 import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import org.jclouds.io.payloads.ByteArrayPayload;
-import org.jclouds.io.payloads.InputStreamPayload;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
-import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -93,11 +92,11 @@ public class BlobStorage implements Closeable {
      *
      * @param multipart MultipartUpload that chunk related to
      * @param part      chunk number, starting from 1
-     * @param data    data
+     * @param payload    payload
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, InputStream data) {
-        return blobStore.uploadMultipartPart(multipart, part, new InputStreamPayload(data));
+    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, Payload payload) {
+        return blobStore.uploadMultipartPart(multipart, part, payload);
     }
 
     /**
