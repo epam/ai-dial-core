@@ -30,6 +30,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -79,7 +80,7 @@ public class DeploymentPostControllerTest {
     @Mock
     private LogStore logStore;
 
-    @Mock
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private TokenStatsTracker tokenStatsTracker;
 
     @Mock

@@ -106,7 +106,6 @@ public class AiDial {
                 storage = new BlobStorage(storageConfig);
             }
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker();
 
             redis = CacheClientFactory.create(settings("redis"));
 
@@ -127,6 +126,7 @@ public class AiDial {
 
             CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
                     resourceService, shareService, accessService, settings("applications"));
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(redis, vertx, clock);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamBalancer, accessTokenValidator,

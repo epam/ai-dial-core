@@ -123,20 +123,22 @@ public class DeploymentPostController {
                         return Future.succeededFuture(RateLimitResult.SUCCESS);
                     }
                 })
-                .map(rateLimitResult -> {
+                .compose(rateLimitResult -> {
+                    Future<?> future;
                     if (rateLimitResult.status() == HttpStatus.OK) {
                         if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(deploymentId);
                             context.setInitialDeploymentApi(deploymentApi);
                             context.setInterceptors(context.getDeployment().getInterceptors());
-                            handleInterceptor();
+                            future = handleInterceptor();
                         } else {
-                            handleRateLimitSuccess(deploymentId);
+                            future = handleRateLimitSuccess(deploymentId);
                         }
                     } else {
                         handleRateLimitHit(deploymentId, rateLimitResult);
+                        future = Future.succeededFuture();
                     }
-                    return null;
+                    return future;
                 })
                 .otherwise(error -> {
                     handleRequestError(deploymentId, error);
@@ -179,7 +181,7 @@ public class DeploymentPostController {
         }
     }
 
-    private void handleRateLimitSuccess(String deploymentId) {
+    private Future<?> handleRateLimitSuccess(String deploymentId) {
         log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
@@ -195,18 +197,19 @@ public class DeploymentPostController {
                     context.getProject(), deploymentId, context.getUserSub());
 
             respond(HttpStatus.BAD_GATEWAY, "No route");
-            return;
+            return Future.succeededFuture();
         }
 
         setupProxyApiKeyData();
-        proxy.getTokenStatsTracker().startSpan(context);
-
-        context.getRequest().body()
-                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                    handleRequestBody(body);
-                    return null;
-                }, false).onFailure(this::handleError))
-                .onFailure(this::handleRequestBodyError);
+        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
+            context.getRequest().body()
+                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }, false).onFailure(this::handleError))
+                    .onFailure(this::handleRequestBodyError);
+            return null;
+        });
     }
 
     private void setupProxyApiKeyData() {
@@ -529,7 +532,7 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
-        proxy.getTokenStatsTracker().endSpan(context);
+        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
