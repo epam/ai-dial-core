@@ -58,6 +58,7 @@ public class AddonController {
         data.setDisplayVersion(addon.getDisplayVersion());
         data.setIconUrl(addon.getIconUrl());
         data.setDescription(addon.getDescription());
+        data.setReference(addon.getName());
         return data;
     }
 }

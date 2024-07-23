@@ -65,6 +65,7 @@ public class AssistantController {
         data.setInputAttachmentTypes(assistant.getInputAttachmentTypes());
         data.setMaxInputAttachments(assistant.getMaxInputAttachments());
         data.setDefaults(assistant.getDefaults());
+        data.setReference(assistant.getName());
         return data;
     }
 }

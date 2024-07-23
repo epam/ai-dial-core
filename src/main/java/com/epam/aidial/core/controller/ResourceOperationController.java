@@ -89,6 +89,10 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
                     }
 
+                    if (sourceResource.getUrl().equals(destinationResource.getUrl())) {
+                        throw new IllegalArgumentException("source and destination resources cannot be the same");
+                    }
+
                     return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
                         resourceOperationService.moveResource(bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
                         return null;

@@ -184,6 +184,10 @@ public class ShareController {
                         throw new IllegalArgumentException("destinationUrl does not belong to the user");
                     }
 
+                    if (source.getUrl().equals(destination.getUrl())) {
+                        throw new IllegalArgumentException("source and destination cannot be the same");
+                    }
+
                     return proxy.getVertx().executeBlocking(() ->
                             lockService.underBucketLock(bucketLocation, () -> {
                                 shareService.copySharedAccess(bucket, bucketLocation, source, destination);

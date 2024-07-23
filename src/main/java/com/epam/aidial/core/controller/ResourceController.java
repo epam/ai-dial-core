@@ -171,7 +171,7 @@ public class ResourceController extends AccessControlBaseController {
 
                     EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     ResourceType resourceType = descriptor.getType();
-                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8));
+                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8), overwrite);
 
                     return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag, overwrite), false);
                 })
@@ -197,19 +197,32 @@ public class ResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body) {
+    private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body, boolean overwrite) {
         switch (resourceType) {
             case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
             case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
             case APPLICATION -> {
                 Application application = ProxyUtil.convertToObject(body, Application.class, true);
                 if (application != null) {
+                    if (application.getEndpoint() == null) {
+                        throw new IllegalArgumentException("Application endpoint must be provided");
+                    }
                     // replace application name with it's url
                     application.setName(descriptor.getUrl());
                     // defining user roles in custom applications are not allowed
                     application.setUserRoles(null);
                     // forward auth token is not allowed for custom applications
                     application.setForwardAuthToken(false);
+                    String reference = application.getReference();
+                    // reject request if both If-None-Match header and reference provided
+                    if (reference != null && !overwrite) {
+                        throw new IllegalArgumentException("Creating application with provided reference is not allowed");
+                    }
+                    // generate reference if not provided
+                    if (reference == null) {
+                        application.setReference(ApplicationUtil.generateReference());
+                    }
+
                     body = ProxyUtil.convertToString(application, true);
                 }
             }

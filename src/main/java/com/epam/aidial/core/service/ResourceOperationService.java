@@ -46,8 +46,9 @@ public class ResourceOperationService {
                     .formatted(sourceResourceUrl, destinationResourceUrl));
         }
 
-        if (source.equals(destination)) {
-            return;
+        // replace application identity, preserve reference
+        if (destination.getType() == ResourceType.APPLICATION) {
+            resourceService.computeResource(destination, body -> PublicationUtil.replaceApplicationIdentity(body, destination, true));
         }
 
         // move source links to destination if any

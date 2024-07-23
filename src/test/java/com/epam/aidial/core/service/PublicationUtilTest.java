@@ -1,6 +1,7 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.ResourceBaseTest;
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 public class PublicationUtilTest {
 
@@ -311,6 +313,7 @@ public class PublicationUtilTest {
                 "display_version":"1.0",
                 "icon_url":"http://application1/icon.svg",
                 "description":"My Custom Application Description",
+                "reference":"id1",
                 "forward_auth_token":false,
                 "defaults": {}
                 }
@@ -324,10 +327,17 @@ public class PublicationUtilTest {
                 "display_version":"1.0",
                 "icon_url":"http://application1/icon.svg",
                 "description":"My Custom Application Description",
+                "reference":"id1",
                 "forward_auth_token":false,
                 "defaults": {}
                 }
-                """, PublicationUtil.replaceApplicationIdentity(application, targetResource1));
+                """, PublicationUtil.replaceApplicationIdentity(application, targetResource1, true));
+
+        Application actualApplication = ProxyUtil.convertToObject(
+                PublicationUtil.replaceApplicationIdentity(application, targetResource1, false),
+                Application.class, true);
+        assertEquals("applications/bucketName/my-app", actualApplication.getName());
+        assertNotEquals("id1", actualApplication.getReference());
     }
 
     private static void verifyJson(String expected, String actual) {
