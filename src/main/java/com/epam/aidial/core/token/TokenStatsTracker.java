@@ -8,7 +8,6 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -23,7 +22,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
 @Slf4j
@@ -57,7 +55,7 @@ public class TokenStatsTracker {
         for (Map.Entry<String, TrackerData> entry : registeredTrackers.entrySet()) {
             TrackerData trackerData = entry.getValue();
             String trackerId = entry.getKey();
-            if (currentTime - trackerData.lastUpdateTs.get() > 60_000) {
+            if (currentTime - trackerData.lastUpdateTs > 60_000) {
                 for (Promise<TokenUsage> promise : trackerData.promises) {
                     promise.complete(null);
                 }
@@ -68,7 +66,7 @@ public class TokenStatsTracker {
 
     private void ping() {
         PingEvent event = new PingEvent(this.trackerId);
-        publish(Event.PING, event);
+        publish(Event.PING, event).onFailure(error -> log.error("Can't ping trackers due to error", error));
     }
 
     private void onEvent(String data) {
@@ -89,7 +87,7 @@ public class TokenStatsTracker {
             return;
         }
         TrackerData trackerData = getTrackerData(event.trackerId);
-        trackerData.lastUpdateTs.set(clock.getAsLong());
+        trackerData.lastUpdateTs = clock.getAsLong();
     }
 
     private TrackerData getTrackerData(String trackerId) {
@@ -102,7 +100,7 @@ public class TokenStatsTracker {
             return;
         }
         Promise<TokenUsage> promise = traceContext.updateSpan(event);
-        if (promise != null) {
+        if (promise != null && !trackerId.equals(event.trackerId)) {
             TrackerData trackerData = getTrackerData(event.trackerId);
             trackerData.promises.remove(promise);
         }
@@ -114,7 +112,7 @@ public class TokenStatsTracker {
             return;
         }
         Promise<TokenUsage> promise = traceContext.updateSpan(event);
-        if (promise != null) {
+        if (promise != null && !trackerId.equals(event.trackerId)) {
             TrackerData trackerData = getTrackerData(event.trackerId);
             trackerData.promises.add(promise);
         }
@@ -159,6 +157,11 @@ public class TokenStatsTracker {
         return traceIdToContext;
     }
 
+    @VisibleForTesting
+    Map<String, TrackerData> getRegisteredTrackers() {
+        return registeredTrackers;
+    }
+
     private class TraceContext {
         Map<String, TokenStats> spans = new HashMap<>();
 
@@ -180,7 +183,7 @@ public class TokenStatsTracker {
                 return null;
             }
             Promise<TokenUsage> promise = Promise.promise();
-            tokenStats.children.put(event.spanId, Pair.of(promise, promise.future()));
+            tokenStats.children.put(event.spanId, promise);
             return promise;
         }
 
@@ -189,12 +192,12 @@ public class TokenStatsTracker {
             if (tokenStats == null) {
                 return null;
             }
-            Pair<Promise<TokenUsage>, Future<TokenUsage>> pair = tokenStats.children.get(event.spanId);
-            if (pair == null) {
+            Promise<TokenUsage> promise = tokenStats.children.get(event.spanId);
+            if (promise == null) {
                 return null;
             }
-            pair.getKey().complete(event.tokenUsage);
-            return pair.getKey();
+            promise.complete(event.tokenUsage);
+            return promise;
         }
 
         synchronized Future<Void> endSpan(ProxyContext context) {
@@ -214,8 +217,8 @@ public class TokenStatsTracker {
             }
             TokenUsage tokenUsage = tokenStats.tokenUsage;
             List<Future<TokenUsage>> futures = new ArrayList<>();
-            for (Pair<Promise<TokenUsage>, Future<TokenUsage>> pair : tokenStats.children.values()) {
-                futures.add(pair.getValue());
+            for (Promise<TokenUsage> promise : tokenStats.children.values()) {
+                futures.add(promise.future());
             }
             return Future.join(futures).map(result -> {
                 for (var child : result.list()) {
@@ -229,7 +232,7 @@ public class TokenStatsTracker {
 
 
 
-    private record TokenStats(TokenUsage tokenUsage, Map<String, Pair<Promise<TokenUsage>, Future<TokenUsage>>> children) {
+    private record TokenStats(TokenUsage tokenUsage, Map<String, Promise<TokenUsage>> children) {
     }
 
     public record StartSpanEvent(String trackerId, String traceId, String parentSpanId, String spanId) {
@@ -247,11 +250,11 @@ public class TokenStatsTracker {
     }
 
     private static class TrackerData {
-        final AtomicLong lastUpdateTs;
+        volatile long lastUpdateTs;
         final Set<Promise<TokenUsage>> promises = Collections.synchronizedSet(new HashSet<>());
 
         public TrackerData(long time) {
-            this.lastUpdateTs = new AtomicLong(time);
+            this.lastUpdateTs = time;
         }
     }
 }
