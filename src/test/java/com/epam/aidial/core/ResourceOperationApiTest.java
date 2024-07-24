@@ -52,7 +52,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 400);
 
-        // verify move operation succeeds
+        // verify move operation fails
         response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
@@ -60,7 +60,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                    "overwrite": true
                 }
                 """);
-        verify(response, 200);
+        verify(response, 400);
 
         // verify resource still can be downloaded
         response = resourceRequest(HttpMethod.GET, "/folder/conversation");

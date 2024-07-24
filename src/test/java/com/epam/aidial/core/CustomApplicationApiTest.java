@@ -1,10 +1,13 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.data.InvitationLink;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class CustomApplicationApiTest extends ResourceBaseTest {
@@ -30,12 +33,12 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"b90580505e3dfc75a161265897763281"
+                "etag":"@ignore"
                 }
                 """);
 
         response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, "");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                 "name":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                 "endpoint":"http://application1/v1/completions",
@@ -43,6 +46,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "display_version":"1.0",
                 "icon_url":"http://application1/icon.svg",
                 "description":"My Custom Application Description",
+                "reference": "@ignore",
                 "forward_auth_token":false,
                 "defaults": {},
                 "interceptors": []
@@ -51,6 +55,31 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, "", "Api-key", "proxyKey2");
         verify(response, 403);
+
+        // verify custom app creation fails if resource already present
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description"
+                }
+                """, "If-None-Match", "*");
+        verify(response, 409);
+
+        // verify can't create new app with provided reference
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "reference": "ref1"
+                }
+                """, "If-None-Match", "*");
+        verify(response, 400);
     }
 
     @Test
@@ -78,7 +107,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"e9604836b59b14de6548952a14297f44"
+                "etag":"@ignore"
                 }
                 """);
 
@@ -101,7 +130,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"b0296c6000416621866da183f543c787"
+                "etag":"@ignore"
                 }
                 """);
 
@@ -162,7 +191,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"e9604836b59b14de6548952a14297f44"
+                "etag":"@ignore"
                 }
                 """);
 
@@ -175,6 +204,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "display_version": "1.0",
                 "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
+                "reference": "@ignore",
                 "forward_auth_token": false,
                 "features": {
                  "rate_endpoint": "http://application1/rate",
@@ -244,7 +274,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"e9604836b59b14de6548952a14297f44"
+                "etag":"@ignore"
                 }
                 """);
 
@@ -285,6 +315,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "display_version" : "1.0",
                    "icon_url" : "http://application1/icon.svg",
                    "description" : "My Custom Application Description",
+                   "reference" : "@ignore",
                    "owner" : "organization-owner",
                    "object" : "application",
                    "status" : "succeeded",
@@ -307,7 +338,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         // verify user1 can list both applications (from config and own)
         response = send(HttpMethod.GET, "/openai/applications");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                     "data":[
                         {
@@ -316,6 +347,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_name":"10k",
                             "icon_url":"http://localhost:7001/logo10k.png",
                             "description":"Some description of the application for testing",
+                            "reference":"app",
                             "owner":"organization-owner",
                             "object":"application",
                             "status":"succeeded",
@@ -341,6 +373,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_version" : "1.0",
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
+                            "reference": "@ignore",
                             "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
@@ -366,7 +399,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         // verify user2 can list both applications (from config and shared)
         response = send(HttpMethod.GET, "/openai/applications", null, null, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                     "data":[
                         {
@@ -375,6 +408,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_name":"10k",
                             "icon_url":"http://localhost:7001/logo10k.png",
                             "description":"Some description of the application for testing",
+                            "reference":"app",
                             "owner":"organization-owner",
                             "object":"application",
                             "status":"succeeded",
@@ -400,6 +434,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_version" : "1.0",
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
+                            "reference" : "@ignore",
                             "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
@@ -498,7 +533,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         // verify listing returns both applications (from config and public)
         response = send(HttpMethod.GET, "/openai/applications", null, null, "authorization", "user");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                     "data":[
                         {
@@ -507,6 +542,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_name":"10k",
                             "icon_url":"http://localhost:7001/logo10k.png",
                             "description":"Some description of the application for testing",
+                            "reference":"app",
                             "owner":"organization-owner",
                             "object":"application",
                             "status":"succeeded",
@@ -532,6 +568,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_version" : "1.0",
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
+                            "reference" : "@ignore",
                             "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
@@ -569,6 +606,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_name":"10k",
                             "icon_url":"http://localhost:7001/logo10k.png",
                             "description":"Some description of the application for testing",
+                            "reference":"app",
                             "owner":"organization-owner",
                             "object":"application",
                             "status":"succeeded",
@@ -610,7 +648,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         // get custom application with openai endpoint
         response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                     "id":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                     "application":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -618,6 +656,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "display_version":"1.0",
                     "icon_url":"http://application1/icon.svg",
                     "description":"My Custom Application Description",
+                    "reference":"@ignore",
                     "owner":"organization-owner",
                     "object":"application",
                     "status":"succeeded",
@@ -640,7 +679,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         // verify listing returns both applications (from config and own)
         response = send(HttpMethod.GET, "/openai/applications");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                     "data":[
                         {
@@ -649,6 +688,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_name":"10k",
                             "icon_url":"http://localhost:7001/logo10k.png",
                             "description":"Some description of the application for testing",
+                            "reference":"app",
                             "owner":"organization-owner",
                             "object":"application",
                             "status":"succeeded",
@@ -674,6 +714,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "display_version" : "1.0",
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
+                            "reference": "@ignore",
                             "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
@@ -696,5 +737,140 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "object":"list"
                 }
                 """);
+    }
+
+    @Test
+    void testMoveCustomApplication() {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application1", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description"
+                }
+                """);
+        verifyJsonNotExact(response, 200, """
+                {
+                "name":"my-custom-application1",
+                "parentPath":null,
+                "bucket":"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                "url":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application1",
+                "nodeType":"ITEM",
+                "resourceType":"APPLICATION",
+                "createdAt": "@ignore",
+                "updatedAt":"@ignore",
+                "etag":"@ignore"
+                }
+                """);
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description"
+                }
+                """);
+        verifyJsonNotExact(response, 200, """
+                {
+                "name":"my-custom-application2",
+                "parentPath":null,
+                "bucket":"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                "url":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2",
+                "nodeType":"ITEM",
+                "resourceType":"APPLICATION",
+                "createdAt": "@ignore",
+                "updatedAt":"@ignore",
+                "etag":"@ignore"
+                }
+                """);
+
+        // verify app1
+        response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application1", null, "");
+        verifyJsonNotExact(response, 200, """
+                {
+                "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application1",
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "reference": "@ignore",
+                "forward_auth_token": false,
+                "defaults": {},
+                "interceptors": []
+                }
+                """);
+        Application application1 = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        String reference1 = application1.getReference();
+
+        // verify app2
+        response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2", null, "");
+        verifyJsonNotExact(response, 200, """
+                {
+                "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2",
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "reference": "@ignore",
+                "forward_auth_token": false,
+                "defaults": {},
+                "interceptors": []
+                }
+                """);
+        Application application2 = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        String reference2 = application2.getReference();
+
+        // verify references are not the same
+        assertNotEquals(reference1, reference2);
+
+        // verify move operation fails
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {
+                   "sourceUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application1",
+                   "destinationUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2"
+                }
+                """);
+        verify(response, 400);
+
+        // verify move operation succeed
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {
+                   "sourceUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application1",
+                   "destinationUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2",
+                   "overwrite": true
+                }
+                """);
+        verify(response, 200);
+
+        // verify app2 after move operation
+        response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2", null, "");
+        verifyJsonNotExact(response, 200, """
+                {
+                "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2",
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "reference": "@ignore",
+                "forward_auth_token": false,
+                "defaults": {},
+                "interceptors": []
+                }
+                """);
+        Application application = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        String reference = application.getReference();
+
+        // verify app2 has same reference as app1
+        assertEquals(reference1, reference);
+
+        // verify app1 no longer exists
+        response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application1", null, "");
+        verify(response, 404);
     }
 }

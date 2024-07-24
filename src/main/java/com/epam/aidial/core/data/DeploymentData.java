@@ -21,6 +21,7 @@ public class DeploymentData {
     private String displayVersion;
     private String iconUrl;
     private String description;
+    private String reference;
     private String owner = "organization-owner";
     private String object = "deployment";
     private String status = "succeeded";

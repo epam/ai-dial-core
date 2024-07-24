@@ -554,7 +554,7 @@ public class PublicationService {
         }
 
         for (ResourceDescription reviewPublication : reviewPublications) {
-            this.resources.computeResource(reviewPublication, body -> PublicationUtil.replaceApplicationIdentity(body, reviewPublication));
+            this.resources.computeResource(reviewPublication, body -> PublicationUtil.replaceApplicationIdentity(body, reviewPublication, false));
         }
     }
 
@@ -579,7 +579,7 @@ public class PublicationService {
         }
 
         for (ResourceDescription publicApplication : publicApplications) {
-            this.resources.computeResource(publicApplication, body -> PublicationUtil.replaceApplicationIdentity(body, publicApplication));
+            this.resources.computeResource(publicApplication, body -> PublicationUtil.replaceApplicationIdentity(body, publicApplication, false));
         }
     }
 

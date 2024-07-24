@@ -1,5 +1,6 @@
 package com.epam.aidial.core.service;
 
+import com.epam.aidial.core.controller.ApplicationUtil;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -47,9 +48,13 @@ public class PublicationUtil {
         return conversation.toString();
     }
 
-    public String replaceApplicationIdentity(String applicationBody, ResourceDescription targetResource) {
+    public String replaceApplicationIdentity(String applicationBody, ResourceDescription targetResource, boolean preserveReference) {
         JsonObject application = new JsonObject(applicationBody);
         application.put("name", targetResource.getUrl());
+
+        if (!preserveReference) {
+            application.put("reference", ApplicationUtil.generateReference());
+        }
 
         return application.toString();
     }

@@ -5,6 +5,8 @@ import com.epam.aidial.core.data.ApplicationData;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.UUID;
+
 @UtilityClass
 @Slf4j
 public class ApplicationUtil {
@@ -22,7 +24,13 @@ public class ApplicationUtil {
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
 
+        String reference = application.getReference();
+        data.setReference(reference == null ? application.getName() : reference);
+
         return data;
     }
 
+    public String generateReference() {
+        return UUID.randomUUID().toString();
+    }
 }
