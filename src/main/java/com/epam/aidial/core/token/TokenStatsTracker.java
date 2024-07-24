@@ -13,7 +13,6 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,6 +29,9 @@ public class TokenStatsTracker {
 
     private final Map<String, TraceContext> traceIdToContext = new ConcurrentHashMap<>();
 
+    /**
+     * List of registered trackers in the cluster
+     */
     private final Map<String, TrackerData> registeredTrackers = new ConcurrentHashMap<>();
 
     private final RTopic topic;
@@ -56,9 +58,8 @@ public class TokenStatsTracker {
             TrackerData trackerData = entry.getValue();
             String trackerId = entry.getKey();
             if (currentTime - trackerData.lastUpdateTs > 60_000) {
-                for (Promise<TokenUsage> promise : trackerData.promises) {
-                    promise.complete(null);
-                }
+                // complete all promises forcibly
+                trackerData.completePromises();
                 registeredTrackers.remove(trackerId);
             }
         }
@@ -102,7 +103,7 @@ public class TokenStatsTracker {
         Promise<TokenUsage> promise = traceContext.updateSpan(event);
         if (promise != null && !trackerId.equals(event.trackerId)) {
             TrackerData trackerData = getTrackerData(event.trackerId);
-            trackerData.promises.remove(promise);
+            trackerData.removePromise(promise);
         }
     }
 
@@ -114,7 +115,7 @@ public class TokenStatsTracker {
         Promise<TokenUsage> promise = traceContext.updateSpan(event);
         if (promise != null && !trackerId.equals(event.trackerId)) {
             TrackerData trackerData = getTrackerData(event.trackerId);
-            trackerData.promises.add(promise);
+            trackerData.addPromise(promise);
         }
     }
 
@@ -206,8 +207,12 @@ public class TokenStatsTracker {
             if (spans.isEmpty()) {
                 TokenStatsTracker.this.traceIdToContext.remove(context.getTraceId());
             }
-            EndSpanEvent event = new EndSpanEvent(trackerId, context.getTraceId(), context.getParentSpanId(), context.getSpanId(), context.getTokenUsage());
-            return publish(Event.END_SPAN, event);
+            String parentSpanId = context.getParentSpanId();
+            if (parentSpanId != null) {
+                EndSpanEvent event = new EndSpanEvent(trackerId, context.getTraceId(), parentSpanId, context.getSpanId(), context.getTokenUsage());
+                return publish(Event.END_SPAN, event);
+            }
+            return Future.succeededFuture();
         }
 
         synchronized Future<TokenUsage> getStats(ProxyContext context) {
@@ -251,10 +256,29 @@ public class TokenStatsTracker {
 
     private static class TrackerData {
         volatile long lastUpdateTs;
-        final Set<Promise<TokenUsage>> promises = Collections.synchronizedSet(new HashSet<>());
+
+        /**
+         * List of promises on dependent spans are ended eventually
+         */
+        final Set<Promise<TokenUsage>> promises = new HashSet<>();
 
         public TrackerData(long time) {
             this.lastUpdateTs = time;
+        }
+
+        synchronized void completePromises() {
+            for (Promise<TokenUsage> promise : promises) {
+                promise.complete(null);
+            }
+            promises.clear();
+        }
+
+        synchronized void addPromise(Promise<TokenUsage> promise) {
+            promises.add(promise);
+        }
+
+        synchronized void removePromise(Promise<TokenUsage> promise) {
+            promises.remove(promise);
         }
     }
 }
