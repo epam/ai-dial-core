@@ -9,6 +9,9 @@ import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Slf4j
 @Getter
 public class BufferingReadStream implements ReadStream<Buffer> {
@@ -24,7 +27,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private boolean ended;
     private boolean reset;
     private final boolean isStreaming;
-    private Buffer lastChunk;
+    private List<Buffer> lastChunks;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
         this(stream, 512, false);
@@ -118,21 +121,26 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     }
 
     public synchronized void end(HttpServerResponse response) {
-        if (lastChunk != null) {
-            response.end(lastChunk);
+        if (lastChunks != null) {
+            int last = lastChunks.size() - 1;
+            for (int i = 0; i < last; i++) {
+                response.write(lastChunks.get(i));
+            }
+            response.end(lastChunks.get(last));
         } else {
             response.end();
         }
     }
 
     private synchronized void handleChunk(Buffer chunk) {
-        if (lastChunk != null) {
-            // stop streaming
+        content.appendBuffer(chunk);
+        if (lastChunks != null) {
+            lastChunks.add(chunk);
             return;
         }
-        content.appendBuffer(chunk);
         if (isStreaming && isLastChunk(content)) {
-            lastChunk = chunk;
+            lastChunks = new ArrayList<>();
+            lastChunks.add(chunk);
         } else {
             notifyOnChunk(chunk);
         }
