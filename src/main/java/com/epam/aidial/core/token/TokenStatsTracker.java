@@ -182,10 +182,6 @@ public class TokenStatsTracker {
      * Returns deployment cost stats for the given context.
      */
     public synchronized Future<TokenUsage> getTokenStats(ProxyContext context) {
-        TokenUsage tokenUsage = context.getTokenUsage();
-        if (tokenUsage != null) {
-            return Future.succeededFuture(tokenUsage);
-        }
         TraceContext traceContext = traceIdToContext.get(context.getTraceId());
         if (traceContext == null) {
             return Future.succeededFuture();
