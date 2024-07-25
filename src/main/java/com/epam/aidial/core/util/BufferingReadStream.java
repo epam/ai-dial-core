@@ -2,6 +2,7 @@ package com.epam.aidial.core.util;
 
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.impl.PipeImpl;
@@ -116,7 +117,19 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         return this;
     }
 
+    public synchronized void end(HttpServerResponse response) {
+        if (lastChunk != null) {
+            response.end(lastChunk);
+        } else {
+            response.end();
+        }
+    }
+
     private synchronized void handleChunk(Buffer chunk) {
+        if (lastChunk != null) {
+            // stop streaming
+            return;
+        }
         content.appendBuffer(chunk);
         if (isStreaming && isLastChunk(content)) {
             lastChunk = chunk;

@@ -13,6 +13,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.function.BaseFunction;
 import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.function.CollectRequestDataFn;
 import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
@@ -69,13 +70,7 @@ public class DeploymentPostController {
         this.context = context;
         this.applicationService = proxy.getCustomApplicationService();
         this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context),
-                new BaseFunction<>(proxy, context) {
-                    @Override
-                    public Throwable apply(ObjectNode tree) {
-                        context.setStreamingRequest(tree.get("stream").asBoolean(false));
-                        return null;
-                    }
-                },
+                new CollectRequestDataFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context));
@@ -350,6 +345,8 @@ public class DeploymentPostController {
             return;
         }
 
+        // we want to wait for a last chunk from the response for request to model and streaming request
+        // stats for applications are derived from model stats we don't need to wait for last chunk of the app response
         boolean isStreaming = context.getDeployment() instanceof Model && context.isStreamingRequest();
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024), isStreaming);
@@ -424,11 +421,7 @@ public class DeploymentPostController {
         tokenUsageFuture.onComplete(ignore -> {
 
             HttpServerResponse response = context.getResponse();
-            if (responseStream.getLastChunk() != null) {
-                response.end(responseStream.getLastChunk());
-            } else {
-                response.end();
-            }
+            responseStream.end(response);
 
             proxy.getLogStore().save(context);
 
