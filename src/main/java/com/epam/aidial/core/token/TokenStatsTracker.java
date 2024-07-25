@@ -2,6 +2,7 @@ package com.epam.aidial.core.token;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
@@ -20,19 +21,39 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
+/**
+ * The tracker collects deployment cost stats from multiple DIAL Core instances.
+ * The underlined mechanism uses Redis PubSub for communication between Core instances in the cluster.
+ * <p>
+ * Let's consider a typical workflow of the application A which calls the model M: Core -> A -> Core -> M with two Core instances(Core 1 and Core 2):
+ *     <ul>
+ *         <li>Core 1 starts a new span S1</li>
+ *         <li>Application A calls the model M through the Core 2</li>
+ *         <li>Core 2 starts a new span S2 and publishes event to Redis topic</li>
+ *         <li>Core 1 receives the start span event of S2 and link S2 to S1. So S1 depends on S2</li>
+ *         <li>Core 2 makes a call to the model M and collects stats directly</li>
+ *         <li>Core 2 ends the span S2 by publishing the end span event to the topic</li>
+ *         <li>Core 1 receives the end span event of S2 with deployment stats. Core 1 marks the span S2 as completed</li>
+ *         <li>Core 1 waits for all dependent spans of the span S1 are completed: S1 depends on S2 and S2 is done</li>
+ *         <li>Core 1 ends the span S1</li>
+ *     </ul>
+ * </p>
+ * There might be a case when one of Core instances is down for some reasons, e.g. pod is restarted or OOM occurred.
+ * A special job is run to finds a such Core instances and mark them as dead by completing all dependent spans associated with the instance.
+ * See {@link TokenStatsTracker#cleanupDeadTrackers()} and {@link TokenStatsTracker#ping()} for details.
+ */
 @Slf4j
 public class TokenStatsTracker {
 
 
-    private final Map<String, TraceContext> traceIdToContext = new ConcurrentHashMap<>();
+    private final Map<String, TraceContext> traceIdToContext = new HashMap<>();
 
     /**
      * List of registered trackers in the cluster
      */
-    private final Map<String, TrackerData> registeredTrackers = new ConcurrentHashMap<>();
+    private final Map<String, TrackerData> registeredTrackers = new HashMap<>();
 
     private final RTopic topic;
 
@@ -42,17 +63,18 @@ public class TokenStatsTracker {
 
     private final String trackerId;
 
-    public TokenStatsTracker(RedissonClient redis, Vertx vertx, LongSupplier clock) {
+    public TokenStatsTracker(RedissonClient redis, Vertx vertx, LongSupplier clock, String prefix) {
         this.clock = clock;
         this.vertx = vertx;
-        this.topic = redis.getTopic("deployment-cost-stats-event", new StringCodec());
+        String topicName = "resource:" + BlobStorageUtil.toStoragePath(prefix, "deployment-cost-stats-event");
+        this.topic = redis.getTopic(topicName, new StringCodec());
         topic.addListener(String.class, (channel, event) -> onEvent(event));
         this.trackerId = UUID.randomUUID().toString();
         vertx.setPeriodic(0, 60_000, event -> cleanupDeadTrackers());
         vertx.setPeriodic(0, 10_000, event -> ping());
     }
 
-    private void cleanupDeadTrackers() {
+    private synchronized void cleanupDeadTrackers() {
         long currentTime = clock.getAsLong();
         for (Map.Entry<String, TrackerData> entry : registeredTrackers.entrySet()) {
             TrackerData trackerData = entry.getValue();
@@ -78,12 +100,13 @@ public class TokenStatsTracker {
         switch (event) {
             case PING -> handlePing(Objects.requireNonNull(ProxyUtil.convertToObject(json, PingEvent.class)));
             case END_SPAN -> handleEndSpan(Objects.requireNonNull(ProxyUtil.convertToObject(json, EndSpanEvent.class)));
-            case START_SPAN -> handleStartSpan(Objects.requireNonNull(ProxyUtil.convertToObject(json, StartSpanEvent.class)));
+            case START_SPAN ->
+                    handleStartSpan(Objects.requireNonNull(ProxyUtil.convertToObject(json, StartSpanEvent.class)));
             default -> log.warn("Unsupported event {}", event);
         }
     }
 
-    private void handlePing(PingEvent event) {
+    private synchronized void handlePing(PingEvent event) {
         if (this.trackerId.equals(event.trackerId)) {
             return;
         }
@@ -95,7 +118,16 @@ public class TokenStatsTracker {
         return registeredTrackers.computeIfAbsent(trackerId, key -> new TrackerData(clock.getAsLong()));
     }
 
-    private void handleEndSpan(EndSpanEvent event) {
+    /**
+     * The handler receives the event about completion of dependent span from another Core instance.
+     * <p>
+     * Let's consider an example span 1 calls span 2. Span 1 should wait for completion of span 2.
+     * So span 2 sends an event to span 1.
+     * </p>
+     *
+     * @param event end span event with deployment stats
+     */
+    private synchronized void handleEndSpan(EndSpanEvent event) {
         TraceContext traceContext = traceIdToContext.get(event.traceId);
         if (traceContext == null) {
             return;
@@ -107,7 +139,16 @@ public class TokenStatsTracker {
         }
     }
 
-    private void handleStartSpan(StartSpanEvent event) {
+    /**
+     * The handler receives the event about start process of dependent span from another Core instance.
+     * <p>
+     * Let's consider an example span 1 depends span 2. Span 1 should be aware that span 2 is started and to be registered as dependent span of span 1.
+     * So span 1 will not be completed until span 2.
+     * </p>
+     *
+     * @param event start span event
+     */
+    private synchronized void handleStartSpan(StartSpanEvent event) {
         TraceContext traceContext = traceIdToContext.get(event.traceId);
         if (traceContext == null) {
             return;
@@ -127,12 +168,24 @@ public class TokenStatsTracker {
         }, false);
     }
 
-    public Future<Void> startSpan(ProxyContext context) {
+    /**
+     * Starts a new span for the given context.
+     *
+     * @return the future of check-in span.
+     */
+    public synchronized Future<Void> startSpan(ProxyContext context) {
         TraceContext traceContext = traceIdToContext.computeIfAbsent(context.getTraceId(), k -> new TraceContext());
         return traceContext.addSpan(context);
     }
 
-    public Future<TokenUsage> getTokenStats(ProxyContext context) {
+    /**
+     * Returns deployment cost stats for the given context.
+     */
+    public synchronized Future<TokenUsage> getTokenStats(ProxyContext context) {
+        TokenUsage tokenUsage = context.getTokenUsage();
+        if (tokenUsage != null) {
+            return Future.succeededFuture(tokenUsage);
+        }
         TraceContext traceContext = traceIdToContext.get(context.getTraceId());
         if (traceContext == null) {
             return Future.succeededFuture();
@@ -140,7 +193,12 @@ public class TokenStatsTracker {
         return traceContext.getStats(context);
     }
 
-    public Future<Void> endSpan(ProxyContext context) {
+    /**
+     * End the current span for the given context.
+     *
+     * @return the future of check-out span.
+     */
+    public synchronized Future<Void> endSpan(ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         if (apiKeyData.getPerRequestKey() == null) {
             traceIdToContext.remove(context.getTraceId());
@@ -166,7 +224,7 @@ public class TokenStatsTracker {
     private class TraceContext {
         Map<String, TokenStats> spans = new HashMap<>();
 
-        synchronized Future<Void> addSpan(ProxyContext context) {
+        Future<Void> addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
             TokenStats tokenStats = new TokenStats(new TokenUsage(), new HashMap<>());
@@ -178,7 +236,7 @@ public class TokenStatsTracker {
             return Future.succeededFuture();
         }
 
-        synchronized Promise<TokenUsage> updateSpan(StartSpanEvent event) {
+        Promise<TokenUsage> updateSpan(StartSpanEvent event) {
             TokenStats tokenStats = spans.get(event.parentSpanId);
             if (tokenStats == null) {
                 return null;
@@ -188,7 +246,7 @@ public class TokenStatsTracker {
             return promise;
         }
 
-        synchronized Promise<TokenUsage> updateSpan(EndSpanEvent event) {
+        Promise<TokenUsage> updateSpan(EndSpanEvent event) {
             TokenStats tokenStats = spans.get(event.parentSpanId);
             if (tokenStats == null) {
                 return null;
@@ -201,7 +259,7 @@ public class TokenStatsTracker {
             return promise;
         }
 
-        synchronized Future<Void> endSpan(ProxyContext context) {
+        Future<Void> endSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             spans.remove(spanId);
             if (spans.isEmpty()) {
@@ -215,7 +273,7 @@ public class TokenStatsTracker {
             return Future.succeededFuture();
         }
 
-        synchronized Future<TokenUsage> getStats(ProxyContext context) {
+        Future<TokenUsage> getStats(ProxyContext context) {
             TokenStats tokenStats = spans.get(context.getSpanId());
             if (tokenStats == null) {
                 return Future.succeededFuture();
@@ -236,7 +294,6 @@ public class TokenStatsTracker {
     }
 
 
-
     private record TokenStats(TokenUsage tokenUsage, Map<String, Promise<TokenUsage>> children) {
     }
 
@@ -244,18 +301,20 @@ public class TokenStatsTracker {
 
     }
 
-    public record EndSpanEvent(String trackerId, String traceId, String parentSpanId, String spanId, TokenUsage tokenUsage) {
+    public record EndSpanEvent(String trackerId, String traceId, String parentSpanId, String spanId,
+                               TokenUsage tokenUsage) {
 
     }
 
-    public record PingEvent(String trackerId) {}
+    public record PingEvent(String trackerId) {
+    }
 
     public enum Event {
         START_SPAN, END_SPAN, PING
     }
 
     private static class TrackerData {
-        volatile long lastUpdateTs;
+        long lastUpdateTs;
 
         /**
          * List of promises on dependent spans are ended eventually
@@ -266,18 +325,18 @@ public class TokenStatsTracker {
             this.lastUpdateTs = time;
         }
 
-        synchronized void completePromises() {
+        void completePromises() {
             for (Promise<TokenUsage> promise : promises) {
                 promise.complete(null);
             }
             promises.clear();
         }
 
-        synchronized void addPromise(Promise<TokenUsage> promise) {
+        void addPromise(Promise<TokenUsage> promise) {
             promises.add(promise);
         }
 
-        synchronized void removePromise(Promise<TokenUsage> promise) {
+        void removePromise(Promise<TokenUsage> promise) {
             promises.remove(promise);
         }
     }

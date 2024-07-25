@@ -81,7 +81,7 @@ public class TokenStatsTrackerTest {
             keys.delete(key);
         }
 
-        tracker = new TokenStatsTracker(redissonClient, vertx, System::currentTimeMillis);
+        tracker = new TokenStatsTracker(redissonClient, vertx, System::currentTimeMillis, "test");
     }
 
     /**
