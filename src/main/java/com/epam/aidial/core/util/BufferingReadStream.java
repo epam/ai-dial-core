@@ -22,14 +22,21 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Throwable error;
     private boolean ended;
     private boolean reset;
+    private final boolean isStreaming;
+    private Buffer lastChunk;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
-        this(stream, 512);
+        this(stream, 512, false);
     }
 
     public BufferingReadStream(ReadStream<Buffer> stream, int initialSize) {
+        this(stream, initialSize, false);
+    }
+
+    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, boolean isStreaming) {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
+        this.isStreaming = isStreaming;
 
         stream.handler(this::handleChunk);
         stream.endHandler(this::handleEnd);
@@ -111,7 +118,33 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     private synchronized void handleChunk(Buffer chunk) {
         content.appendBuffer(chunk);
-        notifyOnChunk(chunk);
+        if (isStreaming && isLastChunk(content)) {
+            lastChunk = chunk;
+        } else {
+            notifyOnChunk(chunk);
+        }
+    }
+
+    private static boolean isLastChunk(Buffer content) {
+        int i = skipWhitespaces(content, content.length() - 1);
+        String lastMessage = "data: [DONE]";
+        int j = lastMessage.length() - 1;
+        for (; i >= 0 && j >= 0; i--, j--) {
+            if (content.getByte(i) != lastMessage.charAt(j)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int skipWhitespaces(Buffer content, int i) {
+        for (; i >= 0; i--) {
+            byte b = content.getByte(i);
+            if (!Character.isWhitespace(b)) {
+                break;
+            }
+        }
+        return i;
     }
 
     private synchronized void handleEnd(Void ignored) {

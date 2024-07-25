@@ -30,6 +30,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -79,7 +80,7 @@ public class DeploymentPostControllerTest {
     @Mock
     private LogStore logStore;
 
-    @Mock
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private TokenStatsTracker tokenStatsTracker;
 
     @Mock
@@ -241,7 +242,8 @@ public class DeploymentPostControllerTest {
         String body = """
                 {
                     "model": "name",
-                    "messages": []
+                    "messages": [],
+                    "stream": false
                 }
                 """;
         Buffer requestBody = Buffer.buffer(body);
@@ -277,7 +279,8 @@ public class DeploymentPostControllerTest {
         String body = """
                 {
                     "model": "name",
-                    "messages": []
+                    "messages": [],
+                    "stream": false
                 }
                 """;
         Buffer requestBody = Buffer.buffer(body);
@@ -339,13 +342,15 @@ public class DeploymentPostControllerTest {
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(rateLimiter.increase(any(ProxyContext.class))).thenReturn(Future.succeededFuture());
+        when(tokenStatsTracker.updateModelStats(context)).thenReturn(Future.succeededFuture());
 
-        controller.handleResponse();
+        controller.handleResponse(mock(BufferingReadStream.class));
 
         verify(rateLimiter).increase(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(tokenStatsTracker).endSpan(eq(context));
+        verify(response).end();
     }
 
     @Test
@@ -364,7 +369,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(tokenStatsTracker.getTokenStats(eq(context))).thenReturn(Future.succeededFuture(new TokenUsage()));
 
-        controller.handleResponse();
+        controller.handleResponse(mock(BufferingReadStream.class));
 
         verify(rateLimiter, never()).increase(eq(context));
         verify(tokenStatsTracker).getTokenStats(eq(context));
