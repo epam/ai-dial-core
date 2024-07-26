@@ -150,7 +150,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
                 return false;
             }
         }
-        return true;
+        return j < 0;
     }
 
     private static int skipWhitespaces(Buffer content, int i) {
