@@ -2,89 +2,147 @@ package com.epam.aidial.core.token;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
-import com.google.common.annotations.VisibleForTesting;
+import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
+import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
+import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
+
+@Slf4j
+@RequiredArgsConstructor
 public class TokenStatsTracker {
-    private final Map<String, TraceContext> traceIdToContext = new ConcurrentHashMap<>();
+    public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
+    public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
 
-    public void startSpan(ProxyContext context) {
-        TraceContext traceContext = traceIdToContext.computeIfAbsent(context.getTraceId(), k -> new TraceContext());
-        traceContext.addSpan(context);
+    private final Vertx vertx;
+    private final ResourceService resourceService;
+
+    /**
+     * Starts current span.
+     * <p>
+     *     Note. The method is blocking and shouldn't be run in the event loop thread.
+     * </p>
+     */
+    public Future<Void> startSpan(ProxyContext context) {
+        return vertx.executeBlocking(() -> {
+            ResourceDescription resource = toResource(context.getTraceId());
+            resourceService.computeResource(resource, json -> {
+                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
+                if (traceContext == null) {
+                    traceContext = new TraceContext();
+                }
+                traceContext.addSpan(context);
+                return ProxyUtil.convertToString(traceContext);
+            });
+            return null;
+        }, false);
     }
 
     public Future<TokenUsage> getTokenStats(ProxyContext context) {
-        TraceContext traceContext = traceIdToContext.get(context.getTraceId());
-        if (traceContext == null) {
-            return Future.succeededFuture();
-        }
-        return traceContext.getStats(context);
+        return vertx.executeBlocking(() -> {
+            ResourceDescription resource = toResource(context.getTraceId());
+            String json = resourceService.getResource(resource);
+            TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
+            if (traceContext == null) {
+                return null;
+            }
+            return traceContext.getStats(context);
+        }, false);
     }
 
-    public void endSpan(ProxyContext context) {
+    /**
+     * Ends current span.
+     */
+    public Future<Void> endSpan(ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         if (apiKeyData.getPerRequestKey() == null) {
-            traceIdToContext.remove(context.getTraceId());
+            return vertx.executeBlocking(() -> {
+                ResourceDescription resource = toResource(context.getTraceId());
+                resourceService.deleteResource(resource, EtagHeader.ANY);
+                return null;
+            }, false);
         } else {
-            TraceContext traceContext = traceIdToContext.get(context.getTraceId());
-            if (traceContext != null) {
-                traceContext.endSpan(context);
-            }
+            // we don't need to remove the span from trace context right now.
+            // we can do it later when the initial span is completed
+            return Future.succeededFuture();
         }
     }
 
-    @VisibleForTesting
-    Map<String, TraceContext> getTraces() {
-        return traceIdToContext;
+    public Future<TokenUsage> updateModelStats(ProxyContext context) {
+        ResourceDescription resource = toResource(context.getTraceId());
+        return vertx.executeBlocking(() -> {
+            resourceService.computeResource(resource, json -> {
+                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
+                if (traceContext == null) {
+                    return null;
+                }
+                traceContext.updateStats(context.getSpanId(), context.getTokenUsage());
+                return ProxyUtil.convertToString(traceContext);
+            });
+            return context.getTokenUsage();
+        }, false);
     }
 
-    private static class TraceContext {
+    @Data
+    public static class TraceContext {
         Map<String, TokenStats> spans = new HashMap<>();
 
-        synchronized void addSpan(ProxyContext context) {
+        void addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
-            TokenStats tokenStats = new TokenStats(new TokenUsage(), Promise.promise(), new ArrayList<>());
+            TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId);
             spans.put(spanId, tokenStats);
-            if (parentSpanId != null) {
-                TokenStats parent = spans.get(parentSpanId);
-                if (parent != null) {
-                    parent.children.add(tokenStats.promise.future());
-                }
-            }
         }
 
-        synchronized void endSpan(ProxyContext context) {
-            String spanId = context.getSpanId();
-            TokenStats tokenStats = spans.get(spanId);
-            if (tokenStats != null) {
-                tokenStats.promise.complete(context.getTokenUsage());
-            }
-        }
-
-        synchronized Future<TokenUsage> getStats(ProxyContext context) {
+        TokenUsage getStats(ProxyContext context) {
             TokenStats tokenStats = spans.get(context.getSpanId());
             if (tokenStats == null) {
-                return Future.succeededFuture();
+                return null;
             }
-            TokenUsage tokenUsage = tokenStats.tokenUsage;
-            return Future.all(tokenStats.children).map(result -> {
-                for (var child : result.list()) {
-                    TokenUsage stats = (TokenUsage) child;
-                    tokenUsage.increase(stats);
-                }
-                return tokenUsage;
-            });
+            return tokenStats.tokenUsage;
+        }
+
+        void updateStats(String spanId, TokenUsage tokenUsage) {
+            TokenStats tokenStats = spans.get(spanId);
+            if (tokenStats == null) {
+                return;
+            }
+            tokenStats.tokenUsage = tokenUsage;
+            String parenSpanId = tokenStats.parentSpanId;
+            while (parenSpanId != null) {
+                tokenStats = spans.get(parenSpanId);
+                tokenStats.tokenUsage.increase(tokenUsage);
+                parenSpanId = tokenStats.parentSpanId;
+            }
         }
     }
 
-    private record TokenStats(TokenUsage tokenUsage, Promise<TokenUsage> promise, List<Future<TokenUsage>> children) {
+    @Data
+    public static class TokenStats {
+        TokenUsage tokenUsage;
+        String parentSpanId;
+
+        public TokenStats() {
+        }
+
+        public TokenStats(TokenUsage tokenUsage, String parentSpanId) {
+            this.tokenUsage = tokenUsage;
+            this.parentSpanId = parentSpanId;
+        }
+    }
+
+    private static ResourceDescription toResource(String traceId) {
+        return ResourceDescription.fromDecoded(
+                ResourceType.DEPLOYMENT_COST_STATS, DEPLOYMENT_COST_STATS_BUCKET, DEPLOYMENT_COST_STATS_LOCATION, traceId);
     }
 }
