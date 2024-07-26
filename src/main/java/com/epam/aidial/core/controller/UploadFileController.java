@@ -51,15 +51,16 @@ public class UploadFileController extends AccessControlBaseController {
                                 })
                                 .onFailure(error -> {
                                     writeStream.abortUpload(error);
-                                    context.respond(error,
-                                            "Failed to upload file by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
+                                    context.respond(error, "Failed to upload file: " + resource.getUrl());
                                 });
                     });
 
             return Future.succeededFuture();
         }, false)
                 .otherwise(error -> {
-                    context.respond(error, error.getMessage());
+                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
+                    context.respond(error, "Failed to upload file: " + resource.getUrl());
                     return null;
                 });
     }
