@@ -23,6 +23,7 @@ import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
@@ -604,7 +605,7 @@ public class ResourceService implements AutoCloseable {
             String encoding = meta.getContentMetadata().getContentEncoding();
             try (InputStream stream = blob.getPayload().openStream()) {
                 body = stream.readAllBytes();
-                if (encoding != null) {
+                if (!StringUtils.isBlank(encoding)) {
                     body = Compression.decompress(encoding, body);
                 }
             }
