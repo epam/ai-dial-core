@@ -9,9 +9,6 @@ import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Slf4j
 @Getter
 public class BufferingReadStream implements ReadStream<Buffer> {
@@ -27,7 +24,8 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private boolean ended;
     private boolean reset;
     private final boolean isStreaming;
-    private List<Buffer> lastChunks;
+    // set the position to unset by default
+    private int lastChunkPos = -1;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
         this(stream, 512, false);
@@ -121,26 +119,23 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     }
 
     public synchronized void end(HttpServerResponse response) {
-        if (lastChunks != null) {
-            int last = lastChunks.size() - 1;
-            for (int i = 0; i < last; i++) {
-                response.write(lastChunks.get(i));
-            }
-            response.end(lastChunks.get(last));
+        if (lastChunkPos != -1) {
+            Buffer lastChunk = content.slice(lastChunkPos, content.length());
+            response.end(lastChunk);
         } else {
             response.end();
         }
     }
 
     private synchronized void handleChunk(Buffer chunk) {
+        int pos = content.length();
         content.appendBuffer(chunk);
-        if (lastChunks != null) {
-            lastChunks.add(chunk);
+        if (lastChunkPos != -1) {
+            // stop streaming
             return;
         }
         if (isStreaming && isLastChunk(content)) {
-            lastChunks = new ArrayList<>();
-            lastChunks.add(chunk);
+            lastChunkPos = pos;
         } else {
             notifyOnChunk(chunk);
         }

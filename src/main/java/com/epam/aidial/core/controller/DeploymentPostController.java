@@ -345,11 +345,8 @@ public class DeploymentPostController {
             return;
         }
 
-        // we want to wait for a last chunk from the response for request to model and streaming request
-        // stats for applications are derived from model stats we don't need to wait for last chunk of the app response
-        boolean isStreaming = context.getDeployment() instanceof Model && context.isStreamingRequest();
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024), isStreaming);
+                ProxyUtil.contentLength(proxyResponse, 1024), context.isStreamingRequest());
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
