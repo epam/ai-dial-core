@@ -72,6 +72,10 @@ public class ShareApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
         verify(response, 200, CONVERSATION_BODY_1);
 
+        // verify user2 has READ permission in metadata
+        response = send(HttpMethod.GET, "/v1/metadata/conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40", "permissions=true", null, "Api-key", "proxyKey2");
+        verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
+
         // verify user1 has no shared_with_me resources
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
