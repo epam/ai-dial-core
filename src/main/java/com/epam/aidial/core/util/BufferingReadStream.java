@@ -2,6 +2,7 @@ package com.epam.aidial.core.util;
 
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.impl.PipeImpl;
@@ -22,14 +23,22 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Throwable error;
     private boolean ended;
     private boolean reset;
+    private final boolean isStreaming;
+    // set the position to unset by default
+    private int lastChunkPos = -1;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
-        this(stream, 512);
+        this(stream, 512, false);
     }
 
     public BufferingReadStream(ReadStream<Buffer> stream, int initialSize) {
+        this(stream, initialSize, false);
+    }
+
+    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, boolean isStreaming) {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
+        this.isStreaming = isStreaming;
 
         stream.handler(this::handleChunk);
         stream.endHandler(this::handleEnd);
@@ -109,9 +118,49 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         return this;
     }
 
+    public synchronized void end(HttpServerResponse response) {
+        if (lastChunkPos != -1) {
+            Buffer lastChunk = content.slice(lastChunkPos, content.length());
+            response.end(lastChunk);
+        } else {
+            response.end();
+        }
+    }
+
     private synchronized void handleChunk(Buffer chunk) {
+        int pos = content.length();
         content.appendBuffer(chunk);
-        notifyOnChunk(chunk);
+        if (lastChunkPos != -1) {
+            // stop streaming
+            return;
+        }
+        if (isStreaming && isLastChunk(content)) {
+            lastChunkPos = pos;
+        } else {
+            notifyOnChunk(chunk);
+        }
+    }
+
+    private static boolean isLastChunk(Buffer content) {
+        int i = skipWhitespaces(content, content.length() - 1);
+        String lastMessage = "data: [DONE]";
+        int j = lastMessage.length() - 1;
+        for (; i >= 0 && j >= 0; i--, j--) {
+            if (content.getByte(i) != lastMessage.charAt(j)) {
+                return false;
+            }
+        }
+        return j < 0;
+    }
+
+    private static int skipWhitespaces(Buffer content, int i) {
+        for (; i >= 0; i--) {
+            byte b = content.getByte(i);
+            if (!Character.isWhitespace(b)) {
+                break;
+            }
+        }
+        return i;
     }
 
     private synchronized void handleEnd(Void ignored) {
