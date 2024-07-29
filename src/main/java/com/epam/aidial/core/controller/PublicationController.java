@@ -168,7 +168,7 @@ public class PublicationController {
                         Collection<MetadataBase> metadata =
                                 publicationService.listPublishedResources(request, bucket, bucketLocation);
                         if (context.getBooleanRequestQueryParam("permissions")) {
-                            accessService.populatePermissions(context, bucketLocation, metadata);
+                            accessService.populatePermissions(context, metadata);
                         }
                         return metadata;
                     }, false);
