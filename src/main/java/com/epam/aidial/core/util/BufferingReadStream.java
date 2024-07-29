@@ -35,8 +35,9 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private final EventStreamParser eventStreamParser;
     private int nextAppendedChunkId = 0;
     private int nextSentChunkId = 0;
+    // the processed chunks are ready to be sent
     private final Map<Integer, Buffer> readyChunks;
-    private final List<Future<Void>> streamHandlerFutures;
+    private final List<Future<Boolean>> streamHandlerFutures;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
         this(stream, 512, null);
@@ -155,21 +156,21 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         }
         if (eventStreamParser != null) {
             int chunkId = nextAppendedChunkId++;
-            Future<Void> future = eventStreamParser.parse(chunk)
-                    .map(result -> handleStreamEvent(chunk, result, chunkId, pos));
+            Future<Boolean> future = eventStreamParser.parse(chunk)
+                    .andThen(result -> handleStreamEvent(chunk, result.result() == Boolean.TRUE, chunkId, pos));
             streamHandlerFutures.add(future);
         } else {
             notifyOnChunk(chunk);
         }
     }
 
-    private synchronized Void handleStreamEvent(Buffer chunk, boolean isLastChunk, int chunkIdx, int pos) {
+    private synchronized void handleStreamEvent(Buffer chunk, boolean isLastChunk, int chunkIdx, int pos) {
         if (isLastChunk) {
             if (lastChunkPos == -1) {
                 lastChunkPos = pos;
             }
             // don't send the last chunk
-            return null;
+            return;
         }
         readyChunks.put(chunkIdx, chunk);
         while (readyChunks.containsKey(nextSentChunkId)) {
@@ -177,7 +178,6 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             nextSentChunkId++;
             notifyOnChunk(chunkToBeSent);
         }
-        return null;
     }
 
     private synchronized void handleEnd(Void ignored) {
