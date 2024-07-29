@@ -46,7 +46,7 @@ public class FileMetadataController extends AccessControlBaseController {
                 if (metadata != null) {
                     accessService.filterForbidden(context, resource, metadata);
                     if (context.getBooleanRequestQueryParam("permissions")) {
-                        accessService.populatePermissions(context, resource.getBucketLocation(), List.of(metadata));
+                        accessService.populatePermissions(context, List.of(metadata));
                     }
                     context.respond(HttpStatus.OK, getContentType(), metadata);
                 } else {
