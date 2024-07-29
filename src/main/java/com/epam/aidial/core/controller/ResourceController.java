@@ -98,7 +98,7 @@ public class ResourceController extends AccessControlBaseController {
                     } else {
                         accessService.filterForbidden(context, descriptor, result);
                         if (context.getBooleanRequestQueryParam("permissions")) {
-                            accessService.populatePermissions(context, descriptor.getBucketLocation(), List.of(result));
+                            accessService.populatePermissions(context, List.of(result));
                         }
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
