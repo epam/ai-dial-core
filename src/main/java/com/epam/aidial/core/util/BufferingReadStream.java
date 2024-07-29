@@ -34,7 +34,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     // set the position to unset by default
     private int lastChunkPos = -1;
     private final EventStreamParser eventStreamParser;
-    private int nextAppendedChunkId = -1;
+    private int nextAppendedChunkId = 0;
     private int nextSentChunkId = 0;
     private final PriorityQueue<Pair<Integer, Buffer>> queue;
     private final List<Future<Boolean>> streamHandlerFutures;
@@ -149,6 +149,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     private synchronized void handleChunk(Buffer chunk) {
         int pos = content.length();
+        content.appendBuffer(chunk);
         if (lastChunkPos != -1) {
             // stop streaming
             return;
@@ -156,7 +157,6 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         if (eventStreamParser != null) {
             int currentChunkId = nextAppendedChunkId++;
             queue.offer(Pair.of(currentChunkId, chunk));
-            content.appendBuffer(chunk);
             Future<Boolean> future = eventStreamParser.parse(chunk)
                     .andThen(result -> handleStreamEvent(result.result() == Boolean.TRUE, pos));
             streamHandlerFutures.add(future);
