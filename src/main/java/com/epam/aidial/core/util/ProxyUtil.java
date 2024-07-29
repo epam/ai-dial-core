@@ -2,7 +2,7 @@ package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.function.BaseFunction;
+import com.epam.aidial.core.function.BaseRequestFunction;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -156,7 +156,7 @@ public class ProxyUtil {
         }
     }
 
-    private static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
+    public static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
         JsonNode urlNode = attachment.get("url");
         if (urlNode == null) {
             return;
@@ -238,8 +238,8 @@ public class ProxyUtil {
         return convertToString(data, false);
     }
 
-    public static <T> Throwable processChain(T item, List<BaseFunction<T>> chain) {
-        for (BaseFunction<T> fn : chain) {
+    public static <T> Throwable processChain(T item, List<BaseRequestFunction<T>> chain) {
+        for (BaseRequestFunction<T> fn : chain) {
             Throwable error = fn.apply(item);
             if (error != null) {
                 return error;

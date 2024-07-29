@@ -1,5 +1,7 @@
 package com.epam.aidial.core.util;
 
+import com.epam.aidial.core.function.BaseResponseFunction;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerResponse;
@@ -8,6 +10,12 @@ import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.PriorityQueue;
 
 @Slf4j
 @Getter
@@ -23,22 +31,34 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Throwable error;
     private boolean ended;
     private boolean reset;
-    private final boolean isStreaming;
     // set the position to unset by default
     private int lastChunkPos = -1;
+    private final EventStreamParser eventStreamParser;
+    private int nextAppendedChunkId = -1;
+    private int nextSentChunkId = 0;
+    private final PriorityQueue<Pair<Integer, Buffer>> queue;
+    private final List<Future<Boolean>> streamHandlerFutures;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
-        this(stream, 512, false);
+        this(stream, 512, null);
     }
 
     public BufferingReadStream(ReadStream<Buffer> stream, int initialSize) {
-        this(stream, initialSize, false);
+        this(stream, initialSize, null);
     }
 
-    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, boolean isStreaming) {
+    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, BaseResponseFunction streamHandler) {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
-        this.isStreaming = isStreaming;
+        if (streamHandler == null) {
+            this.eventStreamParser = null;
+            this.queue = null;
+            this.streamHandlerFutures = null;
+        } else {
+            this.eventStreamParser = new EventStreamParser(512, streamHandler);
+            this.queue = new PriorityQueue<>(Comparator.comparingInt(Pair::getKey));
+            this.streamHandlerFutures = new ArrayList<>();
+        }
 
         stream.handler(this::handleChunk);
         stream.endHandler(this::handleEnd);
@@ -129,43 +149,46 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     private synchronized void handleChunk(Buffer chunk) {
         int pos = content.length();
-        content.appendBuffer(chunk);
         if (lastChunkPos != -1) {
             // stop streaming
             return;
         }
-        if (isStreaming && isLastChunk(content)) {
-            lastChunkPos = pos;
+        if (eventStreamParser != null) {
+            int currentChunkId = nextAppendedChunkId++;
+            queue.offer(Pair.of(currentChunkId, chunk));
+            content.appendBuffer(chunk);
+            Future<Boolean> future = eventStreamParser.parse(chunk)
+                    .andThen(result -> handleStreamEvent(result.result() == Boolean.TRUE, pos));
+            streamHandlerFutures.add(future);
         } else {
             notifyOnChunk(chunk);
         }
     }
 
-    private static boolean isLastChunk(Buffer content) {
-        int i = skipWhitespaces(content, content.length() - 1);
-        String lastMessage = "data: [DONE]";
-        int j = lastMessage.length() - 1;
-        for (; i >= 0 && j >= 0; i--, j--) {
-            if (content.getByte(i) != lastMessage.charAt(j)) {
-                return false;
+    private synchronized void handleStreamEvent(boolean isLastChunk, int pos) {
+        if (isLastChunk) {
+            if (lastChunkPos == -1) {
+                lastChunkPos = pos;
             }
+            // don't send the last chunk
+            return;
         }
-        return j < 0;
-    }
-
-    private static int skipWhitespaces(Buffer content, int i) {
-        for (; i >= 0; i--) {
-            byte b = content.getByte(i);
-            if (!Character.isWhitespace(b)) {
-                break;
-            }
+        while (!queue.isEmpty() && queue.peek().getKey() == nextSentChunkId) {
+            Buffer chunkToBeSent = queue.poll().getRight();
+            nextSentChunkId++;
+            notifyOnChunk(chunkToBeSent);
         }
-        return i;
     }
 
     private synchronized void handleEnd(Void ignored) {
         ended = true;
-        notifyOnEnd(ignored);
+        if (eventStreamParser == null) {
+            notifyOnEnd(ignored);
+        } else {
+            Future.join(streamHandlerFutures).onComplete(ignore -> {
+                notifyOnEnd(ignored);
+            });
+        }
     }
 
     private synchronized void handleException(Throwable exception) {

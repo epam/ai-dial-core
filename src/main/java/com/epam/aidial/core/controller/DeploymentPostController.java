@@ -11,9 +11,10 @@ import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
-import com.epam.aidial.core.function.BaseFunction;
-import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.function.BaseRequestFunction;
+import com.epam.aidial.core.function.CollectRequestAttachmentsFn;
 import com.epam.aidial.core.function.CollectRequestDataFn;
+import com.epam.aidial.core.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
@@ -63,17 +64,20 @@ public class DeploymentPostController {
     private final Proxy proxy;
     private final ProxyContext context;
     private final CustomApplicationService applicationService;
-    private final List<BaseFunction<ObjectNode>> enhancementFunctions;
+    private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
+
+    private final CollectResponseAttachmentsFn collectResponseAttachmentsFn;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
         this.applicationService = proxy.getCustomApplicationService();
-        this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context),
+        this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context));
+        this.collectResponseAttachmentsFn = new CollectResponseAttachmentsFn(proxy, context);
     }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
@@ -345,8 +349,10 @@ public class DeploymentPostController {
             return;
         }
 
+        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? collectResponseAttachmentsFn : null;
+
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024), context.isStreamingRequest());
+                ProxyUtil.contentLength(proxyResponse, 1024), handler);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -415,7 +421,23 @@ public class DeploymentPostController {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
 
-        tokenUsageFuture.onComplete(ignore -> {
+        Future<Void> handleResponseFuture;
+        if (context.isStreamingRequest()) {
+            handleResponseFuture = tokenUsageFuture.map(result -> null);
+        } else {
+            handleResponseFuture = tokenUsageFuture.compose(result -> {
+                try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
+                    ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                    return collectResponseAttachmentsFn.apply(tree);
+                } catch (IOException e) {
+                    log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
+                            context.getTraceId(), context.getSpanId(), e);
+                    return Future.failedFuture(e);
+                }
+            });
+        }
+
+        handleResponseFuture.onComplete(ignore -> {
 
             HttpServerResponse response = context.getResponse();
             responseStream.end(response);

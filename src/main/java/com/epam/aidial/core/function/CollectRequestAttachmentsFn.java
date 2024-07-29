@@ -21,8 +21,8 @@ import java.net.URI;
  * </p>
  */
 @Slf4j
-public class CollectAttachmentsFn extends BaseFunction<ObjectNode> {
-    public CollectAttachmentsFn(Proxy proxy, ProxyContext context) {
+public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode> {
+    public CollectRequestAttachmentsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 

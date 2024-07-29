@@ -5,7 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 
 import java.util.function.Function;
 
-public abstract class BaseFunction<T> implements Function<T, Throwable> {
+public abstract class BaseFunction<T, R> implements Function<T, R> {
     protected final Proxy proxy;
     protected final ProxyContext context;
 
