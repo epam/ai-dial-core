@@ -9,7 +9,6 @@ import io.vertx.core.buffer.impl.VertxByteBufAllocator;
 import jodd.io.CharBufferReader;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +44,7 @@ public class EventStreamParser {
     private List<Future<Void>> futures;
 
     private enum Stages {
-        EVENT, DATA, EOL;
+        EVENT, DATA, EOL
     }
 
 
@@ -102,7 +101,7 @@ public class EventStreamParser {
         }
     }
 
-    private void handleDataStage(Buffer chunk) throws IOException {
+    private void handleDataStage(Buffer chunk) {
         boolean eol = accumulateBuffer(chunk);
         if (eol) {
             boolean done = isLastMessage();
