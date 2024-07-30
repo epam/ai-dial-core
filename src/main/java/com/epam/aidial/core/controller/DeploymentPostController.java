@@ -425,7 +425,7 @@ public class DeploymentPostController {
         if (context.isStreamingRequest()) {
             handleResponseFuture = tokenUsageFuture.map(result -> null);
         } else {
-            handleResponseFuture = tokenUsageFuture.compose(result -> {
+            handleResponseFuture = tokenUsageFuture.transform(result -> {
                 try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
                     ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
                     return collectResponseAttachmentsFn.apply(tree);
