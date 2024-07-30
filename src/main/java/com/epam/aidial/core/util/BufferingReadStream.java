@@ -11,11 +11,6 @@ import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 @Slf4j
 @Getter
 public class BufferingReadStream implements ReadStream<Buffer> {
@@ -33,11 +28,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     // set the position to unset by default
     private int lastChunkPos = -1;
     private final EventStreamParser eventStreamParser;
-    private int nextAppendedChunkId = 0;
-    private int nextSentChunkId = 0;
-    // the processed chunks are ready to be sent
-    private final Map<Integer, Buffer> readyChunks;
-    private final List<Future<Boolean>> streamHandlerFutures;
+    private Future<Boolean> streamHandlerFuture;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
         this(stream, 512, null);
@@ -52,12 +43,8 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         this.content = Buffer.buffer(initialSize);
         if (streamHandler == null) {
             this.eventStreamParser = null;
-            this.readyChunks = null;
-            this.streamHandlerFutures = null;
         } else {
             this.eventStreamParser = new EventStreamParser(512, streamHandler);
-            this.readyChunks = new HashMap<>();
-            this.streamHandlerFutures = new ArrayList<>();
         }
 
         stream.handler(this::handleChunk);
@@ -155,16 +142,19 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             return;
         }
         if (eventStreamParser != null) {
-            int chunkId = nextAppendedChunkId++;
             Future<Boolean> future = eventStreamParser.parse(chunk)
-                    .andThen(result -> handleStreamEvent(chunk, result.result() == Boolean.TRUE, chunkId, pos));
-            streamHandlerFutures.add(future);
+                    .andThen(result -> handleStreamEvent(chunk, result.result() == Boolean.TRUE, pos));
+            if (streamHandlerFuture == null) {
+                streamHandlerFuture = future;
+            } else {
+                streamHandlerFuture = streamHandlerFuture.transform(result -> future);
+            }
         } else {
             notifyOnChunk(chunk);
         }
     }
 
-    private synchronized void handleStreamEvent(Buffer chunk, boolean isLastChunk, int chunkIdx, int pos) {
+    private synchronized void handleStreamEvent(Buffer chunk, boolean isLastChunk, int pos) {
         if (isLastChunk) {
             if (lastChunkPos == -1) {
                 lastChunkPos = pos;
@@ -172,20 +162,15 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             // don't send the last chunk
             return;
         }
-        readyChunks.put(chunkIdx, chunk);
-        while (readyChunks.containsKey(nextSentChunkId)) {
-            Buffer chunkToBeSent = readyChunks.remove(nextSentChunkId);
-            nextSentChunkId++;
-            notifyOnChunk(chunkToBeSent);
-        }
+        notifyOnChunk(chunk);
     }
 
     private synchronized void handleEnd(Void ignored) {
         ended = true;
-        if (eventStreamParser == null) {
+        if (streamHandlerFuture == null) {
             notifyOnEnd(ignored);
         } else {
-            Future.join(streamHandlerFutures).onComplete(ignore -> notifyOnEnd(ignored));
+            streamHandlerFuture.onComplete(ignore -> notifyOnEnd(ignored));
         }
     }
 
