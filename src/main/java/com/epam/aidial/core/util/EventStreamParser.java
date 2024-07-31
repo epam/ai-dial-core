@@ -3,9 +3,9 @@ package com.epam.aidial.core.util;
 import com.epam.aidial.core.function.BaseResponseFunction;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.buffer.impl.VertxByteBufAllocator;
 import jodd.io.CharBufferReader;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,7 +50,7 @@ public class EventStreamParser {
 
     public EventStreamParser(int initialSizeHint, BaseResponseFunction handler) {
         this.handler = handler == null ? DEFAULT_HANDLER : handler;
-        buffer = VertxByteBufAllocator.DEFAULT.heapBuffer(initialSizeHint, Integer.MAX_VALUE);
+        buffer = ByteBufAllocator.DEFAULT.heapBuffer(initialSizeHint, Integer.MAX_VALUE);
     }
 
     public synchronized Future<Boolean> parse(Buffer chunk) {

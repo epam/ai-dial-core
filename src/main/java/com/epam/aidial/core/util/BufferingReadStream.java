@@ -142,6 +142,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             return;
         }
         if (eventStreamParser != null) {
+            // build chain of chunk futures: the chunks should be sent in the same order as they arrive
             Future<Boolean> future = eventStreamParser.parse(chunk)
                     .andThen(result -> handleStreamEvent(chunk, result.result() == Boolean.TRUE, pos));
             if (streamHandlerFuture == null) {

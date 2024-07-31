@@ -11,11 +11,7 @@ import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-
-import java.net.URI;
-import java.util.Set;
 
 /**
  * Collects attached files from the chat completion request and puts the result to API key data.
@@ -32,7 +28,7 @@ public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode>
     @Override
     public Throwable apply(ObjectNode tree) {
         try {
-            ProxyUtil.collectAttachedFiles(tree, this::processAttachedFile);
+            ProxyUtil.collectAttachedFilesFromRequest(tree, this::processAttachedFile);
             // assign api key data after processing attachments
             ApiKeyData destApiKeyData = context.getProxyApiKeyData();
             proxy.getApiKeyStore().assignPerRequestApiKey(destApiKeyData);

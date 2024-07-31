@@ -92,7 +92,47 @@ public class ProxyUtil {
         return defaultValue;
     }
 
-    public static void collectAttachedFiles(ObjectNode tree, Consumer<String> consumer) {
+    public static void collectAttachmentsFromResponse(ObjectNode tree, boolean isStream, Consumer<String> consumer) {
+        ArrayNode choices = (ArrayNode) tree.get("choices");
+        if (choices == null) {
+            return;
+        }
+        for (int i = 0; i < choices.size(); i++) {
+            JsonNode choice = choices.get(i);
+            String messageNodeName = isStream ? "delta" : "message";
+            JsonNode message = choice.get(messageNodeName);
+            if (message == null) {
+                continue;
+            }
+            JsonNode customContent = message.get("custom_content");
+            if (customContent == null) {
+                continue;
+            }
+            ArrayNode attachments = (ArrayNode) customContent.get("attachments");
+            if (attachments != null) {
+                for (int j = 0; j < attachments.size(); j++) {
+                    JsonNode attachment = attachments.get(j);
+                    collectAttachedFile(attachment, consumer);
+                }
+            }
+            ArrayNode stages = (ArrayNode) customContent.get("stages");
+            if (stages != null) {
+                for (int j = 0; j < stages.size(); j++) {
+                    JsonNode stage = stages.get(j);
+                    attachments = (ArrayNode) stage.get("attachments");
+                    if (attachments == null) {
+                        continue;
+                    }
+                    for (int k = 0; k < attachments.size(); k++) {
+                        JsonNode attachment = attachments.get(k);
+                        collectAttachedFile(attachment, consumer);
+                    }
+                }
+            }
+        }
+    }
+
+    public static void collectAttachedFilesFromRequest(ObjectNode tree, Consumer<String> consumer) {
         collectAttachedFilesChatCompletion(tree, consumer);
         collectAttachedFilesEmbeddings(tree, consumer);
     }
