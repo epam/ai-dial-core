@@ -13,6 +13,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.data.ErrorData;
 import com.epam.aidial.core.function.BaseFunction;
 import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.function.CollectRequestDataFn;
 import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
@@ -69,6 +70,7 @@ public class DeploymentPostController {
         this.context = context;
         this.applicationService = proxy.getCustomApplicationService();
         this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context),
+                new CollectRequestDataFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context));
@@ -123,20 +125,22 @@ public class DeploymentPostController {
                         return Future.succeededFuture(RateLimitResult.SUCCESS);
                     }
                 })
-                .map(rateLimitResult -> {
+                .compose(rateLimitResult -> {
+                    Future<?> future;
                     if (rateLimitResult.status() == HttpStatus.OK) {
                         if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(deploymentId);
                             context.setInitialDeploymentApi(deploymentApi);
                             context.setInterceptors(context.getDeployment().getInterceptors());
-                            handleInterceptor();
+                            future = handleInterceptor();
                         } else {
-                            handleRateLimitSuccess(deploymentId);
+                            future = handleRateLimitSuccess(deploymentId);
                         }
                     } else {
                         handleRateLimitHit(deploymentId, rateLimitResult);
+                        future = Future.succeededFuture();
                     }
-                    return null;
+                    return future;
                 })
                 .otherwise(error -> {
                     handleRequestError(deploymentId, error);
@@ -179,7 +183,7 @@ public class DeploymentPostController {
         }
     }
 
-    private void handleRateLimitSuccess(String deploymentId) {
+    private Future<?> handleRateLimitSuccess(String deploymentId) {
         log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
@@ -195,18 +199,19 @@ public class DeploymentPostController {
                     context.getProject(), deploymentId, context.getUserSub());
 
             respond(HttpStatus.BAD_GATEWAY, "No route");
-            return;
+            return Future.succeededFuture();
         }
 
         setupProxyApiKeyData();
-        proxy.getTokenStatsTracker().startSpan(context);
-
-        context.getRequest().body()
-                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                    handleRequestBody(body);
-                    return null;
-                }, false).onFailure(this::handleError))
-                .onFailure(this::handleRequestBodyError);
+        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
+            context.getRequest().body()
+                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }, false).onFailure(this::handleError))
+                    .onFailure(this::handleRequestBodyError);
+            return null;
+        });
     }
 
     private void setupProxyApiKeyData() {
@@ -341,7 +346,7 @@ public class DeploymentPostController {
         }
 
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024));
+                ProxyUtil.contentLength(proxyResponse, 1024), context.isStreamingRequest());
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -357,8 +362,9 @@ public class DeploymentPostController {
 
         responseStream.pipe()
                 .endOnFailure(false)
+                .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse())
+                .onSuccess(ignored -> handleResponse(responseStream))
                 .onFailure(this::handleResponseError);
     }
 
@@ -371,7 +377,7 @@ public class DeploymentPostController {
      * Called when proxy sent response from the origin to the client.
      */
     @VisibleForTesting
-    void handleResponse() {
+    void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -395,7 +401,6 @@ public class DeploymentPostController {
                 context.setTokenUsage(tokenUsage);
                 proxy.getRateLimiter().increase(context).onFailure(error -> log.warn("Failed to increase limit. Trace: {}. Span: {}",
                         context.getTraceId(), context.getSpanId(), error));
-                tokenUsageFuture = Future.succeededFuture(tokenUsage);
                 try {
                     BigDecimal cost = ModelCostCalculator.calculate(context);
                     tokenUsage.setCost(cost);
@@ -404,12 +409,16 @@ public class DeploymentPostController {
                     log.warn("Failed to calculate cost for model={}. Trace: {}. Span: {}",
                             context.getDeployment().getName(), context.getTraceId(), context.getSpanId(), e);
                 }
+                tokenUsageFuture = proxy.getTokenStatsTracker().updateModelStats(context);
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
 
         tokenUsageFuture.onComplete(ignore -> {
+
+            HttpServerResponse response = context.getResponse();
+            responseStream.end(response);
 
             proxy.getLogStore().save(context);
 
@@ -529,7 +538,7 @@ public class DeploymentPostController {
     }
 
     private void finalizeRequest() {
-        proxy.getTokenStatsTracker().endSpan(context);
+        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)

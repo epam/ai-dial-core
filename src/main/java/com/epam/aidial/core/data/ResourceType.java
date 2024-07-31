@@ -7,7 +7,7 @@ public enum ResourceType {
     FILE("files"), CONVERSATION("conversations"), PROMPT("prompts"), LIMIT("limits"),
     SHARED_WITH_ME("shared_with_me"), SHARED_BY_ME("shared_by_me"), INVITATION("invitations"),
     PUBLICATION("publications"), RULES("rules"), API_KEY_DATA("api_key_data"), NOTIFICATION("notifications"),
-    APPLICATION("applications");
+    APPLICATION("applications"), DEPLOYMENT_COST_STATS("deployment_cost_stats");
 
     private final String group;
 
