@@ -1,13 +1,15 @@
 package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.data.AutoSharedData;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.Prompt;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.util.Set;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -122,15 +124,15 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
+        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY)));
 
         assertEquals(
-                Set.of(
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1"
+                Map.of(
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1", new AutoSharedData(ResourceAccessType.READ_ONLY)
                 ),
                 apiKeyData.getAttachedFiles()
         );
@@ -164,7 +166,7 @@ public class ProxyUtilTest {
         ApiKeyData apiKeyData = new ApiKeyData();
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link)));
+                () -> ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY))));
 
         assertEquals("Url of metadata attachment must start with metadata/: metadatata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore", error.getMessage());
     }
@@ -201,12 +203,12 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
+        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY)));
 
         assertEquals(
-                Set.of(
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4"
+                Map.of(
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4", new AutoSharedData(ResourceAccessType.READ_ONLY)
                 ),
                 apiKeyData.getAttachedFiles()
         );
@@ -223,7 +225,7 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
+        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY)));
 
         assertTrue(apiKeyData.getAttachedFiles().isEmpty());
     }

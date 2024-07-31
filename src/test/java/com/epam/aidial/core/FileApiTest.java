@@ -1,6 +1,7 @@
 package com.epam.aidial.core;
 
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.data.AutoSharedData;
 import com.epam.aidial.core.data.Bucket;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.IntStream;
 
@@ -687,7 +689,7 @@ public class FileApiTest extends ResourceBaseTest {
         apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
-        apiKeyData1.setAttachedFiles(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt"));
+        apiKeyData1.setAttachedFiles(Map.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/file.txt", new AutoSharedData(ResourceAccessType.READ_ONLY)));
         apiKeyStore.assignPerRequestApiKey(apiKeyData1);
 
         String apiKey1 = apiKeyData1.getPerRequestKey();
@@ -757,7 +759,7 @@ public class FileApiTest extends ResourceBaseTest {
         apiKeyData1.setOriginalKey(projectApiKeyData.getOriginalKey());
         // set deployment ID for proxyKey1
         apiKeyData1.setSourceDeployment("EPM-RTC-GPT");
-        apiKeyData1.setAttachedFolders(List.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/"));
+        apiKeyData1.setAttachedFolders(Map.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/", new AutoSharedData(ResourceAccessType.READ_ONLY)));
         apiKeyStore.assignPerRequestApiKey(apiKeyData1);
 
         String apiKey1 = apiKeyData1.getPerRequestKey();

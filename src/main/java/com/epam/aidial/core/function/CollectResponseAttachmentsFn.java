@@ -3,17 +3,20 @@ package com.epam.aidial.core.function;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.data.AutoSharedData;
+import com.epam.aidial.core.data.ResourceAccessType;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
-import java.net.URI;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static com.epam.aidial.core.util.ProxyUtil.collectAttachedFile;
@@ -90,28 +93,24 @@ public class CollectResponseAttachmentsFn extends BaseResponseFunction {
         }
         for (String url : collectedUrls) {
             if (BlobStorageUtil.isFolder(url)) {
-                apiKeyData.getAttachedFolders().add(url);
+                apiKeyData.getAttachedFolders().put(url, new AutoSharedData(ResourceAccessType.ALL));
             } else {
-                apiKeyData.getAttachedFiles().add(url);
+                apiKeyData.getAttachedFiles().put(url, new AutoSharedData(ResourceAccessType.ALL));
             }
         }
         return ProxyUtil.convertToString(apiKeyData);
     }
 
     private void processAttachedFile(String url, Set<String> collectedUrls) {
-        if (isAbsolute(url)) {
+        ResourceDescription resource = ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
+        if (resource == null) {
             return;
         }
-        collectedUrls.add(url);
-    }
-
-    @SneakyThrows
-    private boolean isAbsolute(String url) {
-        if (url == null) {
-            return false;
+        Map<ResourceDescription, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(resource),
+                context, context.getDeployment().getName());
+        if (result.containsKey(resource)) {
+            collectedUrls.add(url);
         }
-        URI uri = new URI(url);
-        return uri.isAbsolute();
     }
 
 }

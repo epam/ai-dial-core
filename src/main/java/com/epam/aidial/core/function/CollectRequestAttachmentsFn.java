@@ -3,6 +3,8 @@ package com.epam.aidial.core.function;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.data.AutoSharedData;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
@@ -13,6 +15,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URI;
+import java.util.Set;
 
 /**
  * Collects attached files from the chat completion request and puts the result to API key data.
@@ -48,7 +51,7 @@ public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode>
     }
 
     private void processAttachedFile(String url) {
-        ResourceDescription resource = getResourceDescription(url);
+        ResourceDescription resource = ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
         if (resource == null) {
             return;
         }
@@ -56,27 +59,15 @@ public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode>
         ApiKeyData sourceApiKeyData = context.getApiKeyData();
         ApiKeyData destApiKeyData = context.getProxyApiKeyData();
         AccessService accessService = proxy.getAccessService();
-        if (sourceApiKeyData.getAttachedFiles().contains(resourceUrl) || accessService.hasReadAccess(resource, context)) {
+        if (sourceApiKeyData.getAttachedFiles().containsKey(resourceUrl) || accessService.hasReadAccess(resource, context)) {
             if (resource.isFolder()) {
-                destApiKeyData.getAttachedFolders().add(resourceUrl);
+                destApiKeyData.getAttachedFolders().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
             } else {
-                destApiKeyData.getAttachedFiles().add(resourceUrl);
+                destApiKeyData.getAttachedFiles().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
             }
         } else {
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
         }
     }
 
-    @SneakyThrows
-    private ResourceDescription getResourceDescription(String url) {
-        if (url == null) {
-            return null;
-        }
-        URI uri = new URI(url);
-        if (uri.isAbsolute()) {
-            // skip public resource
-            return null;
-        }
-        return ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
-    }
 }

@@ -6,8 +6,10 @@ import com.epam.aidial.core.util.UrlUtil;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -200,7 +202,16 @@ public class ResourceDescription {
         return description;
     }
 
+    @SneakyThrows
     public static ResourceDescription fromAnyUrl(String url, EncryptionService encryption) {
+        if (url == null) {
+            return null;
+        }
+        URI uri = new URI(url);
+        if (uri.isAbsolute()) {
+            // skip public resource
+            return null;
+        }
         return fromUrl(url, null, null, encryption);
     }
 
