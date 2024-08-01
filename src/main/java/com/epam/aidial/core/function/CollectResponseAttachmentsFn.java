@@ -58,7 +58,7 @@ public class CollectResponseAttachmentsFn extends BaseResponseFunction {
     }
 
     private void processAttachedFile(String url, Set<String> collectedUrls) {
-        ResourceDescription resource = ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
+        ResourceDescription resource = fromAnyUrl(url, proxy.getEncryptionService());
         if (resource == null) {
             return;
         }

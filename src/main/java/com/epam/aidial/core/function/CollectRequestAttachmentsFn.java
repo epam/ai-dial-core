@@ -47,7 +47,7 @@ public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode>
     }
 
     private void processAttachedFile(String url) {
-        ResourceDescription resource = ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
+        ResourceDescription resource = fromAnyUrl(url, proxy.getEncryptionService());
         if (resource == null) {
             return;
         }
