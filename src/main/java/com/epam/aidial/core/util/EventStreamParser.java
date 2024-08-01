@@ -114,10 +114,11 @@ public class EventStreamParser {
             }
             try (CharBufferReader reader = toCharBufferReader()) {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(reader);
-                Future<Void> future = handler.apply(tree);
+                Future<Void> future = handler.apply(tree)
+                        .onFailure(error -> log.warn("Error occurred at handling json data from chunk", error));
                 futures.add(future);
             } catch (Throwable e) {
-                log.error("Error occurred at handling json data from chunk", e);
+                log.error("Error occurred at parsing json data from chunk", e);
             } finally {
                 buffer.clear();
                 stage = Stages.EOL;

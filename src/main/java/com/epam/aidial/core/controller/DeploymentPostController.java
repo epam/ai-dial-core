@@ -66,8 +66,6 @@ public class DeploymentPostController {
     private final CustomApplicationService applicationService;
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
-    private final CollectResponseAttachmentsFn collectResponseAttachmentsFn;
-
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
@@ -77,7 +75,6 @@ public class DeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context));
-        this.collectResponseAttachmentsFn = new CollectResponseAttachmentsFn(proxy, context);
     }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
@@ -349,7 +346,7 @@ public class DeploymentPostController {
             return;
         }
 
-        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? collectResponseAttachmentsFn : null;
+        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseAttachmentsFn(proxy, context) : null;
 
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024), handler);
@@ -387,6 +384,26 @@ public class DeploymentPostController {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
+        Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
+
+        Future<Void> handleResponseFuture = tokenUsageFuture.transform(result -> {
+            if (result.failed()) {
+                log.warn("Failed to collect token usage. Trace: {}. Span: {}",
+                        context.getTraceId(), context.getSpanId(), result.cause());
+            }
+            return collectResponseAttachments(responseBody);
+        });
+
+        handleResponseFuture.onComplete(result -> {
+            if (result.failed()) {
+                log.warn("Failed to collect attachments from response. Trace: {}. Span: {}",
+                        context.getTraceId(), context.getSpanId(), result.cause());
+            }
+            completeProxyResponse(responseStream);
+        });
+    }
+
+    private Future<TokenUsage> collectTokenUsage(Buffer responseBody) {
         Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
@@ -420,47 +437,46 @@ public class DeploymentPostController {
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
+        return tokenUsageFuture;
+    }
 
-        Future<Void> handleResponseFuture;
+    private Future<Void> collectResponseAttachments(Buffer responseBody) {
         if (context.isStreamingRequest()) {
-            handleResponseFuture = tokenUsageFuture.map(result -> null);
-        } else {
-            handleResponseFuture = tokenUsageFuture.transform(result -> {
-                try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
-                    ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-                    return collectResponseAttachmentsFn.apply(tree);
-                } catch (IOException e) {
-                    log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
-                            context.getTraceId(), context.getSpanId(), e);
-                    return Future.failedFuture(e);
-                }
-            });
+            return Future.succeededFuture();
         }
+        try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+            var fn = new CollectResponseAttachmentsFn(proxy, context);
+            return fn.apply(tree);
+        } catch (IOException e) {
+            log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
+                    context.getTraceId(), context.getSpanId(), e);
+            return Future.failedFuture(e);
+        }
+    }
 
-        handleResponseFuture.onComplete(ignore -> {
+    private void completeProxyResponse(BufferingReadStream responseStream) {
+        HttpServerResponse response = context.getResponse();
+        responseStream.end(response);
 
-            HttpServerResponse response = context.getResponse();
-            responseStream.end(response);
+        proxy.getLogStore().save(context);
 
-            proxy.getLogStore().save(context);
+        log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
+                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                context.getDeployment().getEndpoint(),
+                context.getUpstreamRoute().get().getEndpoint(),
+                context.getResponse().getStatusCode(),
+                context.getResponseBody().length(),
+                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
 
-            log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
-                     + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
-                    context.getTraceId(), context.getSpanId(),
-                    context.getProject(), context.getDeployment().getName(),
-                    context.getDeployment().getEndpoint(),
-                    context.getUpstreamRoute().get().getEndpoint(),
-                    context.getResponse().getStatusCode(),
-                    context.getResponseBody().length(),
-                    context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
-                    context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
-                    context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
-                    context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
-                    context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                    context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
-
-            finalizeRequest();
-        });
+        finalizeRequest();
     }
 
     /**
