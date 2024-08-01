@@ -65,7 +65,7 @@ public class CollectResponseAttachmentsFn extends BaseResponseFunction {
         Map<ResourceDescription, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(resource),
                 context, context.getDeployment().getName());
         if (result.containsKey(resource)) {
-            collectedUrls.add(url);
+            collectedUrls.add(resource.getUrl());
         }
     }
 
