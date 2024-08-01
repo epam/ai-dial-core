@@ -62,6 +62,8 @@ public class CollectResponseAttachmentsFn extends BaseResponseFunction {
         if (resource == null) {
             return;
         }
+        // Note. permission check: make sure that the target deployment has access to the resource only
+        // we don't check other permissions like admin, share or publishing access since we give full permissions to the source deployment
         Map<ResourceDescription, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(resource),
                 context, context.getDeployment().getName());
         if (result.containsKey(resource)) {
