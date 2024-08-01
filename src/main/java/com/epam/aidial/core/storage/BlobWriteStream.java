@@ -132,9 +132,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     }
 
                     String newEtag = etagBuilder.append(lastChunk.nioBuffer()).build();
-                    metadata = (FileMetadata) new FileMetadata(resource, bytesHandled, contentType).setEtag(newEtag);
-                    mpu.blobMetadata().getUserMetadata().put(ResourceUtil.ETAG_ATTRIBUTE, newEtag);
-                    resourceService.finishFileUpload(resource, mpu, parts, etag);
+                    ResourceService.MultipartData multipartData = new ResourceService.MultipartData(
+                            mpu, parts, contentType, bytesHandled, newEtag);
+                    metadata = resourceService.finishFileUpload(resource, multipartData, etag);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 
