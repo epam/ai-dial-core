@@ -1,12 +1,16 @@
 package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.AutoSharedData;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.security.ExtractedClaims;
 import lombok.Data;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -32,8 +36,8 @@ public class ApiKeyData {
     // OpenTelemetry span ID created by the Core
     private String spanId;
     // list of attached file URLs collected from conversation history of the current request
-    private Set<String> attachedFiles = new HashSet<>();
-    private List<String> attachedFolders = new ArrayList<>();
+    private Map<String, AutoSharedData> attachedFiles = new HashMap<>();
+    private Map<String, AutoSharedData> attachedFolders = new HashMap<>();
     // deployment name of the source(application/assistant/model/interceptor) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request

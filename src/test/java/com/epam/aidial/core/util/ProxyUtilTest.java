@@ -1,12 +1,17 @@
 package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.data.AutoSharedData;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.Prompt;
+import com.epam.aidial.core.data.ResourceAccessType;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -122,15 +127,15 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
+        ProxyUtil.collectAttachedFilesFromRequest(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY)));
 
         assertEquals(
-                Set.of(
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1"
+                Map.of(
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1", new AutoSharedData(ResourceAccessType.READ_ONLY)
                 ),
                 apiKeyData.getAttachedFiles()
         );
@@ -164,7 +169,7 @@ public class ProxyUtilTest {
         ApiKeyData apiKeyData = new ApiKeyData();
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link)));
+                () -> ProxyUtil.collectAttachedFilesFromRequest(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY))));
 
         assertEquals("Url of metadata attachment must start with metadata/: metadatata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore", error.getMessage());
     }
@@ -201,12 +206,12 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
+        ProxyUtil.collectAttachedFilesFromRequest(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY)));
 
         assertEquals(
-                Set.of(
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png",
-                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4"
+                Map.of(
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4", new AutoSharedData(ResourceAccessType.READ_ONLY)
                 ),
                 apiKeyData.getAttachedFiles()
         );
@@ -223,7 +228,7 @@ public class ProxyUtilTest {
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyUtil.collectAttachedFiles(tree, link -> apiKeyData.getAttachedFiles().add(link));
+        ProxyUtil.collectAttachedFilesFromRequest(tree, link -> apiKeyData.getAttachedFiles().put(link, new AutoSharedData(ResourceAccessType.READ_ONLY)));
 
         assertTrue(apiKeyData.getAttachedFiles().isEmpty());
     }
@@ -337,6 +342,112 @@ public class ProxyUtilTest {
 
         error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject("12345", Conversation.class));
         assertEquals("Provided payload do not match required schema", error.getMessage());
+    }
+
+    @Test
+    public void testCollectAttachmentsFromResponse_ChatSingleResponse() throws JsonProcessingException {
+        String response = """
+                {
+                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
+                  "object": "chat.completion",
+                  "created": 1687781517,
+                  "model": "gpt-35-turbo",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "finish_reason": "stop",
+                      "message": {
+                        "role": "assistant",
+                        "content": "some text",
+                        "custom_content": {
+                           "attachments": [
+                              {
+                               "type": "application/octet-stream",
+                               "title": "LICENSE",
+                               "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt"
+                              },
+                              {
+                                "type": "application/octet-stream",
+                                "title": "LICENSE",
+                                "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"
+                              }
+                           ]
+                        }
+                      }
+                    }
+                  ],
+                  "usage" : {
+                    "junk_string": "junk",
+                    "junk_integer" : 1,
+                    "junk_float" : 1.0,
+                    "junk_null" : null,
+                    "junk_true" : true,
+                    "junk_false" : false,
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  }
+                }
+                """;
+        Set<String> files =  new HashSet<>();
+        ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), false, files::add);
+
+        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt",
+                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"), files);
+
+    }
+
+    @Test
+    public void testCollectAttachmentsFromResponse_ChatStreamingResponse() throws JsonProcessingException {
+        String response = """
+                {
+                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
+                  "object": "chat.completion",
+                  "created": 1687781517,
+                  "model": "gpt-35-turbo",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "finish_reason": "stop",
+                      "delta": {
+                        "role": "assistant",
+                        "content": "some text",
+                        "custom_content": {
+                           "attachments": [
+                              {
+                               "type": "application/octet-stream",
+                               "title": "LICENSE",
+                               "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt"
+                              },
+                              {
+                                "type": "application/octet-stream",
+                                "title": "LICENSE",
+                                "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"
+                              }
+                           ]
+                        }
+                      }
+                    }
+                  ],
+                  "usage" : {
+                    "junk_string": "junk",
+                    "junk_integer" : 1,
+                    "junk_float" : 1.0,
+                    "junk_null" : null,
+                    "junk_true" : true,
+                    "junk_false" : false,
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  }
+                }
+                """;
+        Set<String> files =  new HashSet<>();
+        ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), true, files::add);
+
+        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt",
+                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"), files);
+
     }
 
 }

@@ -3,8 +3,8 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
-import com.epam.aidial.core.function.BaseFunction;
-import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.function.BaseRequestFunction;
+import com.epam.aidial.core.function.CollectRequestAttachmentsFn;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -31,12 +31,12 @@ public class InterceptorController {
     private final Proxy proxy;
     private final ProxyContext context;
 
-    private final List<BaseFunction<ObjectNode>> enhancementFunctions;
+    private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
     public InterceptorController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context));
+        this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context));
     }
 
     public Future<?> handle() {

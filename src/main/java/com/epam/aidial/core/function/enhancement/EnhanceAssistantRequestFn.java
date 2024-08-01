@@ -8,7 +8,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.controller.DeploymentController;
-import com.epam.aidial.core.function.BaseFunction;
+import com.epam.aidial.core.function.BaseRequestFunction;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Set;
 
 @Slf4j
-public class EnhanceAssistantRequestFn extends BaseFunction<ObjectNode> {
+public class EnhanceAssistantRequestFn extends BaseRequestFunction<ObjectNode> {
     public EnhanceAssistantRequestFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }

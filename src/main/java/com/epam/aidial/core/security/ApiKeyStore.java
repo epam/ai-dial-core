@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
 import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
@@ -58,6 +59,19 @@ public class ApiKeyStore {
         if (resourceService.putResource(resource, json, EtagHeader.ANY, false, false) == null) {
             throw new IllegalStateException(String.format("API key %s already exists in the storage", perRequestKey));
         }
+    }
+
+    public Future<Void> updatePerRequestApiKey(String key, Function<String, String> fn) {
+        if (key == null) {
+            IllegalArgumentException error = new IllegalArgumentException("Per request API key is undefined");
+            log.error("Error occurred at updating api key data: per request API key is undefined");
+            return Future.failedFuture(error);
+        }
+        ResourceDescription resource = toResource(key);
+        return vertx.executeBlocking(() -> {
+            resourceService.computeResource(resource, fn);
+            return null;
+        }, false);
     }
 
     /**

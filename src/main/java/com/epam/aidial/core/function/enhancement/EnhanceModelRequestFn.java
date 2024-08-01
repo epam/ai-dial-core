@@ -4,7 +4,7 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.function.BaseFunction;
+import com.epam.aidial.core.function.BaseRequestFunction;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,7 +12,7 @@ import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class EnhanceModelRequestFn extends BaseFunction<ObjectNode> {
+public class EnhanceModelRequestFn extends BaseRequestFunction<ObjectNode> {
     public EnhanceModelRequestFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }

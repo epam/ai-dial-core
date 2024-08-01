@@ -3,7 +3,7 @@ package com.epam.aidial.core.function.enhancement;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.function.BaseFunction;
+import com.epam.aidial.core.function.BaseRequestFunction;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -14,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 
 @Slf4j
-public class ApplyDefaultDeploymentSettingsFn extends BaseFunction<ObjectNode> {
+public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<ObjectNode> {
     public ApplyDefaultDeploymentSettingsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
