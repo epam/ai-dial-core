@@ -16,11 +16,7 @@ public class RequestRateLimit {
 
         boolean result = hourTotal >= limit.getRequestHour() || dayTotal >= limit.getRequestDay();
         if (result) {
-            String errorMsg = String.format("""
-                            Hit request rate limit:
-                             - hour limit: %d / %d requests
-                             - day limit: %d / %d requests
-                            """,
+            String errorMsg = String.format("Hit request rate limit. Hour limit: %d / %d requests. Day limit: %d / %d requests.",
                     hourTotal, limit.getRequestHour(), dayTotal, limit.getRequestDay());
             return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg);
         } else {
