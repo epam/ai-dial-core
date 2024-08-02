@@ -58,6 +58,7 @@ import java.util.function.Function;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.util.ResourceUtil.CREATED_AT_ATTRIBUTE;
+import static com.epam.aidial.core.util.ResourceUtil.ETAG_ATTRIBUTE;
 import static com.epam.aidial.core.util.ResourceUtil.UPDATED_AT_ATTRIBUTE;
 
 @Slf4j
@@ -184,27 +185,29 @@ public class ResourceService implements AutoCloseable {
                 return new ResourceFolderMetadata(description);
             }
 
-            if (description.getType() == ResourceType.FILE) {
-                return BlobStorage.buildFileMetadata(description, (BlobMetadata) meta);
-            } else {
-                Long createdAt = null;
-                Long updatedAt = null;
+            Long createdAt = null;
+            Long updatedAt = null;
 
-                if (metadata != null) {
-                    createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
-                    updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
-                }
-
-                if (createdAt == null && meta.getCreationDate() != null) {
-                    createdAt = meta.getCreationDate().getTime();
-                }
-
-                if (updatedAt == null && meta.getLastModified() != null) {
-                    updatedAt = meta.getLastModified().getTime();
-                }
-
-                return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+            if (metadata != null) {
+                createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
+                updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
             }
+
+            if (createdAt == null && meta.getCreationDate() != null) {
+                createdAt = meta.getCreationDate().getTime();
+            }
+
+            if (updatedAt == null && meta.getLastModified() != null) {
+                updatedAt = meta.getLastModified().getTime();
+            }
+
+            if (description.getType() == ResourceType.FILE) {
+                return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
+                        .setCreatedAt(createdAt)
+                        .setUpdatedAt(updatedAt);
+            }
+
+            return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
         }).toList();
 
         return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
@@ -244,6 +247,8 @@ public class ResourceService implements AutoCloseable {
     private static FileMetadata toFileMetadata(
             ResourceDescription resource, Result result) {
         return (FileMetadata) new FileMetadata(resource, result.contentLength(), result.contentType())
+                .setCreatedAt(result.createdAt)
+                .setUpdatedAt(result.updatedAt)
                 .setEtag(result.etag());
     }
 
@@ -409,8 +414,8 @@ public class ResourceService implements AutoCloseable {
         return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
     }
 
-    public void finishFileUpload(
-            ResourceDescription descriptor, MultipartUpload multipartUpload, List<MultipartPart> parts, EtagHeader etag) {
+    public FileMetadata finishFileUpload(
+            ResourceDescription descriptor, MultipartData multipartData, EtagHeader etag) {
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
@@ -419,12 +424,23 @@ public class ResourceService implements AutoCloseable {
             }
 
             flushToBlobStore(redisKey);
-            blobStore.completeMultipartUpload(multipartUpload, parts);
+            Long updatedAt = time();
+            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            MultipartUpload multipartUpload = multipartData.multipartUpload;
+            Map<String, String> userMetadata = multipartUpload.blobMetadata().getUserMetadata();
+            userMetadata.putAll(toUserMetadata(multipartData.etag, createdAt, updatedAt));
+            blobStore.completeMultipartUpload(multipartUpload, multipartData.parts);
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, time());
+            publishEvent(descriptor, action, updatedAt);
+
+            return (FileMetadata) new FileMetadata(
+                    descriptor, multipartData.contentLength, multipartData.contentType)
+                    .setCreatedAt(createdAt)
+                    .setUpdatedAt(updatedAt)
+                    .setEtag(multipartData.etag);
         }
     }
 
@@ -599,6 +615,15 @@ public class ResourceService implements AutoCloseable {
                 ? Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE))
                 : null;
 
+        // Get times from blob metadata if available for files that didn't store it in user metadata
+        if (createdAt == null && meta.getCreationDate() != null) {
+            createdAt = meta.getCreationDate().getTime();
+        }
+
+        if (updatedAt == null && meta.getLastModified() != null) {
+            updatedAt = meta.getLastModified().getTime();
+        }
+
         byte[] body = ArrayUtils.EMPTY_BYTE_ARRAY;
 
         if (blob != null) {
@@ -622,15 +647,7 @@ public class ResourceService implements AutoCloseable {
             bytes = Compression.compress(encoding, bytes);
         }
 
-        Map<String, String> metadata = new HashMap<>();
-        metadata.put(ResourceUtil.ETAG_ATTRIBUTE, result.etag);
-        if (result.createdAt != null) {
-            metadata.put(ResourceUtil.CREATED_AT_ATTRIBUTE, Long.toString(result.createdAt));
-        }
-        if (result.updatedAt != null) {
-            metadata.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, Long.toString(result.updatedAt));
-        }
-
+        Map<String, String> metadata = toUserMetadata(result.etag, result.createdAt, result.updatedAt);
         blobStore.store(key, result.contentType, encoding, metadata, bytes);
     }
 
@@ -740,6 +757,19 @@ public class ResourceService implements AutoCloseable {
         return metadata.getEtag();
     }
 
+    private static Map<String, String> toUserMetadata(String etag, Long createdAt, Long updatedAt) {
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put(ResourceUtil.ETAG_ATTRIBUTE, etag);
+        if (createdAt != null) {
+            metadata.put(ResourceUtil.CREATED_AT_ATTRIBUTE, Long.toString(createdAt));
+        }
+        if (updatedAt != null) {
+            metadata.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, Long.toString(updatedAt));
+        }
+
+        return metadata;
+    }
+
     @Builder
     private record Result(
             byte[] body,
@@ -781,5 +811,13 @@ public class ResourceService implements AutoCloseable {
                     item.contentType(),
                     item.body.length);
         }
+    }
+
+    public record MultipartData(
+            MultipartUpload multipartUpload,
+            List<MultipartPart> parts,
+            String contentType,
+            long contentLength,
+            String etag) {
     }
 }
