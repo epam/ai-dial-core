@@ -2,7 +2,7 @@ package com.epam.aidial.core.util;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.function.BaseFunction;
+import com.epam.aidial.core.function.BaseRequestFunction;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -92,7 +92,47 @@ public class ProxyUtil {
         return defaultValue;
     }
 
-    public static void collectAttachedFiles(ObjectNode tree, Consumer<String> consumer) {
+    public static void collectAttachmentsFromResponse(ObjectNode tree, boolean isStream, Consumer<String> consumer) {
+        ArrayNode choices = (ArrayNode) tree.get("choices");
+        if (choices == null) {
+            return;
+        }
+        for (int i = 0; i < choices.size(); i++) {
+            JsonNode choice = choices.get(i);
+            String messageNodeName = isStream ? "delta" : "message";
+            JsonNode message = choice.get(messageNodeName);
+            if (message == null) {
+                continue;
+            }
+            JsonNode customContent = message.get("custom_content");
+            if (customContent == null) {
+                continue;
+            }
+            ArrayNode attachments = (ArrayNode) customContent.get("attachments");
+            if (attachments != null) {
+                for (int j = 0; j < attachments.size(); j++) {
+                    JsonNode attachment = attachments.get(j);
+                    collectAttachedFile(attachment, consumer);
+                }
+            }
+            ArrayNode stages = (ArrayNode) customContent.get("stages");
+            if (stages != null) {
+                for (int j = 0; j < stages.size(); j++) {
+                    JsonNode stage = stages.get(j);
+                    attachments = (ArrayNode) stage.get("attachments");
+                    if (attachments == null) {
+                        continue;
+                    }
+                    for (int k = 0; k < attachments.size(); k++) {
+                        JsonNode attachment = attachments.get(k);
+                        collectAttachedFile(attachment, consumer);
+                    }
+                }
+            }
+        }
+    }
+
+    public static void collectAttachedFilesFromRequest(ObjectNode tree, Consumer<String> consumer) {
         collectAttachedFilesChatCompletion(tree, consumer);
         collectAttachedFilesEmbeddings(tree, consumer);
     }
@@ -156,7 +196,7 @@ public class ProxyUtil {
         }
     }
 
-    private static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
+    public static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
         JsonNode urlNode = attachment.get("url");
         if (urlNode == null) {
             return;
@@ -238,8 +278,8 @@ public class ProxyUtil {
         return convertToString(data, false);
     }
 
-    public static <T> Throwable processChain(T item, List<BaseFunction<T>> chain) {
-        for (BaseFunction<T> fn : chain) {
+    public static <T> Throwable processChain(T item, List<BaseRequestFunction<T>> chain) {
+        for (BaseRequestFunction<T> fn : chain) {
             Throwable error = fn.apply(item);
             if (error != null) {
                 return error;

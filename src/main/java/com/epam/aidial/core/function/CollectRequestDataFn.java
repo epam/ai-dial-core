@@ -5,7 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-public class CollectRequestDataFn extends BaseFunction<ObjectNode> {
+public class CollectRequestDataFn extends BaseRequestFunction<ObjectNode> {
     public CollectRequestDataFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }

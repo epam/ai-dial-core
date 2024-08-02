@@ -2,12 +2,16 @@ package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.data.AutoSharedData;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
+import org.apache.commons.lang3.mutable.MutableObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -170,5 +174,29 @@ public class ApiKeyStoreTest {
         store.invalidatePerRequestApiKey(apiKeyData);
 
         assertNull(store.getApiKeyData(apiKeyData.getPerRequestKey()));
+    }
+
+    @Test
+    public void testUpdateApiKey() {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignPerRequestApiKey(apiKeyData);
+
+        assertNotNull(apiKeyData.getPerRequestKey());
+        MutableObject<ApiKeyData> ref = new MutableObject<>();
+
+        store.updatePerRequestApiKey(apiKeyData.getPerRequestKey(), json -> {
+            ApiKeyData current = ProxyUtil.convertToObject(json, ApiKeyData.class);
+            current.getAttachedFiles().put("a/b/c/file.txt", new AutoSharedData(ResourceAccessType.READ_ONLY));
+            ref.setValue(current);
+            return ProxyUtil.convertToString(current);
+        });
+
+        Future<ApiKeyData> res1  = store.getApiKeyData(apiKeyData.getPerRequestKey());
+        assertNotNull(res1);
+        assertEquals(ref.getValue(), res1.result());
     }
 }
