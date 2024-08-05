@@ -71,8 +71,7 @@ public class EtagHeader {
         }
 
         if (value != null) {
-            throw new HttpException(
-                    HttpStatus.BAD_REQUEST, "Only * is supported for header " + HttpHeaders.IF_NONE_MATCH);
+            throw new HttpException(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
         }
 
         return true;
