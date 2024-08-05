@@ -11,7 +11,7 @@ import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.token.TokenUsage;
-import com.epam.aidial.core.upstream.UpstreamBalancer;
+import com.epam.aidial.core.upstream.LoadBalancerProvider;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
@@ -145,11 +145,11 @@ public class DeploymentPostControllerTest {
         application.setName("app1");
         config.getApplications().put("app1", application);
         when(context.getConfig()).thenReturn(config);
-        UpstreamBalancer balancer = mock(UpstreamBalancer.class);
-        when(proxy.getUpstreamBalancer()).thenReturn(balancer);
+        LoadBalancerProvider balancerProvider = mock(LoadBalancerProvider.class);
+        when(proxy.getLoadBalancerProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancer.balance(any(UpstreamProvider.class))).thenReturn(endpointRoute);
-        when(endpointRoute.hasNext()).thenReturn(false);
+        when(balancerProvider.get(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(endpointRoute.available()).thenReturn(false);
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
@@ -172,11 +172,11 @@ public class DeploymentPostControllerTest {
         application.setName("app1");
         config.getApplications().put("app1", application);
         when(context.getConfig()).thenReturn(config);
-        UpstreamBalancer balancer = mock(UpstreamBalancer.class);
-        when(proxy.getUpstreamBalancer()).thenReturn(balancer);
+        LoadBalancerProvider balancerProvider = mock(LoadBalancerProvider.class);
+        when(proxy.getLoadBalancerProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancer.balance(any(UpstreamProvider.class))).thenReturn(endpointRoute);
-        when(endpointRoute.hasNext()).thenReturn(true);
+        when(balancerProvider.get(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(endpointRoute.available()).thenReturn(true);
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
@@ -226,7 +226,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_OverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.hasNext()).thenReturn(true);
+        when(upstreamRoute.available()).thenReturn(true);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -263,7 +263,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_NotOverrideModelName() {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.hasNext()).thenReturn(true);
+        when(upstreamRoute.available()).thenReturn(true);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -386,11 +386,11 @@ public class DeploymentPostControllerTest {
         application.setName("applications/bucket/app1");
         when(proxy.getVertx()).thenReturn(vertx);
         when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
-        UpstreamBalancer balancer = mock(UpstreamBalancer.class);
-        when(proxy.getUpstreamBalancer()).thenReturn(balancer);
+        LoadBalancerProvider balancerProvider = mock(LoadBalancerProvider.class);
+        when(proxy.getLoadBalancerProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancer.balance(any(UpstreamProvider.class))).thenReturn(endpointRoute);
-        when(endpointRoute.hasNext()).thenReturn(true);
+        when(balancerProvider.get(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(endpointRoute.available()).thenReturn(true);
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);

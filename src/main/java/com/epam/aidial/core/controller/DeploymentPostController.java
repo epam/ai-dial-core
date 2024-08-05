@@ -186,10 +186,10 @@ public class DeploymentPostController {
                 context.getRequest().headers().size());
 
         UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(context.getDeployment());
-        UpstreamRoute endpointRoute = proxy.getUpstreamBalancer().balance(endpointProvider);
+        UpstreamRoute endpointRoute = proxy.getLoadBalancerProvider().get(endpointProvider);
         context.setUpstreamRoute(endpointRoute);
 
-        if (!endpointRoute.hasNext()) {
+        if (!endpointRoute.available()) {
             log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), deploymentId, context.getUserSub());
@@ -236,7 +236,7 @@ public class DeploymentPostController {
         UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
 
-        if (!route.hasNext()) {
+        if (!route.available()) {
             log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), context.getDeployment().getName(), context.getUserSub());
@@ -245,7 +245,7 @@ public class DeploymentPostController {
             return;
         }
 
-        Upstream upstream = route.next();
+        Upstream upstream = route.get();
         Objects.requireNonNull(upstream);
 
         String uri = buildUri(context);
@@ -329,15 +329,25 @@ public class DeploymentPostController {
      * Called when proxy received the response headers from the origin.
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
+        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        Upstream currentUpstream = upstreamRoute.get();
         log.info("Received header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(), context.getUpstreamRoute().get().getEndpoint(),
+                context.getDeployment().getEndpoint(), currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        if (context.getUpstreamRoute().hasNext() && isRetriableError(proxyResponse.statusCode())) {
+        int responseStatusCode = proxyResponse.statusCode();
+        if (isRetriableError(responseStatusCode)) {
+            upstreamRoute.failed(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
+            // get next upstream
+            upstreamRoute.next();
             sendRequest(); // try next
             return;
+        }
+
+        if (responseStatusCode == 200) {
+            context.getUpstreamRoute().succeed();
         }
 
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
@@ -353,7 +363,7 @@ public class DeploymentPostController {
         response.setStatusCode(proxyResponse.statusCode());
 
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().used()));
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.used()));
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -363,8 +373,7 @@ public class DeploymentPostController {
     }
 
     private boolean isRetriableError(int statusCode) {
-        return context.getUpstreamRoute().hasNext()
-                && (DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode) || context.getConfig().getRetriableErrorCodes().contains(statusCode));
+        return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode) || context.getConfig().getRetriableErrorCodes().contains(statusCode);
     }
 
     /**
@@ -458,13 +467,15 @@ public class DeploymentPostController {
      * Called when proxy failed to receive response header from origin.
      */
     private void handleProxyResponseError(Throwable error) {
+        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error:",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
 
-        context.getUpstreamRoute().retry();
+        upstreamRoute.failed(HttpStatus.BAD_GATEWAY, -1);
+        upstreamRoute.next();
         sendRequest();
     }
 

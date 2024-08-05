@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.net.URL;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -48,9 +49,9 @@ public class RouteController implements Controller {
         Route.Response response = route.getResponse();
         if (response == null) {
             UpstreamProvider upstreamProvider = new RouteEndpointProvider(route);
-            UpstreamRoute upstreamRoute = proxy.getUpstreamBalancer().balance(upstreamProvider);
+            UpstreamRoute upstreamRoute = proxy.getLoadBalancerProvider().get(upstreamProvider);
 
-            if (!upstreamRoute.hasNext()) {
+            if (!upstreamRoute.available()) {
                 log.warn("RouteController can't find a upstream route to proceed the request: {}", getRequestUri());
                 context.respond(HttpStatus.BAD_GATEWAY, "No route");
                 return Future.succeededFuture();
@@ -78,12 +79,13 @@ public class RouteController implements Controller {
         UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
 
-        if (!route.hasNext()) {
+        if (!route.available()) {
             log.warn("RouteController can't find a upstream route to proceed the request: {}", getRequestUri());
             return context.respond(HttpStatus.BAD_GATEWAY, "No route");
         }
 
-        Upstream upstream = route.next();
+        Upstream upstream = route.get();
+        Objects.requireNonNull(upstream);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(upstream.getEndpoint()))
                 .setMethod(request.method());
@@ -129,12 +131,20 @@ public class RouteController implements Controller {
      * Called when proxy received the response headers from the origin.
      */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
+        int responseStatusCode = proxyResponse.statusCode();
+        log.info("Received response header from origin: status={}, headers={}", responseStatusCode,
                 proxyResponse.headers().size());
 
-        if (proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
+        if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
+            UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+            upstreamRoute.failed(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
+            upstreamRoute.next();
             sendRequest(); // try next
             return;
+        }
+
+        if (responseStatusCode == 200) {
+            context.getUpstreamRoute().succeed();
         }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
@@ -145,7 +155,7 @@ public class RouteController implements Controller {
 
         HttpServerResponse response = context.getResponse();
         response.setChunked(true);
-        response.setStatusCode(proxyResponse.statusCode());
+        response.setStatusCode(responseStatusCode);
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
 
         proxyResponseStream.pipe()
@@ -177,6 +187,9 @@ public class RouteController implements Controller {
      */
     private void handleProxyConnectionError(Throwable error) {
         log.warn("Can't connect to origin: {}", error.getMessage());
+        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        upstreamRoute.failed(HttpStatus.BAD_GATEWAY, -1);
+        upstreamRoute.next();
         sendRequest(); // try next
     }
 
@@ -185,6 +198,9 @@ public class RouteController implements Controller {
      */
     private void handleProxyRequestError(Throwable error) {
         log.warn("Can't send request to origin: {}", error.getMessage());
+        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        upstreamRoute.failed(HttpStatus.BAD_GATEWAY, -1);
+        upstreamRoute.next();
         sendRequest(); // try next
     }
 
