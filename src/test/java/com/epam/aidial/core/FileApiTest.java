@@ -1297,7 +1297,7 @@ public class FileApiTest extends ResourceBaseTest {
 
     @Test
     public void testIfMatch(Vertx vertx, VertxTestContext context) {
-        Checkpoint checkpoint = context.checkpoint(7);
+        Checkpoint checkpoint = context.checkpoint(8);
         WebClient client = WebClient.create(vertx);
         String newContent = "NEW CONTENT";
         String newEtag = "bb6ed8b95d44dba4f8e4a99ebaca9a00";
@@ -1329,6 +1329,25 @@ public class FileApiTest extends ResourceBaseTest {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
                                     assertEquals(TEST_FILE_ETAG, response.getHeader(HttpHeaders.ETAG));
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload a test file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_NONE_MATCH, "*")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT, "text/custom"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(412, response.statusCode());
+                                    assertEquals("Resource already exists", response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
