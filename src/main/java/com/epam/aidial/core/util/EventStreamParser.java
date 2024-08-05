@@ -85,7 +85,8 @@ public class EventStreamParser {
         if (futures == null) {
             return Future.succeededFuture(lastChunk);
         }
-        return Future.join(futures).transform(ignore -> Future.succeededFuture(lastChunk));
+        boolean localLastChunk = lastChunk;
+        return Future.join(futures).transform(ignore -> Future.succeededFuture(localLastChunk));
     }
 
     private void handleEventStage(Buffer chunk) {
