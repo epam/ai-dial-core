@@ -45,13 +45,15 @@ public class InterceptorController {
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        context.getRequest().body()
-                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                    handleRequestBody(body);
-                    return null;
-                }, false).onFailure(this::handleError))
-                .onFailure(this::handleRequestBodyError);
-        return Future.succeededFuture();
+        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
+            context.getRequest().body()
+                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }, false).onFailure(this::handleError))
+                    .onFailure(this::handleRequestBodyError);
+            return null;
+        });
     }
 
     private void handleError(Throwable error) {
@@ -201,6 +203,7 @@ public class InterceptorController {
     }
 
     private void finalizeRequest() {
+        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
