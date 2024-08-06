@@ -66,7 +66,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description": "My Custom Application Description"
                 }
                 """, "If-None-Match", "*");
-        verify(response, 409);
+        verify(response, 412);
 
         // verify can't create new app with provided reference
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2", null, """

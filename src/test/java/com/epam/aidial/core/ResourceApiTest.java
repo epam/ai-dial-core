@@ -39,7 +39,7 @@ class ResourceApiTest extends ResourceBaseTest {
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1, "if-none-match", "*");
-        verifyNotExact(response, 409, "Resource already exists: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+        verifyNotExact(response, 412, "Resource already exists");
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation");
         verifyJson(response, 200, CONVERSATION_BODY_1);

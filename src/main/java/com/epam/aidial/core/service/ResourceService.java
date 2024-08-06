@@ -346,14 +346,14 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescription descriptor, String body, EtagHeader etag, boolean overwrite) {
-        return putResource(descriptor, body, etag, overwrite, true);
+            ResourceDescription descriptor, String body, EtagHeader etag) {
+        return putResource(descriptor, body, etag, true);
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescription descriptor, String body, EtagHeader etag, boolean overwrite, boolean lock) {
+            ResourceDescription descriptor, String body, EtagHeader etag, boolean lock) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        return putResource(descriptor, bytes, etag, "application/json", overwrite, lock);
+        return putResource(descriptor, bytes, etag, "application/json", lock);
     }
 
     private ResourceItemMetadata putResource(
@@ -361,7 +361,6 @@ public class ResourceService implements AutoCloseable {
             byte[] body,
             EtagHeader etag,
             String contentType,
-            boolean overwrite,
             boolean lock) {
         String redisKey = redisKey(descriptor);
 
@@ -369,10 +368,6 @@ public class ResourceService implements AutoCloseable {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
             if (metadata != null) {
-                if (!overwrite) {
-                    return null;
-                }
-
                 etag.validate(metadata.getEtag());
             }
 
@@ -407,7 +402,7 @@ public class ResourceService implements AutoCloseable {
             throw new IllegalArgumentException("Expected a file, got %s".formatted(descriptor.getType()));
         }
 
-        return (FileMetadata) putResource(descriptor, body, etag, contentType, true, true);
+        return (FileMetadata) putResource(descriptor, body, etag, contentType, true);
     }
 
     public BlobWriteStream beginFileUpload(ResourceDescription descriptor, EtagHeader etag, String contentType) {
@@ -453,7 +448,7 @@ public class ResourceService implements AutoCloseable {
             if (newBody != null) {
                 // update resource only if body changed
                 if (!newBody.equals(oldBody)) {
-                    putResource(descriptor, newBody, EtagHeader.ANY, true, false);
+                    putResource(descriptor, newBody, EtagHeader.ANY, false);
                 }
             }
         }
