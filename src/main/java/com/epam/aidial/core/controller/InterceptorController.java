@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.function.BaseFunction;
 import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -44,16 +45,14 @@ public class InterceptorController {
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
-
-        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
-            context.getRequest().body()
-                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                        handleRequestBody(body);
-                        return null;
-                    }, false).onFailure(this::handleError))
-                    .onFailure(this::handleRequestBodyError);
-            return null;
-        });
+        proxy.getTokenStatsTracker().startSpan(context);
+        context.getRequest().body()
+                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    handleRequestBody(body);
+                    return null;
+                }, false).onFailure(this::handleError))
+                .onFailure(this::handleRequestBodyError);
+        return Future.succeededFuture();
     }
 
     private void handleError(Throwable error) {
@@ -81,8 +80,17 @@ public class InterceptorController {
         sendRequest();
     }
 
+
+    private static String buildUri(ProxyContext context) {
+        HttpServerRequest request = context.getRequest();
+        Deployment deployment = context.getDeployment();
+        String endpoint = deployment.getEndpoint();
+        String query = request.query();
+        return endpoint + (query == null ? "" : "?" + query);
+    }
+
     private void sendRequest() {
-        String uri = context.getDeployment().getEndpoint();
+        String uri = buildUri(context);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(context.getRequest().method());
@@ -203,7 +211,7 @@ public class InterceptorController {
     }
 
     private void finalizeRequest() {
-        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
+        proxy.getTokenStatsTracker().endSpan(context);
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
