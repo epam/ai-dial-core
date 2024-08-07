@@ -46,7 +46,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static com.epam.aidial.core.security.AccessTokenValidator.extractTokenFromHeader;
 
@@ -123,7 +122,7 @@ public class Proxy implements Handler<HttpServerRequest> {
      * Called when proxy received the request headers from a client.
      */
     private void handleRequest(HttpServerRequest request) {
-        disableCors(request);
+        enableCors(request);
 
         if (request.version() != HttpVersion.HTTP_1_1) {
             respond(request, HttpStatus.HTTP_VERSION_NOT_SUPPORTED);
@@ -204,7 +203,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                 .onComplete(ignore -> request.resume());
     }
 
-    private static void disableCors(HttpServerRequest request) {
+    private static void enableCors(HttpServerRequest request) {
         HttpServerResponse response = request.response();
         response.putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
 
