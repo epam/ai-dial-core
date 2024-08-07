@@ -23,7 +23,7 @@ import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
-import com.epam.aidial.core.upstream.LoadBalancerProvider;
+import com.epam.aidial.core.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -74,7 +74,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigStore configStore;
     private final LogStore logStore;
     private final RateLimiter rateLimiter;
-    private final LoadBalancerProvider loadBalancerProvider;
+    private final UpstreamRouteProvider upstreamRouteProvider;
     private final AccessTokenValidator tokenValidator;
     private final BlobStorage storage;
     private final EncryptionService encryptionService;

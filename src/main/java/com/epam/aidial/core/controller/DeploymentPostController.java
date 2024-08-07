@@ -186,7 +186,7 @@ public class DeploymentPostController {
                 context.getRequest().headers().size());
 
         UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(context.getDeployment());
-        UpstreamRoute endpointRoute = proxy.getLoadBalancerProvider().get(endpointProvider);
+        UpstreamRoute endpointRoute = proxy.getUpstreamRouteProvider().get(endpointProvider);
         context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.available()) {
@@ -339,7 +339,7 @@ public class DeploymentPostController {
 
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
-            upstreamRoute.failed(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
+            upstreamRoute.fail(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
             // get next upstream
             upstreamRoute.next();
             sendRequest(); // try next
@@ -347,7 +347,9 @@ public class DeploymentPostController {
         }
 
         if (responseStatusCode == 200) {
-            context.getUpstreamRoute().succeed();
+            upstreamRoute.succeed();
+        } else if (isFailedStatusCode(responseStatusCode)) {
+            upstreamRoute.fail(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
         }
 
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
@@ -374,6 +376,10 @@ public class DeploymentPostController {
 
     private boolean isRetriableError(int statusCode) {
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode) || context.getConfig().getRetriableErrorCodes().contains(statusCode);
+    }
+
+    private static boolean isFailedStatusCode(int statusCode) {
+        return statusCode == 429 || statusCode >= 500;
     }
 
     /**
@@ -474,7 +480,7 @@ public class DeploymentPostController {
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
 
-        upstreamRoute.failed(HttpStatus.BAD_GATEWAY, -1);
+        upstreamRoute.fail(HttpStatus.BAD_GATEWAY, -1);
         upstreamRoute.next();
         sendRequest();
     }

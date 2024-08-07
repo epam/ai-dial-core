@@ -3,6 +3,7 @@ package com.epam.aidial.core.upstream;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.http.HttpClientResponse;
+import lombok.extern.slf4j.Slf4j;
 
 import javax.annotation.Nullable;
 
@@ -22,7 +23,10 @@ import javax.annotation.Nullable;
  * }
  * </pre>
  */
+@Slf4j
 public class UpstreamRoute {
+
+    private static final long DEFAULT_RETRY_AFTER_SECONDS_VALUE = 30;
 
     private final LoadBalancer<UpstreamState> balancer;
     /**
@@ -40,7 +44,7 @@ public class UpstreamRoute {
     public UpstreamRoute(LoadBalancer<UpstreamState> balancer, int maxRetries) {
         this.balancer = balancer;
         this.maxRetries = maxRetries;
-        this.upstreamState = balancer.get();
+        this.upstreamState = balancer.next();
     }
 
     /**
@@ -51,19 +55,12 @@ public class UpstreamRoute {
     }
 
     /**
-     * @return the number of retries due to connection errors.
-     */
-    public int retries() {
-        return Math.min(retries, maxRetries);
-    }
-
-    /**
      * Checks if upstream present (not null) and retry count does not exceed max retry attempts
      *
      * @return true if upstream available, false otherwise
      */
     public boolean available() {
-        return upstreamState != null && retries <= maxRetries;
+        return upstreamState != null && retries < maxRetries;
     }
 
     /**
@@ -72,7 +69,7 @@ public class UpstreamRoute {
     @Nullable
     public Upstream next() {
         retries++;
-        UpstreamState upstreamState = balancer.get();
+        UpstreamState upstreamState = balancer.next();
         this.upstreamState = upstreamState;
         return upstreamState == null ? null : upstreamState.getUpstream();
     }
@@ -91,7 +88,7 @@ public class UpstreamRoute {
      * @param status - response http status; typically, 5xx or 429
      * @param retryAfterSeconds - the amount of seconds after which upstream should be available; if status 5xx this value ignored
      */
-    public void failed(HttpStatus status, long retryAfterSeconds) {
+    public void fail(HttpStatus status, long retryAfterSeconds) {
         if (upstreamState == null) {
             return;
         }
@@ -110,12 +107,15 @@ public class UpstreamRoute {
      * @return the amount of seconds after which upstream should be available
      */
     public static long calculateRetryAfterSeconds(HttpClientResponse response) {
-        long retryAfterSeconds = 30;
-        String retryAfterHeaderValue = response.getHeader("Retry-After");
-        if (retryAfterHeaderValue != null) {
-            retryAfterSeconds = Long.parseLong(retryAfterHeaderValue);
+        try {
+            String retryAfterHeaderValue = response.getHeader("Retry-After");
+            if (retryAfterHeaderValue != null) {
+                return Long.parseLong(retryAfterHeaderValue);
+            }
+        } catch (Exception e) {
+            log.warn("Error parsing retry-after header, fallback to the default value: " + DEFAULT_RETRY_AFTER_SECONDS_VALUE, e);
         }
 
-        return retryAfterSeconds;
+        return DEFAULT_RETRY_AFTER_SECONDS_VALUE;
     }
 }

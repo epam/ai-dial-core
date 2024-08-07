@@ -23,7 +23,7 @@ import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
-import com.epam.aidial.core.upstream.LoadBalancerProvider;
+import com.epam.aidial.core.upstream.UpstreamRouteProvider;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
@@ -95,7 +95,7 @@ public class AiDial {
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
             LogStore logStore = new GfLogStore(vertx);
-            LoadBalancerProvider upstreamBalancer = new LoadBalancerProvider();
+            UpstreamRouteProvider upstreamBalancer = new UpstreamRouteProvider();
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
@@ -123,7 +123,7 @@ public class AiDial {
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamBalancer);
 
             CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
                     resourceService, shareService, accessService, settings("applications"));

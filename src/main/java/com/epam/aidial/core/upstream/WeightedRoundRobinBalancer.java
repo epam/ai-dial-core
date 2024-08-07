@@ -45,7 +45,7 @@ public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobin
 
     @Nullable
     @Override
-    public synchronized UpstreamState get() {
+    public synchronized UpstreamState next() {
         List<UpstreamState> upstreams = getAvailableUpstreams();
         if (upstreams.isEmpty()) {
             return null;
@@ -66,6 +66,8 @@ public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobin
             }
             if (upstreams.get(currentIndex).getUpstream().getWeight() >= currentWeight) {
                 return upstreams.get(currentIndex);
+            } else {
+                currentIndex = -1;
             }
         }
     }

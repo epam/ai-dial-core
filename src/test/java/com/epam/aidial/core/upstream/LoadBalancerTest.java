@@ -1,11 +1,14 @@
 package com.epam.aidial.core.upstream;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.util.HttpStatus;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -23,12 +26,12 @@ public class LoadBalancerTest {
 
         for (int j = 0; j < 5; j++) {
             for (int i = 0; i < 9; i++) {
-                UpstreamState upstream = balancer.get();
+                UpstreamState upstream = balancer.next();
                 assertNotNull(upstream);
                 assertEquals("endpoint2", upstream.getUpstream().getEndpoint());
             }
 
-            UpstreamState upstream = balancer.get();
+            UpstreamState upstream = balancer.next();
             assertNotNull(upstream);
             assertEquals("endpoint1", upstream.getUpstream().getEndpoint());
         }
@@ -44,7 +47,7 @@ public class LoadBalancerTest {
 
         // verify all requests go to the highest tier
         for (int j = 0; j < 50; j++) {
-            UpstreamState upstream = balancer.get();
+            UpstreamState upstream = balancer.next();
             assertNotNull(upstream);
             assertEquals("endpoint1", upstream.getUpstream().getEndpoint());
         }
@@ -58,7 +61,7 @@ public class LoadBalancerTest {
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
 
-        UpstreamState upstream = balancer.get();
+        UpstreamState upstream = balancer.next();
         assertNotNull(upstream);
         assertEquals("endpoint1", upstream.getUpstream().getEndpoint());
 
@@ -67,7 +70,7 @@ public class LoadBalancerTest {
 
         // verify only tier 1 available
         for (int i = 0; i < 10; i++) {
-            upstream = balancer.get();
+            upstream = balancer.next();
             assertNotNull(upstream);
             assertEquals("endpoint2", upstream.getUpstream().getEndpoint());
         }
@@ -75,7 +78,7 @@ public class LoadBalancerTest {
         // wait once tier 2 become available again
         Thread.sleep(2000);
 
-        upstream = balancer.get();
+        upstream = balancer.next();
         assertNotNull(upstream);
         assertEquals("endpoint1", upstream.getUpstream().getEndpoint());
     }
@@ -89,7 +92,7 @@ public class LoadBalancerTest {
         WeightedRoundRobinBalancer balancer = new WeightedRoundRobinBalancer("model1", upstreams);
 
         for (int i = 0; i < 10; i++) {
-            UpstreamState upstream = balancer.get();
+            UpstreamState upstream = balancer.next();
             assertNull(upstream);
         }
     }
@@ -104,21 +107,23 @@ public class LoadBalancerTest {
 
         // report upstream failure 3 times
         for (int i = 0; i < 3; i++) {
-            UpstreamState upstream = balancer.get();
+            UpstreamState upstream = balancer.next();
             assertNotNull(upstream);
             assertEquals("endpoint1", upstream.getUpstream().getEndpoint());
 
             upstream.failed(HttpStatus.SERVICE_UNAVAILABLE, 1);
         }
 
-        UpstreamState upstream = balancer.get();
+        UpstreamState upstream = balancer.next();
         assertNotNull(upstream);
         assertEquals("endpoint2", upstream.getUpstream().getEndpoint());
     }
 
     @Test
     void testUpstreamRefresh() {
-        LoadBalancerProvider loadBalancerProvider = new LoadBalancerProvider();
+        Config config = new Config();
+        Map<String, Model> models = new HashMap<>();
+        config.setModels(models);
 
         Model model = new Model();
         model.setName("model1");
@@ -127,14 +132,18 @@ public class LoadBalancerTest {
                 new Upstream("endpoint2", null, 1, 1)
         ));
 
-        UpstreamRoute route = loadBalancerProvider.get(new DeploymentUpstreamProvider(model));
+        models.put("model1", model);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
+        upstreamRouteProvider.onUpdate(config);
+
+        UpstreamRoute route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model));
         Upstream upstream;
 
         // fail 2 upstreams
         for (int i = 0; i < 2; i++) {
             upstream = route.get();
             assertNotNull(upstream);
-            route.failed(HttpStatus.TOO_MANY_REQUESTS, 100);
+            route.fail(HttpStatus.TOO_MANY_REQUESTS, 100);
             route.next();
         }
 
@@ -148,8 +157,11 @@ public class LoadBalancerTest {
                 new Upstream("endpoint1", null, 1, 1)
         ));
 
+        models.put("model1", model1);
+        upstreamRouteProvider.onUpdate(config);
+
         // upstreams remains the same, state must not be invalidated
-        route = loadBalancerProvider.get(new DeploymentUpstreamProvider(model1));
+        route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model1));
 
         upstream = route.get();
         assertNull(upstream);
@@ -161,8 +173,11 @@ public class LoadBalancerTest {
                 new Upstream("endpoint1", null, 1, 1)
         ));
 
+        models.put("model1", model2);
+        upstreamRouteProvider.onUpdate(config);
+
         // upstreams updated, current state must be evicted
-        route = loadBalancerProvider.get(new DeploymentUpstreamProvider(model2));
+        route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model2));
 
         upstream = route.get();
         assertNotNull(upstream);
