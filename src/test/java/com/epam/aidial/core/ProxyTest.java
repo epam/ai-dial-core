@@ -313,6 +313,7 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(OK.getCode());
+        verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_MAX_AGE, "86400");
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET");
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, "Api-Key");
     }

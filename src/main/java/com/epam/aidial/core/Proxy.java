@@ -131,6 +131,8 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         HttpMethod requestMethod = request.method();
         if (requestMethod == HttpMethod.OPTIONS) {
+            // Allow OPTIONS request caching by browser
+            request.response().putHeader(HttpHeaders.ACCESS_CONTROL_MAX_AGE, "86400");
             respond(request, HttpStatus.OK);
             return;
         }
