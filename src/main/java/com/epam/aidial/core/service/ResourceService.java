@@ -390,7 +390,7 @@ public class ResourceService implements AutoCloseable {
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, updatedAt);
+            publishEvent(descriptor, action, updatedAt, newEtag);
             return descriptor.getType() == ResourceType.FILE
                     ? toFileMetadata(descriptor, result)
                     : toResourceItemMetadata(descriptor, result);
@@ -429,7 +429,7 @@ public class ResourceService implements AutoCloseable {
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, updatedAt);
+            publishEvent(descriptor, action, updatedAt, multipartData.etag);
 
             return (FileMetadata) new FileMetadata(
                     descriptor, multipartData.contentLength, multipartData.contentType)
@@ -470,7 +470,7 @@ public class ResourceService implements AutoCloseable {
             blobDelete(blobKey(descriptor));
             redisSync(redisKey);
 
-            publishEvent(descriptor, ResourceEvent.Action.DELETE, time());
+            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null);
             return true;
         }
     }
@@ -503,7 +503,7 @@ public class ResourceService implements AutoCloseable {
                 ResourceEvent.Action action = toMetadata == null
                         ? ResourceEvent.Action.CREATE
                         : ResourceEvent.Action.UPDATE;
-                publishEvent(to, action, time());
+                publishEvent(to, action, time(), fromMetadata.getEtag());
                 return true;
             }
 
@@ -511,11 +511,12 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    private void publishEvent(ResourceDescription descriptor, ResourceEvent.Action action, long timestamp) {
+    private void publishEvent(ResourceDescription descriptor, ResourceEvent.Action action, long timestamp, String etag) {
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)
-                .setTimestamp(timestamp);
+                .setTimestamp(timestamp)
+                .setEtag(etag);
 
         topic.publish(event);
     }

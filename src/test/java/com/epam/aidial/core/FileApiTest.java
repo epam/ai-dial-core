@@ -565,8 +565,12 @@ public class FileApiTest extends ResourceBaseTest {
                 """,
                 "Api-key", "proxyKey2");
 
-        byte[] content = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
-        IntStream.range(0, content.length).forEach(i -> content[i] = (byte) i);
+        byte[] content1 = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
+        byte[] content2 = new byte[content1.length];
+        IntStream.range(0, content1.length).forEach(i -> {
+            content1[i] = (byte) i;
+            content2[i] = (byte) (2 * i);
+        });
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
             // verify no files
@@ -589,7 +593,7 @@ public class FileApiTest extends ResourceBaseTest {
             client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
-                    .sendMultipartForm(generateMultipartForm("file.bin", content, "application/x-binary"),
+                    .sendMultipartForm(generateMultipartForm("file.bin", content1, "application/x-binary"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
@@ -607,7 +611,7 @@ public class FileApiTest extends ResourceBaseTest {
             client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
                     .putHeader("Api-key", "proxyKey2")
                     .as(BodyCodec.json(FileMetadata.class))
-                    .sendMultipartForm(generateMultipartForm("file.bin", content, "application/x-binary"),
+                    .sendMultipartForm(generateMultipartForm("file.bin", content2, "application/x-binary"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(200, response.statusCode());
@@ -633,14 +637,16 @@ public class FileApiTest extends ResourceBaseTest {
                 {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "CREATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "682fdfa22b3f97021b6d3cc3f00baa2b"
                 }
                 """, events.take());
         verifyJsonNotExact("""
                 {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "UPDATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "b206fbc15a3889b72fa3c0a003c25a1a"
                 }
                 """, events.take());
         verifyJsonNotExact("""
