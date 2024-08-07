@@ -633,14 +633,16 @@ public class FileApiTest extends ResourceBaseTest {
                 {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "CREATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "682fdfa22b3f97021b6d3cc3f00baa2b"
                 }
                 """, events.take());
         verifyJsonNotExact("""
                 {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "UPDATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "682fdfa22b3f97021b6d3cc3f00baa2b"
                 }
                 """, events.take());
         verifyJsonNotExact("""

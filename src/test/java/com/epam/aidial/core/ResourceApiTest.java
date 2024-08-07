@@ -75,7 +75,8 @@ class ResourceApiTest extends ResourceBaseTest {
                 {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "CREATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "70edd26b3686de5efcdae93fcc87c2bb"
                 }
                 """, events.take());
 
@@ -83,7 +84,8 @@ class ResourceApiTest extends ResourceBaseTest {
                 {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "UPDATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "82833ed7a10a4f99253fccdef4091ad9"
                 }
                 """, events.take());
 
