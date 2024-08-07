@@ -36,6 +36,7 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.epam.aidial.core.security.AccessTokenValidator.extractTokenFromHeader;
 
@@ -121,12 +123,19 @@ public class Proxy implements Handler<HttpServerRequest> {
      * Called when proxy received the request headers from a client.
      */
     private void handleRequest(HttpServerRequest request) {
+        disableCors(request);
+
         if (request.version() != HttpVersion.HTTP_1_1) {
             respond(request, HttpStatus.HTTP_VERSION_NOT_SUPPORTED);
             return;
         }
 
         HttpMethod requestMethod = request.method();
+        if (requestMethod == HttpMethod.OPTIONS) {
+            respond(request, HttpStatus.OK);
+            return;
+        }
+
         if (!ALLOWED_HTTP_METHODS.contains(requestMethod)) {
             respond(request, HttpStatus.METHOD_NOT_ALLOWED);
             return;
@@ -193,6 +202,20 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId))
                 .onComplete(ignore -> request.resume());
+    }
+
+    private static void disableCors(HttpServerRequest request) {
+        HttpServerResponse response = request.response();
+        response.putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+
+        String requestMethod = request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD);
+        if (requestMethod != null) {
+            response.putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, requestMethod);
+        }
+        String requestHeaders = request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS);
+        if (requestHeaders != null) {
+            response.putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, requestHeaders);
+        }
     }
 
     private record AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
