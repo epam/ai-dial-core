@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.function.BaseRequestFunction;
 import com.epam.aidial.core.function.CollectRequestAttachmentsFn;
 import com.epam.aidial.core.util.BufferingReadStream;
@@ -81,8 +82,17 @@ public class InterceptorController {
         sendRequest();
     }
 
+
+    private static String buildUri(ProxyContext context) {
+        HttpServerRequest request = context.getRequest();
+        Deployment deployment = context.getDeployment();
+        String endpoint = deployment.getEndpoint();
+        String query = request.query();
+        return endpoint + (query == null ? "" : "?" + query);
+    }
+
     private void sendRequest() {
-        String uri = context.getDeployment().getEndpoint();
+        String uri = buildUri(context);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(context.getRequest().method());

@@ -107,7 +107,7 @@ public class DeploymentPostController {
             deploymentFuture = Future.succeededFuture(deployment);
         } else {
             deploymentFuture = proxy.getVertx().executeBlocking(() ->
-               applicationService.getCustomApplication(deploymentId, context), false);
+                applicationService.getCustomApplication(deploymentId, context), false);
         }
 
         return deploymentFuture
