@@ -181,7 +181,8 @@
     "keys": {
         "proxyKey1": {
             "project": "TestProject1",
-            "role": "default"
+            "role": "default",
+            "secured": true
         },
         "proxyKey2": {
             "project": "TestProject2",
