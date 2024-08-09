@@ -144,6 +144,10 @@ public class ProxyContext {
         return key == null ? null : key.getProject();
     }
 
+    public boolean isSecuredApiKey() {
+        return key != null && key.isSecured();
+    }
+
     public List<String> getExecutionPath() {
         return proxyApiKeyData == null ? null : proxyApiKeyData.getExecutionPath();
     }
