@@ -20,6 +20,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -83,7 +84,14 @@ public class ProxyTest {
     @BeforeEach
     public void beforeEach() {
         when(request.response()).thenReturn(response);
+        when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD)).thenReturn(null);
+        when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS)).thenReturn(null);
         when(response.setStatusCode(anyInt())).thenReturn(response);
+    }
+
+    @AfterEach
+    public void afterEach() {
+        verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
     }
 
     @Test
@@ -293,5 +301,20 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(UNAUTHORIZED.getCode());
+    }
+
+    @Test
+    public void testHandle_OptionsRequest() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.OPTIONS);
+        when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD)).thenReturn("GET");
+        when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS)).thenReturn("Api-Key");
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
+        verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_MAX_AGE, "86400");
+        verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET");
+        verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, "Api-Key");
     }
 }
