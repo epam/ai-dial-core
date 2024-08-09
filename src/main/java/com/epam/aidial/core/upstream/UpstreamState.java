@@ -11,7 +11,7 @@ public class UpstreamState implements Comparable<UpstreamState> {
     private final int errorsThreshold;
 
     private static final long INITIAL_BACKOFF_DELAY_MS = 1000;
-    private static final int BACKOFF_MULTIPLIER = 2;
+    private static final int BACKOFF_BASE = 2;
 
     /**
      * Amount of 5xx errors from upstream
@@ -40,7 +40,7 @@ public class UpstreamState implements Comparable<UpstreamState> {
 
         if (status.is5xx()) {
             if (++errorCount >= errorsThreshold) {
-                retryAfter = System.currentTimeMillis() + (long) (INITIAL_BACKOFF_DELAY_MS * Math.pow(BACKOFF_MULTIPLIER, errorCount));
+                retryAfter = System.currentTimeMillis() + (long) (INITIAL_BACKOFF_DELAY_MS * Math.pow(BACKOFF_BASE, errorCount));
             }
         }
     }

@@ -1,35 +1,35 @@
 package com.epam.aidial.core.upstream;
 
 import com.epam.aidial.core.config.Upstream;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import javax.annotation.Nullable;
+import java.util.PriorityQueue;
 
-@Getter
+/**
+ * Implementation of weighted round-robin load balancer.
+ * Load balancer tracks upstream statistics and guaranty spreading the load according to the upstreams weight
+ */
 @Slf4j
 public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalancer>, LoadBalancer<UpstreamState> {
 
     private final int tier;
     private final List<UpstreamState> upstreams;
-    private final String deploymentName;
-
-    private int currentIndex = -1;
-    private int currentWeight;
+    private final long[] upstreamsWeights;
+    private final long[] upstreamsUsage;
+    private final long totalWeight;
+    private long totalUsage;
+    private final PriorityQueue<UpstreamUsage> upstreamPriority = new PriorityQueue<>((a, b) -> Double.compare(b.delta, a.delta));
 
     public WeightedRoundRobinBalancer(String deploymentName, List<Upstream> upstreams) {
-        this.deploymentName = deploymentName;
         if (upstreams == null || upstreams.isEmpty()) {
-            throw new IllegalArgumentException("Upstream list is null or empty");
+            throw new IllegalArgumentException("Upstream list is null or empty for deployment: " + deploymentName);
         }
         int tier = upstreams.get(0).getTier();
         for (Upstream upstream : upstreams) {
             if (upstream.getTier() != tier) {
-                throw new IllegalArgumentException("Tier mismatch");
+                throw new IllegalArgumentException("Tier mismatch for deployment " + deploymentName);
             }
         }
         this.tier = tier;
@@ -38,37 +38,39 @@ public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobin
                 .map(upstream -> new UpstreamState(upstream, Upstream.ERROR_THRESHOLD))
                 .sorted(Comparator.reverseOrder())
                 .toList();
+        this.totalWeight = this.upstreams.stream().map(UpstreamState::getUpstream).mapToLong(Upstream::getWeight).sum();
+        this.upstreamsUsage = new long[this.upstreams.size()];
+        this.upstreamsWeights = this.upstreams.stream().map(UpstreamState::getUpstream).mapToLong(Upstream::getWeight).toArray();
         if (this.upstreams.isEmpty()) {
             log.warn("No available upstreams for deployment %s and tier %d".formatted(deploymentName, tier));
         }
     }
 
-    @Nullable
     @Override
     public synchronized UpstreamState next() {
-        List<UpstreamState> upstreams = getAvailableUpstreams();
         if (upstreams.isEmpty()) {
             return null;
         }
-        int maxWeight = getMaxAvailableWeight(upstreams);
-        int gcdWeight = getGreatestCommonDivisor(upstreams);
-        int upstreamsCount = upstreams.size();
-        while (true) {
-            currentIndex = (currentIndex + 1) % upstreamsCount;
-            if (currentIndex == 0) {
-                currentWeight -= gcdWeight;
-                if (currentWeight <= 0) {
-                    currentWeight = maxWeight;
-                    if (currentWeight == 0) {
-                        return null;
-                    }
+        try {
+            int size = upstreams.size();
+            for (int i = 0; i < size; i++) {
+                UpstreamState upstreamState = upstreams.get(i);
+                double actualUsageRate = upstreamsUsage[i] == 0 ? 0 : (double) upstreamsUsage[i] / totalUsage;
+                double expectedUsageRate = (double) upstreamsWeights[i] / totalWeight;
+                double delta = expectedUsageRate - actualUsageRate;
+                upstreamPriority.offer(new UpstreamUsage(upstreamState, i, delta));
+            }
+            while (!upstreamPriority.isEmpty()) {
+                UpstreamUsage candidate = upstreamPriority.poll();
+                totalUsage += 1;
+                upstreamsUsage[candidate.upstreamIndex] += 1;
+                if (candidate.upstream.isUpstreamAvailable()) {
+                    return candidate.upstream;
                 }
             }
-            if (upstreams.get(currentIndex).getUpstream().getWeight() >= currentWeight) {
-                return upstreams.get(currentIndex);
-            } else {
-                currentIndex = -1;
-            }
+            return null;
+        } finally {
+            upstreamPriority.clear();
         }
     }
 
@@ -77,38 +79,6 @@ public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobin
         return Integer.compare(tier, weightedRoundRobinBalancer.tier);
     }
 
-    private List<UpstreamState> getAvailableUpstreams() {
-        List<UpstreamState> availableUpstreams = new ArrayList<>();
-        for (UpstreamState upstream : upstreams) {
-            // skip upstream if not available
-            if (!upstream.isUpstreamAvailable()) {
-                continue;
-            }
-            availableUpstreams.add(upstream);
-        }
-        return availableUpstreams;
-    }
-
-    private static int getMaxAvailableWeight(List<UpstreamState> upstreams) {
-        return upstreams.stream()
-                .map(UpstreamState::getUpstream)
-                .map(Upstream::getWeight)
-                .max(Integer::compareTo)
-                .orElse(0);
-    }
-
-    private static int getGreatestCommonDivisor(List<UpstreamState> upstreams) {
-        int[] weights = upstreams.stream()
-                .map(UpstreamState::getUpstream)
-                .mapToInt(Upstream::getWeight)
-                .toArray();
-        return Arrays.stream(weights).reduce(WeightedRoundRobinBalancer::gcd).orElse(-1);
-    }
-
-    private static int gcd(int a, int b) {
-        if (b == 0) {
-            return a;
-        }
-        return gcd(b, a % b);
+    private record UpstreamUsage(UpstreamState upstream, int upstreamIndex, double delta) {
     }
 }

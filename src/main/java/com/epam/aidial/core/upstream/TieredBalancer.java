@@ -46,7 +46,7 @@ public class TieredBalancer implements LoadBalancer<UpstreamState> {
             balancers.add(new WeightedRoundRobinBalancer(deploymentName, entry.getValue()));
         }
 
-        balancers.sort(Comparator.reverseOrder());
+        balancers.sort(Comparator.naturalOrder());
 
         return balancers;
     }

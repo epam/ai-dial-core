@@ -8,7 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import javax.annotation.Nullable;
 
 /**
- * Not thread-safe! Upstream route with retry count management.<br>
+ * Not thread-safe! Upstream route with retry management.<br>
+ * This class should be used to route only one user request with retry ability.<br>
  * Typical usage:
  * <pre>
  * if (!available()) {
@@ -30,45 +31,47 @@ public class UpstreamRoute {
 
     private final LoadBalancer<UpstreamState> balancer;
     /**
-     * The maximum number of retries for all upstreams.
+     * The maximum number of upstreams this route can use due to retries.
      */
-    private final int maxRetries;
+    private final int maxUpstreamsToUse;
 
     /**
      * Current upstream state
      */
     @Nullable
     private UpstreamState upstreamState;
-    private int retries;
+    private int used;
 
-    public UpstreamRoute(LoadBalancer<UpstreamState> balancer, int maxRetries) {
+    public UpstreamRoute(LoadBalancer<UpstreamState> balancer, int maxUpstreamsToUse) {
         this.balancer = balancer;
-        this.maxRetries = maxRetries;
+        this.maxUpstreamsToUse = maxUpstreamsToUse;
         this.upstreamState = balancer.next();
     }
 
     /**
-     * @return the number of upstreams which returned any http response.
+     * @return the number of used upstreams.
      */
     public int used() {
-        return retries + 1;
+        return used + 1;
     }
 
     /**
-     * Checks if upstream present (not null) and retry count does not exceed max retry attempts
+     * Checks if upstream present (not null) and usage does not exceed max value
      *
      * @return true if upstream available, false otherwise
      */
     public boolean available() {
-        return upstreamState != null && retries < maxRetries;
+        return upstreamState != null && used < maxUpstreamsToUse;
     }
 
     /**
-     * @return next upstream from load balancer and increase retry counter. null if no upstreams available
+     *  Retrieves next available upstream from load balancer; also increase usage count
+     *
+     * @return next upstream from load balancer
      */
     @Nullable
     public Upstream next() {
-        retries++;
+        used++;
         UpstreamState upstreamState = balancer.next();
         this.upstreamState = upstreamState;
         return upstreamState == null ? null : upstreamState.getUpstream();
@@ -113,7 +116,7 @@ public class UpstreamRoute {
                 return Long.parseLong(retryAfterHeaderValue);
             }
         } catch (Exception e) {
-            log.warn("Error parsing retry-after header, fallback to the default value: " + DEFAULT_RETRY_AFTER_SECONDS_VALUE, e);
+            log.warn("Failed to parse Retry-After header value, fallback to the default value: " + DEFAULT_RETRY_AFTER_SECONDS_VALUE, e);
         }
 
         return DEFAULT_RETRY_AFTER_SECONDS_VALUE;

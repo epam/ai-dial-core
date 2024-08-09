@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.util.HttpStatus;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -19,28 +20,82 @@ public class LoadBalancerTest {
     @Test
     void testWeightedLoadBalancer() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 1),
-                new Upstream("endpoint2", null, 9, 1)
+                new Upstream("endpoint1", null, 1, 0),
+                new Upstream("endpoint2", null, 9, 0)
         );
         WeightedRoundRobinBalancer balancer = new WeightedRoundRobinBalancer("model1", upstreams);
 
-        for (int j = 0; j < 5; j++) {
-            for (int i = 0; i < 9; i++) {
-                UpstreamState upstream = balancer.next();
-                assertNotNull(upstream);
-                assertEquals("endpoint2", upstream.getUpstream().getEndpoint());
-            }
+        Map<String, MutableInt> usage = new HashMap<>();
+        usage.put("endpoint1", new MutableInt(0));
+        usage.put("endpoint2", new MutableInt(0));
 
+        for (int i = 0; i < 20; i++) {
             UpstreamState upstream = balancer.next();
             assertNotNull(upstream);
-            assertEquals("endpoint1", upstream.getUpstream().getEndpoint());
+            String endpoint = upstream.getUpstream().getEndpoint();
+            usage.get(endpoint).increment();
         }
+
+        assertEquals(2, usage.get("endpoint1").getValue());
+        assertEquals(18, usage.get("endpoint2").getValue());
+
+        upstreams = List.of(
+                new Upstream("endpoint1", null, 1, 0),
+                new Upstream("endpoint2", null, 1, 0),
+                new Upstream("endpoint3", null, 1, 0),
+                new Upstream("endpoint4", null, 1, 0)
+        );
+        balancer = new WeightedRoundRobinBalancer("model1", upstreams);
+
+        usage = new HashMap<>();
+        usage.put("endpoint1", new MutableInt(0));
+        usage.put("endpoint2", new MutableInt(0));
+        usage.put("endpoint3", new MutableInt(0));
+        usage.put("endpoint4", new MutableInt(0));
+
+        for (int i = 0; i < 100; i++) {
+            UpstreamState upstream = balancer.next();
+            assertNotNull(upstream);
+            String endpoint = upstream.getUpstream().getEndpoint();
+            usage.get(endpoint).increment();
+        }
+
+        assertEquals(25, usage.get("endpoint1").getValue());
+        assertEquals(25, usage.get("endpoint2").getValue());
+        assertEquals(25, usage.get("endpoint3").getValue());
+        assertEquals(25, usage.get("endpoint4").getValue());
+
+        upstreams = List.of(
+                new Upstream("endpoint1", null, 49, 0),
+                new Upstream("endpoint2", null, 44, 0),
+                new Upstream("endpoint3", null, 47, 0),
+                new Upstream("endpoint4", null, 59, 0)
+        );
+        balancer = new WeightedRoundRobinBalancer("model1", upstreams);
+
+        usage = new HashMap<>();
+        usage.put("endpoint1", new MutableInt(0));
+        usage.put("endpoint2", new MutableInt(0));
+        usage.put("endpoint3", new MutableInt(0));
+        usage.put("endpoint4", new MutableInt(0));
+
+        for (int i = 0; i < 398; i++) {
+            UpstreamState upstream = balancer.next();
+            assertNotNull(upstream);
+            String endpoint = upstream.getUpstream().getEndpoint();
+            usage.get(endpoint).increment();
+        }
+
+        assertEquals(98, usage.get("endpoint1").getValue());
+        assertEquals(88, usage.get("endpoint2").getValue());
+        assertEquals(94, usage.get("endpoint3").getValue());
+        assertEquals(118, usage.get("endpoint4").getValue());
     }
 
     @Test
     void testTieredLoadBalancer() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 2),
+                new Upstream("endpoint1", null, 1, 0),
                 new Upstream("endpoint2", null, 9, 1)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
@@ -56,7 +111,7 @@ public class LoadBalancerTest {
     @Test
     void testLoadBalancerFailure() throws InterruptedException {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 2),
+                new Upstream("endpoint1", null, 1, 0),
                 new Upstream("endpoint2", null, 9, 1)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
@@ -100,7 +155,7 @@ public class LoadBalancerTest {
     @Test
     void test5xxErrorsHandling() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 2),
+                new Upstream("endpoint1", null, 1, 0),
                 new Upstream("endpoint2", null, 1, 1)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
