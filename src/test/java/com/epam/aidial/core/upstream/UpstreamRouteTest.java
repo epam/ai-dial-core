@@ -67,8 +67,8 @@ public class UpstreamRouteTest {
 
         // verify route reach max attempts
         assertFalse(route.available());
-        assertNotNull(route.get());
-        assertEquals(6, route.used());
+        assertNull(route.get());
+        assertEquals(5, route.used());
     }
 
     @Test

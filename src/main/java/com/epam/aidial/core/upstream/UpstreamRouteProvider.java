@@ -18,8 +18,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Provides UpstreamRoute for the given UpstreamProvider.
+ * This class caches load balancers for deployments and routes from config,
+ * for other deployments (for example: custom applications) each request will build a new load balancer.
+ * If upstreams configuration for any deployment changed - load balancer state will be invalidated.
+ */
 @Slf4j
 public class UpstreamRouteProvider {
+
+    /**
+     * Indicated max retry attempts (max upstreams from load balancer) to route a single user request
+     */
+    private static final int MAX_RETRY_COUNT = 5;
 
     /**
      * Cached load balancers for config deployments
@@ -42,7 +53,7 @@ public class UpstreamRouteProvider {
             balancer = new TieredBalancer(deploymentName, upstreams);
         }
 
-        return new UpstreamRoute(balancer, 5);
+        return new UpstreamRoute(balancer, MAX_RETRY_COUNT);
     }
 
     public synchronized void onUpdate(Config config) {

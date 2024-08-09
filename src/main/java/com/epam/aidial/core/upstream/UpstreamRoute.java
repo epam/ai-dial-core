@@ -46,13 +46,14 @@ public class UpstreamRoute {
         this.balancer = balancer;
         this.maxUpstreamsToUse = maxUpstreamsToUse;
         this.upstreamState = balancer.next();
+        this.used = 1;
     }
 
     /**
      * @return the number of used upstreams.
      */
     public int used() {
-        return used + 1;
+        return used;
     }
 
     /**
@@ -61,7 +62,7 @@ public class UpstreamRoute {
      * @return true if upstream available, false otherwise
      */
     public boolean available() {
-        return upstreamState != null && used < maxUpstreamsToUse;
+        return upstreamState != null && used <= maxUpstreamsToUse;
     }
 
     /**
@@ -71,6 +72,11 @@ public class UpstreamRoute {
      */
     @Nullable
     public Upstream next() {
+        // if max attempts reached - do not call balancer
+        if (used + 1 > maxUpstreamsToUse) {
+            this.upstreamState = null;
+            return null;
+        }
         used++;
         UpstreamState upstreamState = balancer.next();
         this.upstreamState = upstreamState;

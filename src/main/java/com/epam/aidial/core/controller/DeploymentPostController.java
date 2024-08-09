@@ -480,6 +480,7 @@ public class DeploymentPostController {
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
 
+        // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY, -1);
         upstreamRoute.next();
         sendRequest();

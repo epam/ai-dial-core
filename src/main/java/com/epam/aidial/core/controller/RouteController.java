@@ -188,6 +188,7 @@ public class RouteController implements Controller {
     private void handleProxyConnectionError(Throwable error) {
         log.warn("Can't connect to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY, -1);
         upstreamRoute.next();
         sendRequest(); // try next
@@ -199,6 +200,7 @@ public class RouteController implements Controller {
     private void handleProxyRequestError(Throwable error) {
         log.warn("Can't send request to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY, -1);
         upstreamRoute.next();
         sendRequest(); // try next

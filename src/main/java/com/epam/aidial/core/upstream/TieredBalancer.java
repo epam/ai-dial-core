@@ -10,6 +10,10 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
+/**
+ * Tiered load balancer. Each next() call returns an available upstream from the highest tier (lowest tier value in config).
+ * If the whole tier (highest) is unavailable, balancer start routing upstreams from next tier (lower) if any.
+ */
 public class TieredBalancer implements LoadBalancer<UpstreamState> {
 
     @Getter
