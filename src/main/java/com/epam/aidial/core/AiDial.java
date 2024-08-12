@@ -95,7 +95,7 @@ public class AiDial {
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
             LogStore logStore = new GfLogStore(vertx);
-            UpstreamRouteProvider upstreamBalancer = new UpstreamRouteProvider();
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
@@ -123,13 +123,13 @@ public class AiDial {
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamBalancer);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
 
             CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
                     resourceService, shareService, accessService, settings("applications"));
 
             proxy = new Proxy(vertx, client, configStore, logStore,
-                    rateLimiter, upstreamBalancer, accessTokenValidator,
+                    rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, customApplicationService, version());

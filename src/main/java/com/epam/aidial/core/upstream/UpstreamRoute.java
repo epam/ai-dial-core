@@ -46,7 +46,7 @@ public class UpstreamRoute {
         this.balancer = balancer;
         this.maxUpstreamsToUse = maxUpstreamsToUse;
         this.upstreamState = balancer.next();
-        this.used = 1;
+        this.used = upstreamState == null ? 0 : 1;
     }
 
     /**
@@ -78,8 +78,7 @@ public class UpstreamRoute {
             return null;
         }
         used++;
-        UpstreamState upstreamState = balancer.next();
-        this.upstreamState = upstreamState;
+        this.upstreamState = balancer.next();
         return upstreamState == null ? null : upstreamState.getUpstream();
     }
 
@@ -98,17 +97,15 @@ public class UpstreamRoute {
      * @param retryAfterSeconds - the amount of seconds after which upstream should be available; if status 5xx this value ignored
      */
     public void fail(HttpStatus status, long retryAfterSeconds) {
-        if (upstreamState == null) {
-            return;
+        if (upstreamState != null) {
+            upstreamState.failed(status, retryAfterSeconds);
         }
-        upstreamState.failed(status, retryAfterSeconds);
     }
 
     public void succeed() {
-        if (upstreamState == null) {
-            return;
+        if (upstreamState != null) {
+            upstreamState.succeeded();
         }
-        upstreamState.succeeded();
     }
 
     /**

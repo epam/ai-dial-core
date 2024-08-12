@@ -16,7 +16,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Provides UpstreamRoute for the given UpstreamProvider.
@@ -60,59 +59,57 @@ public class UpstreamRouteProvider {
         log.debug("Updating load balancers state");
         Map<String, TieredBalancer> oldState = balancers;
         Map<String, TieredBalancer> newState = new HashMap<>();
-        Set<String> uniqueDeployments = new HashSet<>();
 
         Map<String, Model> models = config.getModels();
-        updateDeployments(newState, oldState, uniqueDeployments, models.values());
+        updateDeployments(newState, oldState, models.values());
 
         Map<String, Application> applications = config.getApplications();
-        updateDeployments(newState, oldState, uniqueDeployments, applications.values());
+        updateDeployments(newState, oldState, applications.values());
 
         Map<String, Addon> addons = config.getAddons();
-        updateDeployments(newState, oldState, uniqueDeployments, addons.values());
+        updateDeployments(newState, oldState, addons.values());
 
         Map<String, Assistant> assistants = config.getAssistant().getAssistants();
-        updateDeployments(newState, oldState, uniqueDeployments, assistants.values());
+        updateDeployments(newState, oldState, assistants.values());
 
         LinkedHashMap<String, Route> routes = config.getRoutes();
-        updateRoutes(newState, oldState, uniqueDeployments, routes.values());
+        updateRoutes(newState, oldState, routes.values());
 
         balancers = newState;
     }
 
-    private static void updateRoutes(Map<String, TieredBalancer> newState, Map<String, TieredBalancer> oldState,
-                                     Set<String> uniqueDeployments, Collection<Route> routes) {
+    private static void updateRoutes(Map<String, TieredBalancer> newState, Map<String, TieredBalancer> oldState, Collection<Route> routes) {
         for (Route route : routes) {
             String name = route.getName();
 
             RouteEndpointProvider endpointProvider = new RouteEndpointProvider(route);
             TieredBalancer previous = oldState.get(name);
-            updateDeployment(endpointProvider, previous, uniqueDeployments, newState);
+            updateDeployment(endpointProvider, previous, newState);
         }
     }
 
     private static void updateDeployments(Map<String, TieredBalancer> newState, Map<String, TieredBalancer> oldState,
-                                          Set<String> uniqueDeployments, Collection<? extends Deployment> deployments) {
+                                          Collection<? extends Deployment> deployments) {
         for (Deployment deployment : deployments) {
             String name = deployment.getName();
 
             DeploymentUpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
             TieredBalancer previous = oldState.get(name);
-            updateDeployment(endpointProvider, previous, uniqueDeployments, newState);
+            updateDeployment(endpointProvider, previous, newState);
         }
     }
 
-    private static void updateDeployment(UpstreamProvider upstream, TieredBalancer previous, Set<String> uniqueDeployments,
-                                         Map<String, TieredBalancer> newState) {
+    private static void updateDeployment(UpstreamProvider upstream, TieredBalancer previous, Map<String, TieredBalancer> newState) {
         String name = upstream.getName();
-        if (!uniqueDeployments.add(name)) {
-            log.warn("Duplicate deployment name: {}", name);
-            return;
-        }
+        TieredBalancer balancer;
         if (previous != null && isUpstreamsTheSame(upstream, previous)) {
-            newState.put(name, previous);
+            balancer = previous;
         } else {
-            newState.put(name, new TieredBalancer(name, upstream.getUpstreams()));
+            balancer = new TieredBalancer(name, upstream.getUpstreams());
+        }
+        TieredBalancer previousBalancer = newState.putIfAbsent(name, balancer);
+        if (previousBalancer != null) {
+            log.warn("Duplicate deployment name: {}", name);
         }
     }
 
