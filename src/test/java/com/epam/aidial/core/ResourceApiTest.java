@@ -39,7 +39,7 @@ class ResourceApiTest extends ResourceBaseTest {
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1, "if-none-match", "*");
-        verifyNotExact(response, 409, "Resource already exists: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+        verifyNotExact(response, 412, "Resource already exists");
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation");
         verifyJson(response, 200, CONVERSATION_BODY_1);
@@ -75,7 +75,8 @@ class ResourceApiTest extends ResourceBaseTest {
                 {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "CREATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "70edd26b3686de5efcdae93fcc87c2bb"
                 }
                 """, events.take());
 
@@ -83,7 +84,8 @@ class ResourceApiTest extends ResourceBaseTest {
                 {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "UPDATE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "etag" : "82833ed7a10a4f99253fccdef4091ad9"
                 }
                 """, events.take());
 

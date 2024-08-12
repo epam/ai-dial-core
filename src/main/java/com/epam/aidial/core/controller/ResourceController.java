@@ -98,7 +98,7 @@ public class ResourceController extends AccessControlBaseController {
                     } else {
                         accessService.filterForbidden(context, descriptor, result);
                         if (context.getBooleanRequestQueryParam("permissions")) {
-                            accessService.populatePermissions(context, descriptor.getBucketLocation(), List.of(result));
+                            accessService.populatePermissions(context, List.of(result));
                         }
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
@@ -156,13 +156,6 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
         }
 
-        String ifNoneMatch = context.getRequest().getHeader(HttpHeaders.IF_NONE_MATCH);
-        boolean overwrite = (ifNoneMatch == null);
-
-        if (ifNoneMatch != null && !ifNoneMatch.equals("*")) {
-            return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
-        }
-
         context.getRequest().body().compose(bytes -> {
                     if (bytes.length() > contentLimit) {
                         String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
@@ -171,9 +164,9 @@ public class ResourceController extends AccessControlBaseController {
 
                     EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     ResourceType resourceType = descriptor.getType();
-                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8), overwrite);
+                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8), etag.isOverwrite());
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag, overwrite), false);
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {

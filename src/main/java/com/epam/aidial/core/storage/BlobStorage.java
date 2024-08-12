@@ -1,8 +1,6 @@
 package com.epam.aidial.core.storage;
 
 import com.epam.aidial.core.config.Storage;
-import com.epam.aidial.core.data.FileMetadata;
-import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.storage.credential.CredentialProvider;
 import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
 import lombok.Getter;
@@ -231,13 +229,13 @@ public class BlobStorage implements Closeable {
         return options;
     }
 
-    public static MetadataBase buildFileMetadata(ResourceDescription resource, BlobMetadata metadata) {
+    public static String resolveContentType(BlobMetadata metadata) {
         String blobContentType = metadata.getContentMetadata().getContentType();
         if (DEFAULT_CONTENT_TYPE.equals(blobContentType)) {
-            blobContentType = BlobStorageUtil.getContentType(metadata.getName());
+            return BlobStorageUtil.getContentType(metadata.getName());
         }
 
-        return new FileMetadata(resource, metadata.getSize(), blobContentType);
+        return blobContentType;
     }
 
     private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.security;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.AutoSharedData;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
@@ -150,15 +151,17 @@ public class AccessService {
         Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescription resource : resources) {
             String resourceUrl = resource.getUrl();
-            boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resourceUrl);
-            if (isAutoShared) {
-                result.put(resource, ResourceAccessType.READ_ONLY);
+            AutoSharedData autoSharedData = context.getApiKeyData().getAttachedFiles().get(resourceUrl);
+            if (autoSharedData != null) {
+                result.put(resource, autoSharedData.accessTypes());
                 continue;
             }
-            List<String> attachedFolders = context.getApiKeyData().getAttachedFolders();
-            for (String folder : attachedFolders) {
+            Set<Map.Entry<String, AutoSharedData>> attachedFolders = context.getApiKeyData()
+                    .getAttachedFolders().entrySet();
+            for (var entry : attachedFolders) {
+                String folder = entry.getKey();
                 if (resourceUrl.startsWith(folder)) {
-                    result.put(resource, ResourceAccessType.READ_ONLY);
+                    result.put(resource, entry.getValue().accessTypes());
                     break;
                 }
             }
@@ -180,16 +183,21 @@ public class AccessService {
         return result;
     }
 
-    private static Map<ResourceDescription, Set<ResourceAccessType>> getAppResourceAccess(
+    public static Map<ResourceDescription, Set<ResourceAccessType>> getAppResourceAccess(
             Set<ResourceDescription> resources, ProxyContext context) {
         String deployment = context.getSourceDeployment();
         if (deployment == null) {
             return Map.of();
         }
+        return getAppResourceAccess(resources, context, deployment);
+    }
+
+    public static Map<ResourceDescription, Set<ResourceAccessType>> getAppResourceAccess(
+            Set<ResourceDescription> resources, ProxyContext context, String deployment) {
 
         Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
+        String location = BlobStorageUtil.buildAppDataBucket(context);
         for (ResourceDescription resource : resources) {
-            String location = BlobStorageUtil.buildAppDataBucket(context);
             if (!resource.getBucketLocation().equals(location)) {
                 continue;
             }
@@ -235,27 +243,22 @@ public class AccessService {
         }
     }
 
-    public void populatePermissions(
-            ProxyContext context,
-            String bucketLocation,
-            Collection<MetadataBase> metadata) {
+    public void populatePermissions(ProxyContext context, Collection<MetadataBase> metadata) {
         Map<ResourceDescription, MetadataBase> allMetadata = new HashMap<>();
         for (MetadataBase meta : metadata) {
-            expandMetadata(meta, bucketLocation, allMetadata);
+            expandMetadata(meta, allMetadata);
         }
 
         Map<ResourceDescription, Set<ResourceAccessType>> permissions = lookupPermissions(allMetadata.keySet(), context);
         allMetadata.forEach((resource, meta) -> meta.setPermissions(permissions.get(resource)));
     }
 
-    private static void expandMetadata(
-            MetadataBase metadata, String bucketLocation, Map<ResourceDescription, MetadataBase> result) {
-        ResourceDescription resource = ResourceDescription.fromDecoded(
-                metadata.getResourceType(), metadata.getBucket(), bucketLocation, metadata.getUrl());
+    private void expandMetadata(MetadataBase metadata, Map<ResourceDescription, MetadataBase> result) {
+        ResourceDescription resource = ResourceDescription.fromAnyUrl(metadata.getUrl(), encryptionService);
         result.put(resource, metadata);
         if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
             for (MetadataBase item : folderMetadata.getItems()) {
-                expandMetadata(item, bucketLocation, result);
+                expandMetadata(item, result);
             }
         }
     }

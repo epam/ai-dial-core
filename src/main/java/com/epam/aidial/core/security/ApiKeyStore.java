@@ -6,6 +6,8 @@ import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
+import com.epam.aidial.core.util.HttpException;
+import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -13,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 import static com.epam.aidial.core.security.ApiKeyGenerator.generateKey;
 import static com.epam.aidial.core.storage.BlobStorageUtil.PATH_SEPARATOR;
@@ -55,9 +58,26 @@ public class ApiKeyStore {
         ResourceDescription resource = toResource(perRequestKey);
         data.setPerRequestKey(perRequestKey);
         String json = ProxyUtil.convertToString(data);
-        if (resourceService.putResource(resource, json, EtagHeader.ANY, false, false) == null) {
-            throw new IllegalStateException(String.format("API key %s already exists in the storage", perRequestKey));
+        try {
+            resourceService.putResource(resource, json, EtagHeader.NEW_ONLY, false);
+        } catch (HttpException exception) {
+            throw exception.getStatus() == HttpStatus.PRECONDITION_FAILED
+                    ? new IllegalStateException(String.format("API key %s already exists in the storage", perRequestKey))
+                    : exception;
         }
+    }
+
+    public Future<Void> updatePerRequestApiKey(String key, Function<String, String> fn) {
+        if (key == null) {
+            IllegalArgumentException error = new IllegalArgumentException("Per request API key is undefined");
+            log.error("Error occurred at updating api key data: per request API key is undefined");
+            return Future.failedFuture(error);
+        }
+        ResourceDescription resource = toResource(key);
+        return vertx.executeBlocking(() -> {
+            resourceService.computeResource(resource, fn);
+            return null;
+        }, false);
     }
 
     /**

@@ -3,8 +3,11 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
-import com.epam.aidial.core.function.BaseFunction;
-import com.epam.aidial.core.function.CollectAttachmentsFn;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.function.BaseRequestFunction;
+import com.epam.aidial.core.function.CollectRequestAttachmentsFn;
+import com.epam.aidial.core.function.CollectRequestDataFn;
+import com.epam.aidial.core.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -31,12 +34,12 @@ public class InterceptorController {
     private final Proxy proxy;
     private final ProxyContext context;
 
-    private final List<BaseFunction<ObjectNode>> enhancementFunctions;
+    private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
     public InterceptorController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.enhancementFunctions = List.of(new CollectAttachmentsFn(proxy, context));
+        this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context), new CollectRequestDataFn(proxy, context));
     }
 
     public Future<?> handle() {
@@ -45,13 +48,15 @@ public class InterceptorController {
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        context.getRequest().body()
-                .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
-                    handleRequestBody(body);
-                    return null;
-                }, false).onFailure(this::handleError))
-                .onFailure(this::handleRequestBodyError);
-        return Future.succeededFuture();
+        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
+            context.getRequest().body()
+                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }, false).onFailure(this::handleError))
+                    .onFailure(this::handleRequestBodyError);
+            return null;
+        });
     }
 
     private void handleError(Throwable error) {
@@ -79,8 +84,17 @@ public class InterceptorController {
         sendRequest();
     }
 
+
+    private static String buildUri(ProxyContext context) {
+        HttpServerRequest request = context.getRequest();
+        Deployment deployment = context.getDeployment();
+        String endpoint = deployment.getEndpoint();
+        String query = request.query();
+        return endpoint + (query == null ? "" : "?" + query);
+    }
+
     private void sendRequest() {
-        String uri = context.getDeployment().getEndpoint();
+        String uri = buildUri(context);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(context.getRequest().method());
@@ -157,8 +171,10 @@ public class InterceptorController {
                 context.getDeployment().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
+        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseAttachmentsFn(proxy, context) : null;
+
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024));
+                ProxyUtil.contentLength(proxyResponse, 1024), handler);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -173,9 +189,42 @@ public class InterceptorController {
 
         responseStream.pipe()
                 .endOnFailure(false)
+                .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignore -> finalizeRequest())
+                .onSuccess(ignore -> handleResponse(responseStream))
                 .onFailure(this::handleResponseError);
+    }
+
+    void handleResponse(BufferingReadStream responseStream) {
+        Buffer responseBody = context.getResponseStream().getContent();
+        collectResponseAttachments(responseBody).onComplete(result -> {
+            if (result.failed()) {
+                log.warn("Failed to collect attachments from response. Trace: {}. Span: {}",
+                        context.getTraceId(), context.getSpanId(), result.cause());
+            }
+            completeProxyResponse(responseStream);
+        });
+    }
+
+    private Future<Void> collectResponseAttachments(Buffer responseBody) {
+        if (context.isStreamingRequest()) {
+            return Future.succeededFuture();
+        }
+        try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+            var fn = new CollectResponseAttachmentsFn(proxy, context);
+            return fn.apply(tree);
+        } catch (Throwable e) {
+            log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
+                    context.getTraceId(), context.getSpanId(), e);
+            return Future.failedFuture(e);
+        }
+    }
+
+    private void completeProxyResponse(BufferingReadStream responseStream) {
+        HttpServerResponse response = context.getResponse();
+        responseStream.end(response);
+        finalizeRequest();
     }
 
     /**
@@ -201,6 +250,7 @@ public class InterceptorController {
     }
 
     private void finalizeRequest() {
+        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)

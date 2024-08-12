@@ -73,6 +73,7 @@ public class ProxyContext {
     private String initialDeploymentApi;
     // List of interceptors copied from the deployment config
     private List<String> interceptors;
+    private boolean isStreamingRequest;
 
     public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.config = config;
@@ -142,6 +143,10 @@ public class ProxyContext {
 
     public String getProject() {
         return key == null ? null : key.getProject();
+    }
+
+    public boolean isSecuredApiKey() {
+        return key != null && key.isSecured();
     }
 
     public List<String> getExecutionPath() {

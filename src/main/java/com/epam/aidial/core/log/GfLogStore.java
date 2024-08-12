@@ -114,14 +114,16 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
-        append(entry, ",\"assembled_response\":\"", false);
-        Buffer responseBody = context.getResponseBody();
-        if (isStreamingResponse(responseBody)) {
-            append(entry, assembleStreamingResponse(responseBody), true);
-        } else {
-            append(entry, responseBody);
+        if (!context.isSecuredApiKey()) {
+            append(entry, ",\"assembled_response\":\"", false);
+            Buffer responseBody = context.getResponseBody();
+            if (isStreamingResponse(responseBody)) {
+                append(entry, assembleStreamingResponse(responseBody), true);
+            } else {
+                append(entry, responseBody);
+            }
+            append(entry, "\"", false);
         }
-        append(entry, "\"", false);
 
         append(entry, ",\"trace\":{\"trace_id\":\"", false);
         append(entry, context.getTraceId(), true);
@@ -147,8 +149,10 @@ public class GfLogStore implements LogStore {
         append(entry, "\",\"time\":\"", false);
         append(entry, formatTimestamp(context.getRequestTimestamp()), true);
 
-        append(entry, "\",\"body\":\"", false);
-        append(entry, context.getRequestBody());
+        if (!context.isSecuredApiKey()) {
+            append(entry, "\",\"body\":\"", false);
+            append(entry, context.getRequestBody());
+        }
 
         append(entry, "\"},\"response\":{\"status\":\"", false);
         append(entry, Integer.toString(response.getStatusCode()), true);
@@ -158,8 +162,10 @@ public class GfLogStore implements LogStore {
             append(entry, context.getUpstreamRoute().get().getEndpoint(), true);
         }
 
-        append(entry, "\",\"body\":\"", false);
-        append(entry, context.getResponseBody());
+        if (!context.isSecuredApiKey()) {
+            append(entry, "\",\"body\":\"", false);
+            append(entry, context.getResponseBody());
+        }
 
         append(entry, "\"}}", false);
     }
