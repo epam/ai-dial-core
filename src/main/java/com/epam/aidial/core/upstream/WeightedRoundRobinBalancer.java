@@ -42,7 +42,7 @@ public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobin
         this.upstreamsUsage = new long[this.upstreams.size()];
         this.upstreamsWeights = this.upstreams.stream().map(UpstreamState::getUpstream).mapToLong(Upstream::getWeight).toArray();
         if (this.upstreams.isEmpty()) {
-            log.warn("No available upstreams for deployment %s and tier %d".formatted(deploymentName, tier));
+            log.warn("No available upstreams for deployment {} and tier {}", deploymentName, tier);
         }
     }
 
@@ -58,8 +58,10 @@ public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobin
                 double actualUsageRate = upstreamsUsage[i] == 0 ? 0 : (double) upstreamsUsage[i] / totalUsage;
                 double expectedUsageRate = (double) upstreamsWeights[i] / totalWeight;
                 double delta = expectedUsageRate - actualUsageRate;
+                // for precise load balancing we need to add all upstreams to the priority queue
                 upstreamPriority.offer(new UpstreamUsage(upstreamState, i, delta));
             }
+            // find the best available upstream and return it
             while (!upstreamPriority.isEmpty()) {
                 UpstreamUsage candidate = upstreamPriority.poll();
                 totalUsage += 1;
@@ -70,6 +72,7 @@ public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobin
             }
             return null;
         } finally {
+            // clear state
             upstreamPriority.clear();
         }
     }

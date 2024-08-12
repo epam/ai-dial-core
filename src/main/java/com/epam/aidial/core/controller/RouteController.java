@@ -137,7 +137,7 @@ public class RouteController implements Controller {
 
         if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-            upstreamRoute.fail(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
+            upstreamRoute.fail(proxyResponse);
             upstreamRoute.next();
             sendRequest(); // try next
             return;
@@ -189,7 +189,7 @@ public class RouteController implements Controller {
         log.warn("Can't connect to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
-        upstreamRoute.fail(HttpStatus.BAD_GATEWAY, -1);
+        upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
         upstreamRoute.next();
         sendRequest(); // try next
     }
@@ -201,7 +201,7 @@ public class RouteController implements Controller {
         log.warn("Can't send request to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
-        upstreamRoute.fail(HttpStatus.BAD_GATEWAY, -1);
+        upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
         upstreamRoute.next();
         sendRequest(); // try next
     }

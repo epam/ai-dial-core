@@ -339,7 +339,7 @@ public class DeploymentPostController {
 
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
-            upstreamRoute.fail(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
+            upstreamRoute.fail(proxyResponse);
             // get next upstream
             upstreamRoute.next();
             sendRequest(); // try next
@@ -349,7 +349,7 @@ public class DeploymentPostController {
         if (responseStatusCode == 200) {
             upstreamRoute.succeed();
         } else if (isFailedStatusCode(responseStatusCode)) {
-            upstreamRoute.fail(HttpStatus.fromStatusCode(responseStatusCode), UpstreamRoute.calculateRetryAfterSeconds(proxyResponse));
+            upstreamRoute.fail(proxyResponse);
         }
 
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
@@ -481,7 +481,7 @@ public class DeploymentPostController {
                 error);
 
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
-        upstreamRoute.fail(HttpStatus.BAD_GATEWAY, -1);
+        upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
         upstreamRoute.next();
         sendRequest();
     }

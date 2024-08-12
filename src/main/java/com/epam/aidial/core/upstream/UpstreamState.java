@@ -11,7 +11,8 @@ public class UpstreamState implements Comparable<UpstreamState> {
     private final int errorsThreshold;
 
     private static final long INITIAL_BACKOFF_DELAY_MS = 1000;
-    private static final int BACKOFF_BASE = 2;
+    // max backoff delay - 5 minutes
+    private static final long MAX_BACKOFF_DELAY_MS = 5 * 60 * 1000;
 
     /**
      * Amount of 5xx errors from upstream
@@ -35,12 +36,13 @@ public class UpstreamState implements Comparable<UpstreamState> {
      */
     public synchronized void failed(HttpStatus status, long retryAfterSeconds) {
         if (status == HttpStatus.TOO_MANY_REQUESTS) {
-            retryAfter = System.currentTimeMillis() + retryAfterSeconds * 1000;
+            retryAfter = System.currentTimeMillis() + Math.max(retryAfterSeconds, 0) * 1000;
         }
 
         if (status.is5xx()) {
             if (++errorCount >= errorsThreshold) {
-                retryAfter = System.currentTimeMillis() + (long) (INITIAL_BACKOFF_DELAY_MS * Math.pow(BACKOFF_BASE, errorCount));
+                retryAfter = System.currentTimeMillis()
+                             + Math.min(INITIAL_BACKOFF_DELAY_MS * (1L << errorCount), MAX_BACKOFF_DELAY_MS);
             }
         }
     }

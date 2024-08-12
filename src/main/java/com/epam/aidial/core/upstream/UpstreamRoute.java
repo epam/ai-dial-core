@@ -102,6 +102,14 @@ public class UpstreamRoute {
         }
     }
 
+    public void fail(HttpStatus status) {
+        fail(status, DEFAULT_RETRY_AFTER_SECONDS_VALUE);
+    }
+
+    public void fail(HttpClientResponse response) {
+        fail(HttpStatus.fromStatusCode(response.statusCode()), calculateRetryAfterSeconds(response));
+    }
+
     public void succeed() {
         if (upstreamState != null) {
             upstreamState.succeeded();
@@ -112,7 +120,7 @@ public class UpstreamRoute {
      * @param response http response from upstream
      * @return the amount of seconds after which upstream should be available
      */
-    public static long calculateRetryAfterSeconds(HttpClientResponse response) {
+    private static long calculateRetryAfterSeconds(HttpClientResponse response) {
         try {
             String retryAfterHeaderValue = response.getHeader("Retry-After");
             if (retryAfterHeaderValue != null) {
