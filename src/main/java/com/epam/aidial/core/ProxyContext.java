@@ -25,6 +25,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Getter
@@ -32,6 +35,15 @@ import java.util.Map;
 public class ProxyContext {
 
     private static final int LOG_MAX_ERROR_LENGTH = 200;
+    private static final Set<CharSequence> CORS_SAFE_LIST = Stream.of(
+            HttpHeaders.CACHE_CONTROL,
+            HttpHeaders.CONTENT_LANGUAGE,
+            HttpHeaders.CONTENT_LENGTH,
+            HttpHeaders.CONTENT_TYPE,
+            HttpHeaders.EXPIRES,
+            HttpHeaders.LAST_MODIFIED)
+            .map(header -> header.toString().toUpperCase())
+            .collect(Collectors.toUnmodifiableSet());
 
     private final Config config;
     // API key of root requester
@@ -175,5 +187,20 @@ public class ProxyContext {
 
     public String getInitialDeploymentApi() {
         return initialDeploymentApi == null ? apiKeyData.getInitialDeploymentApi() : initialDeploymentApi;
+    }
+
+    public ProxyContext putHeader(CharSequence name, String value) {
+        response.putHeader(name, value);
+
+        return this;
+    }
+
+    public ProxyContext exposeHeaders() {
+        Set<String> headers = response.headers().names().stream()
+                .filter(header -> !CORS_SAFE_LIST.contains(header.toUpperCase()))
+                .collect(Collectors.toUnmodifiableSet());
+        response.putHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, String.join(", ", headers));
+
+        return this;
     }
 }

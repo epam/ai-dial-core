@@ -7,6 +7,7 @@ import com.epam.aidial.core.data.ApplicationData;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
+import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.service.InvitationService;
@@ -116,11 +117,16 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        vertx.executeBlocking(() -> service.getResource(descriptor), false)
-                .onSuccess(body -> {
-                    if (body == null) {
+        vertx.executeBlocking(() -> service.getResourceWithMetadata(descriptor), false)
+                .onSuccess(pair -> {
+                    if (pair == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
+                        ResourceItemMetadata itemMetadata = pair.getKey();
+                        String body = pair.getValue();
+                        context.putHeader(HttpHeaders.ETAG, itemMetadata.getEtag())
+                                .exposeHeaders();
+
                         // if resource type is application and caller has no write access - return application data
                         if (descriptor.getType() == ResourceType.APPLICATION && !hasWriteAccess) {
                             Application application = ProxyUtil.convertToObject(body, Application.class, true);
@@ -172,8 +178,9 @@ public class ResourceController extends AccessControlBaseController {
                     if (metadata == null) {
                         context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
                     } else {
-                        context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
-                        context.respond(HttpStatus.OK, metadata);
+                        context.putHeader(HttpHeaders.ETAG, metadata.getEtag())
+                                .exposeHeaders()
+                                .respond(HttpStatus.OK, metadata);
                     }
                 })
                 .onFailure(error -> {
