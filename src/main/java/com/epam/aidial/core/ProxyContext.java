@@ -204,7 +204,9 @@ public class ProxyContext {
                             && !lowerCase.startsWith("access-control-");
                 })
                 .collect(Collectors.toUnmodifiableSet());
-        response.putHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, String.join(", ", headers));
+        if (!headers.isEmpty()) {
+            response.putHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, String.join(", ", headers));
+        }
 
         return this;
     }

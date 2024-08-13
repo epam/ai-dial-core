@@ -193,7 +193,7 @@ public class ResourceOperationController {
         HttpServerResponse response = context.getResponse();
 
         try {
-            response.write("data: heartbeat\n\n");
+            response.write(": heartbeat\n\n");
         } catch (Throwable e) {
             log.warn("Can't send a heartbeat", e);
             response.reset();

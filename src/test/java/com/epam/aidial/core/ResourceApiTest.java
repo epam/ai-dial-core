@@ -5,8 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Slf4j
 class ResourceApiTest extends ResourceBaseTest {
@@ -252,5 +254,21 @@ class ResourceApiTest extends ResourceBaseTest {
                 """, "api-key", "proxyKey2");
 
         verify(response, 403, "resource is not allowed: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+    }
+
+    @Test
+    void testHeartbeat() {
+        try (EventStream events = subscribe("""
+                 {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation"
+                    }
+                  ]
+                 }
+                """)) {
+            assertEquals(0, events.peekHeartbeats());
+            assertTrue(events.takeHeartbeat(2, TimeUnit.SECONDS));
+        }
     }
 }
