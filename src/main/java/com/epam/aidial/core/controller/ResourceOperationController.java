@@ -128,7 +128,7 @@ public class ResourceOperationController {
                                 resourceOperationService.subscribeResources(resources, subscriber);
                         heartbeatService.subscribe(heartbeat);
                         return subscription;
-                        }, false);
+                    }, false);
                 })
                 .onSuccess(subscription -> response.closeHandler(event -> {
                     heartbeatService.unsubscribe(heartbeat);
