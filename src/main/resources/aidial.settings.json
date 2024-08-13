@@ -57,7 +57,8 @@
     "syncDelay": 120000,
     "syncBatch": 4096,
     "cacheExpiration": 300000,
-    "compressionMinSize": 256
+    "compressionMinSize": 256,
+    "heartbeatPeriod": 60000
   },
   "applications": {
     "includeCustomApps": false

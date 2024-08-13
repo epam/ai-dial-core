@@ -29,11 +29,12 @@ public class DownloadFileController extends AccessControlBaseController {
                         return context.respond(HttpStatus.NOT_FOUND);
                     }
 
-                    HttpServerResponse response = context.getResponse()
-                            .putHeader(HttpHeaders.CONTENT_TYPE, resourceStream.contentType())
+                    HttpServerResponse response = context.putHeader(HttpHeaders.CONTENT_TYPE, resourceStream.contentType())
                             // content-length removed by vertx
                             .putHeader(HttpHeaders.CONTENT_LENGTH, Long.toString(resourceStream.contentLength()))
-                            .putHeader(HttpHeaders.ETAG, resourceStream.etag());
+                            .putHeader(HttpHeaders.ETAG, resourceStream.etag())
+                            .exposeHeaders()
+                            .getResponse();
 
                     InputStreamReader stream = new InputStreamReader(proxy.getVertx(), resourceStream.inputStream());
                     stream.pipeTo(response)
