@@ -18,7 +18,7 @@ public class HeartbeatService implements Closeable {
     public HeartbeatService(Vertx vertx, long heartbeatPeriod) {
         this.vertx = vertx;
         this.heartbeatPeriod = heartbeatPeriod;
-        this.timer = vertx.setPeriodic(1_000, ignore -> vertx.executeBlocking(this::sendHeartbeats));
+        this.timer = vertx.setPeriodic(heartbeatPeriod / 2, ignore -> vertx.executeBlocking(this::sendHeartbeats));
     }
 
     public void subscribe(Runnable subscriber) {
@@ -30,8 +30,8 @@ public class HeartbeatService implements Closeable {
     }
 
     private Void sendHeartbeats() {
+        long now = System.currentTimeMillis();
         for (Runnable subscriber : subscribers.keySet()) {
-            long now = System.currentTimeMillis();
             Long newValue = subscribers.computeIfPresent(subscriber, (key, previousTime) ->
                     now - previousTime < heartbeatPeriod ? previousTime : now);
             if (Objects.equals(newValue, now)) {
