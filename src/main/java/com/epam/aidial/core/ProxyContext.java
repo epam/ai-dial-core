@@ -42,7 +42,7 @@ public class ProxyContext {
             HttpHeaders.CONTENT_TYPE,
             HttpHeaders.EXPIRES,
             HttpHeaders.LAST_MODIFIED)
-            .map(header -> header.toString().toUpperCase())
+            .map(header -> header.toString().toLowerCase())
             .collect(Collectors.toUnmodifiableSet());
 
     private final Config config;
@@ -197,7 +197,12 @@ public class ProxyContext {
 
     public ProxyContext exposeHeaders() {
         Set<String> headers = response.headers().names().stream()
-                .filter(header -> !CORS_SAFE_LIST.contains(header.toUpperCase()))
+                .filter(header -> {
+                    String lowerCase = header.toLowerCase();
+                    return !CORS_SAFE_LIST.contains(lowerCase)
+                            // Exclude CORS headers
+                            && !lowerCase.startsWith("access-control-");
+                })
                 .collect(Collectors.toUnmodifiableSet());
         response.putHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, String.join(", ", headers));
 
