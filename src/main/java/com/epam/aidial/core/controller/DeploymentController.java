@@ -129,6 +129,10 @@ public class DeploymentController {
             data.setFolderAttachments(features.getFolderAttachmentsSupported());
         }
 
+        if (features.getAllowResume() != null) {
+            data.setAllowResume(features.getAllowResume());
+        }
+
         return data;
     }
 }
