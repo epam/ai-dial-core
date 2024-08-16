@@ -46,8 +46,9 @@ public class UploadFileController extends AccessControlBaseController {
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
                                     FileMetadata metadata = writeStream.getMetadata();
-                                    context.getResponse().putHeader(HttpHeaders.ETAG, metadata.getEtag());
-                                    context.respond(HttpStatus.OK, metadata);
+                                    context.putHeader(HttpHeaders.ETAG, metadata.getEtag())
+                                            .exposeHeaders()
+                                            .respond(HttpStatus.OK, metadata);
                                 })
                                 .onFailure(error -> {
                                     writeStream.abortUpload(error);

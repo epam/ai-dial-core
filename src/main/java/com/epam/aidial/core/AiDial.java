@@ -13,6 +13,7 @@ import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.HeartbeatService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.NotificationService;
@@ -129,11 +130,13 @@ public class AiDial {
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
 
+            HeartbeatService heartbeatService = new HeartbeatService(
+                    vertx, settings("resources").getLong("heartbeatPeriod"));
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, customApplicationService, version());
+                    notificationService, customApplicationService, heartbeatService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

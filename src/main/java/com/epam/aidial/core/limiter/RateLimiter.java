@@ -162,7 +162,10 @@ public class RateLimiter {
     }
 
     private ResourceDescription getResourceDescription(ProxyContext context, String path) {
-        String bucketLocation = BlobStorageUtil.buildUserBucket(context);
+        // use bucket location of request's initiator,
+        // e.g. user -> core -> application -> core -> model, limits must be applied to the user by JWT
+        // e.g. service -> core -> application -> core -> model, limits must be applied to service by API key
+        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
         return ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
     }
 

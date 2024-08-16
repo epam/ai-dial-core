@@ -45,8 +45,10 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -147,7 +149,8 @@ public class ResourceBaseTest {
                       "resources": {
                         "syncPeriod": 100,
                         "syncDelay": 100,
-                        "cacheExpiration": 100
+                        "cacheExpiration": 100,
+                        "heartbeatPeriod": 1000
                       }
                     }
                     """.formatted(Json.encode(testDir.toString()));
@@ -368,6 +371,7 @@ public class ResourceBaseTest {
     static class EventStream implements AutoCloseable {
         AtomicBoolean active = new AtomicBoolean(true);
         BlockingQueue<String> events = new LinkedBlockingQueue<>();
+        Semaphore heartbeats = new Semaphore(0);
         HttpClientResponse response;
 
         private EventStream(HttpClientResponse response) {
@@ -376,10 +380,15 @@ public class ResourceBaseTest {
 
         private void add(String event) {
             if (active.get()) {
-                Assertions.assertTrue(event.startsWith("data:"));
-                Assertions.assertTrue(event.endsWith("\n\n"));
-                String message = event.substring("data:".length(), event.length() - "\n\n".length()).trim();
-                events.add(message);
+                if (event.startsWith("data:")) {
+                    Assertions.assertTrue(event.endsWith("\n\n"));
+                    String message = event.substring("data:".length(), event.length() - "\n\n".length()).trim();
+                    events.add(message);
+                } else if (event.startsWith(":")) {
+                    heartbeats.release();
+                } else {
+                    Assertions.fail("Expected either a data chunk or a comment, but got: " + event);
+                }
             }
         }
 
@@ -388,6 +397,15 @@ public class ResourceBaseTest {
             String event = events.poll(10, TimeUnit.SECONDS);
             assertNotNull(event, "No event received");
             return event;
+        }
+
+        public int peekHeartbeats() {
+            return heartbeats.availablePermits();
+        }
+
+        @SneakyThrows
+        public boolean takeHeartbeat(long timeout, TimeUnit timeUnit) {
+            return heartbeats.tryAcquire(timeout, timeUnit);
         }
 
         @Override

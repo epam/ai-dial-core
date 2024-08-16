@@ -9,9 +9,11 @@ import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.HeartbeatService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceOperationService;
+import com.epam.aidial.core.service.ResourceTopic;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
@@ -40,6 +42,7 @@ public class ResourceOperationController {
     private final ResourceOperationService resourceOperationService;
     private final LockService lockService;
     private final AccessService accessService;
+    private final HeartbeatService heartbeatService;
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -48,6 +51,7 @@ public class ResourceOperationController {
         this.resourceOperationService = proxy.getResourceOperationService();
         this.lockService = proxy.getLockService();
         this.accessService = proxy.getAccessService();
+        this.heartbeatService = proxy.getHeartbeatService();
     }
 
     public Future<?> move() {
@@ -107,6 +111,7 @@ public class ResourceOperationController {
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
         Consumer<ResourceEvent> subscriber = this::sendSubscriptionEvent;
+        Runnable heartbeat = this::sendHeartbeat;
 
         context.getRequest()
                 .body()
@@ -118,9 +123,17 @@ public class ResourceOperationController {
                             .putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
                             .write(""); // to force writing header
 
-                    return vertx.executeBlocking(() -> resourceOperationService.subscribeResources(resources, subscriber), false);
+                    return vertx.executeBlocking(() -> {
+                        ResourceTopic.Subscription subscription =
+                                resourceOperationService.subscribeResources(resources, subscriber);
+                        heartbeatService.subscribe(heartbeat);
+                        return subscription;
+                    }, false);
                 })
-                .onSuccess(subscription -> response.closeHandler(event -> subscription.close()))
+                .onSuccess(subscription -> response.closeHandler(event -> {
+                    heartbeatService.unsubscribe(heartbeat);
+                    subscription.close();
+                }))
                 .onFailure(this::handleServiceError);
 
         return Future.succeededFuture();
@@ -172,6 +185,17 @@ public class ResourceOperationController {
             }
         } catch (Throwable e) {
             log.warn("Can't send resource event", e);
+            response.reset();
+        }
+    }
+
+    private void sendHeartbeat() {
+        HttpServerResponse response = context.getResponse();
+
+        try {
+            response.write(": heartbeat\n\n");
+        } catch (Throwable e) {
+            log.warn("Can't send a heartbeat", e);
             response.reset();
         }
     }
