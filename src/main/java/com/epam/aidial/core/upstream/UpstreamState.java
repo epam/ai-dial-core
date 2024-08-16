@@ -3,7 +3,11 @@ package com.epam.aidial.core.upstream;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.util.HttpStatus;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 
+import java.time.Instant;
+
+@Slf4j
 public class UpstreamState implements Comparable<UpstreamState> {
 
     @Getter
@@ -37,6 +41,8 @@ public class UpstreamState implements Comparable<UpstreamState> {
     public synchronized void failed(HttpStatus status, long retryAfterSeconds) {
         if (status == HttpStatus.TOO_MANY_REQUESTS) {
             retryAfter = System.currentTimeMillis() + Math.max(retryAfterSeconds, 0) * 1000;
+
+            log.info("Upstream limit hit: retry after {} millis {}", retryAfter, Instant.ofEpochMilli(retryAfter).toString());
         }
 
         if (status.is5xx()) {
