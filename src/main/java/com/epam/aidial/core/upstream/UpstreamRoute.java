@@ -123,6 +123,7 @@ public class UpstreamRoute {
     private static long calculateRetryAfterSeconds(HttpClientResponse response) {
         try {
             String retryAfterHeaderValue = response.getHeader("Retry-After");
+            log.info("Retry-After header value: {}", retryAfterHeaderValue);
             if (retryAfterHeaderValue != null) {
                 return Long.parseLong(retryAfterHeaderValue);
             }
