@@ -127,7 +127,7 @@ public class UpstreamRoute {
                 log.debug("Retry-After header value: {}", retryAfterHeaderValue);
                 return Long.parseLong(retryAfterHeaderValue);
             }
-            log.debug("Retry-after header not found, status code {} available headers: {}", response.statusCode(), response.headers());
+            log.debug("Retry-after header not found, status code {}", response.statusCode());
         } catch (Exception e) {
             log.warn("Failed to parse Retry-After header value, fallback to the default value: " + DEFAULT_RETRY_AFTER_SECONDS_VALUE, e);
         }
