@@ -123,11 +123,11 @@ public class UpstreamRoute {
     private static long calculateRetryAfterSeconds(HttpClientResponse response) {
         try {
             String retryAfterHeaderValue = response.getHeader("Retry-After");
-            log.info("Retry-After header value: {}", retryAfterHeaderValue);
             if (retryAfterHeaderValue != null) {
+                log.debug("Retry-After header value: {}", retryAfterHeaderValue);
                 return Long.parseLong(retryAfterHeaderValue);
             }
-            log.info("Retry-after header not found, available headers: {}", response.headers());
+            log.debug("Retry-after header not found, status code {} available headers: {}", response.statusCode(), response.headers());
         } catch (Exception e) {
             log.warn("Failed to parse Retry-After header value, fallback to the default value: " + DEFAULT_RETRY_AFTER_SECONDS_VALUE, e);
         }
