@@ -10,7 +10,6 @@ import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.storage.BlobStorage;
-import com.epam.aidial.core.upstream.UpstreamBalancer;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
@@ -65,8 +64,6 @@ public class ProxyTest {
     private LogStore logStore;
     @Mock
     private RateLimiter rateLimiter;
-    @Mock
-    private UpstreamBalancer upstreamBalancer;
     @Mock
     private AccessTokenValidator accessTokenValidator;
     @Mock
