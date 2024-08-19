@@ -3,9 +3,12 @@ package com.epam.aidial.core.util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeType;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import lombok.experimental.UtilityClass;
 
 import java.util.ArrayDeque;
+import java.util.Map;
 
 @UtilityClass
 public class MergeChunks {
@@ -28,20 +31,31 @@ public class MergeChunks {
             return source;
         }
         if (target.isArray() && source.isArray()) {
-
+            return mergeArrays((ArrayNode) target, (ArrayNode) source, path);
         } else if (target.isObject() && source.isObject()) {
-
+            return mergeObjects((ObjectNode) target, (ObjectNode) source, path);
         } else if (target.isIntegralNumber() && source.isIntegralNumber()) {
-
+            return source;
         } else if (target.isFloatingPointNumber() && source.isFloatingPointNumber()) {
-
+            return source;
         } else if (target.isBoolean() && source.isBoolean()) {
-
+            return source;
         } else if (target.getNodeType() == JsonNodeType.STRING && source.getNodeType() == JsonNodeType.STRING) {
-
+            String text = target.textValue() + source.textValue();
+            return new TextNode(text);
         }
 
         throw new IllegalArgumentException(String.format("Can't merge %s into %s at path %s", source.asText(), target.asText(), path.toString()));
+    }
+
+    private JsonNode mergeObjects(ObjectNode target, ObjectNode source, ArrayDeque<String> path) {
+        for (Map.Entry<String, JsonNode> entry : source.properties()) {
+            String name = entry.getKey();
+            path.addFirst(name);
+            target.set(name, merge(target.get(name), entry.getValue(), path));
+            path.removeFirst();
+        }
+        return target;
     }
 
 
@@ -52,7 +66,7 @@ public class MergeChunks {
         boolean isSourceIndexed = isIndexedArray(source);
         if (target.isEmpty()) {
             if (isSourceIndexed) {
-
+                return mergeIndexedArrays(target, source, path);
             } else {
                 return source;
             }
@@ -62,33 +76,31 @@ public class MergeChunks {
             throw new IllegalArgumentException(CANNOT_MERGE_NON_INDEXED_LIST_ERROR_MESSAGE);
         }
 
+        return mergeIndexedArrays(target, source, path);
+
     }
 
-    /**
-     * for elem in source:
-     *         assert isinstance(elem, dict), LIST_OF_DICTS_ERROR_MESSAGE
-     *
-     *         index = elem.get("index")
-     *         assert isinstance(index, int), INDEX_ERROR_MESSAGE
-     *
-     *         path.append(index)
-     *
-     *         if index < len(target):
-     *             target[index] = merge_recursive(target[index], elem, path)
-     *         else:
-     *             target.extend([{"index": idx} for idx in range(len(target), index)])
-     *             target.append(elem)
-     *
-     *         path.pop()
-     *
-     *     return target
-     * @param target
-     * @param source
-     * @param path
-     * @return
-     */
     private ArrayNode mergeIndexedArrays(ArrayNode target, ArrayNode source, ArrayDeque<String> path) {
-        for (JsonNode)
+        for (JsonNode elem : source) {
+            if (!elem.isObject()) {
+                throw new IllegalArgumentException(LIST_OF_DICTS_ERROR_MESSAGE);
+            }
+            JsonNode indexNode = elem.get("index");
+            if (!indexNode.isInt()) {
+                throw new IllegalArgumentException(INDEX_ERROR_MESSAGE);
+            }
+            int index = indexNode.asInt();
+            if (index < target.size()) {
+                merge(target.get(index), elem, path);
+            } else {
+                for (int i = target.size(); i < index; i++) {
+                    ObjectNode objectNode = ProxyUtil.MAPPER.createObjectNode();
+                    objectNode.put("index", i);
+                }
+                target.add(elem);
+            }
+        }
+        return target;
     }
 
     private boolean isIndexedArray(ArrayNode array) {
