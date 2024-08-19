@@ -53,7 +53,6 @@ public class ApiKeyData {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
         proxyApiKeyData.setInterceptors(context.getInterceptors());
-        proxyApiKeyData.setInterceptorIndex(apiKeyData.getInterceptorIndex() + 1); // move to next interceptor
         proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
         proxyApiKeyData.setInitialDeploymentApi(context.getInitialDeploymentApi());
 
