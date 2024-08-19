@@ -293,10 +293,6 @@ public class GfLogStore implements LogStore {
                 if (contentNode != null) {
                     content.append(contentNode.textValue());
                 }
-                JsonNode role = delta.get("role");
-                if (role != null) {
-                    message.set("role", role);
-                }
             }
 
             if (last == null) {
