@@ -271,10 +271,20 @@ public class GfLogStore implements LogStore {
                 choice.set("finish_reason", curChoice.get("finish_reason"));
                 JsonNode delta = curChoice.get("delta");
                 if (delta.get("custom_content") != null) {
-                    message.set("custom_content", delta.get("custom_content"));
+                    ObjectNode customContent = (ObjectNode) message.get("custom_content");
+                    if (customContent == null) {
+                        message.set("custom_content", delta.get("custom_content"));
+                    } else {
+                        mergeCustomContent(customContent, (ObjectNode) delta.get("custom_content"));
+                    }
                 }
                 if (delta.get("tool_calls") != null) {
-                    message.set("tool_calls", delta.get("tool_calls"));
+                    ArrayNode toolCalls = (ArrayNode) message.get("tool_calls");
+                    if (toolCalls == null) {
+                        message.set("tool_calls", delta.get("tool_calls"));
+                    } else {
+                        toolCalls.addAll((ArrayNode) delta.get("tool_calls"));
+                    }
                 }
                 if (delta.get("function_call") != null) {
                     message.set("function_call", delta.get("function_call"));
@@ -282,6 +292,10 @@ public class GfLogStore implements LogStore {
                 JsonNode contentNode = delta.get("content");
                 if (contentNode != null) {
                     content.append(contentNode.textValue());
+                }
+                JsonNode role = delta.get("role");
+                if (role != null) {
+                    message.set("role", role);
                 }
             }
 
@@ -323,6 +337,53 @@ public class GfLogStore implements LogStore {
             log.warn("Can't assemble streaming response", e);
             return "{}";
         }
+    }
+
+    private static void mergeCustomContent(ObjectNode merged, ObjectNode cur) {
+        mergeArrays(merged, cur, "attachments");
+        mergeArrays(merged, cur, "controls");
+        mergeArrays(merged, cur, "stages");
+        mergeObjects(merged, cur, "state");
+    }
+
+    private static void mergeObjects(ObjectNode merged, ObjectNode cur, String propName) {
+        ObjectNode mergedObject = (ObjectNode) merged.get(propName);
+        ObjectNode curObject = (ObjectNode) cur.get(propName);
+        if (curObject != null && !curObject.isEmpty()) {
+            if (mergedObject == null) {
+                merged.set(propName, curObject);
+            } else {
+                mergedObject.setAll(curObject);
+            }
+        }
+    }
+
+    private static void mergeArrays(ObjectNode merged, ObjectNode cur, String propName) {
+        ArrayNode curArray = (ArrayNode) cur.get(propName);
+        if (curArray != null && !curArray.isEmpty()) {
+            ArrayNode mergedArray = (ArrayNode) merged.get(propName);
+            if (mergedArray == null) {
+                merged.set(propName, curArray);
+            } else {
+                int index = nextIndex(mergedArray);
+                for (int i = 0; i < curArray.size(); i++) {
+                    ObjectNode objectNode = (ObjectNode) curArray.get(i);
+                    objectNode.put("index", index++);
+                    mergedArray.add(objectNode);
+                }
+            }
+        }
+    }
+
+    private static int nextIndex(ArrayNode array) {
+        int max = array.get(0).get("index").asInt();
+        for (int i = 1; i < array.size(); i++) {
+            int index = array.get(i).get("index").asInt();
+            if (index >  max) {
+                max = index;
+            }
+        }
+        return max + 1;
     }
 
     /**
