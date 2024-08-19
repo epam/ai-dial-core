@@ -84,7 +84,9 @@ public class DeploymentPostController {
         }
         // handle a special deployment `interceptor`
         if ("interceptor".equals(deploymentId)) {
-            return handleInterceptor();
+            // move to next interceptor
+            int nextIndex = context.getApiKeyData().getInterceptorIndex() + 1;
+            return handleInterceptor(nextIndex);
         }
         return handleDeployment(deploymentId, deploymentApi);
     }
@@ -133,7 +135,7 @@ public class DeploymentPostController {
                             context.setInitialDeployment(deploymentId);
                             context.setInitialDeploymentApi(deploymentApi);
                             context.setInterceptors(context.getDeployment().getInterceptors());
-                            future = handleInterceptor();
+                            future = handleInterceptor(0);
                         } else {
                             future = handleRateLimitSuccess(deploymentId);
                         }
@@ -149,10 +151,9 @@ public class DeploymentPostController {
                 });
     }
 
-    private Future<?> handleInterceptor() {
+    private Future<?> handleInterceptor(int nextIndex) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> interceptors = context.getInterceptors();
-        int nextIndex = apiKeyData.getInterceptorIndex() + 1;
         if (nextIndex < interceptors.size()) {
             String interceptorName = interceptors.get(nextIndex);
             Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
@@ -161,8 +162,9 @@ public class DeploymentPostController {
                 return respond(HttpStatus.NOT_FOUND, "Interceptor is not found");
             }
             context.setDeployment(interceptor);
-
-            setupProxyApiKeyData();
+            ApiKeyData proxyApiKeyData = new ApiKeyData();
+            proxyApiKeyData.setInterceptorIndex(nextIndex);
+            setupProxyApiKeyData(proxyApiKeyData);
 
             InterceptorController controller = new InterceptorController(proxy, context);
             return controller.handle();
@@ -203,7 +205,7 @@ public class DeploymentPostController {
             return Future.succeededFuture();
         }
 
-        setupProxyApiKeyData();
+        setupProxyApiKeyData(new ApiKeyData());
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
             context.getRequest().body()
                     .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
@@ -215,8 +217,7 @@ public class DeploymentPostController {
         });
     }
 
-    private void setupProxyApiKeyData() {
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
+    private void setupProxyApiKeyData(ApiKeyData proxyApiKeyData) {
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
     }
