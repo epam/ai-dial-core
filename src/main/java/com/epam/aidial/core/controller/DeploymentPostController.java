@@ -151,11 +151,11 @@ public class DeploymentPostController {
                 });
     }
 
-    private Future<?> handleInterceptor(int nextIndex) {
+    private Future<?> handleInterceptor(int interceptorIndex) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> interceptors = context.getInterceptors();
-        if (nextIndex < interceptors.size()) {
-            String interceptorName = interceptors.get(nextIndex);
+        if (interceptorIndex < interceptors.size()) {
+            String interceptorName = interceptors.get(interceptorIndex);
             Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
             if (interceptor == null) {
                 log.warn("Interceptor is not found for the given name: {}", interceptorName);
@@ -163,7 +163,7 @@ public class DeploymentPostController {
             }
             context.setDeployment(interceptor);
             ApiKeyData proxyApiKeyData = new ApiKeyData();
-            proxyApiKeyData.setInterceptorIndex(nextIndex);
+            proxyApiKeyData.setInterceptorIndex(interceptorIndex);
             setupProxyApiKeyData(proxyApiKeyData);
 
             InterceptorController controller = new InterceptorController(proxy, context);
