@@ -1,0 +1,187 @@
+[
+  {
+    "chunks": [1, 2],
+    "result": 2,
+    "description": "Merge ints"
+  },
+  {
+    "chunks": [1.0, 2.0],
+    "result": 2.0,
+    "description": "Merge floats"
+  },
+  {
+    "chunks": [{}],
+    "result": {},
+    "description": "Merge empty dicts"
+  },
+  {
+    "chunks": [1, null],
+    "result": 1,
+    "description": "Merge with None right"
+  },
+  {
+    "chunks": [null, 1],
+    "result": 1,
+    "description": "Merge with None left"
+  },
+  {
+    "chunks": [null, []],
+    "result": [],
+    "description": "Merge with None left list"
+  },
+  {
+    "chunks": [[], null],
+    "result": [],
+    "description": "Merge with None right list"
+  },
+  {
+    "chunks": [null, {}],
+    "result": {},
+    "description": "Merge with None left object"
+  },
+  {
+    "chunks": [{}, null],
+    "result": {},
+    "description": "Merge with None right object"
+  },
+  {
+    "chunks": [
+      {
+        "a": {
+          "b": "foo"
+        }
+      },
+      {
+        "a": {
+          "b": 1
+        }
+      }
+    ],
+    "error": "Can't merge 1 into foo at path a.b",
+    "description": "str+int type-error"
+  },
+  {
+    "chunks": [{"a": {"b": 1}}, {"a": {"b": "foo"}}],
+    "error": "Can't merge foo into 1 at path a.b",
+    "description": "int+str type-error"
+  },
+  {
+    "chunks": [{}, {"a": {"b": 1}}],
+    "result": {"a": {"b": 1}},
+    "description": "Merge to empty dict"
+  },
+  {
+    "chunks": [{}, {"a": []}],
+    "result": {"a": []},
+    "description": "Merge to empty dict with empty list"
+  },
+  {
+    "chunks": [{}, {"a": [1]}],
+    "result": {"a": [1]},
+    "description": "Merge to empty dict with non-empty non-indexed list"
+  },
+  {
+    "chunks": [{"a": [2]}, {"a": [{"index": 0}]}],
+    "error": "Cannot merge non-indexed array",
+    "description": "Merge non-indexed and indexed lists"
+  },
+  {
+    "chunks": [{"a": [{"index": 0}]}, {"a": [2]}],
+    "error": "Cannot merge non-indexed array",
+    "description": "Merge indexed and non-indexed lists"
+  },
+  {
+    "chunks": [{"a": [1]}, {"a": [2]}],
+    "error": "Cannot merge non-indexed array",
+    "description": "Merge lists of non-dicts"
+  },
+  {
+    "chunks": [{"a": [{"b": 1}]}, {"a": [{"b": 2}]}],
+    "error": "Cannot merge non-indexed array",
+    "description": "Merge lists of non-indexed dicts"
+  },
+  {
+    "chunks": [{"a": 1, "b": 2}, {"c": 3, "d": 4}],
+    "result": {"a": 1, "b": 2, "c": 3, "d": 4},
+    "description": "Merge dicts with non-overlapping keys"
+  },
+  {
+    "chunks": [{"a": 1, "b": 2}, {"c": 3, "b": 4}],
+    "result": {"a": 1, "b": 4, "c": 3},
+    "description": "Merge dicts with overlapping keys"
+  },
+  {
+    "chunks": [
+      {"a": [{"index": 0, "value": 1}]},
+      {"a": [{"index": 0, "value": 2}]}
+    ],
+    "result": {"a": [{"value": 2}]},
+    "description": "Merge lists with overlapping indices"
+  },
+  {
+    "chunks": [
+      {"a": [{"index": 0, "value": 0}]},
+      {"a": [{"index": 1, "value": 1}]}
+    ],
+    "result": {"a": [{"value": 0}, {"value": 1}]},
+    "description": "Merge lists with non-overlapping indices"
+  },
+  {
+    "chunks": [
+      {"a": []},
+      {"a": [{"index": 1, "value": 1}]},
+      {"a": [{"index": 0, "value": 0}]}
+    ],
+    "result": {"a": [{"value": 0}, {"value": 1}]},
+    "description": "Merge lists out-of-order"
+  },
+  {
+    "chunks": [
+      {},
+      {"a": [{"index": 5, "value": 5}]},
+      {"a": [{"index": 4, "value": 4}]},
+      {"a": [{"index": 2, "value": 2}]},
+      {"a": [{"index": 1, "value": 1}]}
+    ],
+    "result": {
+      "a": [
+        {},
+        {"value": 1},
+        {"value": 2},
+        {},
+        {"value": 4},
+        {"value": 5}
+      ]
+    },
+    "description": "Merge lists out-of-order (no starting point)"
+  },
+  {
+    "chunks": [
+      {"a": [{"index": 0, "value": 0}]},
+      {"a": [{"index": 2, "value": 2}]}
+    ],
+    "result": {"a": [{"value": 0}, {}, {"value": 2}]},
+    "description": "Merge lists with a forward gap"
+  },
+  {
+    "chunks": [{"a": "Hello "}, {"a": "world!"}],
+    "result": {"a": "Hello world!"},
+    "description": "Merge nested strings"
+  },
+  {
+    "chunks": [
+      {"usage": {"prompt_tokens": 1}},
+      {"usage": {"prompt_tokens": 2}}
+    ],
+    "result": {"usage": {"prompt_tokens": 2}},
+    "description": "Merge top-level usage"
+  },
+  {
+    "chunks": [
+      {"a": {"usage": {"prompt_tokens": 1}}},
+      {"a": {"usage": {"prompt_tokens": 2}}}
+    ],
+    "result": {"a": {"usage": {"prompt_tokens": 2}}},
+    "description": "Merge nested usage"
+  }
+]
