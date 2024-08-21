@@ -84,7 +84,9 @@ public class ModelCostCalculator {
         }
         if (isStreamingResponse) {
             try (Scanner scanner = new Scanner(new ByteBufInputStream(responseBody.getByteBuf()))) {
-                scanner.useDelimiter("\n*data: *");
+                // each chunk is separated by one or multiple new lines with the prefix: 'data:' (except the first chunk)
+                // chunks may contain `data:` inside chunk data, which may lead to incorrect parsing
+                scanner.useDelimiter("(^data: *|\n+data: *)");
                 int len = 0;
                 while (scanner.hasNext()) {
                     String chunk = scanner.next();
