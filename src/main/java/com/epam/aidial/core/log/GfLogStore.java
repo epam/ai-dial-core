@@ -285,9 +285,6 @@ public class GfLogStore implements LogStore {
             if (choices != null) {
                 MergeChunks.removeIndices(choices);
                 result.set("choices", choices);
-            } else {
-                // error
-                return ProxyUtil.convertToString(result);
             }
             return ProxyUtil.convertToString(result);
         } catch (Throwable e) {
