@@ -28,8 +28,9 @@ public class MergeChunks {
             return null;
         }
         JsonNode res = chunks.get(0);
+        Stack<String> path = new Stack<>();
         for (int i = 1; i < chunks.size(); i++) {
-            res = merge(res, chunks.get(i), new Stack<>());
+            res = merge(res, chunks.get(i), path);
         }
         removeIndices(res, false);
         return res;
@@ -162,6 +163,9 @@ public class MergeChunks {
     }
 
     public void removeIndices(JsonNode node) {
+        if (node == null) {
+            return;
+        }
         removeIndices(node, false);
     }
 

@@ -247,12 +247,8 @@ public class GfLogStore implements LogStore {
                     break;
                 }
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(chunk);
-                if (tree.get("usage") != null) {
-                    usage = MergeChunks.merge(usage, tree.get("usage"));
-                }
-                if (tree.get("statistics") != null) {
-                    statistics = MergeChunks.merge(statistics, tree.get("statistics"));
-                }
+                usage = MergeChunks.merge(usage, tree.get("usage"));
+                statistics = MergeChunks.merge(statistics, tree.get("statistics"));
                 if (tree.get("system_fingerprint") != null) {
                     systemFingerprint = tree.get("system_fingerprint");
                 }
@@ -260,9 +256,7 @@ public class GfLogStore implements LogStore {
                     model = tree.get("model");
                 }
                 last = tree;
-                if (tree.get("choices") != null) {
-                    choices = MergeChunks.merge(choices, tree.get("choices"));
-                }
+                choices = MergeChunks.merge(choices, tree.get("choices"));
             }
 
             if (last == null) {
