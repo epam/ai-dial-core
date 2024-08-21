@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Stack;
 
+/**
+ * The utility merges chunks received from a streaming response. The original reference implementation is provided
+ * <a href="https://github.com/epam/ai-dial-sdk/blob/0.10.1/aidial_sdk/utils/merge_chunks.py">here</a>.
+ */
 @UtilityClass
 public class MergeChunks {
 
@@ -68,18 +72,7 @@ public class MergeChunks {
             return new TextNode(text);
         }
 
-        throw new IllegalArgumentException(String.format("Can't merge %s into %s at path %s", source.asText(), target.asText(), toPath(path)));
-    }
-
-    private static String toPath(Stack<String> path) {
-        StringBuilder sb = new StringBuilder();
-        for (var elem : path) {
-            if (!sb.isEmpty()) {
-                sb.append('.');
-            }
-            sb.append(elem);
-        }
-        return sb.toString();
+        throw new IllegalArgumentException(String.format("Can't merge %s into %s at path %s", source.asText(), target.asText(), String.join(".", path)));
     }
 
     private JsonNode mergeObjects(ObjectNode target, ObjectNode source, Stack<String> path) {

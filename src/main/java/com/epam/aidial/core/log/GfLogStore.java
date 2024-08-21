@@ -282,64 +282,18 @@ public class GfLogStore implements LogStore {
                 result.set("system_fingerprint", systemFingerprint);
             }
 
-            if (choices == null) {
+            if (choices != null) {
+                MergeChunks.removeIndices(choices);
+                result.set("choices", choices);
+            } else {
                 // error
                 return ProxyUtil.convertToString(result);
             }
-            MergeChunks.removeIndices(choices);
-            result.set("choices", choices);
             return ProxyUtil.convertToString(result);
         } catch (Throwable e) {
             log.warn("Can't assemble streaming response", e);
             return "{}";
         }
-    }
-
-    private static void mergeCustomContent(ObjectNode merged, ObjectNode cur) {
-        mergeArrays(merged, cur, "attachments");
-        mergeArrays(merged, cur, "controls");
-        mergeArrays(merged, cur, "stages");
-        mergeObjects(merged, cur, "state");
-    }
-
-    private static void mergeObjects(ObjectNode merged, ObjectNode cur, String propName) {
-        ObjectNode mergedObject = (ObjectNode) merged.get(propName);
-        ObjectNode curObject = (ObjectNode) cur.get(propName);
-        if (curObject != null && !curObject.isEmpty()) {
-            if (mergedObject == null) {
-                merged.set(propName, curObject);
-            } else {
-                mergedObject.setAll(curObject);
-            }
-        }
-    }
-
-    private static void mergeArrays(ObjectNode merged, ObjectNode cur, String propName) {
-        ArrayNode curArray = (ArrayNode) cur.get(propName);
-        if (curArray != null && !curArray.isEmpty()) {
-            ArrayNode mergedArray = (ArrayNode) merged.get(propName);
-            if (mergedArray == null) {
-                merged.set(propName, curArray);
-            } else {
-                int index = nextIndex(mergedArray);
-                for (int i = 0; i < curArray.size(); i++) {
-                    ObjectNode objectNode = (ObjectNode) curArray.get(i);
-                    objectNode.put("index", index++);
-                    mergedArray.add(objectNode);
-                }
-            }
-        }
-    }
-
-    private static int nextIndex(ArrayNode array) {
-        int max = array.get(0).get("index").asInt();
-        for (int i = 1; i < array.size(); i++) {
-            int index = array.get(i).get("index").asInt();
-            if (index >  max) {
-                max = index;
-            }
-        }
-        return max + 1;
     }
 
     /**
