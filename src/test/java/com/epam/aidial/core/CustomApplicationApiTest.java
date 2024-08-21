@@ -331,7 +331,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "seed" : false,
                      "url_attachments" : false,
                      "folder_attachments" : false,
-                     "allow_resume":false
+                     "allow_resume":true
                    },
                    "defaults" : { }
                 }
@@ -364,7 +364,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume":false
+                                "allow_resume":true
                                 },
                             "defaults":{}
                         },
@@ -391,7 +391,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume":false
+                              "allow_resume":true
                             },
                             "defaults" : { }
                           }
@@ -427,7 +427,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume":false
+                                "allow_resume":true
                                 },
                             "defaults":{}
                         },
@@ -454,7 +454,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume":false
+                              "allow_resume":true
                             },
                             "defaults" : { }
                           }
@@ -563,7 +563,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume":false
+                                "allow_resume":true
                                 },
                             "defaults":{}
                         },
@@ -590,7 +590,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume":false
+                              "allow_resume":true
                             },
                             "defaults" : { }
                           }
@@ -629,7 +629,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume": false
+                                "allow_resume": true
                                 },
                             "defaults":{}
                         }
@@ -680,7 +680,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "seed":false,
                         "url_attachments":false,
                         "folder_attachments":false,
-                        "allow_resume": false
+                        "allow_resume": true
                     },
                     "defaults":{}
                 }
@@ -713,7 +713,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume": false
+                                "allow_resume": true
                                 },
                             "defaults":{}
                         },
@@ -740,7 +740,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume": false
+                              "allow_resume": true
                             },
                             "defaults" : { }
                           }
