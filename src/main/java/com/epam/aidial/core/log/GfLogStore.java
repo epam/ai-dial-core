@@ -11,7 +11,6 @@ import com.epam.deltix.gflog.api.LogFactory;
 import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Vertx;
@@ -239,8 +238,9 @@ public class GfLogStore implements LogStore {
             JsonNode systemFingerprint = null;
             JsonNode model = null;
             JsonNode choices = null;
-            // each chunk is separated by one or multiple new lines with the prefix: 'data:'
-            scanner.useDelimiter("\n*data: *");
+            // each chunk is separated by one or multiple new lines with the prefix: 'data:' (except the first chunk)
+            // chunks may contain `data:` inside chunk data, which may lead to incorrect parsing
+            scanner.useDelimiter("(^data: *|\n+data: *)");
             while (scanner.hasNext()) {
                 String chunk = scanner.next();
                 if (chunk.startsWith("[DONE]")) {
