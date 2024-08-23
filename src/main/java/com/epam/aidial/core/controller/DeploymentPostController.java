@@ -31,6 +31,10 @@ import com.epam.aidial.core.util.BufferingReadStream;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ModelCostCalculator;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.epam.aidial.core.util.RequestUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
@@ -271,24 +275,25 @@ public class DeploymentPostController {
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), deployment.getName(), requestBody.length());
 
-        context.setRequestBody(requestBody);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        try {
+            ObjectNode json = (ObjectNode) ProxyUtil.MAPPER.readTree(requestBody.getBytes());
+            ObjectNode dialFormat = RequestUtil.convertToDialFormat(json);
 
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            Throwable error = ProxyUtil.processChain(tree, enhancementFunctions);
+            context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsString(dialFormat)));
+            context.setRequestBodyTimestamp(System.currentTimeMillis());
+
+            Throwable error = ProxyUtil.processChain(dialFormat, enhancementFunctions);
             if (error != null) {
                 finalizeRequest();
                 return;
             }
+            sendRequest();
+
         } catch (IOException e) {
             respond(HttpStatus.BAD_REQUEST);
             log.warn("Can't parse JSON request body. Trace: {}. Span: {}. Error:",
                     context.getTraceId(), context.getSpanId(), e);
-            return;
         }
-
-        sendRequest();
     }
 
     /**
