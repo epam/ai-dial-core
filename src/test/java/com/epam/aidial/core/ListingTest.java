@@ -6,53 +6,15 @@ import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.codec.BodyCodec;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.nio.file.Path;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ExtendWith(VertxExtension.class)
-public class ListingTest {
-
-    private static AiDial dial;
-    private static int serverPort;
-
-    private static Path testDir;
-
-    @BeforeAll
-    public static void init() throws Exception {
-        // initialize server
-        dial = new AiDial();
-        testDir = FileUtil.baseTestPath(FeaturesApiTest.class);
-        dial.setStorage(FileUtil.buildFsBlobStorage(testDir));
-        dial.start();
-        serverPort = dial.getServer().actualPort();
-    }
-
-    @AfterAll
-    public static void destroy() {
-        // stop server
-        dial.stop();
-    }
-
-    @BeforeEach
-    public void setUp() {
-        // prepare test directory
-        FileUtil.createDir(testDir.resolve("test"));
-    }
-
-    @AfterEach
-    public void clean() {
-        // clean test directory
-        FileUtil.deleteDir(testDir);
-    }
+public class ListingTest extends ResourceBaseTest {
 
     void checkListing(Vertx vertx, VertxTestContext context, String uri, String id, String field, Object expected) {
         Consumer<String> checker = (str) -> {
@@ -88,6 +50,8 @@ public class ListingTest {
         checkListing(vertx, context, "/openai/models", "embedding-ada", "features", new JsonObject("""
                     { "rate": false, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
+                    , "url_attachments": false, "folder_attachments": false
+                    , "configuration": false, "allow_resume": true
                     }
                 """));
     }
@@ -97,6 +61,8 @@ public class ListingTest {
         checkListing(vertx, context, "/openai/models", "chat-gpt-35-turbo", "features", new JsonObject("""
                     { "rate": true, "tokenize": true, "truncate_prompt": true
                     , "system_prompt": true, "tools": true, "seed": true
+                    , "url_attachments": true, "folder_attachments": false
+                    , "configuration": false, "allow_resume": true
                     }
                 """));
     }
@@ -106,6 +72,8 @@ public class ListingTest {
         checkListing(vertx, context, "/openai/applications", "app", "features", new JsonObject("""
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": false, "tools": false, "seed": false
+                    , "url_attachments": false, "folder_attachments": false
+                    , "configuration": true, "allow_resume": true
                     }
                 """));
     }
@@ -115,6 +83,8 @@ public class ListingTest {
         checkListing(vertx, context, "/openai/assistants", "search-assistant", "features", new JsonObject("""
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
+                    , "url_attachments": false,  "folder_attachments": false
+                    , "configuration": false, "allow_resume": true
                     }
                 """));
     }

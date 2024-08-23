@@ -1,11 +1,8 @@
 package com.epam.aidial.core.storage;
 
 import com.epam.aidial.core.config.Storage;
-import com.epam.aidial.core.data.FileMetadata;
-import com.epam.aidial.core.data.MetadataBase;
-import com.epam.aidial.core.data.ResourceFolderMetadata;
-import com.epam.aidial.core.data.ResourceType;
-import io.vertx.core.buffer.Buffer;
+import com.epam.aidial.core.storage.credential.CredentialProvider;
+import com.epam.aidial.core.storage.credential.CredentialProviderFactory;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
@@ -15,25 +12,28 @@ import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
+import org.jclouds.blobstore.domain.MutableStorageMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.Tier;
 import org.jclouds.blobstore.domain.internal.BlobMetadataImpl;
+import org.jclouds.blobstore.domain.internal.MutableBlobMetadataImpl;
 import org.jclouds.blobstore.domain.internal.MutableStorageMetadataImpl;
 import org.jclouds.blobstore.domain.internal.PageSetImpl;
+import org.jclouds.blobstore.options.CopyOptions;
 import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.io.ContentMetadata;
 import org.jclouds.io.ContentMetadataBuilder;
+import org.jclouds.io.Payload;
 import org.jclouds.io.payloads.BaseMutableContentMetadata;
+import org.jclouds.io.payloads.ByteArrayPayload;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -63,7 +63,7 @@ public class BlobStorage implements Closeable {
         if (overrides != null) {
             builder.overrides(overrides);
         }
-        CredentialProvider credentialProvider = getCredentialProvider(StorageProvider.from(provider), config.getIdentity(), config.getCredential());
+        CredentialProvider credentialProvider = CredentialProviderFactory.create(provider, config.getIdentity(), config.getCredential());
         builder.credentialsSupplier(credentialProvider::getCredentials);
         this.storeContext = builder.buildView(BlobStoreContext.class);
         this.blobStore = storeContext.getBlobStore();
@@ -90,11 +90,11 @@ public class BlobStorage implements Closeable {
      *
      * @param multipart MultipartUpload that chunk related to
      * @param part      chunk number, starting from 1
-     * @param buffer    data
+     * @param payload    payload
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, Buffer buffer) {
-        return blobStore.uploadMultipartPart(multipart, part, new BufferPayload(buffer));
+    public MultipartPart storeMultipartPart(MultipartUpload multipart, int part, Payload payload) {
+        return blobStore.uploadMultipartPart(multipart, part, payload);
     }
 
     /**
@@ -120,35 +120,18 @@ public class BlobStorage implements Closeable {
      *
      * @param absoluteFilePath absolute path according to the bucket, for example: Users/user1/files/input/file.txt
      * @param contentType      MIME type of the content, for example: text/csv
-     * @param data             whole content data
-     */
-    public void store(String absoluteFilePath, String contentType, Buffer data) {
-        String storageLocation = getStorageLocation(absoluteFilePath);
-        Blob blob = blobStore.blobBuilder(storageLocation)
-                .payload(new BufferPayload(data))
-                .contentLength(data.length())
-                .contentType(contentType)
-                .build();
-
-        blobStore.putBlob(bucketName, blob);
-    }
-
-    /**
-     * Upload file in a single request
-     *
-     * @param absoluteFilePath absolute path according to the bucket, for example: Users/user1/files/input/file.txt
-     * @param contentType      MIME type of the content, for example: text/csv
      * @param contentEncoding  content encoding, e.g. gzip/brotli/deflate
      * @param data             whole content data
      */
-    public void store(String absoluteFilePath,
-                      String contentType,
-                      String contentEncoding,
-                      Map<String, String> metadata,
-                      byte[] data) {
+    public void store(
+            String absoluteFilePath,
+            String contentType,
+            String contentEncoding,
+            Map<String, String> metadata,
+            byte[] data) {
         String storageLocation = getStorageLocation(absoluteFilePath);
         Blob blob = blobStore.blobBuilder(storageLocation)
-                .payload(data)
+                .payload(new ByteArrayPayload(data))
                 .contentLength(data.length)
                 .contentType(contentType)
                 .contentEncoding(contentEncoding)
@@ -189,43 +172,13 @@ public class BlobStorage implements Closeable {
         blobStore.removeBlob(bucketName, storageLocation);
     }
 
-    /**
-     * List all files/folder metadata for a given resource
-     */
-    public MetadataBase listMetadata(ResourceDescription resource) {
-        String storageLocation = getStorageLocation(resource.getAbsoluteFilePath());
-        ListContainerOptions options = buildListContainerOptions(storageLocation);
-        PageSet<? extends StorageMetadata> list = blobStore.list(this.bucketName, options);
-        List<MetadataBase> filesMetadata = list.stream().map(meta -> buildFileMetadata(resource, meta)).toList();
-
-        // listing folder
-        if (resource.isFolder()) {
-            boolean isEmpty = filesMetadata.isEmpty() && !resource.isRootFolder();
-            return isEmpty ? null : new ResourceFolderMetadata(resource, filesMetadata);
-        } else {
-            // listing file
-            if (filesMetadata.size() == 1) {
-                return filesMetadata.get(0);
-            }
-            return null;
-        }
+    public boolean copy(String fromPath, String toPath) {
+        blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), CopyOptions.NONE);
+        return true;
     }
 
     public PageSet<? extends StorageMetadata> list(String absoluteFilePath, String afterMarker, int maxResults, boolean recursive) {
-        String storageLocation = getStorageLocation(absoluteFilePath);
-        ListContainerOptions options = new ListContainerOptions()
-                .prefix(storageLocation)
-                .maxResults(maxResults);
-
-        if (recursive) {
-            options.recursive();
-        } else {
-            options.delimiter(BlobStorageUtil.PATH_SEPARATOR);
-        }
-
-        if (afterMarker != null) {
-            options.afterMarker(afterMarker);
-        }
+        ListContainerOptions options = buildListContainerOptions(absoluteFilePath, maxResults, recursive, afterMarker);
 
         PageSet<? extends StorageMetadata> originalSet = blobStore.list(bucketName, options);
         if (prefix == null) {
@@ -233,13 +186,15 @@ public class BlobStorage implements Closeable {
         }
         // if prefix defined - subtract it from blob key
         String nextMarker = originalSet.getNextMarker();
-        Set<MutableStorageMetadataImpl> resultSet = originalSet.stream()
-                .map(MutableStorageMetadataImpl::new)
+        List<MutableStorageMetadata> resultSet = originalSet.stream()
                 .map(metadata -> {
-                    metadata.setName(removePrefix(metadata.getName()));
-                    return metadata;
+                    MutableStorageMetadata mutableMetadata = metadata instanceof BlobMetadata blobMetadata
+                            ? new MutableBlobMetadataImpl(blobMetadata)
+                            : new MutableStorageMetadataImpl(metadata);
+                    mutableMetadata.setName(removePrefix(metadata.getName()));
+                    return mutableMetadata;
                 })
-                .collect(Collectors.toSet());
+                .toList();
 
         return new PageSetImpl<>(resultSet, nextMarker);
     }
@@ -256,38 +211,31 @@ public class BlobStorage implements Closeable {
         storeContext.close();
     }
 
-    private static ListContainerOptions buildListContainerOptions(String prefix) {
-        return new ListContainerOptions()
-                .prefix(prefix)
-                .delimiter(BlobStorageUtil.PATH_SEPARATOR);
+    private ListContainerOptions buildListContainerOptions(String absoluteFilePath, int maxResults, boolean recursive, String afterMarker) {
+        String storageLocation = getStorageLocation(absoluteFilePath);
+        ListContainerOptions options = new ListContainerOptions()
+                .prefix(storageLocation)
+                .maxResults(maxResults);
+
+        if (recursive) {
+            options.recursive();
+        } else {
+            options.delimiter(BlobStorageUtil.PATH_SEPARATOR);
+        }
+
+        if (afterMarker != null) {
+            options.afterMarker(afterMarker);
+        }
+        return options;
     }
 
-    private MetadataBase buildFileMetadata(ResourceDescription resource, StorageMetadata metadata) {
-        String bucketName = resource.getBucketName();
-        ResourceDescription resultResource = getResourceDescription(resource.getType(), bucketName,
-                resource.getBucketLocation(), metadata.getName());
+    public static String resolveContentType(BlobMetadata metadata) {
+        String blobContentType = metadata.getContentMetadata().getContentType();
+        if (DEFAULT_CONTENT_TYPE.equals(blobContentType)) {
+            return BlobStorageUtil.getContentType(metadata.getName());
+        }
 
-        return switch (metadata.getType()) {
-            case BLOB -> {
-                String blobContentType = ((BlobMetadata) metadata).getContentMetadata().getContentType();
-                if (blobContentType != null && blobContentType.equals(DEFAULT_CONTENT_TYPE)) {
-                    blobContentType = BlobStorageUtil.getContentType(metadata.getName());
-                }
-
-                yield new FileMetadata(resultResource, metadata.getSize(), blobContentType);
-            }
-            case FOLDER, RELATIVE_PATH -> new ResourceFolderMetadata(resultResource);
-            case CONTAINER -> throw new IllegalArgumentException("Can't list container");
-        };
-    }
-
-    private ResourceDescription getResourceDescription(ResourceType resourceType, String bucketName, String bucketLocation, String absoluteFilePath) {
-        // bucketLocation + resourceType + /
-        int bucketAndResourceCharsLength = bucketLocation.length() + resourceType.getGroup().length() + 1;
-        // bucketAndResourceCharsLength or bucketAndResourceCharsLength + prefix + /
-        int charsToSkip = prefix == null ? bucketAndResourceCharsLength : prefix.length() + 1 + bucketAndResourceCharsLength;
-        String relativeFilePath = absoluteFilePath.substring(charsToSkip);
-        return ResourceDescription.fromDecoded(resourceType, bucketName, bucketLocation, relativeFilePath);
+        return blobContentType;
     }
 
     private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {
@@ -300,14 +248,6 @@ public class BlobStorage implements Closeable {
                 .contentType(contentType)
                 .build();
         return BaseMutableContentMetadata.fromContentMetadata(contentMetadata);
-    }
-
-    private static CredentialProvider getCredentialProvider(StorageProvider provider, String identity, String credential) {
-        return switch (provider) {
-            case S3, AZURE_BLOB, GOOGLE_CLOUD_STORAGE -> new DefaultCredentialProvider(identity, credential);
-            case FILESYSTEM -> new DefaultCredentialProvider("identity", "credential");
-            case AWS_S3 -> new AwsCredentialProvider(identity, credential);
-        };
     }
 
     private void createBucketIfNeeded(Storage config) {
@@ -323,6 +263,6 @@ public class BlobStorage implements Closeable {
      * @return a full storage path
      */
     private String getStorageLocation(String absoluteFilePath) {
-        return prefix == null ? absoluteFilePath : prefix + BlobStorageUtil.PATH_SEPARATOR + absoluteFilePath;
+        return BlobStorageUtil.toStoragePath(prefix, absoluteFilePath);
     }
 }

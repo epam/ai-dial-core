@@ -10,6 +10,8 @@ import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import redis.embedded.RedisServer;
 
+import java.io.IOException;
+
 class LockServiceTest {
 
     private static RedisServer server;
@@ -17,11 +19,11 @@ class LockServiceTest {
     private static LockService service;
 
     @BeforeAll
-    static void init() {
+    static void init() throws IOException {
         try {
-            server = RedisServer.builder()
+            server = RedisServer.newRedisServer()
                     .port(16371)
-                    .setting("bind 127.0.0.1")
+                    .bind("127.0.0.1")
                     .setting("maxmemory 4M")
                     .setting("maxmemory-policy volatile-lfu")
                     .build();
@@ -31,7 +33,7 @@ class LockServiceTest {
             config.useSingleServer().setAddress("redis://localhost:16371");
 
             client = Redisson.create(config);
-            service = new LockService(client);
+            service = new LockService(client, null);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -39,7 +41,7 @@ class LockServiceTest {
     }
 
     @AfterAll
-    static void destroy() {
+    static void destroy() throws IOException {
         try {
             if (client != null) {
                 client.shutdown();

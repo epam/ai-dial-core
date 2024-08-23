@@ -1,51 +1,93 @@
 package com.epam.aidial.core.service;
 
+import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.ResourceEvent;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
+import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
+import com.epam.aidial.core.util.EtagBuilder;
+import com.epam.aidial.core.util.EtagHeader;
+import com.epam.aidial.core.util.RedisUtil;
+import com.epam.aidial.core.util.ResourceUtil;
+import com.google.common.collect.Sets;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
+import org.jclouds.blobstore.domain.MultipartPart;
+import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
+import org.jclouds.io.Payload;
 import org.redisson.api.RMap;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.ByteArrayCodec;
+import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
+import org.redisson.codec.CompositeCodec;
 
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
+import static com.epam.aidial.core.util.ResourceUtil.CREATED_AT_ATTRIBUTE;
+import static com.epam.aidial.core.util.ResourceUtil.ETAG_ATTRIBUTE;
+import static com.epam.aidial.core.util.ResourceUtil.UPDATED_AT_ATTRIBUTE;
+
 @Slf4j
 public class ResourceService implements AutoCloseable {
-
-    private static final String BLOB_EXTENSION = ".json";
-    private static final String REDIS_QUEUE = "resource:queue";
-    private static final Set<String> REDIS_FIELDS = Set.of("body", "created_at", "updated_at", "synced", "exists");
-    private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of("created_at", "updated_at", "synced", "exists");
-
-    private static final Result BLOB_NOT_FOUND = new Result("", Long.MIN_VALUE, Long.MIN_VALUE, true, false);
+    private static final String BODY_ATTRIBUTE = "body";
+    private static final String CONTENT_TYPE_ATTRIBUTE = "content_type";
+    private static final String CONTENT_LENGTH_ATTRIBUTE = "content_length";
+    private static final String SYNCED_ATTRIBUTE = "synced";
+    private static final String EXISTS_ATTRIBUTE = "exists";
+    private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of(
+            ResourceUtil.ETAG_ATTRIBUTE,
+            ResourceUtil.CREATED_AT_ATTRIBUTE,
+            ResourceUtil.UPDATED_AT_ATTRIBUTE,
+            CONTENT_TYPE_ATTRIBUTE,
+            CONTENT_LENGTH_ATTRIBUTE,
+            SYNCED_ATTRIBUTE,
+            EXISTS_ATTRIBUTE);
+    private static final Set<String> REDIS_FIELDS = Sets.union(
+            Set.of(BODY_ATTRIBUTE),
+            REDIS_FIELDS_NO_BODY);
+    private static final Codec REDIS_MAP_CODEC = new CompositeCodec(
+            StringCodec.INSTANCE,
+            ByteArrayCodec.INSTANCE);
 
     private final Vertx vertx;
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
+    private final ResourceTopic topic;
     @Getter
     private final int maxSize;
     private final long syncTimer;
@@ -54,6 +96,7 @@ public class ResourceService implements AutoCloseable {
     private final Duration cacheExpiration;
     private final int compressionMinSize;
     private final String prefix;
+    private final String resourceQueue;
 
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
@@ -95,12 +138,14 @@ public class ResourceService implements AutoCloseable {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
+        this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = maxSize;
         this.syncDelay = syncDelay;
         this.syncBatch = syncBatch;
         this.cacheExpiration = Duration.ofMillis(cacheExpiration);
         this.compressionMinSize = compressionMinSize;
         this.prefix = prefix;
+        this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
 
         // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
         this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
@@ -111,14 +156,19 @@ public class ResourceService implements AutoCloseable {
         vertx.cancelTimer(syncTimer);
     }
 
+    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
+                                                         Consumer<ResourceEvent> subscriber) {
+        return topic.subscribe(resources, subscriber);
+    }
+
     @Nullable
     public MetadataBase getMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         return descriptor.isFolder()
                 ? getFolderMetadata(descriptor, token, limit, recursive)
-                : getItemMetadata(descriptor);
+                : getResourceMetadata(descriptor);
     }
 
-    private ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
+    public ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
         PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
 
@@ -128,7 +178,7 @@ public class ResourceService implements AutoCloseable {
 
         List<MetadataBase> resources = set.stream().map(meta -> {
             Map<String, String> metadata = meta.getUserMetadata();
-            String path = fromBlobKey(meta.getName());
+            String path = meta.getName();
             ResourceDescription description = ResourceDescription.fromDecoded(descriptor, path);
 
             if (meta.getType() != StorageType.BLOB) {
@@ -139,8 +189,8 @@ public class ResourceService implements AutoCloseable {
             Long updatedAt = null;
 
             if (metadata != null) {
-                createdAt = metadata.containsKey("created_at") ? Long.parseLong(metadata.get("created_at")) : null;
-                updatedAt = metadata.containsKey("updated_at") ? Long.parseLong(metadata.get("updated_at")) : null;
+                createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
+                updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
             }
 
             if (createdAt == null && meta.getCreationDate() != null) {
@@ -151,37 +201,76 @@ public class ResourceService implements AutoCloseable {
                 updatedAt = meta.getLastModified().getTime();
             }
 
+            if (description.getType() == ResourceType.FILE) {
+                return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
+                        .setCreatedAt(createdAt)
+                        .setUpdatedAt(updatedAt);
+            }
+
             return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
         }).toList();
 
-        return new ResourceFolderMetadata(descriptor, resources).setNextToken(set.getNextMarker());
+        return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
     }
 
-    private ResourceItemMetadata getItemMetadata(ResourceDescription descriptor) {
+    @Nullable
+    public ResourceItemMetadata getResourceMetadata(ResourceDescription descriptor) {
+        if (descriptor.isFolder()) {
+            throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
+        }
+
         String redisKey = redisKey(descriptor);
-        String blobKey = blobKey(descriptor);
         Result result = redisGet(redisKey, false);
 
         if (result == null) {
+            String blobKey = blobKey(descriptor);
             result = blobGet(blobKey, false);
         }
 
-        if (!result.exists) {
+        if (!result.exists()) {
             return null;
         }
 
+        return descriptor.getType() == ResourceType.FILE
+                ? toFileMetadata(descriptor, result)
+                : toResourceItemMetadata(descriptor, result);
+    }
+
+    private static ResourceItemMetadata toResourceItemMetadata(
+            ResourceDescription descriptor, Result result) {
         return new ResourceItemMetadata(descriptor)
                 .setCreatedAt(result.createdAt)
-                .setUpdatedAt(result.updatedAt);
+                .setUpdatedAt(result.updatedAt)
+                .setEtag(result.etag);
+    }
+
+    private static FileMetadata toFileMetadata(
+            ResourceDescription resource, Result result) {
+        return (FileMetadata) new FileMetadata(resource, result.contentLength(), result.contentType())
+                .setCreatedAt(result.createdAt)
+                .setUpdatedAt(result.updatedAt)
+                .setEtag(result.etag());
+    }
+
+    public boolean hasResource(ResourceDescription descriptor) {
+        String redisKey = redisKey(descriptor);
+        Result result = redisGet(redisKey, false);
+
+        if (result == null) {
+            String blobKey = blobKey(descriptor);
+            return blobExists(blobKey);
+        }
+
+        return result.exists();
     }
 
     @Nullable
-    public String getResource(ResourceDescription descriptor) {
-        return getResource(descriptor, true);
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor) {
+        return getResourceWithMetadata(descriptor, true);
     }
 
     @Nullable
-    public String getResource(ResourceDescription descriptor, boolean lock) {
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
@@ -197,37 +286,156 @@ public class ResourceService implements AutoCloseable {
             }
         }
 
-        return result.exists ? result.body : null;
+        if (result.exists()) {
+            return Pair.of(
+                    toResourceItemMetadata(descriptor, result),
+                    new String(result.body, StandardCharsets.UTF_8));
+        }
+
+        return null;
     }
 
-    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body, boolean overwrite) {
-        return putResource(descriptor, body, overwrite, true);
+    @Nullable
+    public String getResource(ResourceDescription descriptor) {
+        return getResource(descriptor, true);
     }
 
-    public ResourceItemMetadata putResource(ResourceDescription descriptor, String body,
-                                            boolean overwrite, boolean lock) {
-        String redisKey = redisKey(descriptor);
-        String blobKey = blobKey(descriptor);
+    @Nullable
+    public String getResource(ResourceDescription descriptor, boolean lock) {
+        Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, lock);
+        return (result == null) ? null : result.getRight();
+    }
 
-        try (var ignore = lock ? lockService.lock(redisKey) : null) {
-            Result result = redisGet(redisKey, false);
-            if (result == null) {
-                result = blobGet(blobKey, false);
+    public ResourceStream getResourceStream(ResourceDescription resource) throws IOException {
+        if (resource.getType() != ResourceType.FILE) {
+            throw new IllegalArgumentException("Streaming is supported for files only");
+        }
+
+        String key = redisKey(resource);
+        Result result = redisGet(key, true);
+        if (result != null) {
+            return ResourceStream.fromResult(result);
+        }
+
+        try (LockService.Lock ignored = lockService.lock(key)) {
+            result = redisGet(key, true);
+            if (result != null) {
+                return ResourceStream.fromResult(result);
             }
 
-            if (result.exists && !overwrite) {
+            Blob blob = blobStore.load(resource.getAbsoluteFilePath());
+            if (blob == null) {
+                redisPut(key, Result.DELETED_SYNCED);
                 return null;
             }
 
-            long updatedAt = time();
-            long createdAt = result.exists ? result.createdAt : updatedAt;
-            redisPut(redisKey, new Result(body, createdAt, updatedAt, false, true));
+            Payload payload = blob.getPayload();
+            BlobMetadata metadata = blob.getMetadata();
+            String etag = ResourceUtil.extractEtag(metadata.getUserMetadata());
+            String contentType = metadata.getContentMetadata().getContentType();
+            Long length = metadata.getContentMetadata().getContentLength();
 
-            if (!result.exists) {
-                blobPut(blobKey, "", createdAt, updatedAt); // create an empty object for listing
+            if (length <= maxSize) {
+                result = blobToResult(blob, metadata);
+                redisPut(key, result);
+                return ResourceStream.fromResult(result);
             }
 
-            return new ResourceItemMetadata(descriptor).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+            return new ResourceStream(payload.openStream(), etag, contentType, length);
+        }
+    }
+
+    public ResourceItemMetadata putResource(
+            ResourceDescription descriptor, String body, EtagHeader etag) {
+        return putResource(descriptor, body, etag, true);
+    }
+
+    public ResourceItemMetadata putResource(
+            ResourceDescription descriptor, String body, EtagHeader etag, boolean lock) {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        return putResource(descriptor, bytes, etag, "application/json", lock);
+    }
+
+    private ResourceItemMetadata putResource(
+            ResourceDescription descriptor,
+            byte[] body,
+            EtagHeader etag,
+            String contentType,
+            boolean lock) {
+        String redisKey = redisKey(descriptor);
+
+        try (var ignore = lock ? lockService.lock(redisKey) : null) {
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+
+            if (metadata != null) {
+                etag.validate(metadata.getEtag());
+            }
+
+            Long updatedAt = time();
+            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            String newEtag = EtagBuilder.generateEtag(body);
+            Result result = new Result(body, newEtag, createdAt, updatedAt, contentType, (long) body.length, false);
+            if (body.length <= maxSize) {
+                redisPut(redisKey, result);
+                if (metadata == null) {
+                    String blobKey = blobKey(descriptor);
+                    blobPut(blobKey, result.toStub(), false); // create an empty object for listing
+                }
+            } else {
+                flushToBlobStore(redisKey);
+                String blobKey = blobKey(descriptor);
+                blobPut(blobKey, result, descriptor.getType() != ResourceType.FILE);
+            }
+
+            ResourceEvent.Action action = metadata == null
+                    ? ResourceEvent.Action.CREATE
+                    : ResourceEvent.Action.UPDATE;
+            publishEvent(descriptor, action, updatedAt, newEtag);
+            return descriptor.getType() == ResourceType.FILE
+                    ? toFileMetadata(descriptor, result)
+                    : toResourceItemMetadata(descriptor, result);
+        }
+    }
+
+    public FileMetadata putFile(ResourceDescription descriptor, byte[] body, EtagHeader etag, String contentType) {
+        if (descriptor.getType() != ResourceType.FILE) {
+            throw new IllegalArgumentException("Expected a file, got %s".formatted(descriptor.getType()));
+        }
+
+        return (FileMetadata) putResource(descriptor, body, etag, contentType, true);
+    }
+
+    public BlobWriteStream beginFileUpload(ResourceDescription descriptor, EtagHeader etag, String contentType) {
+        return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
+    }
+
+    public FileMetadata finishFileUpload(
+            ResourceDescription descriptor, MultipartData multipartData, EtagHeader etag) {
+        String redisKey = redisKey(descriptor);
+        try (var ignore = lockService.lock(redisKey)) {
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+            if (metadata != null) {
+                etag.validate(metadata.getEtag());
+            }
+
+            flushToBlobStore(redisKey);
+            Long updatedAt = time();
+            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            MultipartUpload multipartUpload = multipartData.multipartUpload;
+            Map<String, String> userMetadata = multipartUpload.blobMetadata().getUserMetadata();
+            userMetadata.putAll(toUserMetadata(multipartData.etag, createdAt, updatedAt));
+            blobStore.completeMultipartUpload(multipartUpload, multipartData.parts);
+
+            ResourceEvent.Action action = metadata == null
+                    ? ResourceEvent.Action.CREATE
+                    : ResourceEvent.Action.UPDATE;
+            publishEvent(descriptor, action, updatedAt, multipartData.etag);
+
+            return (FileMetadata) new FileMetadata(
+                    descriptor, multipartData.contentLength, multipartData.contentType)
+                    .setCreatedAt(createdAt)
+                    .setUpdatedAt(updatedAt)
+                    .setEtag(multipartData.etag);
         }
     }
 
@@ -240,40 +448,99 @@ public class ResourceService implements AutoCloseable {
             if (newBody != null) {
                 // update resource only if body changed
                 if (!newBody.equals(oldBody)) {
-                    putResource(descriptor, newBody, true, false);
+                    putResource(descriptor, newBody, EtagHeader.ANY, false);
                 }
             }
         }
     }
 
-    public boolean deleteResource(ResourceDescription descriptor) {
+    public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag) {
         String redisKey = redisKey(descriptor);
-        String blobKey = blobKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
-            Result result = redisGet(redisKey, false);
-            boolean existed = (result == null) ? blobExists(blobKey) : result.exists;
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
-            if (!existed) {
+            if (metadata == null) {
                 return false;
             }
 
-            redisPut(redisKey, new Result("", Long.MIN_VALUE, Long.MIN_VALUE, false, false));
-            blobDelete(blobKey);
+            etag.validate(metadata.getEtag());
+
+            redisPut(redisKey, Result.DELETED_NOT_SYNCED);
+            blobDelete(blobKey(descriptor));
             redisSync(redisKey);
 
+            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null);
             return true;
         }
+    }
+
+    public boolean copyResource(ResourceDescription from, ResourceDescription to) {
+        return copyResource(from, to, true);
+    }
+
+    public boolean copyResource(ResourceDescription from, ResourceDescription to, boolean overwrite) {
+        if (from.equals(to)) {
+            return overwrite;
+        }
+
+        String fromRedisKey = redisKey(from);
+        String toRedisKey = redisKey(to);
+        Pair<String, String> sortedPair = toOrderedPair(fromRedisKey, toRedisKey);
+        try (LockService.Lock ignored1 = lockService.lock(sortedPair.getLeft());
+             LockService.Lock ignored2 = lockService.lock(sortedPair.getRight())) {
+            ResourceItemMetadata fromMetadata = getResourceMetadata(from);
+            if (fromMetadata == null) {
+                return false;
+            }
+
+            ResourceItemMetadata toMetadata = getResourceMetadata(to);
+            if (toMetadata == null || overwrite) {
+                flushToBlobStore(fromRedisKey);
+                flushToBlobStore(toRedisKey);
+                blobStore.copy(blobKey(from), blobKey(to));
+
+                ResourceEvent.Action action = toMetadata == null
+                        ? ResourceEvent.Action.CREATE
+                        : ResourceEvent.Action.UPDATE;
+                publishEvent(to, action, time(), fromMetadata.getEtag());
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    private void publishEvent(ResourceDescription descriptor, ResourceEvent.Action action, long timestamp, String etag) {
+        ResourceEvent event = new ResourceEvent()
+                .setUrl(descriptor.getUrl())
+                .setAction(action)
+                .setTimestamp(timestamp)
+                .setEtag(etag);
+
+        topic.publish(event);
+    }
+
+    private Pair<String, String> toOrderedPair(String a, String b) {
+        return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
     }
 
     private Void sync() {
         log.debug("Syncing");
         try {
-            RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+            RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
             long now = time();
 
             for (String redisKey : set.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, syncBatch)) {
-                sync(redisKey);
+                try (var lock = lockService.tryLock(redisKey)) {
+                    if (lock == null) {
+                        continue;
+                    }
+
+                    sync(redisKey);
+                } catch (Throwable e) {
+                    log.warn("Failed to sync resource: {}", redisKey, e);
+                }
             }
         } catch (Throwable e) {
             log.warn("Failed to sync:", e);
@@ -282,34 +549,31 @@ public class ResourceService implements AutoCloseable {
         return null;
     }
 
-    private void sync(String redisKey) {
+    private RMap<String, byte[]> sync(String redisKey) {
         log.debug("Syncing resource: {}", redisKey);
-        try (var lock = lockService.tryLock(redisKey)) {
-            if (lock == null) {
-                return;
+        Result result = redisGet(redisKey, false);
+        if (result == null || result.synced) {
+            RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
+            long ttl = map.remainTimeToLive();
+            // according to the documentation, -1 means expiration is not set
+            if (ttl == -1) {
+                map.expire(cacheExpiration);
             }
-
-            Result result = redisGet(redisKey, false);
-            if (result == null || result.synced) {
-                redis.getMap(redisKey, StringCodec.INSTANCE).expireIfNotSet(cacheExpiration);
-                redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE).remove(redisKey);
-                return;
-            }
-
-            String blobKey = blobKeyFromRedisKey(redisKey);
-            if (result.exists) {
-                log.debug("Syncing resource: {}. Blob updating", redisKey);
-                result = redisGet(redisKey, true);
-                blobPut(blobKey, result.body, result.createdAt, result.updatedAt);
-            } else {
-                log.debug("Syncing resource: {}. Blob deleting", redisKey);
-                blobDelete(blobKey);
-            }
-
-            redisSync(redisKey);
-        } catch (Throwable e) {
-            log.warn("Failed to sync resource: {}", redisKey, e);
+            redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
+            return map;
         }
+
+        String blobKey = blobKeyFromRedisKey(redisKey);
+        if (result.exists()) {
+            log.debug("Syncing resource: {}. Blob updating", redisKey);
+            result = redisGet(redisKey, true);
+            blobPut(blobKey, result, !redisKey.startsWith("file:"));
+        } else {
+            log.debug("Syncing resource: {}. Blob deleting", redisKey);
+            blobDelete(blobKey);
+        }
+
+        return redisSync(redisKey);
     }
 
     private boolean blobExists(String key) {
@@ -329,39 +593,58 @@ public class ResourceService implements AutoCloseable {
         }
 
         if (meta == null) {
-            return BLOB_NOT_FOUND;
+            return Result.DELETED_SYNCED;
         }
 
-        long createdAt = Long.parseLong(meta.getUserMetadata().get("created_at"));
-        long updatedAt = Long.parseLong(meta.getUserMetadata().get("updated_at"));
+        return blobToResult(blob, meta);
+    }
 
-        String body = "";
+    @SneakyThrows
+    private static Result blobToResult(Blob blob, BlobMetadata meta) {
+        String etag = ResourceUtil.extractEtag(meta.getUserMetadata());
+        String contentType = meta.getContentMetadata().getContentType();
+        Long contentLength = meta.getContentMetadata().getContentLength();
+        Long createdAt = meta.getUserMetadata().containsKey(CREATED_AT_ATTRIBUTE)
+                ? Long.parseLong(meta.getUserMetadata().get(CREATED_AT_ATTRIBUTE))
+                : null;
+        Long updatedAt = meta.getUserMetadata().containsKey(UPDATED_AT_ATTRIBUTE)
+                ? Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE))
+                : null;
+
+        // Get times from blob metadata if available for files that didn't store it in user metadata
+        if (createdAt == null && meta.getCreationDate() != null) {
+            createdAt = meta.getCreationDate().getTime();
+        }
+
+        if (updatedAt == null && meta.getLastModified() != null) {
+            updatedAt = meta.getLastModified().getTime();
+        }
+
+        byte[] body = ArrayUtils.EMPTY_BYTE_ARRAY;
 
         if (blob != null) {
             String encoding = meta.getContentMetadata().getContentEncoding();
             try (InputStream stream = blob.getPayload().openStream()) {
-                byte[] bytes = (encoding == null) ? stream.readAllBytes() : Compression.decompress(encoding, stream);
-                body = new String(bytes, StandardCharsets.UTF_8);
+                body = stream.readAllBytes();
+                if (!StringUtils.isBlank(encoding)) {
+                    body = Compression.decompress(encoding, body);
+                }
             }
         }
 
-        return new Result(body, createdAt, updatedAt, true, true);
+        return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, true);
     }
 
-    private void blobPut(String key, String body, long createdAt, long updatedAt) {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+    private void blobPut(String key, Result result, boolean compress) {
         String encoding = null;
-
-        if (bytes.length >= compressionMinSize) {
+        byte[] bytes = result.body;
+        if (bytes.length >= compressionMinSize && compress) {
             encoding = "gzip";
             bytes = Compression.compress(encoding, bytes);
         }
 
-        Map<String, String> metadata = Map.of(
-                "created_at", Long.toString(createdAt),
-                "updated_at", Long.toString(updatedAt)
-        );
-        blobStore.store(key, "application/json", encoding, metadata, bytes);
+        Map<String, String> metadata = toUserMetadata(result.etag, result.createdAt, result.updatedAt);
+        blobStore.store(key, result.contentType, encoding, metadata, bytes);
     }
 
     private void blobDelete(String key) {
@@ -369,56 +652,65 @@ public class ResourceService implements AutoCloseable {
     }
 
     private static String blobKey(ResourceDescription descriptor) {
-        String path = descriptor.getAbsoluteFilePath();
-        return descriptor.isFolder() ? path : (path + BLOB_EXTENSION);
+        return descriptor.getAbsoluteFilePath();
     }
 
     private String blobKeyFromRedisKey(String redisKey) {
         // redis key may have prefix, we need to subtract it, because BlobStore manage prefix on its own
         int delimiterIndex = redisKey.indexOf(":");
         int prefixChars = prefix != null ? prefix.length() + 1 : 0;
-        return redisKey.substring(prefixChars + delimiterIndex + 1) + BLOB_EXTENSION;
-    }
-
-    private static String fromBlobKey(String blobKey) {
-        return blobKey.endsWith(BLOB_EXTENSION) ? blobKey.substring(0, blobKey.length() - BLOB_EXTENSION.length()) : blobKey;
+        return redisKey.substring(prefixChars + delimiterIndex + 1);
     }
 
     @Nullable
     private Result redisGet(String key, boolean withBody) {
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-        Map<String, String> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
+        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
+        Map<String, byte[]> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
 
         if (fields.isEmpty()) {
             return null;
         }
 
-        String body = fields.get("body");
-        long createdAt = Long.parseLong(fields.get("created_at"));
-        long updatedAt = Long.parseLong(fields.get("updated_at"));
-        boolean synced = Boolean.parseBoolean(Objects.requireNonNull(fields.get("synced")));
-        boolean exists = Boolean.parseBoolean(Objects.requireNonNull(fields.get("exists")));
+        boolean exists = Objects.requireNonNull(RedisUtil.redisToBoolean(fields.get(EXISTS_ATTRIBUTE)));
+        boolean synced = Objects.requireNonNull(RedisUtil.redisToBoolean(fields.get(SYNCED_ATTRIBUTE)));
+        if (!exists) {
+            return synced ? Result.DELETED_SYNCED : Result.DELETED_NOT_SYNCED;
+        }
 
-        return new Result(body, createdAt, updatedAt, synced, exists);
+        byte[] body = fields.getOrDefault(BODY_ATTRIBUTE, ArrayUtils.EMPTY_BYTE_ARRAY);
+        String etag = RedisUtil.redisToString(fields.get(ResourceUtil.ETAG_ATTRIBUTE), ResourceUtil.DEFAULT_ETAG);
+        String contentType = RedisUtil.redisToString(fields.get(CONTENT_TYPE_ATTRIBUTE), null);
+        Long contentLength = RedisUtil.redisToLong(fields.get(CONTENT_LENGTH_ATTRIBUTE));
+        Long createdAt = RedisUtil.redisToLong(fields.get(ResourceUtil.CREATED_AT_ATTRIBUTE));
+        Long updatedAt = RedisUtil.redisToLong(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
+
+        return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, synced);
     }
 
     private void redisPut(String key, Result result) {
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.add(time() + syncDelay, key); // add resource to sync set before changing because calls below can fail
 
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
+        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
 
         if (!result.synced) {
             map.clearExpire();
         }
 
-        Map<String, String> fields = Map.of(
-                "body", result.body,
-                "created_at", Long.toString(result.createdAt),
-                "updated_at", Long.toString(result.updatedAt),
-                "synced", Boolean.toString(result.synced),
-                "exists", Boolean.toString(result.exists)
-        );
+        Map<String, byte[]> fields = new HashMap<>();
+        if (result.exists()) {
+            fields.put(BODY_ATTRIBUTE, result.body);
+            fields.put(ResourceUtil.ETAG_ATTRIBUTE, RedisUtil.stringToRedis(result.etag));
+            fields.put(ResourceUtil.CREATED_AT_ATTRIBUTE, RedisUtil.longToRedis(result.createdAt));
+            fields.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, RedisUtil.longToRedis(result.updatedAt));
+            fields.put(CONTENT_TYPE_ATTRIBUTE, RedisUtil.stringToRedis(result.contentType));
+            fields.put(CONTENT_LENGTH_ATTRIBUTE, RedisUtil.longToRedis(result.contentLength));
+            fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
+        } else {
+            REDIS_FIELDS.forEach(field -> fields.put(field, RedisUtil.EMPTY_ARRAY));
+            fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_FALSE_ARRAY);
+        }
+        fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(result.synced));
         map.putAll(fields);
 
         if (result.synced) { // cleanup because it is already synced
@@ -427,20 +719,19 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    private void redisSync(String key) {
-        RMap<String, String> map = redis.getMap(key, StringCodec.INSTANCE);
-        map.put("synced", "true");
+    private RMap<String, byte[]> redisSync(String key) {
+        RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
+        map.put(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
         map.expire(cacheExpiration);
 
-        RScoredSortedSet<String> set = redis.getScoredSortedSet(REDIS_QUEUE, StringCodec.INSTANCE);
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.remove(key);
+
+        return map;
     }
 
     private String redisKey(ResourceDescription descriptor) {
-        String resourcePath = descriptor.getAbsoluteFilePath();
-        if (prefix != null) {
-            resourcePath = prefix + BlobStorageUtil.PATH_SEPARATOR + resourcePath;
-        }
+        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 
@@ -448,6 +739,81 @@ public class ResourceService implements AutoCloseable {
         return System.currentTimeMillis();
     }
 
-    private record Result(String body, long createdAt, long updatedAt, boolean synced, boolean exists) {
+    private void flushToBlobStore(String redisKey) {
+        RMap<String, byte[]> map = sync(redisKey);
+        map.delete();
+    }
+
+    public String getEtag(ResourceDescription descriptor) {
+        ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+        if (metadata == null) {
+            return null;
+        }
+
+        return metadata.getEtag();
+    }
+
+    private static Map<String, String> toUserMetadata(String etag, Long createdAt, Long updatedAt) {
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put(ResourceUtil.ETAG_ATTRIBUTE, etag);
+        if (createdAt != null) {
+            metadata.put(ResourceUtil.CREATED_AT_ATTRIBUTE, Long.toString(createdAt));
+        }
+        if (updatedAt != null) {
+            metadata.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, Long.toString(updatedAt));
+        }
+
+        return metadata;
+    }
+
+    @Builder
+    private record Result(
+            byte[] body,
+            String etag,
+            Long createdAt,
+            Long updatedAt,
+            String contentType,
+            Long contentLength,
+            boolean synced) {
+        public static final Result DELETED_SYNCED = new Result(null, null, null, null, null, null, true);
+        public static final Result DELETED_NOT_SYNCED = new Result(null, null, null, null, null, null, false);
+
+        public boolean exists() {
+            return body != null;
+        }
+
+        public Result toStub() {
+            return new Result(ArrayUtils.EMPTY_BYTE_ARRAY, etag, createdAt, updatedAt, contentType, 0L, synced);
+        }
+    }
+
+    public record ResourceStream(InputStream inputStream, String etag, String contentType, long contentLength)
+            implements Closeable {
+
+        @Override
+        public void close() throws IOException {
+            inputStream.close();
+        }
+
+        @Nullable
+        private static ResourceStream fromResult(Result item) {
+            if (!item.exists()) {
+                return null;
+            }
+
+            return new ResourceStream(
+                    new ByteArrayInputStream(item.body),
+                    item.etag(),
+                    item.contentType(),
+                    item.body.length);
+        }
+    }
+
+    public record MultipartData(
+            MultipartUpload multipartUpload,
+            List<MultipartPart> parts,
+            String contentType,
+            long contentLength,
+            String etag) {
     }
 }

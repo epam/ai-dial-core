@@ -6,6 +6,7 @@ import lombok.Data;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -20,6 +21,8 @@ public class Config {
     private Assistants assistant = new Assistants();
     private Map<String, Key> keys = new HashMap<>();
     private Map<String, Role> roles = new HashMap<>();
+    private Set<Integer> retriableErrorCodes = Set.of();
+    private Map<String, Interceptor> interceptors = Map.of();
 
 
     public Deployment selectDeployment(String deploymentId) {

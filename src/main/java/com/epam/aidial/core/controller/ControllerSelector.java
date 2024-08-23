@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 @UtilityClass
 public class ControllerSelector {
 
-    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/([^/]+)/(completions|chat/completions|embeddings)$");
+    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(.+?)/(completions|chat/completions|embeddings)$");
     private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/([^/]+)$");
     private static final Pattern PATTERN_DEPLOYMENTS = Pattern.compile("^/+openai/deployments$");
 
@@ -29,27 +29,36 @@ public class ControllerSelector {
     private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/([^/]+)$");
     private static final Pattern PATTERN_ASSISTANTS = Pattern.compile("^/+openai/assistants$");
 
-    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/([^/]+)$");
+    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
 
 
     private static final Pattern PATTERN_BUCKET = Pattern.compile("^/v1/bucket$");
 
-    private static final Pattern PATTERN_FILES = Pattern.compile("^/v1/files/([a-zA-Z0-9]+)/(.*)");
-    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("^/v1/metadata/files/([a-zA-Z0-9]+)/(.*)");
+    private static final Pattern PATTERN_FILES = Pattern.compile("^/v1/files/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("^/v1/metadata/files/[a-zA-Z0-9]+/.*");
 
-    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts)/([a-zA-Z0-9]+)/(.*)");
-    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts)/([a-zA-Z0-9]+)/(.*)");
+    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
 
-    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/([^/]+)/rate$");
-    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/([^/]+)/tokenize$");
-    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/([^/]+)/truncate_prompt$");
+    // deployment feature patterns
+    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/(.+?)/rate$");
+    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/(.+?)/tokenize$");
+    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/(.+?)/truncate_prompt$");
+    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/(.+?)/configuration$");
 
-    private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke)$");
+    private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
+    private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
+    private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
+    private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
+
+    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move|subscribe)$");
 
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
+
+    private static final Pattern NOTIFICATIONS = Pattern.compile("^/v1/ops/notification/(list|delete)$");
 
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = context.getRequest().path();
@@ -126,49 +135,39 @@ public class ControllerSelector {
 
         match = match(PATTERN_APPLICATION, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             String application = UrlUtil.decodePath(match.group(1));
             return () -> controller.getApplication(application);
         }
 
         match = match(PATTERN_APPLICATIONS, path);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context);
+            ApplicationController controller = new ApplicationController(context, proxy);
             return controller::getApplications;
         }
 
         match = match(PATTERN_FILES_METADATA, path);
         if (match != null) {
-            String bucket = match.group(1);
-            String filePath = match.group(2);
             FileMetadataController controller = new FileMetadataController(proxy, context);
-            return () -> controller.handle("files", bucket, filePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         match = match(PATTERN_FILES, path);
         if (match != null) {
-            String bucket = match.group(1);
-            String filePath = match.group(2);
             DownloadFileController controller = new DownloadFileController(proxy, context);
-            return () -> controller.handle("files", bucket, filePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         match = match(PATTERN_RESOURCE, path);
         if (match != null) {
-            String resource = match.group(1);
-            String bucket = match.group(2);
-            String relativePath = match.group(3);
             ResourceController controller = new ResourceController(proxy, context, false);
-            return () -> controller.handle(resource, bucket, relativePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         match = match(PATTERN_RESOURCE_METADATA, path);
         if (match != null) {
-            String resource = match.group(1);
-            String bucket = match.group(2);
-            String relativePath = match.group(3);
             ResourceController controller = new ResourceController(proxy, context, true);
-            return () -> controller.handle(resource, bucket, relativePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         match = match(PATTERN_BUCKET, path);
@@ -195,6 +194,18 @@ public class ControllerSelector {
             String deploymentId = UrlUtil.decodePath(match.group(1));
             LimitController controller = new LimitController(proxy, context);
             return () -> controller.getLimits(deploymentId);
+        }
+
+        match = match(PATTERN_CONFIGURATION, path);
+        if (match != null) {
+            String deploymentId = UrlUtil.decodePath(match.group(1));
+            Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
+                    .map(Deployment::getFeatures)
+                    .map(Features::getConfigurationEndpoint)
+                    .orElse(null);
+
+            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            return () -> controller.handle(deploymentId, getter, false);
         }
 
         return null;
@@ -257,30 +268,77 @@ public class ControllerSelector {
             return () -> controller.handle(op);
         }
 
+        match = match(PUBLICATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            PublicationController controller = new PublicationController(proxy, context);
+
+            return switch (operation) {
+                case "list" -> controller::listPublications;
+                case "get" -> controller::getPublication;
+                case "create" -> controller::createPublication;
+                case "delete" -> controller::deletePublication;
+                case "approve" -> controller::approvePublication;
+                case "reject" -> controller::rejectPublication;
+                default -> null;
+            };
+        }
+
+        match = match(PUBLICATION_RULES, path);
+        if (match != null) {
+            PublicationController controller = new PublicationController(proxy, context);
+            return controller::listRules;
+        }
+
+        match = match(RESOURCE_OPERATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            ResourceOperationController controller = new ResourceOperationController(proxy, context);
+
+            return switch (operation)  {
+                case "move" -> controller::move;
+                case "subscribe" -> controller::subscribe;
+                default -> null;
+            };
+        }
+
+        match = match(PUBLISHED_RESOURCES, path);
+        if (match != null) {
+            PublicationController controller = new PublicationController(proxy, context);
+            return controller::listPublishedResources;
+        }
+
+        match = match(NOTIFICATIONS, path);
+        if (match != null) {
+            String operation = match.group(1);
+            NotificationController controller = new NotificationController(proxy, context);
+
+            return switch (operation) {
+                case "list" -> controller::listNotifications;
+                case "delete" -> controller::deleteNotification;
+                default -> null;
+            };
+        }
+
         return null;
     }
 
     private static Controller selectDelete(Proxy proxy, ProxyContext context, String path) {
         Matcher match = match(PATTERN_FILES, path);
         if (match != null) {
-            String bucket = match.group(1);
-            String filePath = match.group(2);
             DeleteFileController controller = new DeleteFileController(proxy, context);
-            return () -> controller.handle("files", bucket, filePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         match = match(PATTERN_RESOURCE, path);
         if (match != null) {
-            String resource = match.group(1);
-            String bucket = match.group(2);
-            String relativePath = match.group(3);
             ResourceController controller = new ResourceController(proxy, context, false);
-            return () -> controller.handle(resource, bucket, relativePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         match = match(INVITATION, path);
         if (match != null) {
-            String invitationId =  UrlUtil.decodePath(match.group(1));
+            String invitationId = UrlUtil.decodePath(match.group(1));
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.deleteInvitation(invitationId);
         }
@@ -291,19 +349,14 @@ public class ControllerSelector {
     private static Controller selectPut(Proxy proxy, ProxyContext context, String path) {
         Matcher match = match(PATTERN_FILES, path);
         if (match != null) {
-            String bucket = match.group(1);
-            String filePath = match.group(2);
             UploadFileController controller = new UploadFileController(proxy, context);
-            return () -> controller.handle("files", bucket, filePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         match = match(PATTERN_RESOURCE, path);
         if (match != null) {
-            String resource = match.group(1);
-            String bucket = match.group(2);
-            String relativePath = match.group(3);
             ResourceController controller = new ResourceController(proxy, context, false);
-            return () -> controller.handle(resource, bucket, relativePath);
+            return () -> controller.handle(resourcePath(path));
         }
 
         return null;
@@ -312,5 +365,19 @@ public class ControllerSelector {
     private Matcher match(Pattern pattern, String path) {
         Matcher matcher = pattern.matcher(path);
         return matcher.find() ? matcher : null;
+    }
+
+    private String resourcePath(String url) {
+        String prefix = "/v1/";
+
+        if (!url.startsWith(prefix)) {
+            throw new IllegalArgumentException("Resource url must start with /v1/: " + url);
+        }
+
+        if (url.startsWith("/v1/metadata/")) {
+            prefix = "/v1/metadata/";
+        }
+
+        return url.substring(prefix.length());
     }
 }

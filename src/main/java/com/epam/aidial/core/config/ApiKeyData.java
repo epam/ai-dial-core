@@ -1,12 +1,16 @@
 package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.data.AutoSharedData;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.security.ExtractedClaims;
 import lombok.Data;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -32,11 +36,19 @@ public class ApiKeyData {
     // OpenTelemetry span ID created by the Core
     private String spanId;
     // list of attached file URLs collected from conversation history of the current request
-    private Set<String> attachedFiles = new HashSet<>();
-    // deployment name of the source(application/assistant/model) associated with the current request
+    private Map<String, AutoSharedData> attachedFiles = new HashMap<>();
+    private Map<String, AutoSharedData> attachedFolders = new HashMap<>();
+    // deployment name of the source(application/assistant/model/interceptor) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request
     private List<String> executionPath;
+    // List of interceptors copied from the deployment config
+    private List<String> interceptors;
+    // Index to track which interceptor is called next
+    private int interceptorIndex = -1;
+    // deployment triggers interceptors
+    private String initialDeployment;
+    private String initialDeploymentApi;
 
     public ApiKeyData() {
     }
@@ -44,6 +56,10 @@ public class ApiKeyData {
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
+        proxyApiKeyData.setInterceptors(context.getInterceptors());
+        proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
+        proxyApiKeyData.setInitialDeploymentApi(context.getInitialDeploymentApi());
+
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());

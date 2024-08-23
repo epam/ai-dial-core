@@ -35,8 +35,7 @@ public class ModelController {
         }
 
         ModelData data = createModel(model);
-        context.respond(HttpStatus.OK, data);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, data);
     }
 
     public Future<?> getModels() {
@@ -53,8 +52,7 @@ public class ModelController {
         ListData<ModelData> list = new ListData<>();
         list.setData(models);
 
-        context.respond(HttpStatus.OK, list);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, list);
     }
 
     private static ModelData createModel(Model model) {
@@ -68,6 +66,7 @@ public class ModelController {
         data.setFeatures(DeploymentController.createFeatures(model.getFeatures()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
+        data.setReference(model.getName());
 
         if (model.getType() == ModelType.EMBEDDING) {
             data.getCapabilities().setEmbeddings(true);
@@ -80,6 +79,7 @@ public class ModelController {
         data.setTokenizerModel(model.getTokenizerModel());
         data.setLimits(createLimits(model.getLimits()));
         data.setPricing(createPricing(model.getPricing()));
+        data.setDefaults(model.getDefaults());
         return data;
     }
 

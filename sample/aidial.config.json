@@ -1,11 +1,42 @@
 {
     "routes": {},
+    "interceptors": {
+        "interceptor1": {
+            "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
+        },
+        "interceptor2": {
+            "endpoint": "http://localhost:4089/api/v1/interceptor/handle"
+        },
+        "interceptor3": {
+            "endpoint": "http://localhost:4090/api/v1/interceptor/handle"
+        }
+    },
     "addons": {
         "search": {
             "endpoint": "http://localhost:7010/search"
         },
         "forecast": {
-            "endpoint": "http://localhost:7010/forecast"
+            "endpoint": "http://localhost:7010/forecast",
+            "displayName": "Forecast",
+            "iconUrl": "https://host/forecast.svg",
+            "description": "Addon that provides forecast",
+            "userRoles": [
+                "Forecast"
+            ],
+            "forwardAuthToken": true,
+            "features": {
+                "rateEndpoint": "http://host/rate",
+                "tokenizeEndpoint": "http://host/tokinize",
+                "truncatePromptEndpoint": "http://host/truncate",
+                "configurationEndpoint": "http://host/configure",
+                "systemPromptSupported": false,
+                "toolsSupported": false,
+                "seedSupported":false,
+                "urlAttachmentsSupported": false,
+                "folderAttachmentsSupported": false
+            },
+            "maxInputAttachments": 10,
+            "inputAttachmentTypes": ["type1", "type2"]
         },
         "calculator": {
             "endpoint": "http://localhost:7010/calculator"
@@ -18,18 +49,83 @@
                 "prompt": "Commands: sit_down, get_up, run_away",
                 "addons": [
                     "search"
-                ]
+                ],
+                "displayName": "Forecast",
+                "iconUrl": "https://host/assistant.svg",
+                "description": "Addon that provides forecast",
+                "userRoles": [
+                    "Forecast"
+                ],
+                "forwardAuthToken": true,
+                "features": {
+                    "rateEndpoint": "http://host/rate",
+                    "tokenizeEndpoint": "http://host/tokinize",
+                    "truncatePromptEndpoint": "http://host/truncate",
+                    "configurationEndpoint": "http://host/configure",
+                    "systemPromptSupported": false,
+                    "toolsSupported": false,
+                    "seedSupported":false,
+                    "urlAttachmentsSupported": false,
+                    "folderAttachmentsSupported": false
+                },
+                "maxInputAttachments": 10,
+                "inputAttachmentTypes": ["type1", "type2"],
+                "defaults": {
+                    "paramStr": "value",
+                    "paramBool": true,
+                    "paramInt": 123,
+                    "paramFloat": 0.25
+                }
             }
         }
     },
     "applications": {
         "app": {
-            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions"
+            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+            "displayName": "Forecast",
+            "iconUrl": "https://host/app.svg",
+            "description": "Addon that provides forecast",
+            "userRoles": [
+                "Forecast"
+            ],
+            "forwardAuthToken": true,
+            "features": {
+                "rateEndpoint": "http://host/rate",
+                "tokenizeEndpoint": "http://host/tokinize",
+                "truncatePromptEndpoint": "http://host/truncate",
+                "configurationEndpoint": "http://host/configure",
+                "systemPromptSupported": false,
+                "toolsSupported": false,
+                "seedSupported":false,
+                "urlAttachmentsSupported": false,
+                "folderAttachmentsSupported": false
+            },
+            "maxInputAttachments": 10,
+            "inputAttachmentTypes": ["type1", "type2"],
+            "defaults": {
+                "paramStr": "value",
+                "paramBool": true,
+                "paramInt": 123,
+                "paramFloat": 0.25
+            },
+            "interceptors": ["interceptor1", "interceptor2", "interceptor3"]
         }
     },
     "models": {
         "chat-gpt-35-turbo": {
             "type": "chat",
+            "tokenizerModel": "tokenizer",
+            "limits": {
+                "maxTotalTokens": 1000,
+                "maxPromptTokens": 200,
+                "maxCompletionTokens": 800
+            },
+            "pricing": {
+                "unit": "token",
+                "prompt": "0.56",
+                "completion": "0.67"
+            },
+            "overrideName": "/some[!exotic?]/model/name",
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
@@ -46,7 +142,29 @@
                     "endpoint": "http://localhost:7003",
                     "key": "modelKey3"
                 }
-            ]
+            ],
+            "userRoles": ["role1", "role2"],
+            "forwardAuthToken": true,
+            "features": {
+                "rateEndpoint": "http://host/rate",
+                "tokenizeEndpoint": "http://host/tokinize",
+                "truncatePromptEndpoint": "http://host/truncate",
+                "configurationEndpoint": "http://host/configure",
+                "systemPromptSupported": false,
+                "toolsSupported": false,
+                "seedSupported":false,
+                "urlAttachmentsSupported": false,
+                "folderAttachmentsSupported": false
+            },
+            "maxInputAttachments": 10,
+            "inputAttachmentTypes": ["type1", "type2"],
+            "defaults": {
+                "paramStr": "value",
+                "paramBool": true,
+                "paramInt": 123,
+                "paramFloat": 0.25
+            },
+            "interceptors": ["interceptor1"]
         },
         "embedding-ada": {
             "type": "embedding",
@@ -56,13 +174,15 @@
                     "endpoint": "http://localhost:7001",
                     "key": "modelKey4"
                 }
-            ]
+            ],
+            "userRoles": ["role3"]
         }
     },
     "keys": {
         "proxyKey1": {
             "project": "TestProject1",
-            "role": "default"
+            "role": "default",
+            "secured": true
         },
         "proxyKey2": {
             "project": "TestProject2",
@@ -86,6 +206,23 @@
                 "search_assistant": {},
                 "app": {}
             }
+        },
+        "role1": {
+            "limits": {
+                "chat-gpt-35-turbo": {
+                    "minute": "200000",
+                    "day": "10000000"
+                }
+            }
+        },
+        "role2": {
+            "limits": {
+                "chat-gpt-35-turbo": {
+                    "minute": "100000",
+                    "day": "20000000"
+                }
+            }
         }
-    }
+    },
+    "retriableErrorCodes": [401, 403]
 }

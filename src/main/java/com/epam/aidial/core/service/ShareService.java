@@ -4,6 +4,7 @@ import com.epam.aidial.core.data.Invitation;
 import com.epam.aidial.core.data.InvitationLink;
 import com.epam.aidial.core.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceLink;
@@ -11,21 +12,27 @@ import com.epam.aidial.core.data.ResourceLinkCollection;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.data.ShareResourcesRequest;
 import com.epam.aidial.core.data.SharedByMeDto;
+import com.epam.aidial.core.data.SharedResource;
+import com.epam.aidial.core.data.SharedResources;
 import com.epam.aidial.core.data.SharedResourcesResponse;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.epam.aidial.core.util.ResourceUtil;
+import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
 
 @Slf4j
 @AllArgsConstructor
@@ -57,9 +64,10 @@ public class ShareService {
         Set<MetadataBase> resultMetadata = new HashSet<>();
         for (ResourceDescription resource : shareResources) {
             String sharedResource = resourceService.getResource(resource);
-            ResourceLinkCollection resourceLinksCollection = ProxyUtil.convertToObject(sharedResource, ResourceLinkCollection.class);
-            if (resourceLinksCollection != null && resourceLinksCollection.getResources() != null) {
-                resultMetadata.addAll(linksToMetadata(resourceLinksCollection.getResources().stream().map(ResourceLink::url)));
+            SharedResources sharedResources = ProxyUtil.convertToObject(sharedResource, SharedResources.class);
+            if (sharedResources != null) {
+                Map<String, Set<ResourceAccessType>> links = ResourceUtil.sharedResourcesToMap(sharedResources.getResources());
+                resultMetadata.addAll(linksToMetadata(links));
             }
         }
 
@@ -87,8 +95,9 @@ public class ShareService {
         for (ResourceDescription resource : shareResources) {
             String sharedResource = resourceService.getResource(resource);
             SharedByMeDto resourceToUsers = ProxyUtil.convertToObject(sharedResource, SharedByMeDto.class);
-            if (resourceToUsers != null && resourceToUsers.getResourceToUsers() != null) {
-                resultMetadata.addAll(linksToMetadata(resourceToUsers.getResourceToUsers().keySet().stream()));
+            if (resourceToUsers != null) {
+                Map<String, Set<ResourceAccessType>> links = resourceToUsers.getAggregatedPermissions();
+                resultMetadata.addAll(linksToMetadata(links));
             }
         }
 
@@ -105,19 +114,22 @@ public class ShareService {
      */
     public InvitationLink initializeShare(String bucket, String location, ShareResourcesRequest request) {
         // validate resources - owner must be current user
-        Set<ResourceLink> resourceLinks = request.getResources();
-        if (resourceLinks.isEmpty()) {
+        Set<SharedResource> sharedResources = request.getResources();
+        if (sharedResources.isEmpty()) {
             throw new IllegalArgumentException("No resources provided");
         }
 
-        Set<ResourceLink> normalizedResourceLinks = new HashSet<>();
-        for (ResourceLink resourceLink : resourceLinks) {
-            String url = resourceLink.url();
-            ResourceDescription resource = getResourceFromLink(url);
+        Set<String> uniqueLinks = new HashSet<>();
+        List<SharedResource> normalizedResourceLinks = new ArrayList<>(sharedResources.size());
+        for (SharedResource sharedResource : sharedResources) {
+            ResourceDescription resource = getResourceFromLink(sharedResource.url());
             if (!bucket.equals(resource.getBucketName())) {
-                throw new IllegalArgumentException("Resource %s does not belong to the user".formatted(url));
+                throw new IllegalArgumentException("Resource %s does not belong to the user".formatted(resource.getUrl()));
             }
-            normalizedResourceLinks.add(new ResourceLink(resource.getUrl()));
+            if (!uniqueLinks.add(resource.getUrl())) {
+                throw new IllegalArgumentException("Duplicated resource: %s".formatted(resource.getUrl()));
+            }
+            normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()));
         }
 
         Invitation invitation = invitationService.createInvitation(bucket, location, normalizedResourceLinks);
@@ -138,22 +150,20 @@ public class ShareService {
             throw new ResourceNotFoundException("No invitation found with id: " + invitationId);
         }
 
-        Set<ResourceLink> resourceLinks = invitation.getResources();
-        for (ResourceLink link : resourceLinks) {
+        List<SharedResource> resourceLinks = invitation.getResources();
+        for (SharedResource link : resourceLinks) {
             String url = link.url();
-            if (ResourceDescription.fromLink(url, encryptionService).getBucketName().equals(bucket)) {
+            if (ResourceDescription.fromPrivateUrl(url, encryptionService).getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("Resource %s already belong to you".formatted(url));
             }
         }
 
         // group resources with the same type to reduce resource transformations
-        Map<ResourceType, List<ResourceLink>> resourceGroups = resourceLinks.stream()
-                .collect(Collectors.groupingBy(ResourceLink::getResourceType));
+        Map<ResourceType, List<SharedResource>> resourceGroups = resourceLinks.stream()
+                .collect(Collectors.groupingBy(sharedResource -> ResourceUtil.getResourceType(sharedResource.url())));
 
-        for (Map.Entry<ResourceType, List<ResourceLink>> group : resourceGroups.entrySet()) {
-            ResourceType resourceType = group.getKey();
-            List<ResourceLink> links = group.getValue();
-            String ownerBucket = links.get(0).getBucket();
+        resourceGroups.forEach((resourceType, links) -> {
+            String ownerBucket = ResourceUtil.getBucket(links.get(0).url());
             String ownerLocation = encryptionService.decrypt(ownerBucket);
 
             // write user location to the resource owner
@@ -161,12 +171,12 @@ public class ShareService {
             resourceService.computeResource(sharedByMe, state -> {
                 SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
                 if (dto == null) {
-                    dto = new SharedByMeDto(new HashMap<>());
+                    dto = new SharedByMeDto(new HashMap<>(), new HashMap<>());
                 }
 
                 // add user location for each link
-                for (ResourceLink resourceLink : links) {
-                    dto.addUserToResource(resourceLink.url(), location);
+                for (SharedResource resource : links) {
+                    dto.addUserToResource(resource, location);
                 }
 
                 return ProxyUtil.convertToString(dto);
@@ -174,44 +184,74 @@ public class ShareService {
 
             ResourceDescription sharedWithMe = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
             resourceService.computeResource(sharedWithMe, state -> {
-                ResourceLinkCollection collection = ProxyUtil.convertToObject(state, ResourceLinkCollection.class);
-                if (collection == null) {
-                    collection = new ResourceLinkCollection(new HashSet<>());
+                SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
+                if (sharedResources == null) {
+                    sharedResources = new SharedResources(new ArrayList<>());
                 }
 
                 // add all links to the user
-                collection.getResources().addAll(links);
+                sharedResources.addSharedResources(ResourceUtil.sharedResourcesToMap(links));
 
-                return ProxyUtil.convertToString(collection);
+                return ProxyUtil.convertToString(sharedResources);
             });
-        }
+        });
     }
 
-    public boolean hasReadAccess(String bucket, String location, ResourceDescription resource) {
-        ResourceDescription shareResource = getShareResource(ResourceType.SHARED_WITH_ME, resource.getType(), bucket, location);
+    public Map<ResourceDescription, Set<ResourceAccessType>> getPermissions(
+            String bucket, String location, Set<ResourceDescription> allResources) {
+        Map<ResourceType, List<ResourceDescription>> privateResourcesByTypes = allResources.stream()
+                .filter(ResourceDescription::isPrivate)
+                .collect(Collectors.groupingBy(ResourceDescription::getType));
+        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
+        privateResourcesByTypes.forEach((type, resources) -> {
+            ResourceDescription shareResource = getShareResource(ResourceType.SHARED_WITH_ME, type, bucket, location);
 
-        String state = resourceService.getResource(shareResource);
-        ResourceLinkCollection sharedResources = ProxyUtil.convertToObject(state, ResourceLinkCollection.class);
-        if (sharedResources == null) {
-            log.debug("No state found for share access");
-            return false;
-        }
-
-        Set<ResourceLink> sharedLinks = sharedResources.getResources();
-        if (sharedLinks.contains(new ResourceLink(resource.getUrl()))) {
-            return true;
-        }
-
-        // check if you have shared access to the parent folder
-        ResourceDescription parentFolder = resource.getParent();
-        while (parentFolder != null) {
-            if (sharedLinks.contains(new ResourceLink(parentFolder.getUrl()))) {
-                return true;
+            String state = resourceService.getResource(shareResource);
+            SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
+            if (sharedResources == null) {
+                log.debug("No state found for share access");
+                return;
             }
-            parentFolder = parentFolder.getParent();
+
+            Map<String, Set<ResourceAccessType>> resourcePermissions =
+                    ResourceUtil.sharedResourcesToMap(sharedResources.getResources());
+            for (ResourceDescription resource : resources) {
+                result.put(resource, lookupPermissions(resource, resourcePermissions, new HashMap<>()));
+            }
+        });
+
+        return result;
+    }
+
+    private static Set<ResourceAccessType> lookupPermissions(
+            ResourceDescription resource,
+            Map<String, Set<ResourceAccessType>> resourcePermissions,
+            Map<ResourceDescription, Set<ResourceAccessType>> cache) {
+        if (resource == null) {
+            return Set.of();
         }
 
-        return false;
+        Set<ResourceAccessType> permissions = cache.get(resource);
+        if (permissions == null) {
+            permissions = Sets.union(
+                    resourcePermissions.getOrDefault(resource.getUrl(), Set.of()),
+                    lookupPermissions(resource.getParent(), resourcePermissions, cache));
+            cache.put(resource, permissions);
+        }
+
+        return permissions;
+    }
+
+    /**
+     * Revoke share access for provided resource. Only resource owner can perform this operation
+     *
+     * @param bucket - user bucket
+     * @param location - storage location
+     * @param resourceLink - the resource to revoke access
+     */
+    public void revokeSharedResource(
+            String bucket, String location, ResourceDescription resourceLink) {
+        revokeSharedAccess(bucket, location, Map.of(resourceLink, ResourceAccessType.ALL));
     }
 
     /**
@@ -219,53 +259,50 @@ public class ShareService {
      *
      * @param bucket - user bucket
      * @param location - storage location
-     * @param request - collection of links to revoke access
+     * @param permissionsToRevoke - collection of resources and permissions to revoke access
      */
-    public void revokeSharedAccess(String bucket, String location, ResourceLinkCollection request) {
-        Set<ResourceLink> resourceLinks = request.getResources();
-        if (resourceLinks.isEmpty()) {
+    public void revokeSharedAccess(
+            String bucket, String location, Map<ResourceDescription, Set<ResourceAccessType>> permissionsToRevoke) {
+        if (permissionsToRevoke.isEmpty()) {
             throw new IllegalArgumentException("No resources provided");
         }
 
         // validate that all resources belong to the user, who perform this action
-        Set<ResourceDescription> resources = new HashSet<>();
-        for (ResourceLink link : resourceLinks) {
-            ResourceDescription resource = getResourceFromLink(link.url());
+        permissionsToRevoke.forEach((resource, permissions) -> {
             if (!resource.getBucketName().equals(bucket)) {
                 throw new IllegalArgumentException("You are only allowed to revoke access from own resources");
             }
-            resources.add(resource);
-        }
+        });
 
-        for (ResourceDescription resource : resources) {
+        permissionsToRevoke.forEach((resource, permissionsToRemove) -> {
             ResourceType resourceType = resource.getType();
             String resourceUrl = resource.getUrl();
             ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, resourceType, bucket, location);
             String state = resourceService.getResource(sharedByMeResource);
             SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
             if (dto != null) {
-                Set<String> userLocations = dto.getResourceToUsers().get(resourceUrl);
+                Set<String> userLocations = dto.collectUsersForPermissions(resourceUrl, permissionsToRemove);
 
-                // if userLocations is NULL - this means that provided resource wasn't shared
-                if (userLocations == null) {
-                    continue;
+                // if userLocations is empty - this means that provided resource wasn't shared
+                if (userLocations.isEmpty()) {
+                    return;
                 }
 
-                for (String userLocation : userLocations) {
-                    String userBucket = encryptionService.encrypt(userLocation);
-                    removeSharedResource(userBucket, userLocation, resourceUrl, resourceType);
-                }
+                userLocations.forEach(user -> {
+                    String userBucket = encryptionService.encrypt(user);
+                    removeSharedResourcePermissions(userBucket, user, resourceUrl, resourceType, permissionsToRemove);
+                });
 
                 resourceService.computeResource(sharedByMeResource, ownerState -> {
                     SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
                     if (sharedByMeDto != null) {
-                        sharedByMeDto.getResourceToUsers().remove(resourceUrl);
+                        sharedByMeDto.removePermissionsFromResource(resourceUrl, permissionsToRemove);
                     }
 
                     return ProxyUtil.convertToString(sharedByMeDto);
                 });
             }
-        }
+        });
     }
 
     public void discardSharedAccess(String bucket, String location, ResourceLinkCollection request) {
@@ -282,7 +319,7 @@ public class ShareService {
         for (ResourceDescription resource : resources) {
             ResourceType resourceType = resource.getType();
             String resourceUrl = resource.getUrl();
-            removeSharedResource(bucket, location, resourceUrl, resourceType);
+            removeSharedResourcePermissions(bucket, location, resourceUrl, resourceType, ResourceAccessType.ALL);
 
             String ownerBucket = resource.getBucketName();
             String ownerLocation = encryptionService.decrypt(ownerBucket);
@@ -291,11 +328,7 @@ public class ShareService {
             resourceService.computeResource(sharedWithMe, ownerState -> {
                 SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(ownerState, SharedByMeDto.class);
                 if (sharedByMeDto != null) {
-                    Set<String> userLocations = sharedByMeDto.getResourceToUsers().get(resourceUrl);
-                    // if userLocations is NULL - this means that provided resource wasn't shared
-                    if (userLocations != null) {
-                        userLocations.remove(location);
-                    }
+                    sharedByMeDto.removeUserFromResource(resourceUrl, location);
                 }
 
                 return ProxyUtil.convertToString(sharedByMeDto);
@@ -303,36 +336,113 @@ public class ShareService {
         }
     }
 
-    private void removeSharedResource(String bucket, String location, String link, ResourceType resourceType) {
+    public void copySharedAccess(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        if (!resourceService.hasResource(source)) {
+            throw new IllegalArgumentException("source resource %s does not exists".formatted(source.getUrl()));
+        }
+
+        if (!resourceService.hasResource(destination)) {
+            throw new IllegalArgumentException("destination resource %s dos not exists".formatted(destination.getUrl()));
+        }
+
+        ResourceType sourceResourceType = source.getType();
+        ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, sourceResourceType, bucket, location);
+        SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(resourceService.getResource(sharedByMeResource), SharedByMeDto.class);
+        if (sharedByMeDto == null) {
+            return;
+        }
+
+        Map<String, Set<ResourceAccessType>> userPermissions = sharedByMeDto.getUserPermissions(source.getUrl());
+
+        ResourceType destinationResourceType = destination.getType();
+        String destinationResourceLink = destination.getUrl();
+        // source and destination resource type might be different
+        sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, destinationResourceType, bucket, location);
+
+        // copy user locations from source to destination
+        resourceService.computeResource(sharedByMeResource, state -> {
+            SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
+            if (dto == null) {
+                dto = new SharedByMeDto(new HashMap<>(), new HashMap<>());
+            }
+
+            // add shared access to the destination resource
+            dto.addUserPermissionsToResource(destinationResourceLink, userPermissions);
+
+            return ProxyUtil.convertToString(dto);
+        });
+
+        // add each user shared access to the destination resource
+        userPermissions.forEach((userLocation, permissions) -> {
+            String userBucket = encryptionService.encrypt(userLocation);
+            addSharedResource(userBucket, userLocation, destinationResourceLink, destinationResourceType, permissions);
+        });
+    }
+
+    public void moveSharedAccess(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        // copy shared access from source to destination
+        copySharedAccess(bucket, location, source, destination);
+        // revoke shared access from source
+        revokeSharedAccess(bucket, location, Map.of(source, ResourceAccessType.ALL));
+    }
+
+    private void removeSharedResourcePermissions(
+            String bucket, String location, String link, ResourceType resourceType, Set<ResourceAccessType> permissionsToRemove) {
         ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
-            ResourceLinkCollection sharedWithMe = ProxyUtil.convertToObject(state, ResourceLinkCollection.class);
+            SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe != null) {
-                sharedWithMe.getResources().remove(new ResourceLink(link));
+                Set<ResourceAccessType> permissions = EnumSet.noneOf(ResourceAccessType.class);
+                permissions.addAll(sharedWithMe.findPermissions(link));
+                permissions.removeAll(permissionsToRemove);
+                sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
+                if (!permissions.isEmpty()) {
+                    sharedWithMe.getResources().add(new SharedResource(link, permissions));
+                }
             }
 
             return ProxyUtil.convertToString(sharedWithMe);
         });
     }
 
-    private List<MetadataBase> linksToMetadata(Stream<String> links) {
-        return links
-                .map(link -> ResourceDescription.fromLink(link, encryptionService))
-                .map(resource -> {
-                    if (resource.isFolder()) {
-                        return new ResourceFolderMetadata(resource);
-                    } else {
-                        return new ResourceItemMetadata(resource);
-                    }
+    private void addSharedResource(
+            String bucket,
+            String location,
+            String link,
+            ResourceType resourceType,
+            Set<ResourceAccessType> permissionsToAdd) {
+        ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
+        resourceService.computeResource(sharedByMeResource, state -> {
+            SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
+            if (sharedWithMe == null) {
+                sharedWithMe = new SharedResources(new ArrayList<>());
+            }
+            Set<ResourceAccessType> permissions = EnumSet.noneOf(ResourceAccessType.class);
+            permissions.addAll(sharedWithMe.findPermissions(link));
+            permissions.addAll(permissionsToAdd);
+            sharedWithMe.getResources().removeIf(resource -> link.equals(resource.url()));
+            sharedWithMe.getResources().add(new SharedResource(link, permissions));
+
+            return ProxyUtil.convertToString(sharedWithMe);
+        });
+    }
+
+    private List<MetadataBase> linksToMetadata(Map<String, Set<ResourceAccessType>> links) {
+        return links.entrySet().stream()
+                .map(entry -> {
+                    String link = entry.getKey();
+                    Set<ResourceAccessType> permissions = entry.getValue();
+                    ResourceDescription resource = ResourceDescription.fromPrivateUrl(link, encryptionService);
+                    MetadataBase metadata = resource.isFolder()
+                            ? new ResourceFolderMetadata(resource)
+                            : new ResourceItemMetadata(resource);
+                    metadata.setPermissions(permissions);
+                    return metadata;
                 }).toList();
     }
 
     private ResourceDescription getResourceFromLink(String url) {
-        try {
-            return ResourceDescription.fromLink(url, encryptionService);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Incorrect resource link provided " + url);
-        }
+        return ResourceUtil.resourceFromUrl(url, encryptionService);
     }
 
     private ResourceDescription getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {

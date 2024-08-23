@@ -1,7 +1,10 @@
 package com.epam.aidial.core.util;
 
+import com.epam.aidial.core.function.BaseResponseFunction;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.impl.PipeImpl;
@@ -22,14 +25,27 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Throwable error;
     private boolean ended;
     private boolean reset;
+    // set the position to unset by default
+    private int lastChunkPos = -1;
+    private final EventStreamParser eventStreamParser;
+    private Future<Boolean> streamHandlerFuture;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
-        this(stream, 512);
+        this(stream, 512, null);
     }
 
     public BufferingReadStream(ReadStream<Buffer> stream, int initialSize) {
+        this(stream, initialSize, null);
+    }
+
+    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, BaseResponseFunction streamHandler) {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
+        if (streamHandler == null) {
+            this.eventStreamParser = null;
+        } else {
+            this.eventStreamParser = new EventStreamParser(512, streamHandler);
+        }
 
         stream.handler(this::handleChunk);
         stream.endHandler(this::handleEnd);
@@ -109,14 +125,57 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         return this;
     }
 
+    public synchronized void end(HttpServerResponse response) {
+        if (lastChunkPos != -1) {
+            Buffer lastChunk = content.slice(lastChunkPos, content.length());
+            response.end(lastChunk);
+        } else {
+            response.end();
+        }
+    }
+
     private synchronized void handleChunk(Buffer chunk) {
+        int pos = content.length();
         content.appendBuffer(chunk);
+        if (lastChunkPos != -1) {
+            // stop streaming
+            return;
+        }
+        if (eventStreamParser != null) {
+            // build chain of chunk futures: the chunks should be sent in the same order as they arrive
+            if (streamHandlerFuture == null) {
+                streamHandlerFuture = parseChunk(chunk, pos);
+            } else {
+                streamHandlerFuture = streamHandlerFuture.transform(ignore -> parseChunk(chunk, pos));
+            }
+        } else {
+            notifyOnChunk(chunk);
+        }
+    }
+
+    private synchronized Future<Boolean> parseChunk(Buffer chunk, int pos) {
+        return eventStreamParser.parse(chunk)
+                .andThen(result -> handleStreamEvent(chunk, result.result() == Boolean.TRUE, pos));
+    }
+
+    private synchronized void handleStreamEvent(Buffer chunk, boolean isLastChunk, int pos) {
+        if (isLastChunk) {
+            if (lastChunkPos == -1) {
+                lastChunkPos = pos;
+            }
+            // don't send the last chunk
+            return;
+        }
         notifyOnChunk(chunk);
     }
 
     private synchronized void handleEnd(Void ignored) {
         ended = true;
-        notifyOnEnd(ignored);
+        if (streamHandlerFuture == null) {
+            notifyOnEnd(ignored);
+        } else {
+            streamHandlerFuture.onComplete(ignore -> notifyOnEnd(ignored));
+        }
     }
 
     private synchronized void handleException(Throwable exception) {

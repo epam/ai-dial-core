@@ -2,73 +2,51 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.data.ResourceAccessType;
+import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
-import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
+
+import java.util.Set;
 
 @AllArgsConstructor
 public abstract class AccessControlBaseController {
 
-    private static final String DEFAULT_RESOURCE_ERROR_MESSAGE = "Invalid resource url provided %s";
-
     final Proxy proxy;
     final ProxyContext context;
-    final boolean checkFullAccess;
+    final boolean isWriteAccess;
 
-    /**
-     * @param bucket url encoded bucket name
-     * @param path   url encoded resource path
-     */
-    public Future<?> handle(String resourceType, String bucket, String path) {
-        ResourceType type = ResourceType.of(resourceType);
-        String urlDecodedBucket = UrlUtil.decodePath(bucket);
-        String decryptedBucket = proxy.getEncryptionService().decrypt(urlDecodedBucket);
-        if (decryptedBucket == null) {
-            context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
-            return Future.succeededFuture();
-        }
-
+    public Future<?> handle(String resourceUrl) {
         ResourceDescription resource;
+
         try {
-            resource = ResourceDescription.fromEncoded(type, urlDecodedBucket, decryptedBucket, path);
-        } catch (Exception ex) {
-            String errorMessage = ex.getMessage() != null ? ex.getMessage() : DEFAULT_RESOURCE_ERROR_MESSAGE.formatted(path);
-            context.respond(HttpStatus.BAD_REQUEST, errorMessage);
-            return Future.succeededFuture();
+            resource = ResourceDescription.fromAnyUrl(resourceUrl, proxy.getEncryptionService());
+        } catch (IllegalArgumentException e) {
+            String errorMessage = e.getMessage() != null ? e.getMessage() : ("Invalid resource url provided: " + resourceUrl);
+            return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
         return proxy.getVertx()
                 .executeBlocking(() -> {
-                    boolean hasWriteAccess = proxy.getAccessService().hasWriteAccess(path, decryptedBucket, context);
-                    if (hasWriteAccess) {
-                        return true;
-                    }
-
-                    if (!checkFullAccess) {
-                        // some per-request API-keys may have access to the resources implicitly
-                        boolean isAutoShared = context.getApiKeyData().getAttachedFiles().contains(resource.getUrl());
-                        if (isAutoShared) {
-                            return true;
-                        }
-
-                        return proxy.getAccessService().isSharedResource(resource, context);
-                    }
-
-                    return false;
-                })
-                .map(hasAccess  -> {
+                    AccessService service = proxy.getAccessService();
+                    return service.lookupPermissions(Set.of(resource), context).get(resource);
+                }, false)
+                .compose(permissions -> {
+                    boolean hasAccess = permissions.contains(isWriteAccess
+                            ? ResourceAccessType.WRITE : ResourceAccessType.READ);
                     if (hasAccess) {
-                        handle(resource);
+                        return handle(resource, permissions.contains(ResourceAccessType.WRITE));
                     } else {
-                        context.respond(HttpStatus.FORBIDDEN, "You don't have an access to the %s %s/%s".formatted(type, bucket, path));
+                        context.respond(HttpStatus.FORBIDDEN, "You don't have an access to: " + resourceUrl);
+                        return Future.succeededFuture();
                     }
-                    return null;
                 });
     }
 
-    protected abstract Future<?> handle(ResourceDescription resource);
-
+    /**
+     * @return a successful future to read the request body after its completion.
+     */
+    protected abstract Future<?> handle(ResourceDescription resource, boolean hasWriteAccess);
 }

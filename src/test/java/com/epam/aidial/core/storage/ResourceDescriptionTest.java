@@ -1,6 +1,8 @@
 package com.epam.aidial.core.storage;
 
+import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.EncryptionService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -144,8 +146,75 @@ public class ResourceDescriptionTest {
     @Test
     public void testResourceWithInvalidFilename() {
         assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "%2F"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "%7D.txt"));
+        assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folde%2F/"));
         assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%2F.txt"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%7B.txt"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%7D.txt"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "folder1/file%00"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "%1Ffolder1/file"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescription.fromEncoded(ResourceType.FILE, "bucket", "location/", "fol%0Fder1"));
+    }
+
+    @Test
+    public void testValidPublicLinks() {
+        assertEquals(
+                ResourceDescription.fromPublicUrl("publications/public/"),
+                ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "")
+        );
+
+        assertEquals(
+                ResourceDescription.fromPublicUrl("publications/public/file"),
+                ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "file")
+        );
+
+        assertEquals(
+                ResourceDescription.fromPublicUrl("publications/public/folder/"),
+                ResourceDescription.fromEncoded(ResourceType.PUBLICATION, "public", "public/", "folder/")
+        );
+
+        assertEquals(
+                ResourceDescription.fromPublicUrl("publications/public/%30").getName(),
+                "0"
+        );
+    }
+
+    @Test
+    public void testInvalidPublicLinks() {
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("/publications/public/"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/public"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/public"));
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/private/"));
+    }
+
+    @Test
+    public void testFromAnyDecodedUrl() {
+        EncryptionService encryptionService = new EncryptionService(new Encryption("password", "salt"));
+        String location = "Users/User1/";
+        String bucket = encryptionService.encrypt(location);
+
+        ResourceDescription privateResource = ResourceDescription.fromAnyDecodedUrl("files/%s/my folder/some file".formatted(bucket), encryptionService);
+        assertEquals(ResourceType.FILE, privateResource.getType());
+        assertEquals(bucket, privateResource.getBucketName());
+        assertEquals(location, privateResource.getBucketLocation());
+        assertEquals("files/" + bucket + "/my%20folder/some%20file", privateResource.getUrl());
+        assertFalse(privateResource.isFolder());
+        assertTrue(privateResource.isPrivate());
+
+        ResourceDescription publicResource = ResourceDescription.fromAnyDecodedUrl("applications/public/my folder/some app", encryptionService);
+        assertEquals(ResourceType.APPLICATION, publicResource.getType());
+        assertEquals("public", publicResource.getBucketName());
+        assertEquals("applications/public/my%20folder/some%20app", publicResource.getUrl());
+        assertFalse(publicResource.isFolder());
+        assertTrue(publicResource.isPublic());
     }
 }

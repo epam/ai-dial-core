@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Vertx;
@@ -23,9 +24,11 @@ public final class FileConfigStore implements ConfigStore {
     private final String[] paths;
     private volatile Config config;
     private final ApiKeyStore apiKeyStore;
+    private final UpstreamRouteProvider upstreamRouteProvider;
 
-    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore) {
+    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore, UpstreamRouteProvider upstreamRouteProvider) {
         this.apiKeyStore = apiKeyStore;
+        this.upstreamRouteProvider = upstreamRouteProvider;
         this.paths = settings.getJsonArray("files")
                 .stream().map(path -> (String) path).toArray(String[]::new);
 
@@ -97,7 +100,14 @@ public final class FileConfigStore implements ConfigStore {
                 role.setName(name);
             }
 
+            for (Map.Entry<String, Interceptor> entry : config.getInterceptors().entrySet()) {
+                String name = entry.getKey();
+                Interceptor interceptor = entry.getValue();
+                interceptor.setName(name);
+            }
+
             this.config = config;
+            upstreamRouteProvider.onUpdate(config);
         } catch (Throwable e) {
             if (fail) {
                 throw e;
@@ -119,11 +129,16 @@ public final class FileConfigStore implements ConfigStore {
         return ProxyUtil.MAPPER.convertValue(tree, Config.class);
     }
 
+    @SneakyThrows
     private static InputStream openStream(String path) {
         try {
             return new BufferedInputStream(new FileInputStream(path));
         } catch (FileNotFoundException e) {
-            return ConfigStore.class.getClassLoader().getResourceAsStream(path);
+            InputStream stream = ConfigStore.class.getClassLoader().getResourceAsStream(path);
+            if (stream == null) {
+                throw new FileNotFoundException("File not found: " + path);
+            }
+            return stream;
         }
     }
 
@@ -155,6 +170,15 @@ public final class FileConfigStore implements ConfigStore {
         }
         if (modelFeatures.getSeedSupported() == null) {
             modelFeatures.setSeedSupported(features.getSeedSupported());
+        }
+        if (modelFeatures.getUrlAttachmentsSupported() == null) {
+            modelFeatures.setUrlAttachmentsSupported(features.getUrlAttachmentsSupported());
+        }
+        if (modelFeatures.getFolderAttachmentsSupported() == null) {
+            modelFeatures.setFolderAttachmentsSupported(features.getFolderAttachmentsSupported());
+        }
+        if (modelFeatures.getAllowResume() == null) {
+            modelFeatures.setAllowResume(features.getAllowResume());
         }
     }
 }

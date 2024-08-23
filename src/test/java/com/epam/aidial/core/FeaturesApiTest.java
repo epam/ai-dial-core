@@ -1,59 +1,22 @@
 package com.epam.aidial.core;
 
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.codec.BodyCodec;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.SneakyThrows;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.net.URI;
-import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ExtendWith(VertxExtension.class)
-public class FeaturesApiTest {
-
-    private static AiDial dial;
-    private static int serverPort;
-
-    private static Path testDir;
-
-    @BeforeAll
-    public static void init() throws Exception {
-        // initialize server
-        dial = new AiDial();
-        testDir = FileUtil.baseTestPath(FeaturesApiTest.class);
-        dial.setStorage(FileUtil.buildFsBlobStorage(testDir));
-        dial.start();
-        serverPort = dial.getServer().actualPort();
-    }
-
-    @AfterAll
-    public static void destroy() {
-        // stop server
-        dial.stop();
-    }
-
-    @BeforeEach
-    public void setUp() {
-        // prepare test directory
-        FileUtil.createDir(testDir.resolve("test"));
-    }
-
-    @AfterEach
-    public void clean() {
-        // clean test directory
-        FileUtil.deleteDir(testDir);
-    }
+public class FeaturesApiTest extends ResourceBaseTest {
 
     @Test
     void testRateEndpointModel(Vertx vertx, VertxTestContext context) {
@@ -80,7 +43,7 @@ public class FeaturesApiTest {
     void testRateEndpointAssistantDefaultResponse(Vertx vertx, VertxTestContext context) {
         // The rate endpoint is unset. Checking the default empty response.
         String inboundPath = "/v1/assistant/rate";
-        checkResponse(vertx, context, inboundPath, null);
+        checkResponse(vertx, context, inboundPath, HttpMethod.POST, null);
     }
 
     @Test
@@ -97,8 +60,19 @@ public class FeaturesApiTest {
         testUpstreamEndpoint(vertx, context, inboundPath, upstream);
     }
 
-    @SneakyThrows
+    @Test
+    void testConfigurationEndpointApplication(Vertx vertx, VertxTestContext context) {
+        String inboundPath = "/v1/deployments/app/configuration";
+        String upstream = "http://localhost:7001/openai/deployments/10k/config";
+        testUpstreamEndpoint(vertx, context, inboundPath, upstream, HttpMethod.GET);
+    }
+
     void testUpstreamEndpoint(Vertx vertx, VertxTestContext context, String inboundPath, String upstream) {
+        testUpstreamEndpoint(vertx, context, inboundPath, upstream, HttpMethod.POST);
+    }
+
+    @SneakyThrows
+    void testUpstreamEndpoint(Vertx vertx, VertxTestContext context, String inboundPath, String upstream, HttpMethod method) {
         URI upstreamUri = new URI(upstream);
 
         String response = "PONG";
@@ -116,12 +90,12 @@ public class FeaturesApiTest {
                     }
                 })
                 .listen().onSuccess(server ->
-                    checkResponse(vertx, context, inboundPath, response));
+                    checkResponse(vertx, context, inboundPath, method, response));
     }
 
-    void checkResponse(Vertx vertx, VertxTestContext context, String uri, String expectedResponse) {
+    void checkResponse(Vertx vertx, VertxTestContext context, String uri, HttpMethod method, String expectedResponse) {
         WebClient client = WebClient.create(vertx);
-        client.post(serverPort, "localhost", uri)
+        client.request(method, serverPort, "localhost", uri)
                 .putHeader("Api-key", "proxyKey2")
                 .as(BodyCodec.string())
                 .send(context.succeeding(response -> {

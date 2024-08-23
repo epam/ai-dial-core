@@ -6,7 +6,7 @@ import com.epam.aidial.core.util.HttpStatus;
 import lombok.Data;
 
 @Data
-public class RateLimit {
+public class TokenRateLimit {
 
     private final RateBucket minute = new RateBucket(RateWindow.MINUTE);
     private final RateBucket day = new RateBucket(RateWindow.DAY);
@@ -22,11 +22,7 @@ public class RateLimit {
 
         boolean result = minuteTotal >= limit.getMinute() || dayTotal >= limit.getDay();
         if (result) {
-            String errorMsg = String.format("""
-                            Hit token rate limit:
-                             - minute limit: %d / %d tokens
-                             - day limit: %d / %d tokens
-                            """,
+            String errorMsg = String.format("Hit token rate limit. Minute limit: %d / %d tokens. Day limit: %d / %d tokens.",
                     minuteTotal, limit.getMinute(), dayTotal, limit.getDay());
             return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg);
         } else {

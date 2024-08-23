@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -18,6 +19,7 @@ import javax.annotation.Nullable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ResourceDescription {
 
+    private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}');
     private static final int MAX_PATH_SIZE = 900;
 
     ResourceType type;
@@ -45,6 +47,30 @@ public class ResourceDescription {
 
         if (name != null) {
             builder.append(UrlUtil.encodePath(name));
+
+            if (isFolder) {
+                builder.append(BlobStorageUtil.PATH_SEPARATOR);
+            }
+        }
+
+        return builder.toString();
+    }
+
+    public String getDecodedUrl() {
+        StringBuilder builder = new StringBuilder();
+        builder.append(type.getGroup())
+                .append(BlobStorageUtil.PATH_SEPARATOR)
+                .append(bucketName)
+                .append(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (!parentFolders.isEmpty()) {
+            String parentPath = String.join(BlobStorageUtil.PATH_SEPARATOR, parentFolders);
+            builder.append(parentPath)
+                    .append(BlobStorageUtil.PATH_SEPARATOR);
+        }
+
+        if (name != null) {
+            builder.append(name);
 
             if (isFolder) {
                 builder.append(BlobStorageUtil.PATH_SEPARATOR);
@@ -89,6 +115,14 @@ public class ResourceDescription {
 
     public boolean isRootFolder() {
         return isFolder && name == null;
+    }
+
+    public boolean isPublic() {
+        return bucketLocation.equals(BlobStorageUtil.PUBLIC_LOCATION);
+    }
+
+    public boolean isPrivate() {
+        return !isPublic();
     }
 
     public String getParentPath() {
@@ -144,22 +178,140 @@ public class ResourceDescription {
         return fromDecoded(description.getType(), description.getBucketName(), description.getBucketLocation(), relativePath);
     }
 
-    public static ResourceDescription fromLink(String link, EncryptionService encryptionService) {
-        String[] parts = link.split(BlobStorageUtil.PATH_SEPARATOR);
+    public static ResourceDescription fromPublicUrl(String url) {
+        return fromUrl(url, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
+    }
+
+    /**
+     * @param url      must contain the same bucket and location as resource.
+     * @param resource to take bucket and location from.
+     */
+    public static ResourceDescription fromPrivateUrl(String url, ResourceDescription resource) {
+        return fromUrl(url, resource.getBucketName(), resource.getBucketLocation(), null);
+    }
+
+    public static ResourceDescription fromPrivateUrl(String url, EncryptionService encryption) {
+        ResourceDescription description = fromAnyUrl(url, encryption);
+
+        if (description.isPublic()) {
+            throw new IllegalArgumentException("Not private url: " + url);
+        }
+
+        return description;
+    }
+
+    public static ResourceDescription fromAnyUrl(String url, EncryptionService encryption) {
+        return fromUrl(url, null, null, encryption);
+    }
+
+    public static ResourceDescription fromAnyDecodedUrl(String url, EncryptionService encryption) {
+        String[] parts = url.split(BlobStorageUtil.PATH_SEPARATOR);
 
         if (parts.length < 2) {
-            throw new IllegalArgumentException("Invalid resource link provided " + link);
+            throw new IllegalArgumentException("Url has less than two segments: " + url);
+        }
+
+        if (url.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Url must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + url);
+        }
+
+        if (parts.length == 2 && !url.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
         }
 
         ResourceType resourceType = ResourceType.of(parts[0]);
         String bucket = parts[1];
-        String location = encryptionService.decrypt(bucket);
-        if (location == null) {
-            throw new IllegalArgumentException("Unknown bucket " + bucket);
+        String location = null;
+
+        if (bucket.equals(BlobStorageUtil.PUBLIC_BUCKET)) {
+            location = BlobStorageUtil.PUBLIC_LOCATION;
+        } else if (encryption != null) {
+            location = encryption.decrypt(bucket);
         }
 
-        String resourcePath = link.substring(bucket.length() + parts[0].length() + 2);
-        return fromEncoded(resourceType, bucket, location, resourcePath);
+        if (location == null) {
+            throw new IllegalArgumentException("Url has invalid bucket: " + url);
+        }
+
+        String relativePath = url.substring(parts[0].length() + parts[1].length() + 2);
+        return fromDecoded(resourceType, bucket, location, relativePath);
+    }
+
+    @Override
+    public String toString() {
+        return getUrl();
+    }
+
+    /**
+     *
+     * @param url - resource url, e.g. files/bucket/folder/file.txt
+     * @param expectedBucket - matched against the url's bucket if provided.
+     * @param expectedLocation - used as bucket location if provided together with expected bucket.
+     * @param encryptionService - used to decrypt bucket location if provided.
+     */
+    private static ResourceDescription fromUrl(String url,
+                                               @Nullable String expectedBucket,
+                                               @Nullable String expectedLocation,
+                                               @Nullable EncryptionService encryptionService) {
+        String[] parts = url.split(BlobStorageUtil.PATH_SEPARATOR);
+
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Url has less than two segments: " + url);
+        }
+
+        if (url.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Url must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + url);
+        }
+
+        if (parts.length == 2 && !url.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
+            throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
+        }
+
+        ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
+        String bucket = UrlUtil.decodePath(parts[1]);
+        String location = null;
+
+        if (bucket.equals(BlobStorageUtil.PUBLIC_BUCKET)) {
+            location = BlobStorageUtil.PUBLIC_LOCATION;
+        } else if (expectedBucket != null) {
+            location = expectedLocation;
+        } else if (encryptionService != null) {
+            location = encryptionService.decrypt(bucket);
+        }
+
+        if (expectedBucket != null && !expectedBucket.equals(bucket)) {
+            throw new IllegalArgumentException("Url bucket does not match: " + url);
+        }
+
+        if (location == null) {
+            throw new IllegalArgumentException("Url has invalid bucket: " + url);
+        }
+
+        String relativePath = url.substring(parts[0].length() + parts[1].length() + 2);
+        return fromEncoded(resourceType, bucket, location, relativePath);
+    }
+
+    /**
+     * Azure blob storage do not support files with .(dot) (or sequence of dots) at the end of the file name or folder
+     * <a href="https://learn.microsoft.com/en-us/rest/api/storageservices/Naming-and-Referencing-Containers--Blobs--and-Metadata?redirectedfrom=MSDN#blob-names">reference</a>
+     *
+     * @param resourceToUpload resource to upload
+     * @return true if provided resource has valid path to store, otherwise - false
+     */
+    public static boolean isValidResourcePath(ResourceDescription resourceToUpload) {
+        String resourceName = resourceToUpload.getName();
+
+        if (resourceName.endsWith(".")) {
+            return false;
+        }
+
+        for (String element : resourceToUpload.getParentFolders()) {
+            if (element.endsWith(".")) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static ResourceDescription from(ResourceType type, String bucketName, String bucketLocation,
@@ -171,7 +323,13 @@ public class ResourceDescription {
     }
 
     private static boolean isValidFilename(String value) {
-        return !value.contains(BlobStorageUtil.PATH_SEPARATOR);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c <= 0x1F || INVALID_FILE_NAME_CHARS.contains(c)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void verify(boolean condition, String message) {

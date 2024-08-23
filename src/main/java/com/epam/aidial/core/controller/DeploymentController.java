@@ -37,8 +37,7 @@ public class DeploymentController {
         }
 
         DeploymentData data = createDeployment(model);
-        context.respond(HttpStatus.OK, data);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, data);
     }
 
     public Future<?> getDeployments() {
@@ -55,8 +54,7 @@ public class DeploymentController {
         ListData<DeploymentData> list = new ListData<>();
         list.setData(deployments);
 
-        context.respond(HttpStatus.OK, list);
-        return Future.succeededFuture();
+        return context.respond(HttpStatus.OK, list);
     }
 
     public static boolean hasAccess(ProxyContext context, Deployment deployment) {
@@ -109,6 +107,7 @@ public class DeploymentController {
         data.setRate(features.getRateEndpoint() != null);
         data.setTokenize(features.getTokenizeEndpoint() != null);
         data.setTruncatePrompt(features.getTruncatePromptEndpoint() != null);
+        data.setConfiguration(features.getConfigurationEndpoint() != null);
 
         if (features.getSystemPromptSupported() != null) {
             data.setSystemPrompt(features.getSystemPromptSupported());
@@ -120,6 +119,18 @@ public class DeploymentController {
 
         if (features.getSeedSupported() != null) {
             data.setSeed(features.getSeedSupported());
+        }
+
+        if (features.getUrlAttachmentsSupported() != null) {
+            data.setUrlAttachments(features.getUrlAttachmentsSupported());
+        }
+
+        if (features.getFolderAttachmentsSupported() != null) {
+            data.setFolderAttachments(features.getFolderAttachmentsSupported());
+        }
+
+        if (features.getAllowResume() != null) {
+            data.setAllowResume(features.getAllowResume());
         }
 
         return data;

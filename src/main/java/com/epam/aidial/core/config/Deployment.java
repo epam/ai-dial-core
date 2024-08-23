@@ -3,6 +3,7 @@ package com.epam.aidial.core.config;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Data
@@ -13,6 +14,7 @@ public abstract class Deployment {
     private String displayVersion;
     private String iconUrl;
     private String description;
+    private String reference;
     private Set<String> userRoles = Set.of();
     /**
      * Forward Http header with authorization token when request is sent to deployment.
@@ -22,4 +24,12 @@ public abstract class Deployment {
     private Features features;
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
+    /**
+     * Default parameters are applied if a request doesn't contain them in OpenAI chat/completions API call.
+     */
+    private Map<String, Object> defaults = Map.of();
+    /**
+     * List of interceptors to be called for the deployment
+     */
+    private List<String> interceptors = List.of();
 }

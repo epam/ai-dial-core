@@ -1,5 +1,6 @@
 package com.epam.aidial.core;
 
+import com.epam.aidial.core.cache.CacheClientFactory;
 import com.epam.aidial.core.config.ConfigStore;
 import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.config.FileConfigStore;
@@ -11,15 +12,22 @@ import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
+import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.HeartbeatService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.NotificationService;
+import com.epam.aidial.core.service.PublicationService;
+import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
+import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
-import com.epam.aidial.core.upstream.UpstreamBalancer;
+import com.epam.aidial.core.upstream.UpstreamRouteProvider;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
+import io.micrometer.core.instrument.Clock;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
@@ -39,10 +47,7 @@ import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
-import org.redisson.config.Config;
-import org.redisson.config.ConfigSupport;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -51,8 +56,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 @Slf4j
 @Setter
@@ -67,10 +75,13 @@ public class AiDial {
     private RedissonClient redis;
     private Proxy proxy;
 
+    private AccessTokenValidator accessTokenValidator;
+
     private BlobStorage storage;
     private ResourceService resourceService;
-    private InvitationService invitationService;
-    private ShareService shareService;
+
+    private LongSupplier clock = System::currentTimeMillis;
+    private Supplier<String> generator = () -> UUID.randomUUID().toString().replace("-", "");
 
     @VisibleForTesting
     void start() throws Exception {
@@ -84,37 +95,48 @@ public class AiDial {
             vertx = Vertx.vertx(vertxOptions);
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
-            ApiKeyStore apiKeyStore = new ApiKeyStore();
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             LogStore logStore = new GfLogStore(vertx);
-            UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
-            AccessTokenValidator accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx);
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
+
+            if (accessTokenValidator == null) {
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
+            }
+
             if (storage == null) {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
             EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker();
 
-            redis = openRedis();
+            redis = CacheClientFactory.create(settings("redis"));
 
-            if (redis != null) {
-                LockService lockService = new LockService(redis);
-                resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
-                invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-                shareService = new ShareService(resourceService, invitationService, encryptionService);
-            } else {
-                log.warn("Redis config is not found, some features may be unavailable");
-            }
-
-            AccessService accessService = new AccessService(encryptionService, shareService);
-
+            LockService lockService = new LockService(redis, storage.getPrefix());
+            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
+            ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, invitationService, shareService);
+            RuleService ruleService = new RuleService(resourceService);
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
+            NotificationService notificationService = new NotificationService(resourceService, encryptionService);
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
+                    ruleService, notificationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
+            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
+
+            CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
+                    resourceService, shareService, accessService, settings("applications"));
+
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
+
+            HeartbeatService heartbeatService = new HeartbeatService(
+                    vertx, settings("resources").getLong("heartbeatPeriod"));
             proxy = new Proxy(vertx, client, configStore, logStore,
-                    rateLimiter, upstreamBalancer, accessTokenValidator,
+                    rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, accessService);
+                    shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
+                    notificationService, customApplicationService, heartbeatService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -125,18 +147,6 @@ public class AiDial {
             stop();
             throw e;
         }
-    }
-
-    private RedissonClient openRedis() throws IOException {
-        JsonObject conf = settings("redis");
-        if (conf.isEmpty()) {
-            return null;
-        }
-
-        ConfigSupport support = new ConfigSupport();
-        Config config = support.fromJSON(conf.toString(), Config.class);
-
-        return Redisson.create(config);
     }
 
     @VisibleForTesting
@@ -175,6 +185,19 @@ public class AiDial {
             String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             return new JsonObject(json);
         }
+    }
+
+    private static String version() {
+        String filename = "version";
+        String version = "undefined";
+
+        try (InputStream stream = AiDial.class.getClassLoader().getResourceAsStream(filename)) {
+            Objects.requireNonNull(stream, "Version file not found");
+            version = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.warn("Failed to load version", e);
+        }
+        return version;
     }
 
     private static JsonObject fileSettings() throws IOException {
@@ -265,7 +288,7 @@ public class AiDial {
         }
 
         MicrometerMetricsOptions micrometer = new MicrometerMetricsOptions(metrics.toJson());
-        micrometer.setMicrometerRegistry(new OtlpMeterRegistry());
+        micrometer.setMicrometerRegistry(new OtlpMeterRegistry(oltp::getString, Clock.SYSTEM));
 
         options.setMetricsOptions(micrometer);
     }

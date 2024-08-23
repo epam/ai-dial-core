@@ -1,4 +1,4 @@
-package com.epam.aidial.core.storage;
+package com.epam.aidial.core.storage.credential;
 
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSSessionCredentials;

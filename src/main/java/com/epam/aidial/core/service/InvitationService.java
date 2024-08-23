@@ -3,8 +3,9 @@ package com.epam.aidial.core.service;
 import com.epam.aidial.core.data.Invitation;
 import com.epam.aidial.core.data.InvitationCollection;
 import com.epam.aidial.core.data.InvitationsMap;
-import com.epam.aidial.core.data.ResourceLink;
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.data.SharedResource;
 import com.epam.aidial.core.security.ApiKeyGenerator;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorageUtil;
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -43,7 +45,7 @@ public class InvitationService {
         this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
     }
 
-    public Invitation createInvitation(String bucket, String location, Set<ResourceLink> resources) {
+    public Invitation createInvitation(String bucket, String location, List<SharedResource> resources) {
         ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
@@ -90,7 +92,7 @@ public class InvitationService {
         return invitation;
     }
 
-    public void deleteInvitation(String bucket, String location, String invitationId) {
+    public void deleteInvitation(String bucket, String invitationId) {
         ResourceDescription resource = getInvitationResource(invitationId);
         if (resource == null) {
             throw new ResourceNotFoundException("No invitation found for ID" + invitationId);
@@ -125,11 +127,77 @@ public class InvitationService {
         return new InvitationCollection(new HashSet<>(invitationMap.getInvitations().values()));
     }
 
+    public void cleanUpResourceLink(String bucket, String location, ResourceDescription resource) {
+        cleanUpPermissions(bucket, location, Map.of(resource, ResourceAccessType.ALL));
+    }
+
+    public void cleanUpPermissions(
+            String bucket, String location, Map<ResourceDescription, Set<ResourceAccessType>> permissionsToCleanUp) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        resourceService.computeResource(resource, state -> {
+            InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
+            if (invitations == null) {
+                return null;
+            }
+            Map<String, Invitation> invitationMap = invitations.getInvitations();
+            List<String> invitationsToRemove = new ArrayList<>();
+            Map<String, Set<ResourceAccessType>> linkToPermissions = permissionsToCleanUp.keySet().stream()
+                    .collect(Collectors.toUnmodifiableMap(ResourceDescription::getUrl, permissionsToCleanUp::get));
+            for (Invitation invitation : invitationMap.values()) {
+                List<SharedResource> updatedResources = new ArrayList<>();
+                for (SharedResource sharedResource : invitation.getResources()) {
+                    Set<ResourceAccessType> permissions = linkToPermissions.get(sharedResource.url());
+                    if (permissions == null) {
+                        updatedResources.add(sharedResource);
+                    } else {
+                        sharedResource.permissions().removeAll(permissions);
+                        if (!sharedResource.permissions().isEmpty()) {
+                            updatedResources.add(sharedResource);
+                        }
+                    }
+                }
+
+                if (updatedResources.isEmpty()) {
+                    invitationsToRemove.add(invitation.getId());
+                } else {
+                    invitation.setResources(updatedResources);
+                }
+            }
+
+            invitationsToRemove.forEach(invitationMap::remove);
+
+            return ProxyUtil.convertToString(invitations);
+        });
+    }
+
+    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        resourceService.computeResource(resource, state -> {
+            InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
+            if (invitations == null) {
+                return null;
+            }
+            Map<String, Invitation> invitationMap = invitations.getInvitations();
+            for (Invitation invitation : invitationMap.values()) {
+                List<SharedResource> invitationResourceLinks = invitation.getResources();
+                Set<SharedResource> toMove = invitationResourceLinks.stream()
+                        .filter(sharedResource -> source.getUrl().equals(sharedResource.url()))
+                        .collect(Collectors.toUnmodifiableSet());
+                for (SharedResource sharedResource : toMove) {
+                    invitationResourceLinks.remove(sharedResource);
+                    invitationResourceLinks.add(sharedResource.withUrl(destination.getUrl()));
+                }
+            }
+
+            return ProxyUtil.convertToString(invitations);
+        });
+    }
+
     private void cleanUpExpiredInvitations(ResourceDescription resource, Collection<String> idsToEvict) {
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
-                invitations = new InvitationsMap(new HashMap<>());
+                return null;
             }
             Map<String, Invitation> invitationMap = invitations.getInvitations();
             idsToEvict.forEach(invitationMap::remove);
@@ -139,7 +207,7 @@ public class InvitationService {
     }
 
     @Nullable
-    private ResourceDescription getInvitationResource(String invitationId) {
+    public ResourceDescription getInvitationResource(String invitationId) {
         // decrypt invitation ID to obtain its location
         String decryptedInvitationPath = encryptionService.decrypt(invitationId);
         if (decryptedInvitationPath == null) {

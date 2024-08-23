@@ -2,7 +2,6 @@ package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
@@ -15,7 +14,6 @@ import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.util.HttpStatus;
-import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
@@ -34,7 +32,7 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -42,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,9 +63,9 @@ public class RateLimiterTest {
 
     @BeforeAll
     public static void beforeAll() throws IOException {
-        redisServer = RedisServer.builder()
+        redisServer = RedisServer.newRedisServer()
                 .port(16370)
-                .setting("bind 127.0.0.1")
+                .bind("127.0.0.1")
                 .setting("maxmemory 16M")
                 .setting("maxmemory-policy volatile-lfu")
                 .build();
@@ -84,7 +83,7 @@ public class RateLimiterTest {
     }
 
     @AfterAll
-    public static void afterAll() {
+    public static void afterAll() throws IOException {
         if (redissonClient != null) {
             redissonClient.shutdown();
         }
@@ -99,7 +98,7 @@ public class RateLimiterTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        LockService lockService = new LockService(redissonClient);
+        LockService lockService = new LockService(redissonClient, null);
         String resourceConfig = """
                   {
                     "maxSize" : 1048576,
@@ -112,31 +111,6 @@ public class RateLimiterTest {
                 """;
         ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
         rateLimiter = new RateLimiter(vertx, resourceService);
-    }
-
-    @Test
-    public void testLimit_EntityNotFound() {
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setOriginalKey(new Key());
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "unknown-trace-id", "span-id");
-        proxyContext.setDeployment(new Application());
-
-        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
-
-        assertNotNull(result);
-        assertNotNull(result.result());
-        assertEquals(HttpStatus.FORBIDDEN, result.result().status());
-    }
-
-    @Test
-    public void testLimit_SuccessUser() {
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, new ApiKeyData(), new ExtractedClaims("sub", Collections.emptyList(), "hash"), "trace-id", "span-id");
-
-        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
-
-        assertNotNull(result);
-        assertNotNull(result.result());
-        assertEquals(HttpStatus.OK, result.result().status());
     }
 
     @Test
@@ -218,7 +192,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -245,12 +219,13 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
+        apiKeyData.setPerRequestKey("per-request-key");
         ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData, null, "trace-id", "span-id");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -292,6 +267,8 @@ public class RateLimiterTest {
         Limit limit = new Limit();
         limit.setDay(10000);
         limit.setMinute(100);
+        limit.setRequestDay(10);
+        limit.setRequestHour(2);
         role.setLimits(Map.of("model", limit));
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
@@ -301,7 +278,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class))).thenAnswer(invocation -> {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -309,6 +286,11 @@ public class RateLimiterTest {
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setTotalTokens(90);
         proxyContext.setTokenUsage(tokenUsage);
+
+        Future<RateLimitResult> resultFuture = rateLimiter.limit(proxyContext);
+        assertNotNull(resultFuture);
+        assertNotNull(resultFuture.result());
+        assertEquals(HttpStatus.OK, resultFuture.result().status());
 
         Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -323,6 +305,10 @@ public class RateLimiterTest {
         assertEquals(90, limitStats.getDayTokenStats().getUsed());
         assertEquals(100, limitStats.getMinuteTokenStats().getTotal());
         assertEquals(90, limitStats.getMinuteTokenStats().getUsed());
+        assertEquals(10, limitStats.getDayRequestStats().getTotal());
+        assertEquals(1, limitStats.getDayRequestStats().getUsed());
+        assertEquals(2, limitStats.getHourRequestStats().getTotal());
+        assertEquals(1, limitStats.getHourRequestStats().getUsed());
 
         increaseLimitFuture = rateLimiter.increase(proxyContext);
         assertNotNull(increaseLimitFuture);
@@ -337,6 +323,163 @@ public class RateLimiterTest {
         assertEquals(180, limitStats.getDayTokenStats().getUsed());
         assertEquals(100, limitStats.getMinuteTokenStats().getTotal());
         assertEquals(180, limitStats.getMinuteTokenStats().getUsed());
+
+    }
+
+    @Test
+    public void testLimit_User_LimitFound() {
+        Config config = new Config();
+
+        Role role1 = new Role();
+        Limit limit = new Limit();
+        limit.setDay(10000);
+        limit.setMinute(100);
+        role1.setLimits(Map.of("model", limit));
+
+        Role role2 = new Role();
+        limit = new Limit();
+        limit.setDay(20000);
+        limit.setMinute(200);
+        role2.setLimits(Map.of("model", limit));
+
+        config.getRoles().put("role1", role1);
+        config.getRoles().put("role2", role2);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("per-request-key");
+        apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of()));
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData,
+                null, "trace-id", "span-id");
+        Model model = new Model();
+        model.setName("model");
+        proxyContext.setDeployment(model);
+
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(150);
+        proxyContext.setTokenUsage(tokenUsage);
+
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        Future<RateLimitResult> checkLimitFuture = rateLimiter.limit(proxyContext);
+
+        assertNotNull(checkLimitFuture);
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
+
+        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        checkLimitFuture = rateLimiter.limit(proxyContext);
+
+        assertNotNull(checkLimitFuture);
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
+
+    }
+
+    @Test
+    public void testLimit_User_DefaultLimit() {
+        Config config = new Config();
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData,
+                new ExtractedClaims("sub", List.of("role1"), "user-hash", Map.of()), "trace-id", "span-id");
+        Model model = new Model();
+        model.setName("model");
+        proxyContext.setDeployment(model);
+
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(90);
+        proxyContext.setTokenUsage(tokenUsage);
+
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        Future<RateLimitResult> checkLimitFuture = rateLimiter.limit(proxyContext);
+
+        assertNotNull(checkLimitFuture);
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
+
+        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        checkLimitFuture = rateLimiter.limit(proxyContext);
+
+        assertNotNull(checkLimitFuture);
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
+    }
+
+    @Test
+    public void testLimit_User_RequestLimit() {
+        Config config = new Config();
+
+        Role role1 = new Role();
+        Limit limit = new Limit();
+        limit.setRequestDay(10);
+        limit.setRequestHour(1);
+        role1.setLimits(Map.of("model", limit));
+
+        Role role2 = new Role();
+        limit = new Limit();
+        limit.setRequestDay(20);
+        limit.setRequestHour(1);
+        role2.setLimits(Map.of("model", limit));
+
+        config.getRoles().put("role1", role1);
+        config.getRoles().put("role2", role2);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        ProxyContext proxyContext = new ProxyContext(config, request, apiKeyData,
+                new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of()), "trace-id", "span-id");
+        Model model = new Model();
+        model.setName("model");
+        proxyContext.setDeployment(model);
+
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(150);
+        proxyContext.setTokenUsage(tokenUsage);
+
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        Future<RateLimitResult> checkLimitFuture = rateLimiter.limit(proxyContext);
+
+        assertNotNull(checkLimitFuture);
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
+
+        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        assertNotNull(increaseLimitFuture);
+        assertNull(increaseLimitFuture.cause());
+
+        checkLimitFuture = rateLimiter.limit(proxyContext);
+
+        assertNotNull(checkLimitFuture);
+        assertNotNull(checkLimitFuture.result());
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
     }
 

@@ -2,11 +2,20 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.data.ResourceLink;
-import com.epam.aidial.core.data.ResourceLinkCollection;
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.data.ApplicationData;
+import com.epam.aidial.core.data.Conversation;
+import com.epam.aidial.core.data.MetadataBase;
+import com.epam.aidial.core.data.Prompt;
+import com.epam.aidial.core.data.ResourceItemMetadata;
+import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.AccessService;
+import com.epam.aidial.core.service.InvitationService;
+import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -17,8 +26,7 @@ import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -27,21 +35,27 @@ public class ResourceController extends AccessControlBaseController {
     private final Vertx vertx;
     private final ResourceService service;
     private final ShareService shareService;
+    private final LockService lockService;
+    private final InvitationService invitationService;
     private final boolean metadata;
+    private final AccessService accessService;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
-        // PUT and DELETE require full access, GET - not
+        // PUT and DELETE require write access, GET - read
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.shareService = proxy.getShareService();
+        this.accessService = proxy.getAccessService();
+        this.lockService = proxy.getLockService();
+        this.invitationService = proxy.getInvitationService();
         this.metadata = metadata;
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription descriptor) {
+    protected Future<?> handle(ResourceDescription descriptor, boolean hasWriteAccess) {
         if (context.getRequest().method() == HttpMethod.GET) {
-            return metadata ? getMetadata(descriptor) : getResource(descriptor);
+            return metadata ? getMetadata(descriptor) : getResource(descriptor, hasWriteAccess);
         }
 
         if (context.getRequest().method() == HttpMethod.PUT) {
@@ -51,8 +65,15 @@ public class ResourceController extends AccessControlBaseController {
         if (context.getRequest().method() == HttpMethod.DELETE) {
             return deleteResource(descriptor);
         }
+        log.warn("Unsupported HTTP method for accessing resource {}", descriptor.getUrl());
+        return context.respond(HttpStatus.BAD_REQUEST, "Unsupported HTTP method");
+    }
 
-        return context.respond(HttpStatus.BAD_GATEWAY, "No route");
+    private String getContentType() {
+        String acceptType = context.getRequest().getHeader(HttpHeaders.ACCEPT);
+        return acceptType != null && metadata && acceptType.contains(MetadataBase.MIME_TYPE)
+                ? MetadataBase.MIME_TYPE
+                : "application/json";
     }
 
     private Future<?> getMetadata(ResourceDescription descriptor) {
@@ -71,42 +92,66 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        return vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive))
+        vertx.executeBlocking(() -> service.getMetadata(descriptor, token, limit, recursive), false)
                 .onSuccess(result -> {
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
-                        context.respond(HttpStatus.OK, result);
+                        accessService.filterForbidden(context, descriptor, result);
+                        if (context.getBooleanRequestQueryParam("permissions")) {
+                            accessService.populatePermissions(context, List.of(result));
+                        }
+                        context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
                 .onFailure(error -> {
                     log.warn("Can't list resource: {}", descriptor.getUrl(), error);
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                 });
+
+        return Future.succeededFuture();
     }
 
-    private Future<?> getResource(ResourceDescription descriptor) {
+    private Future<?> getResource(ResourceDescription descriptor, boolean hasWriteAccess) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> service.getResource(descriptor))
-                .onSuccess(body -> {
-                    if (body == null) {
+        vertx.executeBlocking(() -> service.getResourceWithMetadata(descriptor), false)
+                .onSuccess(pair -> {
+                    if (pair == null) {
                         context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
                     } else {
-                        context.respond(HttpStatus.OK, body);
+                        ResourceItemMetadata itemMetadata = pair.getKey();
+                        String body = pair.getValue();
+                        context.putHeader(HttpHeaders.ETAG, itemMetadata.getEtag())
+                                .exposeHeaders();
+
+                        // if resource type is application and caller has no write access - return application data
+                        if (descriptor.getType() == ResourceType.APPLICATION && !hasWriteAccess) {
+                            Application application = ProxyUtil.convertToObject(body, Application.class, true);
+                            ApplicationData applicationData = ApplicationUtil.mapApplication(application);
+                            context.respond(HttpStatus.OK, ProxyUtil.convertToString(applicationData));
+                        } else {
+                            context.respond(HttpStatus.OK, body);
+                        }
                     }
                 })
                 .onFailure(error -> {
                     log.warn("Can't get resource: {}", descriptor.getUrl(), error);
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                 });
+
+        return Future.succeededFuture();
     }
 
     private Future<?> putResource(ResourceDescription descriptor) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
+        }
+
+        if (!ResourceDescription.isValidResourcePath(descriptor)) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
 
         int contentLength = ProxyUtil.contentLength(context.getRequest(), 0);
@@ -117,37 +162,73 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
         }
 
-        String ifNoneMatch = context.getRequest().getHeader(HttpHeaders.IF_NONE_MATCH);
-        boolean overwrite = (ifNoneMatch == null);
-
-        if (ifNoneMatch != null && !ifNoneMatch.equals("*")) {
-            return context.respond(HttpStatus.BAD_REQUEST, "only header if-none-match=* is supported");
-        }
-
-        return context.getRequest().body().compose(bytes -> {
+        context.getRequest().body().compose(bytes -> {
                     if (bytes.length() > contentLimit) {
                         String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
                     }
 
-                    String body = bytes.toString(StandardCharsets.UTF_8);
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, overwrite));
+                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+                    ResourceType resourceType = descriptor.getType();
+                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8), etag.isOverwrite());
+
+                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag), false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {
                         context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
                     } else {
-                        context.respond(HttpStatus.OK, metadata);
+                        context.putHeader(HttpHeaders.ETAG, metadata.getEtag())
+                                .exposeHeaders()
+                                .respond(HttpStatus.OK, metadata);
                     }
                 })
                 .onFailure(error -> {
                     if (error instanceof HttpException exception) {
                         context.respond(exception.getStatus(), exception.getMessage());
+                    } else if (error instanceof IllegalArgumentException badRequest) {
+                        context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
                     } else {
                         log.warn("Can't put resource: {}", descriptor.getUrl(), error);
                         context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
                     }
                 });
+
+        return Future.succeededFuture();
+    }
+
+    private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body, boolean overwrite) {
+        switch (resourceType) {
+            case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
+            case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+            case APPLICATION -> {
+                Application application = ProxyUtil.convertToObject(body, Application.class, true);
+                if (application != null) {
+                    if (application.getEndpoint() == null) {
+                        throw new IllegalArgumentException("Application endpoint must be provided");
+                    }
+                    // replace application name with it's url
+                    application.setName(descriptor.getUrl());
+                    // defining user roles in custom applications are not allowed
+                    application.setUserRoles(null);
+                    // forward auth token is not allowed for custom applications
+                    application.setForwardAuthToken(false);
+                    String reference = application.getReference();
+                    // reject request if both If-None-Match header and reference provided
+                    if (reference != null && !overwrite) {
+                        throw new IllegalArgumentException("Creating application with provided reference is not allowed");
+                    }
+                    // generate reference if not provided
+                    if (reference == null) {
+                        application.setReference(ApplicationUtil.generateReference());
+                    }
+
+                    body = ProxyUtil.convertToString(application, true);
+                }
+            }
+            default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
+        }
+        return body;
     }
 
     private Future<?> deleteResource(ResourceDescription descriptor) {
@@ -155,13 +236,16 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        return vertx.executeBlocking(() -> {
-                    Set<ResourceLink> resourceLinks = new HashSet<>();
-                    resourceLinks.add(new ResourceLink(descriptor.getUrl()));
-                    shareService.revokeSharedAccess(descriptor.getBucketName(), descriptor.getBucketLocation(),
-                            new ResourceLinkCollection(resourceLinks));
-                    return service.deleteResource(descriptor);
-                })
+        vertx.executeBlocking(() -> {
+                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+                    String bucketName = descriptor.getBucketName();
+                    String bucketLocation = descriptor.getBucketLocation();
+                    return lockService.underBucketLock(bucketLocation, () -> {
+                        invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
+                        shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
+                        return service.deleteResource(descriptor, etag);
+                    });
+                }, false)
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);
@@ -171,7 +255,9 @@ public class ResourceController extends AccessControlBaseController {
                 })
                 .onFailure(error -> {
                     log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+                    context.respond(error, error.getMessage());
                 });
+
+        return Future.succeededFuture();
     }
 }

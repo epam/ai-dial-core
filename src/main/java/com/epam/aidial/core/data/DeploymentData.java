@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -20,6 +21,7 @@ public class DeploymentData {
     private String displayVersion;
     private String iconUrl;
     private String description;
+    private String reference;
     private String owner = "organization-owner";
     private String object = "deployment";
     private String status = "succeeded";
@@ -29,4 +31,5 @@ public class DeploymentData {
     private FeaturesData features = new FeaturesData();
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
+    private Map<String, Object> defaults;
 }
