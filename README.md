@@ -71,8 +71,8 @@ Priority order:
 | storage.overrides.*                           | -                 |    No    |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. Refer to [examples](#temporary-credentials-1) in the sections below. 
 | storage.createBucket                          | false             |    No    |Indicates whether bucket should be created on start-up.
 | storage.prefix                                | -                 |    No    |Base prefix for all stored resources. The purpose to use the same bucket for different environments, e.g. dev, prod, pre-prod. Must not contain path separators or any invalid chars.
-| encryption.password                           | -                 |    No    |Password used for AES encryption.
-| encryption.salt                               | -                 |    No    |Salt used for AES encryption. The value should be random generated string.
+| encryption.secret                             | -                 |    No    |Secret is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
+| encryption.key                                | -                 |    No    |Key is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
 | resources.maxSize                             | 1048576           |    No    |Max allowed size in bytes for a resource.
 | resources.syncPeriod                          | 60000             |    No    |Period in milliseconds, how frequently check for resources to sync.
 | resources.syncDelay                           | 120000            |    No    |Delay in milliseconds for a resource to be written back in object storage after last modification.

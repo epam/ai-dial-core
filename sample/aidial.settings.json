@@ -65,7 +65,7 @@
     "bucket": "your-bucket"
   },
   "encryption": {
-    "salt": "salt",
-    "password": "pass"
+    "key": "key",
+    "secret": "secret"
   }
 }
