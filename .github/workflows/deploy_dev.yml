@@ -6,7 +6,7 @@ on:
 jobs:
   gitlab-dev-deploy:
     if: ${{ github.event.registry_package.package_version.container_metadata.tag.name == 'development' }}
-    uses: epam/ai-dial-ci/.github/workflows/deploy-development.yml@1.6.0
+    uses: epam/ai-dial-ci/.github/workflows/deploy-development.yml@1.9.0
     with:
       gitlab-project-id: "1826"
       gitlab-project-ref: "master"
