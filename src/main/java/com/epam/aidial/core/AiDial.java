@@ -2,7 +2,6 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.cache.CacheClientFactory;
 import com.epam.aidial.core.config.ConfigStore;
-import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.config.FileConfigStore;
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.limiter.RateLimiter;
@@ -106,7 +105,7 @@ public class AiDial {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
-            EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
+            EncryptionService encryptionService = new EncryptionService(settings("encryption"));
 
             redis = CacheClientFactory.create(settings("redis"));
 
