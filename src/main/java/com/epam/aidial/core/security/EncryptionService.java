@@ -1,7 +1,7 @@
 package com.epam.aidial.core.security;
 
-import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.util.Base58;
+import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.security.spec.KeySpec;
@@ -23,17 +23,21 @@ public class EncryptionService {
     private final IvParameterSpec iv = new IvParameterSpec(
             new byte[]{25, -13, -25, -119, -42, 117, -118, -128, -101, 20, -103, -81, -48, -23, -54, -113});
 
-    public EncryptionService(Encryption config) {
-        this(config.getPassword(), config.getSalt());
+    public EncryptionService(JsonObject settings) {
+        if (settings.containsKey("password") || settings.containsKey("salt")) {
+            log.error("The encryption properties `password` and `salt` are obsolete and shouldn't be used any longer. Please use `secret` and `key` instead.");
+            throw new IllegalArgumentException("Unsupported encryption properties");
+        }
+        this.key = getSecretKey(settings.getString("secret"), settings.getString("key"));
     }
 
-    EncryptionService(String password, String salt) {
-        Objects.requireNonNull(password, "Encryption password is not set");
-        Objects.requireNonNull(salt, "Encryption salt is not set");
+    private static SecretKey getSecretKey(String secret, String key) {
+        Objects.requireNonNull(secret, "Encryption secret is not set");
+        Objects.requireNonNull(key, "Encryption key is not set");
         try {
             SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-            KeySpec spec = new PBEKeySpec(password.toCharArray(), salt.getBytes(), 3000, 256);
-            key = new SecretKeySpec(secretKeyFactory.generateSecret(spec).getEncoded(), "AES");
+            KeySpec spec = new PBEKeySpec(secret.toCharArray(), key.getBytes(), 3000, 256);
+            return new SecretKeySpec(secretKeyFactory.generateSecret(spec).getEncoded(), "AES");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
