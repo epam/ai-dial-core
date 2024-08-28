@@ -323,6 +323,9 @@ public class ResourceDescription {
     }
 
     private static boolean isValidFilename(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c <= 0x1F || INVALID_FILE_NAME_CHARS.contains(c)) {
