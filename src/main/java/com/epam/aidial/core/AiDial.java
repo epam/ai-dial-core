@@ -2,7 +2,6 @@ package com.epam.aidial.core;
 
 import com.epam.aidial.core.cache.CacheClientFactory;
 import com.epam.aidial.core.config.ConfigStore;
-import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.config.FileConfigStore;
 import com.epam.aidial.core.config.Storage;
 import com.epam.aidial.core.limiter.RateLimiter;
@@ -24,7 +23,7 @@ import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
-import com.epam.aidial.core.upstream.UpstreamBalancer;
+import com.epam.aidial.core.upstream.UpstreamRouteProvider;
 import com.epam.deltix.gflog.core.LogConfigurator;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
@@ -96,7 +95,7 @@ public class AiDial {
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
             LogStore logStore = new GfLogStore(vertx);
-            UpstreamBalancer upstreamBalancer = new UpstreamBalancer();
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
@@ -106,7 +105,7 @@ public class AiDial {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
-            EncryptionService encryptionService = new EncryptionService(Json.decodeValue(settings("encryption").toBuffer(), Encryption.class));
+            EncryptionService encryptionService = new EncryptionService(settings("encryption"));
 
             redis = CacheClientFactory.create(settings("redis"));
 
@@ -123,7 +122,7 @@ public class AiDial {
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
 
             CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
                     resourceService, shareService, accessService, settings("applications"));
@@ -133,7 +132,7 @@ public class AiDial {
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, settings("resources").getLong("heartbeatPeriod"));
             proxy = new Proxy(vertx, client, configStore, logStore,
-                    rateLimiter, upstreamBalancer, accessTokenValidator,
+                    rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, customApplicationService, heartbeatService, version());

@@ -1,8 +1,8 @@
 package com.epam.aidial.core.storage;
 
-import com.epam.aidial.core.config.Encryption;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.security.EncryptionService;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -198,7 +198,10 @@ public class ResourceDescriptionTest {
 
     @Test
     public void testFromAnyDecodedUrl() {
-        EncryptionService encryptionService = new EncryptionService(new Encryption("password", "salt"));
+        JsonObject encryptionSettings = new JsonObject();
+        encryptionSettings.put("secret", "secret");
+        encryptionSettings.put("key", "key");
+        EncryptionService encryptionService = new EncryptionService(encryptionSettings);
         String location = "Users/User1/";
         String bucket = encryptionService.encrypt(location);
 

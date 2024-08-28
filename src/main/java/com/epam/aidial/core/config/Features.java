@@ -17,4 +17,5 @@ public class Features {
 
     private Boolean urlAttachmentsSupported;
     private Boolean folderAttachmentsSupported;
+    private Boolean allowResume;
 }

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Vertx;
@@ -23,9 +24,11 @@ public final class FileConfigStore implements ConfigStore {
     private final String[] paths;
     private volatile Config config;
     private final ApiKeyStore apiKeyStore;
+    private final UpstreamRouteProvider upstreamRouteProvider;
 
-    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore) {
+    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore, UpstreamRouteProvider upstreamRouteProvider) {
         this.apiKeyStore = apiKeyStore;
+        this.upstreamRouteProvider = upstreamRouteProvider;
         this.paths = settings.getJsonArray("files")
                 .stream().map(path -> (String) path).toArray(String[]::new);
 
@@ -104,6 +107,7 @@ public final class FileConfigStore implements ConfigStore {
             }
 
             this.config = config;
+            upstreamRouteProvider.onUpdate(config);
         } catch (Throwable e) {
             if (fail) {
                 throw e;
@@ -172,6 +176,9 @@ public final class FileConfigStore implements ConfigStore {
         }
         if (modelFeatures.getFolderAttachmentsSupported() == null) {
             modelFeatures.setFolderAttachmentsSupported(features.getFolderAttachmentsSupported());
+        }
+        if (modelFeatures.getAllowResume() == null) {
+            modelFeatures.setAllowResume(features.getAllowResume());
         }
     }
 }

@@ -3,6 +3,7 @@ package com.epam.aidial.core.log;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.token.TokenUsage;
+import com.epam.aidial.core.util.MergeChunks;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
@@ -10,7 +11,6 @@ import com.epam.deltix.gflog.api.LogFactory;
 import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Vertx;
@@ -232,29 +232,23 @@ public class GfLogStore implements LogStore {
      */
     static String assembleStreamingResponse(Buffer response) {
         try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
-            StringBuilder content = new StringBuilder();
             ObjectNode last = null;
-            ObjectNode choice = ProxyUtil.MAPPER.createObjectNode();
-            ObjectNode message = ProxyUtil.MAPPER.createObjectNode();
-            choice.set("message", message);
             JsonNode usage = null;
             JsonNode statistics = null;
             JsonNode systemFingerprint = null;
             JsonNode model = null;
-            // each chunk is separated by one or multiple new lines with the prefix: 'data:'
-            scanner.useDelimiter("\n*data: *");
+            JsonNode choices = null;
+            // each chunk is separated by one or multiple new lines with the prefix: 'data:' (except the first chunk)
+            // chunks may contain `data:` inside chunk data, which may lead to incorrect parsing
+            scanner.useDelimiter("(^data: *|\n+data: *)");
             while (scanner.hasNext()) {
                 String chunk = scanner.next();
                 if (chunk.startsWith("[DONE]")) {
                     break;
                 }
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(chunk);
-                if (tree.get("usage") != null) {
-                    usage = tree.get("usage");
-                }
-                if (tree.get("statistics") != null) {
-                    statistics = tree.get("statistics");
-                }
+                usage = MergeChunks.merge(usage, tree.get("usage"));
+                statistics = MergeChunks.merge(statistics, tree.get("statistics"));
                 if (tree.get("system_fingerprint") != null) {
                     systemFingerprint = tree.get("system_fingerprint");
                 }
@@ -262,27 +256,7 @@ public class GfLogStore implements LogStore {
                     model = tree.get("model");
                 }
                 last = tree;
-                ArrayNode choices = (ArrayNode) tree.get("choices");
-                if (choices == null) {
-                    // skip error message
-                    continue;
-                }
-                JsonNode curChoice = choices.get(0);
-                choice.set("finish_reason", curChoice.get("finish_reason"));
-                JsonNode delta = curChoice.get("delta");
-                if (delta.get("custom_content") != null) {
-                    message.set("custom_content", delta.get("custom_content"));
-                }
-                if (delta.get("tool_calls") != null) {
-                    message.set("tool_calls", delta.get("tool_calls"));
-                }
-                if (delta.get("function_call") != null) {
-                    message.set("function_call", delta.get("function_call"));
-                }
-                JsonNode contentNode = delta.get("content");
-                if (contentNode != null) {
-                    content.append(contentNode.textValue());
-                }
+                choices = MergeChunks.merge(choices, tree.get("choices"));
             }
 
             if (last == null) {
@@ -297,27 +271,21 @@ public class GfLogStore implements LogStore {
             result.set("model", model);
 
             if (usage != null) {
+                MergeChunks.removeIndices(usage);
                 result.set("usage", usage);
             }
             if (statistics != null) {
+                MergeChunks.removeIndices(statistics);
                 result.set("statistics", statistics);
             }
             if (systemFingerprint != null) {
                 result.set("system_fingerprint", systemFingerprint);
             }
 
-            if (content.isEmpty()) {
-                // error
-                return ProxyUtil.convertToString(result);
+            if (choices != null) {
+                MergeChunks.removeIndices(choices);
+                result.set("choices", choices);
             }
-
-            ArrayNode choices = ProxyUtil.MAPPER.createArrayNode();
-            result.set("choices", choices);
-            choices.add(choice);
-            choice.put("index", 0);
-            message.put("role", "assistant");
-            message.put("content", content.toString());
-
             return ProxyUtil.convertToString(result);
         } catch (Throwable e) {
             log.warn("Can't assemble streaming response", e);

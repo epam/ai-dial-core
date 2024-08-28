@@ -47,8 +47,8 @@
     }
   },
   "encryption": {
-    "password": "password",
-    "salt": "salt"
+    "secret": "password",
+    "key": "salt"
   },
   "resources": {
     "maxSize" : 1048576,

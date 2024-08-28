@@ -51,7 +51,7 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": false, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
-                    , "configuration": false
+                    , "configuration": false, "allow_resume": true
                     }
                 """));
     }
@@ -62,7 +62,7 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": true, "tokenize": true, "truncate_prompt": true
                     , "system_prompt": true, "tools": true, "seed": true
                     , "url_attachments": true, "folder_attachments": false
-                    , "configuration": false
+                    , "configuration": false, "allow_resume": true
                     }
                 """));
     }
@@ -73,7 +73,7 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": false, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
-                    , "configuration": true
+                    , "configuration": true, "allow_resume": true
                     }
                 """));
     }
@@ -84,7 +84,7 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false,  "folder_attachments": false
-                    , "configuration": false
+                    , "configuration": false, "allow_resume": true
                     }
                 """));
     }
