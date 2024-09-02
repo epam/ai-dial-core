@@ -20,6 +20,50 @@ public class RequestUtil {
   private static final String FIELD_ATTACHMENTS = "attachments";
   private static final String FIELD_CUSTOM_CONTENT = "custom_content";
 
+  /**
+   * Method converts OpenApi request format to Dial format
+   *
+   * OpenApi request example
+   * {
+   *     "messages": [
+   *       {
+   *         "role": "user",
+   *         "content": [
+   *             {
+   *                 "type": "text",
+   *                 "text":  "..."
+   *             },
+   *             {
+   *                 "type": "image_url",
+   *                 "image_url": {
+   *                     "url": "..."
+   *                 }
+   *             }
+   *         ]
+   *       }
+   *     ],
+   *     "temperature": 0.1,
+   *     "stream":false
+   * }
+   *
+   * Should be converted to Dial format
+   * {
+   *   "messages": [
+   *     {
+   *       "role": "user",
+   *       "content": "...",
+   *       "custom_content": {
+   *         "attachments": [
+   *           {
+   *             "type": "image/png",
+   *             "url": "..."
+   *           }
+   *         ]
+   *       }
+   *     }
+   *   ]
+   * }
+   * */
   public ObjectNode convertToDialFormat(ObjectNode tree) {
     ArrayNode messages = (ArrayNode) tree.get(FIELD_MESSAGES);
     if (messages == null) {
