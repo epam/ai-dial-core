@@ -59,8 +59,8 @@ import java.util.function.Function;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.util.ResourceUtil.CREATED_AT_ATTRIBUTE;
-import static com.epam.aidial.core.util.ResourceUtil.UPDATED_AT_ATTRIBUTE;
 import static com.epam.aidial.core.util.ResourceUtil.RESOURCE_TYPE_ATTRIBUTE;
+import static com.epam.aidial.core.util.ResourceUtil.UPDATED_AT_ATTRIBUTE;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
