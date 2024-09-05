@@ -4,6 +4,7 @@ import com.epam.aidial.core.controller.ApplicationUtil;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
+import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.experimental.UtilityClass;
@@ -85,7 +86,8 @@ public class PublicationUtil {
                     isMetadata = true;
                     url = url.substring(ProxyUtil.METADATA_PREFIX.length());
                 }
-                String toReplace = attachmentsMapping.get(url);
+                String decodedUrl = UrlUtil.decodePath(url);
+                String toReplace = attachmentsMapping.get(decodedUrl);
                 if (toReplace != null) {
                     attachment.put("url", isMetadata ? ProxyUtil.METADATA_PREFIX + toReplace : toReplace);
                 }

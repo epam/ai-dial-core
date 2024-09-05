@@ -589,7 +589,8 @@ public class PublicationService {
         if (type == ResourceType.CONVERSATION) {
             publicConversations.add(to);
         } else if (type == ResourceType.FILE) {
-            attachmentsMap.put(from.getUrl(), to.getUrl());
+            String decodedUrl = UrlUtil.decodePath(from.getUrl());
+            attachmentsMap.put(decodedUrl, to.getUrl());
         } else if (type == ResourceType.APPLICATION) {
             publicApplications.add(to);
         }
