@@ -340,6 +340,44 @@ public class PublicationUtilTest {
         assertNotEquals("id1", actualApplication.getReference());
     }
 
+    @Test
+    void testReplaceApplicationLinks() {
+        String application = """
+                {
+                "name":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                "endpoint":"http://application1/v1/completions",
+                "display_name":"My Custom Application",
+                "display_version":"1.0",
+                "icon_url":"abc/files/myfolder/icon.svg",
+                "description":"My Custom Application Description",
+                "reference":"id1",
+                "forward_auth_token":false,
+                "defaults": {}
+                }
+                """;
+        Map<String, String> attachmentMapping = Map.of("abc/files/myfolder/icon.svg", "public/folder/icon.svg");
+        ResourceDescription targetResource1 = ResourceDescription.fromDecoded(ResourceType.APPLICATION, "bucketName", "bucket/location/", "my-app");
+        verifyJson("""
+                {
+                "name":"applications/bucketName/my-app",
+                "endpoint":"http://application1/v1/completions",
+                "display_name":"My Custom Application",
+                "display_version":"1.0",
+                "icon_url":"public/folder/icon.svg",
+                "description":"My Custom Application Description",
+                "reference":"id1",
+                "forward_auth_token":false,
+                "defaults": {}
+                }
+                """, PublicationUtil.replaceApplicationLinks(application, targetResource1, true, attachmentMapping));
+
+        Application actualApplication = ProxyUtil.convertToObject(
+                PublicationUtil.replaceApplicationIdentity(application, targetResource1, false),
+                Application.class, true);
+        assertEquals("applications/bucketName/my-app", actualApplication.getName());
+        assertNotEquals("id1", actualApplication.getReference());
+    }
+
     private static void verifyJson(String expected, String actual) {
         try {
             assertEquals(ProxyUtil.MAPPER.readTree(expected).toPrettyString(), ProxyUtil.MAPPER.readTree(actual).toPrettyString());

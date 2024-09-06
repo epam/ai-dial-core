@@ -535,7 +535,7 @@ public class PublicationService {
 
     private void replaceSourceToReviewLinks(List<Publication.Resource> resources) {
         List<ResourceDescription> reviewConversations = new ArrayList<>();
-        List<ResourceDescription> reviewPublications = new ArrayList<>();
+        List<ResourceDescription> reviewApplications = new ArrayList<>();
         Map<String, String> attachmentsMap = new HashMap<>();
         for (Publication.Resource resource : resources) {
             String sourceUrl = resource.getSourceUrl();
@@ -544,7 +544,7 @@ public class PublicationService {
             ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
             ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
 
-            collectLinksForReplacement(reviewConversations, reviewPublications, attachmentsMap, from, to);
+            collectLinksForReplacement(reviewConversations, reviewApplications, attachmentsMap, from, to);
         }
 
         for (ResourceDescription reviewConversation : reviewConversations) {
@@ -553,8 +553,9 @@ public class PublicationService {
             );
         }
 
-        for (ResourceDescription reviewPublication : reviewPublications) {
-            this.resources.computeResource(reviewPublication, body -> PublicationUtil.replaceApplicationIdentity(body, reviewPublication, false));
+        for (ResourceDescription reviewApplication : reviewApplications) {
+            this.resources.computeResource(reviewApplication, body ->
+                    PublicationUtil.replaceApplicationLinks(body, reviewApplication, false, attachmentsMap));
         }
     }
 
@@ -579,7 +580,8 @@ public class PublicationService {
         }
 
         for (ResourceDescription publicApplication : publicApplications) {
-            this.resources.computeResource(publicApplication, body -> PublicationUtil.replaceApplicationIdentity(body, publicApplication, false));
+            this.resources.computeResource(publicApplication, body ->
+                    PublicationUtil.replaceApplicationLinks(body, publicApplication, false, attachmentsMap));
         }
     }
 
