@@ -1,6 +1,6 @@
 package com.epam.aidial.core.config;
 
-import com.epam.aidial.core.util.ToStringDeserializer;
+import com.epam.aidial.core.util.JsonToStringDeserializer;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -15,7 +15,7 @@ public class Upstream {
 
     private String endpoint;
     private String key;
-    @JsonDeserialize(using = ToStringDeserializer.class)
+    @JsonDeserialize(using = JsonToStringDeserializer.class)
     private String extraData;
     private int weight = 1;
     private int tier = 0;
