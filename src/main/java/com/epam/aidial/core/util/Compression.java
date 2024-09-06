@@ -29,24 +29,16 @@ public class Compression {
     }
 
     @SneakyThrows
-    public InputStream decompress(String type, InputStream input) {
+    public byte[] decompress(String type, byte[] input) {
         if (!type.equals("gzip")) {
             throw new IllegalArgumentException("Unsupported compression: " + type);
         }
-
-        try {
-            return new GZIPInputStream(input);
+        try (InputStream decompressed = new GZIPInputStream(new ByteArrayInputStream(input))) {
+            return decompressed.readAllBytes();
         } catch (ZipException e) {
             // special case for GCP cloud storage, due to jclouds bug https://issues.apache.org/jira/projects/JCLOUDS/issues/JCLOUDS-1633
             log.warn("Failed to decompress provided input: {}", e.getMessage());
             return input;
-        }
-    }
-
-    @SneakyThrows
-    public byte[] decompress(String type, byte[] input) {
-        try (InputStream decompressed = decompress(type, new ByteArrayInputStream(input))) {
-            return decompressed.readAllBytes();
         }
     }
 }
