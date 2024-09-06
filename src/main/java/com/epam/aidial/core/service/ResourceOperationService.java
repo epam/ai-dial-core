@@ -24,7 +24,7 @@ public class ResourceOperationService {
         return resourceService.subscribeResources(resources, subscriber);
     }
 
-    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
+    public void moveResource(ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -33,7 +33,7 @@ public class ResourceOperationService {
         String destinationResourceUrl = destination.getUrl();
 
         if (!resourceService.hasResource(source)) {
-            throw new IllegalArgumentException("Source resource %s do not exists".formatted(sourceResourceUrl));
+            throw new IllegalArgumentException("Source resource %s does not exist".formatted(sourceResourceUrl));
         }
 
         if (!ALLOWED_RESOURCES.contains(source.getType())) {
@@ -51,11 +51,8 @@ public class ResourceOperationService {
             resourceService.computeResource(destination, body -> PublicationUtil.replaceApplicationIdentity(body, destination, true));
         }
 
-        // move source links to destination if any
-        invitationService.moveResource(bucket, location, source, destination);
-        // move shared access if any
-        shareService.moveSharedAccess(bucket, location, source, destination);
-
+        invitationService.moveResource(source, destination);
+        shareService.moveSharedAccess(source, destination);
         resourceService.deleteResource(source, EtagHeader.ANY);
     }
 }

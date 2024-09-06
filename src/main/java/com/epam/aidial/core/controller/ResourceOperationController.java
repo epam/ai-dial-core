@@ -14,7 +14,6 @@ import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceTopic;
-import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
@@ -26,6 +25,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -76,29 +76,28 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("destinationUrl must be provided");
                     }
 
-                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
-                    String bucket = encryptionService.encrypt(bucketLocation);
+                    ResourceDescription source = ResourceDescription.fromAnyUrl(sourceUrl, encryptionService);
+                    ResourceDescription destination = ResourceDescription.fromAnyUrl(destinationUrl, encryptionService);
 
-                    ResourceDescription sourceResource = ResourceDescription.fromPrivateUrl(sourceUrl, encryptionService);
-                    if (!sourceResource.getBucketName().equals(bucket)) {
-                        throw new IllegalArgumentException("sourceUrl do not belong to the user");
-                    }
-
-                    ResourceDescription destinationResource = ResourceDescription.fromPrivateUrl(destinationUrl, encryptionService);
-                    if (!destinationResource.getBucketName().equals(bucket)) {
-                        throw new IllegalArgumentException("destinationUrl do not belong to the user");
-                    }
-
-                    if (!sourceResource.getType().equals(destinationResource.getType())) {
+                    if (!source.getType().equals(destination.getType())) {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
                     }
 
-                    if (sourceResource.getUrl().equals(destinationResource.getUrl())) {
+                    if (source.getUrl().equals(destination.getUrl())) {
                         throw new IllegalArgumentException("source and destination resources cannot be the same");
                     }
 
-                    return vertx.executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
-                        resourceOperationService.moveResource(bucket, bucketLocation, sourceResource, destinationResource, request.isOverwrite());
+                    Set<ResourceDescription> resources = Set.of(source, destination);
+                    boolean hasWriteAccess = accessService.lookupPermissions(resources, context).values().stream()
+                            .allMatch(accessTypes -> accessTypes.contains(ResourceAccessType.WRITE));
+
+                    if (!hasWriteAccess) {
+                        throw new PermissionDeniedException("no write access to source/destination resource");
+                    }
+
+                    List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
+                    return vertx.executeBlocking(() -> lockService.underBucketLocks(buckets, () -> {
+                        resourceOperationService.moveResource(source, destination, request.isOverwrite());
                         return null;
                     }), false);
                 })
