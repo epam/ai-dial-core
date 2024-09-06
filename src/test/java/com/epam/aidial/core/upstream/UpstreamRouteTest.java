@@ -22,10 +22,10 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, 1, 1),
-                new Upstream("endpoint2", null, 1, 1),
-                new Upstream("endpoint3", null, 1, 1),
-                new Upstream("endpoint4", null, 1, 1)
+                new Upstream("endpoint1", null, null, 1, 1),
+                new Upstream("endpoint2", null, null, 1, 1),
+                new Upstream("endpoint3", null, null, 1, 1),
+                new Upstream("endpoint4", null, null, 1, 1)
         ));
 
         UpstreamRoute route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model));
@@ -76,8 +76,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, 1, 1),
-                new Upstream("endpoint2", null, 1, 1)
+                new Upstream("endpoint1", null, null, 1, 1),
+                new Upstream("endpoint2", null, null, 1, 1)
         ));
 
         UpstreamRoute route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model));
