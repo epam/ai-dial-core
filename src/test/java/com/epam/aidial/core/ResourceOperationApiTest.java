@@ -335,7 +335,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
-                null, null, "authorization", "admin" );
+                null, null, "authorization", "admin");
         verifyJson(response, 200, CONVERSATION_BODY_1);
 
         // admin has access

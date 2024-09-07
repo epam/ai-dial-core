@@ -336,11 +336,7 @@ public class ShareService {
         }
     }
 
-    public void copySharedAccess(ResourceDescription source, ResourceDescription destination) {
-        if (!source.getBucketName().equals(destination.getBucketName())) {
-            throw new IllegalArgumentException("source and destination bucket do not match");
-        }
-
+    public void copySharedAccess(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
         if (!resourceService.hasResource(source)) {
             throw new IllegalArgumentException("source resource %s does not exists".formatted(source.getUrl()));
         }
@@ -348,9 +344,6 @@ public class ShareService {
         if (!resourceService.hasResource(destination)) {
             throw new IllegalArgumentException("destination resource %s dos not exists".formatted(destination.getUrl()));
         }
-
-        String bucket = source.getBucketName();
-        String location = source.getBucketLocation();
 
         ResourceType sourceResourceType = source.getType();
         ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, sourceResourceType, bucket, location);
@@ -386,16 +379,11 @@ public class ShareService {
         });
     }
 
-    public void moveSharedAccess(ResourceDescription source, ResourceDescription destination) {
-        if (!source.isPrivate()) {
-            return; // only private resources are sharable
-        }
-
-        if (source.getBucketName().equals(destination.getBucketName())) {
-            copySharedAccess(source, destination);
-        }
-
-        revokeSharedAccess(source.getBucketName(), source.getBucketLocation(), Map.of(source, ResourceAccessType.ALL));
+    public void moveSharedAccess(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        // copy shared access from source to destination
+        copySharedAccess(bucket, location, source, destination);
+        // revoke shared access from source
+        revokeSharedAccess(bucket, location, Map.of(source, ResourceAccessType.ALL));
     }
 
     private void removeSharedResourcePermissions(

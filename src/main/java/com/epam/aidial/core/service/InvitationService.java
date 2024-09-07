@@ -170,35 +170,22 @@ public class InvitationService {
         });
     }
 
-    public void moveResource(ResourceDescription source, ResourceDescription destination) {
-        if (!source.isPrivate()) {
-            return; // only private resources are sharable
-        }
-
-        // move links within same bucket, otherwise just delete links in source bucket
-        boolean isSameBucket = source.getBucketName().equals(destination.getBucketName());
-        ResourceDescription invitationResource = ResourceDescription.fromDecoded(ResourceType.INVITATION,
-                source.getBucketName(), source.getBucketLocation(), INVITATION_RESOURCE_FILENAME);
-
-        resourceService.computeResource(invitationResource, state -> {
+    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
+        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
                 return null;
             }
-
-            for (Invitation invitation : invitations.getInvitations().values()) {
-                List<SharedResource> links = invitation.getResources();
-                List<SharedResource> toRemove = links.stream()
-                        .filter(resource -> source.getUrl().equals(resource.url()))
-                        .toList(); // list for multiple occurrences
-
-                links.removeAll(toRemove);
-
-                if (isSameBucket) {
-                    List<SharedResource> toAdd = toRemove.stream()
-                            .map(resource -> resource.withUrl(destination.getUrl())).toList();
-
-                    links.addAll(toAdd);
+            Map<String, Invitation> invitationMap = invitations.getInvitations();
+            for (Invitation invitation : invitationMap.values()) {
+                List<SharedResource> invitationResourceLinks = invitation.getResources();
+                Set<SharedResource> toMove = invitationResourceLinks.stream()
+                        .filter(sharedResource -> source.getUrl().equals(sharedResource.url()))
+                        .collect(Collectors.toUnmodifiableSet());
+                for (SharedResource sharedResource : toMove) {
+                    invitationResourceLinks.remove(sharedResource);
+                    invitationResourceLinks.add(sharedResource.withUrl(destination.getUrl()));
                 }
             }
 

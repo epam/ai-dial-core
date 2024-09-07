@@ -190,7 +190,7 @@ public class ShareController {
 
                     return proxy.getVertx().executeBlocking(() ->
                             lockService.underBucketLock(bucketLocation, () -> {
-                                shareService.copySharedAccess(source, destination);
+                                shareService.copySharedAccess(bucket, bucketLocation, source, destination);
                                 return null;
                             }), false);
                 })

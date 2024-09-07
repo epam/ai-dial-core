@@ -1,5 +1,6 @@
 package com.epam.aidial.core.service;
 
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceEvent;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -7,6 +8,7 @@ import com.epam.aidial.core.util.EtagHeader;
 import lombok.AllArgsConstructor;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -51,8 +53,23 @@ public class ResourceOperationService {
             resourceService.computeResource(destination, body -> PublicationUtil.replaceApplicationIdentity(body, destination, true));
         }
 
-        invitationService.moveResource(source, destination);
-        shareService.moveSharedAccess(source, destination);
+        if (source.isPrivate()) {
+            String bucketName = source.getBucketName();
+            String bucketLocation = source.getBucketLocation();
+            boolean isSameBucket = source.getBucketName().equals(destination.getBucketName());
+
+            if (isSameBucket) {
+                invitationService.moveResource(bucketName, bucketLocation, source, destination);
+                shareService.moveSharedAccess(bucketName, bucketLocation, source, destination);
+            } else {
+                Map<ResourceDescription, Set<ResourceAccessType>> resources =
+                        Map.of(source, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE));
+
+                invitationService.cleanUpPermissions(bucketName, bucketLocation, resources);
+                shareService.revokeSharedAccess(bucketName, bucketLocation, resources);
+            }
+        }
+
         resourceService.deleteResource(source, EtagHeader.ANY);
     }
 }
