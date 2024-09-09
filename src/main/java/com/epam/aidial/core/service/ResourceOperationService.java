@@ -62,9 +62,7 @@ public class ResourceOperationService {
                 invitationService.moveResource(bucketName, bucketLocation, source, destination);
                 shareService.moveSharedAccess(bucketName, bucketLocation, source, destination);
             } else {
-                Map<ResourceDescription, Set<ResourceAccessType>> resources =
-                        Map.of(source, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE));
-
+                Map<ResourceDescription, Set<ResourceAccessType>> resources = Map.of(source, ResourceAccessType.ALL);
                 invitationService.cleanUpPermissions(bucketName, bucketLocation, resources);
                 shareService.revokeSharedAccess(bucketName, bucketLocation, resources);
             }

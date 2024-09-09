@@ -26,6 +26,7 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -88,11 +89,15 @@ public class ResourceOperationController {
                     }
 
                     Set<ResourceDescription> resources = Set.of(source, destination);
-                    boolean hasWriteAccess = accessService.lookupPermissions(resources, context).values().stream()
-                            .allMatch(accessTypes -> accessTypes.contains(ResourceAccessType.WRITE));
+                    Map<ResourceDescription, Set<ResourceAccessType>> permissions =
+                            accessService.lookupPermissions(resources, context);
 
-                    if (!hasWriteAccess) {
-                        throw new PermissionDeniedException("no write access to source/destination resource");
+                    if (!permissions.get(source).containsAll(ResourceAccessType.ALL)) {
+                        throw new PermissionDeniedException("no read and write access to source resource");
+                    }
+
+                    if (!permissions.get(destination).contains(ResourceAccessType.WRITE)) {
+                        throw new PermissionDeniedException("no write access to destination resource");
                     }
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
