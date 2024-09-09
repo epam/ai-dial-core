@@ -3,6 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.service.CustomApplicationService;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +21,7 @@ import javax.annotation.Nullable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -283,6 +285,7 @@ public class ControllerSelectorTest {
     public void testSelectUploadFileController() {
         when(request.path()).thenReturn("/v1/files/bucket/folder1/file1.txt");
         when(request.method()).thenReturn(HttpMethod.PUT);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("multipart/form-data");
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
@@ -297,6 +300,7 @@ public class ControllerSelectorTest {
     @Test
     public void testSelectUploadFileController2() {
         when(request.path()).thenReturn("/v1/files/bucket/fol%2Fder%201/file1%23.txt");
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("multipart/form-data");
         when(request.method()).thenReturn(HttpMethod.PUT);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);

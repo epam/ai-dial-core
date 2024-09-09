@@ -440,6 +440,125 @@ public class FileApiTest extends ResourceBaseTest {
         });
     }
 
+
+    @Test
+    public void testSimpleFileUpload(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(4);
+        WebClient client = WebClient.create(vertx);
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify no files
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            verifyJsonNotExact("""
+                                    {
+                                      "name" : null,
+                                      "parentPath" : null,
+                                      "bucket" : "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType" : "FOLDER",
+                                      "resourceType" : "FILE",
+                                      "permissions" : [ "READ", "WRITE" ],
+                                      "items" : [ ]
+                                    }
+                                    """, response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader("content-type", "application/text")
+                    .as(BodyCodec.string())
+                    .sendBuffer(Buffer.buffer(TEST_FILE_CONTENT),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    verifyJsonNotExact("""
+                                            {
+                                              "name" : "файл.txt",
+                                              "parentPath" : null,
+                                              "bucket" : "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                              "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt",
+                                              "nodeType" : "ITEM",
+                                              "resourceType" : "FILE",
+                                              "createdAt" : "@ignore",
+                                              "updatedAt" : "@ignore",
+                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "contentLength" : 17,
+                                              "contentType" : "application/text"
+                                            }
+                                            """, response.body());
+                                    assertEquals(TEST_FILE_ETAG, response.getHeader(HttpHeaders.ETAG));
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // read test file
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> context.verify(() -> {
+                        assertEquals(200, response.statusCode());
+                        assertEquals(TEST_FILE_CONTENT, response.body());
+                        assertEquals(TEST_FILE_ETAG, response.getHeader(HttpHeaders.ETAG));
+                        checkpoint.flag();
+                        promise.complete();
+                    })));
+
+            return promise.future();
+        }).andThen((result) -> {
+            // verify uploaded file can be listed
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            verifyJsonNotExact("""
+                                    {
+                                      "name" : null,
+                                      "parentPath" : null,
+                                      "bucket" : "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType" : "FOLDER",
+                                      "resourceType" : "FILE",
+                                      "permissions" : [ "READ", "WRITE" ],
+                                      "items" : [ {
+                                        "name" : "файл.txt",
+                                        "parentPath" : null,
+                                        "bucket" : "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                        "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt",
+                                        "nodeType" : "ITEM",
+                                        "resourceType" : "FILE",
+                                        "permissions" : [ "READ", "WRITE" ],
+                                        "updatedAt" : "@ignore",
+                                        "contentLength" : 0,
+                                        "contentType" : "application/text"
+                                      } ]
+                                    }
+                                    """, response.body());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
     @Test
     public void testBigFileUpload(Vertx vertx, VertxTestContext context) {
         Checkpoint checkpoint = context.checkpoint(4);

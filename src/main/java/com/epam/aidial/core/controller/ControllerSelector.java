@@ -5,7 +5,9 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.util.UrlUtil;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.impl.HttpUtils;
 import lombok.experimental.UtilityClass;
 
 import java.util.Optional;
@@ -349,17 +351,30 @@ public class ControllerSelector {
     private static Controller selectPut(Proxy proxy, ProxyContext context, String path) {
         Matcher match = match(PATTERN_FILES, path);
         if (match != null) {
-            UploadFileController controller = new UploadFileController(proxy, context);
-            return () -> controller.handle(resourcePath(path));
+            if (isMultipartRequest(context)) {
+                UploadFileController controller = new UploadFileController(proxy, context);
+                return () -> controller.handle(resourcePath(path));
+            } else {
+                return resourceHandler(proxy, context, path);
+            }
         }
 
         match = match(PATTERN_RESOURCE, path);
         if (match != null) {
-            ResourceController controller = new ResourceController(proxy, context, false);
-            return () -> controller.handle(resourcePath(path));
+            return resourceHandler(proxy, context, path);
         }
 
         return null;
+    }
+
+    private static Controller resourceHandler(Proxy proxy, ProxyContext context, String path) {
+        ResourceController controller = new ResourceController(proxy, context, false);
+        return () -> controller.handle(resourcePath(path));
+    }
+
+    private static boolean isMultipartRequest(ProxyContext context) {
+        String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+        return contentType != null && HttpUtils.isValidMultipartContentType(contentType);
     }
 
     private Matcher match(Pattern pattern, String path) {

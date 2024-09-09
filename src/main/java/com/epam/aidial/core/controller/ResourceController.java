@@ -162,17 +162,24 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
         }
 
-        context.getRequest().body().compose(bytes -> {
-                    if (bytes.length() > contentLimit) {
-                        String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
+        context.getRequest().body().compose(buffer -> {
+                    if (buffer.length() > contentLimit) {
+                        String message = "Resource size: %s exceeds max limit: %s".formatted(buffer.length(), contentLimit);
                         throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
                     }
 
                     EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     ResourceType resourceType = descriptor.getType();
-                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8), etag.isOverwrite());
+                    String body = validateRequestBody(descriptor, resourceType, buffer.toString(StandardCharsets.UTF_8), etag.isOverwrite());
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag), false);
+                    return vertx.executeBlocking(() -> {
+                        if (descriptor.getType() == ResourceType.FILE) {
+                            String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+                            return service.putFile(descriptor, buffer.getBytes(), etag, contentType);
+                        } else {
+                            return service.putResource(descriptor, body, etag);
+                        }
+                    }, false);
                 })
                 .onSuccess((metadata) -> {
                     if (metadata == null) {
@@ -225,6 +232,9 @@ public class ResourceController extends AccessControlBaseController {
 
                     body = ProxyUtil.convertToString(application, true);
                 }
+            }
+            case FILE -> {
+                // do nothing
             }
             default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
         }
