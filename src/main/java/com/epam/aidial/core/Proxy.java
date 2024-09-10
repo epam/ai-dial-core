@@ -185,8 +185,23 @@ public class Proxy implements Handler<HttpServerRequest> {
             respond(request, HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided");
             return;
         } else if (apiKey != null && authorization != null && !apiKey.equals(extractTokenFromHeader(authorization))) {
-            respond(request, HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both");
-            return;
+            // interceptor case
+            authorizationResultFuture = apiKeyStore.getApiKeyData(apiKey)
+                    .onFailure(error -> onGettingApiKeyDataFailure(error, request))
+                    .compose(apiKeyData -> {
+                        if (apiKeyData == null) {
+                            String errorMessage = "Unknown api key";
+                            respond(request, HttpStatus.UNAUTHORIZED, errorMessage);
+                            return Future.failedFuture(errorMessage);
+                        }
+                        if (apiKeyData.isInterceptor()) {
+                            return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
+                        } else {
+                            String errorMessage = "Either API-KEY or Authorization header must be provided but not both";
+                            respond(request, HttpStatus.BAD_REQUEST, errorMessage);
+                            return Future.failedFuture(errorMessage);
+                        }
+                    });
         } else if (apiKey != null) {
             authorizationResultFuture = apiKeyStore.getApiKeyData(apiKey)
                     .onFailure(error -> onGettingApiKeyDataFailure(error, request))

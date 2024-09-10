@@ -134,12 +134,7 @@ public class InterceptorController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
-        if (!context.getDeployment().isForwardAuthToken()) {
-            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
-        }
-
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
 
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
