@@ -20,8 +20,8 @@ public class LoadBalancerTest {
     @Test
     void testWeightedLoadBalancer() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 0),
-                new Upstream("endpoint2", null, 9, 0)
+                new Upstream("endpoint1", null, null, 1, 0),
+                new Upstream("endpoint2", null, null, 9, 0)
         );
         WeightedRoundRobinBalancer balancer = new WeightedRoundRobinBalancer("model1", upstreams);
 
@@ -40,10 +40,10 @@ public class LoadBalancerTest {
         assertEquals(18, usage.get("endpoint2").getValue());
 
         upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 0),
-                new Upstream("endpoint2", null, 1, 0),
-                new Upstream("endpoint3", null, 1, 0),
-                new Upstream("endpoint4", null, 1, 0)
+                new Upstream("endpoint1", null, null, 1, 0),
+                new Upstream("endpoint2", null, null, 1, 0),
+                new Upstream("endpoint3", null, null, 1, 0),
+                new Upstream("endpoint4", null, null, 1, 0)
         );
         balancer = new WeightedRoundRobinBalancer("model1", upstreams);
 
@@ -66,10 +66,10 @@ public class LoadBalancerTest {
         assertEquals(25, usage.get("endpoint4").getValue());
 
         upstreams = List.of(
-                new Upstream("endpoint1", null, 49, 0),
-                new Upstream("endpoint2", null, 44, 0),
-                new Upstream("endpoint3", null, 47, 0),
-                new Upstream("endpoint4", null, 59, 0)
+                new Upstream("endpoint1", null, null, 49, 0),
+                new Upstream("endpoint2", null, null, 44, 0),
+                new Upstream("endpoint3", null, null, 47, 0),
+                new Upstream("endpoint4", null, null, 59, 0)
         );
         balancer = new WeightedRoundRobinBalancer("model1", upstreams);
 
@@ -95,8 +95,8 @@ public class LoadBalancerTest {
     @Test
     void testTieredLoadBalancer() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 0),
-                new Upstream("endpoint2", null, 9, 1)
+                new Upstream("endpoint1", null, null, 1, 0),
+                new Upstream("endpoint2", null, null, 9, 1)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
 
@@ -111,8 +111,8 @@ public class LoadBalancerTest {
     @Test
     void testLoadBalancerFailure() throws InterruptedException {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 0),
-                new Upstream("endpoint2", null, 9, 1)
+                new Upstream("endpoint1", null, null, 1, 0),
+                new Upstream("endpoint2", null, null, 9, 1)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
 
@@ -141,8 +141,8 @@ public class LoadBalancerTest {
     @Test
     void testZeroWeightLoadBalancer() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 0, 1),
-                new Upstream("endpoint2", null, -9, 1)
+                new Upstream("endpoint1", null, null, 0, 1),
+                new Upstream("endpoint2", null, null, -9, 1)
         );
         WeightedRoundRobinBalancer balancer = new WeightedRoundRobinBalancer("model1", upstreams);
 
@@ -155,8 +155,8 @@ public class LoadBalancerTest {
     @Test
     void test5xxErrorsHandling() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, 1, 0),
-                new Upstream("endpoint2", null, 1, 1)
+                new Upstream("endpoint1", null, null, 1, 0),
+                new Upstream("endpoint2", null, null, 1, 1)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
 
@@ -183,8 +183,8 @@ public class LoadBalancerTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, 1, 1),
-                new Upstream("endpoint2", null, 1, 1)
+                new Upstream("endpoint1", null, null, 1, 1),
+                new Upstream("endpoint2", null, null, 1, 1)
         ));
 
         models.put("model1", model);
@@ -208,8 +208,8 @@ public class LoadBalancerTest {
         Model model1 = new Model();
         model1.setName("model1");
         model1.setUpstreams(List.of(
-                new Upstream("endpoint2", null, 1, 1),
-                new Upstream("endpoint1", null, 1, 1)
+                new Upstream("endpoint2", null, null, 1, 1),
+                new Upstream("endpoint1", null, null, 1, 1)
         ));
 
         models.put("model1", model1);
@@ -224,8 +224,8 @@ public class LoadBalancerTest {
         Model model2 = new Model();
         model2.setName("model1");
         model2.setUpstreams(List.of(
-                new Upstream("endpoint2", null, 5, 1),
-                new Upstream("endpoint1", null, 1, 1)
+                new Upstream("endpoint2", null, null, 5, 1),
+                new Upstream("endpoint1", null, null, 1, 1)
         ));
 
         models.put("model1", model2);

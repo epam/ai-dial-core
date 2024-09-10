@@ -321,6 +321,7 @@ public class DeploymentPostController {
             Upstream upstream = context.getUpstreamRoute().get();
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
         }
 
         Buffer requestBody = context.getRequestBody();

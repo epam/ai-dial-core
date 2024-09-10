@@ -63,6 +63,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
     public static final String HEADER_UPSTREAM_ENDPOINT = "X-UPSTREAM-ENDPOINT";
     public static final String HEADER_UPSTREAM_KEY = "X-UPSTREAM-KEY";
+    public static final String HEADER_UPSTREAM_EXTRA_DATA = "X-UPSTREAM-EXTRA-DATA";
     public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
 
