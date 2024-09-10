@@ -23,6 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -69,7 +70,7 @@ public class ProxyTest {
     @Mock
     private BlobStorage storage;
 
-    @Mock
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private HttpServerRequest request;
 
     @Mock
@@ -164,7 +165,7 @@ public class ProxyTest {
     }
 
     @Test
-    public void testHandle_BothApiKeyAndToken() {
+    public void testHandle_BothApiKeyAndToken_ApiKeyNotFound() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -175,9 +176,118 @@ public class ProxyTest {
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
 
+        Config config = new Config();
+        when(configStore.load()).thenReturn(config);
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture());
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+    }
+
+    @Test
+    public void testHandle_BothApiKeyAndToken_ApiKeyIsNotPerRequestKey() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+
+        Config config = new Config();
+        when(configStore.load()).thenReturn(config);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
+
         proxy.handle(request);
 
         verify(response).setStatusCode(BAD_REQUEST.getCode());
+    }
+
+    @Test
+    public void testHandle_BothApiKeyAndToken_CallerIsNotInterceptor_1() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+
+        Config config = new Config();
+        when(configStore.load()).thenReturn(config);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("per-request_key");
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(BAD_REQUEST.getCode());
+    }
+
+    @Test
+    public void testHandle_BothApiKeyAndToken_CallerIsNotInterceptor_2() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+
+        Config config = new Config();
+        when(configStore.load()).thenReturn(config);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("per-request_key");
+        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        apiKeyData.setInterceptorIndex(2);
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(BAD_REQUEST.getCode());
+    }
+
+    @Test
+    public void testHandle_BothApiKeyAndToken_CallerIsInterceptor() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+        when(request.uri()).thenReturn("/foo");
+
+        Config config = new Config();
+        Route route = new Route();
+        route.setMethods(Set.of(HttpMethod.GET));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("per-request_key");
+        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        apiKeyData.setInterceptorIndex(1);
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
     }
 
     @Test

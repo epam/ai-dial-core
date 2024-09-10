@@ -4,6 +4,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.AutoSharedData;
 import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.security.ExtractedClaims;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -76,5 +77,10 @@ public class ApiKeyData {
         proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
         proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
+    }
+
+    @JsonIgnore
+    public boolean isInterceptor() {
+        return perRequestKey != null && interceptors != null && interceptorIndex >= 0 && interceptorIndex < interceptors.size();
     }
 }
