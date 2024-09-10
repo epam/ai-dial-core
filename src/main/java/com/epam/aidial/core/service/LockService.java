@@ -6,6 +6,8 @@ import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -53,6 +55,29 @@ public class LockService {
         }
     }
 
+    public <T> T underBucketLocks(Collection<String> bucketLocations, Supplier<T> function) {
+        List<String> keys = bucketLocations.stream()
+                .map(bucketLocation -> BlobStorageUtil.toStoragePath(prefix, bucketLocation))
+                .distinct()
+                .sorted()
+                .toList();
+
+        List<Lock> locks = new ArrayList<>(keys.size());
+
+        try {
+            for (String key : keys) {
+                Lock lock = lock(key);
+                locks.add(lock);
+            }
+
+            return function.get();
+        } finally {
+            for (Lock lock : locks) {
+                lock.close();
+            }
+        }
+    }
+
     @Nullable
     public Lock tryLock(String key) {
         String id = id(key);
@@ -85,17 +110,22 @@ public class LockService {
     }
 
     private boolean tryUnlock(String id, long owner) {
-        return script.eval(RScript.Mode.READ_WRITE,
-                """
-                        local owner = redis.call('hget', KEYS[1], 'owner')
-                        
-                        if (owner == ARGV[1]) then
-                          redis.call('del', KEYS[1])
-                          return true
-                        end
-                        
-                        return false
-                        """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner));
+        try {
+            return script.eval(RScript.Mode.READ_WRITE,
+                    """
+                            local owner = redis.call('hget', KEYS[1], 'owner')
+                            
+                            if (owner == ARGV[1]) then
+                              redis.call('del', KEYS[1])
+                              return true
+                            end
+                            
+                            return false
+                            """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner));
+        } catch (Throwable e) {
+            log.error("Lock service failed to unlock: {}", id, e);
+            return false;
+        }
     }
 
     private static String id(String key) {

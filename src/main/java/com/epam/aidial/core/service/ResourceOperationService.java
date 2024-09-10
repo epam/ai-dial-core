@@ -1,5 +1,6 @@
 package com.epam.aidial.core.service;
 
+import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceEvent;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -7,6 +8,7 @@ import com.epam.aidial.core.util.EtagHeader;
 import lombok.AllArgsConstructor;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -24,7 +26,7 @@ public class ResourceOperationService {
         return resourceService.subscribeResources(resources, subscriber);
     }
 
-    public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
+    public void moveResource(ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -33,7 +35,7 @@ public class ResourceOperationService {
         String destinationResourceUrl = destination.getUrl();
 
         if (!resourceService.hasResource(source)) {
-            throw new IllegalArgumentException("Source resource %s do not exists".formatted(sourceResourceUrl));
+            throw new IllegalArgumentException("Source resource %s does not exist".formatted(sourceResourceUrl));
         }
 
         if (!ALLOWED_RESOURCES.contains(source.getType())) {
@@ -51,10 +53,20 @@ public class ResourceOperationService {
             resourceService.computeResource(destination, body -> PublicationUtil.replaceApplicationIdentity(body, destination, true));
         }
 
-        // move source links to destination if any
-        invitationService.moveResource(bucket, location, source, destination);
-        // move shared access if any
-        shareService.moveSharedAccess(bucket, location, source, destination);
+        if (source.isPrivate()) {
+            String bucketName = source.getBucketName();
+            String bucketLocation = source.getBucketLocation();
+            boolean isSameBucket = source.getBucketName().equals(destination.getBucketName());
+
+            if (isSameBucket) {
+                invitationService.moveResource(bucketName, bucketLocation, source, destination);
+                shareService.moveSharedAccess(bucketName, bucketLocation, source, destination);
+            } else {
+                Map<ResourceDescription, Set<ResourceAccessType>> resources = Map.of(source, ResourceAccessType.ALL);
+                invitationService.cleanUpPermissions(bucketName, bucketLocation, resources);
+                shareService.revokeSharedAccess(bucketName, bucketLocation, resources);
+            }
+        }
 
         resourceService.deleteResource(source, EtagHeader.ANY);
     }

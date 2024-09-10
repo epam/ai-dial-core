@@ -273,7 +273,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                    "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
                 }
                 """);
-        verify(response, 400);
+        verify(response, 403);
 
         // verify move do not support folders
         response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
@@ -292,5 +292,67 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 400);
+    }
+
+    @Test
+    void testMoveFromPrivateToPublic() {
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+
+        // no access to public for ordinary user
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {
+                   "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                   "destinationUrl": "conversations/public/folder/conversation"
+                }
+                """);
+        verify(response, 403);
+
+        // admin has access
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {
+                   "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                   "destinationUrl": "conversations/public/folder/conversation"
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verify(response, 404);
+
+        response =  send(HttpMethod.GET, "/v1/conversations/public/folder/conversation", null, null,
+                "authorization", "admin");
+        verify(response, 200, CONVERSATION_BODY_1);
+    }
+
+    @Test
+    void testMoveFromPublicToPrivate() {
+        Response response = send(HttpMethod.PUT, "/v1/conversations/public/folder/conversation",
+                null, CONVERSATION_BODY_1, "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "admin");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+
+        // admin has access
+        response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {
+                   "sourceUrl": "conversations/public/folder/conversation",
+                   "destinationUrl": "conversations/public/folder2/conversation2"
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        response =  send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
+                null, null, "authorization", "admin");
+        verify(response, 404);
+
+        response =  send(HttpMethod.GET, "/v1/conversations/public/folder2/conversation2",
+                null, null, "authorization", "admin");
+        verify(response, 200, CONVERSATION_BODY_1);
     }
 }
