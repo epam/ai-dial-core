@@ -171,7 +171,7 @@ public class ProxyTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
-        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer token");
         when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
@@ -192,7 +192,7 @@ public class ProxyTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
-        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer token");
         when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
@@ -214,7 +214,7 @@ public class ProxyTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
-        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer token");
         when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
@@ -237,7 +237,7 @@ public class ProxyTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
-        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer token");
         when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
@@ -262,7 +262,7 @@ public class ProxyTest {
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
-        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer token");
         when(headers.get(eq(HEADER_API_KEY))).thenReturn("api-key");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");

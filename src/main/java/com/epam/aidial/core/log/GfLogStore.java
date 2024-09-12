@@ -2,7 +2,9 @@ package com.epam.aidial.core.log;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.token.TokenUsage;
+import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.MergeChunks;
 import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.deltix.gflog.api.Log;
@@ -26,7 +28,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 import java.util.Scanner;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class GfLogStore implements LogStore {
@@ -55,7 +59,7 @@ public class GfLogStore implements LogStore {
             entry.commit();
         } catch (Throwable e) {
             entry.abort();
-            log.warn("Can't save log: {}", e.getMessage());
+            log.warn("Can't save log due to the error", e);
         }
         return null;
     }
@@ -157,9 +161,11 @@ public class GfLogStore implements LogStore {
         append(entry, "\"},\"response\":{\"status\":\"", false);
         append(entry, Integer.toString(response.getStatusCode()), true);
 
-        if (context.getUpstreamRoute() != null) {
+        Optional<String> upstreamEndpoint = Optional.ofNullable(context.getUpstreamRoute())
+                .map(UpstreamRoute::get).map(Upstream::getEndpoint);
+        if (upstreamEndpoint.isPresent()) {
             append(entry, "\",\"upstream_uri\":\"", false);
-            append(entry, context.getUpstreamRoute().get().getEndpoint(), true);
+            append(entry, upstreamEndpoint.get(), true);
         }
 
         if (!context.isSecuredApiKey()) {
@@ -230,7 +236,11 @@ public class GfLogStore implements LogStore {
      * @param response byte array response to be assembled.
      * @return assembled streaming response
      */
-    static String assembleStreamingResponse(Buffer response) {
+    @Nullable
+    static String assembleStreamingResponse(@Nullable Buffer response) {
+        if (response == null) {
+            return null;
+        }
         try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
             ObjectNode last = null;
             JsonNode usage = null;
@@ -308,7 +318,10 @@ public class GfLogStore implements LogStore {
      * @param response byte array response.
      * @return <code>true</code> is the response is streaming.
      */
-    static boolean isStreamingResponse(Buffer response) {
+    static boolean isStreamingResponse(@Nullable Buffer response) {
+        if (response == null) {
+            return false;
+        }
         int i = 0;
         for (; i < response.length(); i++) {
             byte b = response.getByte(i);
