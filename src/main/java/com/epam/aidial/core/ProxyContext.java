@@ -139,7 +139,7 @@ public class ProxyContext {
         }
 
         if (status != HttpStatus.OK) {
-            log.warn("Responding with error. Trace: {}. Span: {}. Status: {}. Body: {}", traceId, spanId, status,
+            log.warn("Responding with error. Key: {}. Trace: {}. Span: {}. Status: {}. Body: {}", getProject(), traceId, spanId, status,
                     body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
         }
 

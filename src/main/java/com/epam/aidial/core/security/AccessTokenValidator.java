@@ -9,6 +9,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.json.JsonObject;
+import lombok.extern.slf4j.Slf4j;
 
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -20,7 +21,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
+@Slf4j
 public class AccessTokenValidator {
 
     private static final long USER_INFO_EXP_PERIOD_MS = TimeUnit.MINUTES.toMillis(1);
@@ -63,7 +66,7 @@ public class AccessTokenValidator {
             if (authHeader == null) {
                 return Future.succeededFuture();
             }
-            accessToken = Objects.requireNonNull(extractTokenFromHeader(authHeader), "Can't extract access token from header");
+            accessToken = Objects.requireNonNull(extractTokenFromHeader(authHeader), "Access token must be presented in Auth header");
             if (providers.size() == 1) {
                 IdentityProvider provider =  providers.get(0);
                 return extractClaims(accessToken, provider);
@@ -140,7 +143,7 @@ public class AccessTokenValidator {
                     return null;
                 }
             }
-            promise.fail("Idp is not found to support user info endpoint");
+            promise.fail("IdP is not found in Core settings to support user info endpoint for extracting user claims from access token.");
             return null;
         }).onFailure(promise::fail);
         return promise.future();
@@ -150,13 +153,14 @@ public class AccessTokenValidator {
         return new UserInfoResult(claims, System.currentTimeMillis() + USER_INFO_EXP_PERIOD_MS);
     }
 
+    @Nullable
     public static String extractTokenFromHeader(String authHeader) {
         if (authHeader == null) {
             return null;
         }
         String[] parts = authHeader.split(" ");
         if (parts.length < 2) {
-            return null;
+            throw new IllegalArgumentException(String.format("Bad Authorization header format: expected <auth-scheme> <access_token> but got %d parts", parts.length));
         }
         return parts[1];
     }
