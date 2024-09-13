@@ -4,9 +4,9 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.ResourceDescription;
+import com.epam.aidial.core.util.UrlUtil;
 import lombok.SneakyThrows;
 
-import java.net.URI;
 import java.util.function.Function;
 
 public abstract class BaseFunction<T, R> implements Function<T, R> {
@@ -20,14 +20,11 @@ public abstract class BaseFunction<T, R> implements Function<T, R> {
 
     @SneakyThrows
     public static ResourceDescription fromAnyUrl(String url, EncryptionService encryption) {
-        if (url == null) {
+        if (url == null || UrlUtil.isAbsoluteUrl(url)) {
+            // second check to skip public resource
             return null;
         }
-        URI uri = new URI(url);
-        if (uri.isAbsolute()) {
-            // skip public resource
-            return null;
-        }
+
         return ResourceDescription.fromAnyUrl(url, encryption);
     }
 }
