@@ -20,7 +20,7 @@ public class UrlUtil {
     /**
      * Universal, non case-sensitive, protocol-agnostic URL pattern
      */
-    private static final Pattern ABSOLUTE_URL_PATTERN = Pattern.compile("^(?:[a-z][a-z0-9-+.]*:)?//", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ABSOLUTE_URL_PATTERN = Pattern.compile("^[a-z][a-z0-9-+.]*?://", Pattern.CASE_INSENSITIVE);
 
     @SneakyThrows
     public String encodePath(String path) {
