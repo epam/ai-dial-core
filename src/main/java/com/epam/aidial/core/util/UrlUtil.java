@@ -9,12 +9,18 @@ import org.apache.commons.codec.net.PercentCodec;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
+import java.util.regex.Pattern;
 
 @UtilityClass
 public class UrlUtil {
 
     private static final PercentCodec DECODER = new PercentCodec();
     private static final Escaper ENCODER = UrlEscapers.urlPathSegmentEscaper();
+
+    /**
+     * Universal, non case-sensitive, protocol-agnostic URL pattern
+     */
+    private static final Pattern ABSOLUTE_URL_PATTERN = Pattern.compile("^[a-z][a-z0-9-+.]*?://", Pattern.CASE_INSENSITIVE);
 
     @SneakyThrows
     public String encodePath(String path) {
@@ -38,5 +44,9 @@ public class UrlUtil {
             }
         }
         return new String(DECODER.decode(path.getBytes(Charset.defaultCharset())));
+    }
+
+    public boolean isAbsoluteUrl(String url) {
+        return ABSOLUTE_URL_PATTERN.matcher(url).find();
     }
 }
