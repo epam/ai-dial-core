@@ -3,7 +3,9 @@ package com.epam.aidial.core.util;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class UrlUtilTest {
 
@@ -28,5 +30,17 @@ public class UrlUtilTest {
         assertEquals("echo:1", UrlUtil.decodePath("echo:1"));
         assertThrows(IllegalArgumentException.class, () -> UrlUtil.decodePath("/folder1/file#5.txt"));
         assertThrows(IllegalArgumentException.class, () -> UrlUtil.decodePath("/folder1/q?file=5.txt"));
+    }
+
+    @Test
+    public void testIsAbsoluteUrl() {
+        assertTrue(UrlUtil.isAbsoluteUrl("test://example.com"));
+        assertTrue(UrlUtil.isAbsoluteUrl("TEST://EXAMPLE.COM"));
+        assertTrue(UrlUtil.isAbsoluteUrl("test1+test2://example.com/item"));
+        assertTrue(UrlUtil.isAbsoluteUrl("test1.test2://example.com/item"));
+        assertTrue(UrlUtil.isAbsoluteUrl("test1-test2://example.com/item"));
+        assertFalse(UrlUtil.isAbsoluteUrl("//example.com/item"));
+        assertFalse(UrlUtil.isAbsoluteUrl("/example/file.txt"));
+        assertFalse(UrlUtil.isAbsoluteUrl("file"));
     }
 }
