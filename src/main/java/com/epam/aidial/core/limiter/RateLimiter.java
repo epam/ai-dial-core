@@ -60,14 +60,8 @@ public class RateLimiter {
             if (resourceService == null) {
                 return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
-            Key key = context.getKey();
             String deploymentName = context.getDeployment().getName();
-            Limit limit;
-            if (key == null) {
-                limit = getLimitByUser(context, deploymentName);
-            } else {
-                limit = getLimitByApiKey(context, deploymentName);
-            }
+            Limit limit = getLimitByUser(context, deploymentName);
 
             if (limit == null || !limit.isPositive()) {
                 if (limit == null) {
@@ -91,12 +85,7 @@ public class RateLimiter {
                 return Future.succeededFuture();
             }
             Key key = context.getKey();
-            Limit limit;
-            if (key == null) {
-                limit = getLimitByUser(context, deploymentName);
-            } else {
-                limit = getLimitByApiKey(context, deploymentName);
-            }
+            Limit limit = getLimitByUser(context, deploymentName);
             if (limit == null) {
                 log.warn("Limit is not found. Trace: {}. Span: {}. Key: {}. User sub: {}. Deployment: {}",
                         context.getTraceId(), context.getSpanId(), key == null ? null : key.getProject(),
@@ -220,18 +209,6 @@ public class RateLimiter {
         long timestamp = System.currentTimeMillis();
         rateLimit.add(timestamp, totalUsedTokens);
         return ProxyUtil.convertToString(rateLimit);
-    }
-
-    private Limit getLimitByApiKey(ProxyContext context, String deploymentName) {
-        // API key has always one role
-        Role role = context.getConfig().getRoles().get(context.getKey().getRole());
-
-        if (role == null) {
-            log.warn("Role is not found for key: {}", context.getKey().getProject());
-            return null;
-        }
-
-        return role.getLimits().get(deploymentName);
     }
 
     private Limit getLimitByUser(ProxyContext context, String deploymentName) {

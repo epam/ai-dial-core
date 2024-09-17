@@ -283,6 +283,8 @@ public class ProxyTest {
         apiKeyData.setPerRequestKey("per-request_key");
         apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
         apiKeyData.setInterceptorIndex(1);
+        Key originalKey = new Key();
+        apiKeyData.setOriginalKey(originalKey);
         when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
@@ -335,7 +337,10 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(new ApiKeyData()));
+        ApiKeyData apiKeyData = new ApiKeyData();
+        Key originalKey = new Key();
+        apiKeyData.setOriginalKey(originalKey);
+        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
@@ -386,7 +391,10 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(new ApiKeyData()));
+        ApiKeyData apiKeyData = new ApiKeyData();
+        Key originalKey = new Key();
+        apiKeyData.setOriginalKey(originalKey);
+        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 

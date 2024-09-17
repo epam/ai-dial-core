@@ -114,41 +114,6 @@ public class RateLimiterTest {
     }
 
     @Test
-    public void testLimit_ApiKeyLimitNotFound() {
-        Key key = new Key();
-        key.setRole("role");
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "trace-id", "span-id");
-        proxyContext.setDeployment(new Model());
-
-        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
-
-        assertNotNull(result);
-        assertNotNull(result.result());
-        assertEquals(HttpStatus.FORBIDDEN, result.result().status());
-    }
-
-
-    @Test
-    public void testLimit_ApiKeyLimitNotFoundWithNullRole() {
-        Key key = new Key();
-        key.setKey("key");
-        key.setProject("project");
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(new Config(), request, apiKeyData, null, "trace-id", "span-id");
-        proxyContext.setDeployment(new Model());
-
-        Future<RateLimitResult> result = rateLimiter.limit(proxyContext);
-
-        assertNotNull(result);
-        assertNotNull(result.result());
-        assertEquals(HttpStatus.FORBIDDEN, result.result().status());
-
-    }
-
-    @Test
     public void testLimit_ApiKeyLimitNegative() {
         Key key = new Key();
         key.setRole("role");

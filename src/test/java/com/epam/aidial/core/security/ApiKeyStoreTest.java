@@ -128,8 +128,8 @@ public class ApiKeyStoreTest {
         store.assignPerRequestApiKey(apiKeyData);
 
         Key key2 = new Key();
-        key1.setProject("prj1");
-        key1.setRole("role1");
+        key2.setProject("prj1");
+        key2.setRole("role1");
         Map<String, Key> projectKeys2 = Map.of("key2", key2);
 
         store.addProjectKeys(projectKeys2);
