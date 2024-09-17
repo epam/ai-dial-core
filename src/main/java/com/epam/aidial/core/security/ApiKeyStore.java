@@ -12,6 +12,7 @@ import com.epam.aidial.core.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -124,12 +125,22 @@ public class ApiKeyStore {
         for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
             String apiKey = entry.getKey();
             Key value = entry.getValue();
+            validateProjectKey(value);
             value.setKey(apiKey);
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
             apiKeyDataMap.put(apiKey, apiKeyData);
         }
         keys = apiKeyDataMap;
+    }
+
+    private void validateProjectKey(Key key) {
+        if (StringUtils.isEmpty(key.getProject())) {
+            throw new IllegalArgumentException("Project key is undefined");
+        }
+        if (StringUtils.isEmpty(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
+            throw new IllegalArgumentException("Invalid key: at least one role must be assigned to the key " + key.getProject());
+        }
     }
 
     private static ResourceDescription toResource(String apiKey) {

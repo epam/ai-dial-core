@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -95,12 +96,12 @@ public class ProxyContext {
         this.requestTimestamp = System.currentTimeMillis();
         this.key = apiKeyData.getOriginalKey();
         if (apiKeyData.getPerRequestKey() != null) {
-            initExtractedClaims(apiKeyData.getExtractedClaims());
+            initExtractedClaims(apiKeyData.getExtractedClaims(), apiKeyData.getOriginalKey());
             this.traceId = apiKeyData.getTraceId();
             this.parentSpanId = apiKeyData.getSpanId();
             this.sourceDeployment = apiKeyData.getSourceDeployment();
         } else {
-            initExtractedClaims(extractedClaims);
+            initExtractedClaims(extractedClaims, apiKeyData.getOriginalKey());
             this.traceId = traceId;
             this.parentSpanId = null;
             this.sourceDeployment = null;
@@ -108,12 +109,15 @@ public class ProxyContext {
         this.spanId = spanId;
     }
 
-    private void initExtractedClaims(ExtractedClaims extractedClaims) {
+    private void initExtractedClaims(ExtractedClaims extractedClaims, Key originalKey) {
         this.extractedClaims = extractedClaims;
         if (extractedClaims != null) {
             this.userRoles = extractedClaims.userRoles();
             this.userHash = extractedClaims.userHash();
             this.userSub = extractedClaims.sub();
+        } else {
+            this.userRoles = Objects.requireNonNull(originalKey, "API key must be provided if user claims are missed")
+                    .getMergedRoles();
         }
     }
 

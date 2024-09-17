@@ -41,7 +41,7 @@ public class DeploymentFeatureController {
 
         Future<Deployment> deploymentFuture;
         if (deployment != null) {
-            if (!DeploymentController.hasAccessByUserRoles(context, deployment)) {
+            if (!DeploymentController.hasAccess(context, deployment)) {
                 deploymentFuture = Future.failedFuture(new PermissionDeniedException("Forbidden deployment: " + deploymentId));
             } else {
                 deploymentFuture = Future.succeededFuture(deployment);

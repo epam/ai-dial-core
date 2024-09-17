@@ -58,28 +58,6 @@ public class DeploymentController {
     }
 
     public static boolean hasAccess(ProxyContext context, Deployment deployment) {
-        return hasAssessByLimits(context, deployment) && hasAccessByUserRoles(context, deployment);
-    }
-
-    public static boolean hasAssessByLimits(ProxyContext context, Deployment deployment) {
-        Key key = context.getKey();
-        if (key == null || key.getRole() == null) {
-            return true;
-        }
-        Role keyRole = context.getConfig().getRoles().get(key.getRole());
-        if (keyRole == null) {
-            return false;
-        }
-
-        Limit keyLimit = keyRole.getLimits().get(deployment.getName());
-        if (keyLimit == null || !keyLimit.isPositive()) {
-            return false;
-        }
-
-        return true;
-    }
-
-    public static boolean hasAccessByUserRoles(ProxyContext context, Deployment deployment) {
         Set<String> expectedUserRoles = deployment.getUserRoles();
         List<String> actualUserRoles = context.getUserRoles();
 
