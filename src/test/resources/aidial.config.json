@@ -83,6 +83,14 @@
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
       ]
+    },
+    "gpt-4": {
+      "type": "chat",
+      "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
+      "upstreams": [
+        {"endpoint": "http://localhost:7001", "key": "modelKey4"}
+      ],
+      "userRoles": ["power-user"]
     }
   },
   "keys": {

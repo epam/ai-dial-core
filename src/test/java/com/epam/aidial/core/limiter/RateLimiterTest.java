@@ -261,7 +261,7 @@ public class RateLimiterTest {
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
-        Future<LimitStats> limitStatsFuture = rateLimiter.getLimitStats(model.getName(), proxyContext);
+        Future<LimitStats> limitStatsFuture = rateLimiter.getLimitStats(model, proxyContext);
 
         assertNotNull(limitStatsFuture);
         assertNotNull(limitStatsFuture.result());
@@ -279,7 +279,7 @@ public class RateLimiterTest {
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
-        limitStatsFuture = rateLimiter.getLimitStats(model.getName(), proxyContext);
+        limitStatsFuture = rateLimiter.getLimitStats(model, proxyContext);
 
         assertNotNull(limitStatsFuture);
         assertNotNull(limitStatsFuture.result());

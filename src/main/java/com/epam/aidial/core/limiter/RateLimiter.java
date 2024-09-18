@@ -1,6 +1,7 @@
 package com.epam.aidial.core.limiter;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
@@ -61,7 +62,7 @@ public class RateLimiter {
                 return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
             String deploymentName = context.getDeployment().getName();
-            Limit limit = getLimitByUser(context, deploymentName);
+            Limit limit = getLimitByUser(context, context.getDeployment());
 
             if (limit == null || !limit.isPositive()) {
                 if (limit == null) {
@@ -78,21 +79,21 @@ public class RateLimiter {
         }
     }
 
-    public Future<LimitStats> getLimitStats(String deploymentName, ProxyContext context) {
+    public Future<LimitStats> getLimitStats(Deployment deployment, ProxyContext context) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
             Key key = context.getKey();
-            Limit limit = getLimitByUser(context, deploymentName);
+            Limit limit = getLimitByUser(context, deployment);
             if (limit == null) {
                 log.warn("Limit is not found. Trace: {}. Span: {}. Key: {}. User sub: {}. Deployment: {}",
                         context.getTraceId(), context.getSpanId(), key == null ? null : key.getProject(),
-                        context.getUserSub(), deploymentName);
+                        context.getUserSub(), deployment.getName());
                 return Future.succeededFuture();
             }
-            return vertx.executeBlocking(() -> getLimitStats(context, limit, deploymentName), false);
+            return vertx.executeBlocking(() -> getLimitStats(context, limit, deployment.getName()), false);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -211,8 +212,16 @@ public class RateLimiter {
         return ProxyUtil.convertToString(rateLimit);
     }
 
-    private Limit getLimitByUser(ProxyContext context, String deploymentName) {
-        List<String> userRoles = context.getUserRoles();
+    private Limit getLimitByUser(ProxyContext context, Deployment deployment) {
+        String deploymentName = deployment.getName();
+        List<String> userRoles;
+        if (deployment.getUserRoles().isEmpty()) {
+            // find limits for all user roles
+            userRoles = context.getUserRoles();
+        } else {
+            // find limits for user roles which match to deployment required roles
+            userRoles = context.getUserRoles().stream().filter(role -> deployment.getUserRoles().contains(role)).toList();
+        }
         Map<String, Role> roles = context.getConfig().getRoles();
         Limit defaultUserLimit = getLimit(roles, DEFAULT_USER_ROLE, deploymentName, DEFAULT_LIMIT);
         if (userRoles.isEmpty()) {

@@ -29,4 +29,16 @@ public class LimitApiTest extends ResourceBaseTest {
                 }
                 """.formatted(Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
     }
+
+    @Test
+    public void testGetLimitStats_UnknownModel() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/unknown-model/limits", null, null);
+        verify(response, 404);
+    }
+
+    @Test
+    public void testGetLimitStats_AccessDenied() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/gpt-4/limits", null, null);
+        verify(response, 403);
+    }
 }
