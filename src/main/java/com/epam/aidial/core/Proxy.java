@@ -248,7 +248,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     private void onGettingApiKeyDataFailure(Throwable error, HttpServerRequest request) {
         log.error("Can't find data associated with API key", error);
-        respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
+        respond(request, HttpStatus.UNAUTHORIZED, "Invalid API key");
     }
 
     @SneakyThrows
