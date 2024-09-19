@@ -22,35 +22,34 @@ public class LimitController {
     }
 
     public Future<?> getLimits(String deploymentId) {
+
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
 
         Future<Deployment> deploymentFuture;
         if (deployment != null) {
-            if (!DeploymentController.hasAccess(context, deployment)) {
-                log.error("LimitController. Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-                return context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment: " + deploymentId);
+            if (DeploymentController.hasAccess(context, deployment)) {
+                deploymentFuture = Future.succeededFuture(deployment);
+            } else {
+                deploymentFuture = Future.failedFuture(new PermissionDeniedException("Forbidden deployment: " + deploymentId));
             }
-            deploymentFuture = Future.succeededFuture(deployment);
         } else {
             deploymentFuture = proxy.getVertx().executeBlocking(() ->
                     proxy.getCustomApplicationService().getCustomApplication(deploymentId, context), false);
         }
+
         deploymentFuture.compose(dep -> {
             if (dep == null) {
-                String error = String.format("LimitController. Deployment not found %s", deploymentId);
-                log.error(error);
-                context.respond(HttpStatus.NOT_FOUND, error);
-                return Future.succeededFuture();
+                throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
             }
-
-            return proxy.getRateLimiter().getLimitStats(dep, context).onSuccess(limitStats -> {
-                if (limitStats == null) {
-                    context.respond(HttpStatus.NOT_FOUND);
-                } else {
-                    context.respond(HttpStatus.OK, limitStats);
-                }
-            });
+            return proxy.getRateLimiter().getLimitStats(dep, context);
+        }).onSuccess(limitStats -> {
+            if (limitStats == null) {
+                context.respond(HttpStatus.NOT_FOUND);
+            } else {
+                context.respond(HttpStatus.OK, limitStats);
+            }
         }).onFailure(error -> handleRequestError(deploymentId, error));
+
         return Future.succeededFuture();
     }
 
