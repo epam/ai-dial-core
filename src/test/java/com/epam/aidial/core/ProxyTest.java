@@ -11,6 +11,7 @@ import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.util.HttpException;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
@@ -180,7 +181,7 @@ public class ProxyTest {
 
         Config config = new Config();
         when(configStore.load()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture());
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
 
         proxy.handle(request);
 
@@ -307,7 +308,10 @@ public class ProxyTest {
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
         when(configStore.load()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture());
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Api key is not found")));
+
+        when(request.response()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
 
         proxy.handle(request);
 
@@ -415,7 +419,7 @@ public class ProxyTest {
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(null));
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
 
         proxy.handle(request);
 
@@ -437,8 +441,10 @@ public class ProxyTest {
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
         when(configStore.load()).thenReturn(config);
-        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture());
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
+        when(request.response()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
 
         proxy.handle(request);
 
@@ -528,7 +534,9 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
+        when(request.response()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
 
         proxy.handle(request);
 
@@ -545,7 +553,7 @@ public class ProxyTest {
         when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("token");
         when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
         when(request.path()).thenReturn("/foo");
-        when(accessTokenValidator.extractClaims(eq("token"))).thenReturn(Future.failedFuture(new RuntimeException()));
+        when(accessTokenValidator.extractClaims(eq("token"))).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
 
         proxy.handle(request);
 
