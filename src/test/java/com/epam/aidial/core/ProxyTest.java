@@ -9,6 +9,7 @@ import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.storage.BlobStorage;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -47,6 +48,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -340,11 +342,84 @@ public class ProxyTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
         when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
         verify(response).setStatusCode(OK.getCode());
+    }
+
+    @Test
+    public void testHandle_TryAccessToken_Success() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.path()).thenReturn("/foo");
+        when(request.uri()).thenReturn("/foo");
+
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("key1");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+
+        Config config = new Config();
+        Route route = new Route();
+        route.setMethods(Set.of(HttpMethod.GET));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        Key originalKey = new Key();
+        apiKeyData.setOriginalKey(originalKey);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of());
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
+        verify(apiKeyStore, never()).getApiKeyData(anyString());
+    }
+
+    @Test
+    public void testHandle_TryAccessToken_Failure() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.path()).thenReturn("/foo");
+
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("key1");
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+
+        Config config = new Config();
+        Route route = new Route();
+        route.setMethods(Set.of(HttpMethod.GET));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        Key originalKey = new Key();
+        apiKeyData.setOriginalKey(originalKey);
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
+        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(null));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(UNAUTHORIZED.getCode());
     }
 
     @Test
@@ -362,6 +437,7 @@ public class ProxyTest {
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
         when(configStore.load()).thenReturn(config);
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
         when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture());
 
         proxy.handle(request);
@@ -399,6 +475,64 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(OK.getCode());
+    }
+
+    @Test
+    public void testHandle_SuccessAccessToken() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+        when(request.uri()).thenReturn("/foo");
+
+        Config config = new Config();
+        Route route = new Route();
+        route.setMethods(Set.of(HttpMethod.GET));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of());
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
+    }
+
+    @Test
+    public void testHandle_WrongAccessToken() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+
+        Config config = new Config();
+        Route route = new Route();
+        route.setMethods(Set.of(HttpMethod.GET));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+        when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(UNAUTHORIZED.getCode());
     }
 
     @Test
