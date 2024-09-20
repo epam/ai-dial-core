@@ -179,6 +179,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
         authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId))
+                .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
 
@@ -206,71 +207,38 @@ public class Proxy implements Handler<HttpServerRequest> {
         String apiKey = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.debug("Authorization header: {}", authorization);
-        Future<AuthorizationResult> authorizationResultFuture;
+
         if (apiKey == null && authorization == null) {
-            String errorMessage = "At least API-KEY or Authorization header must be provided";
-            respond(request, HttpStatus.UNAUTHORIZED, errorMessage);
-            authorizationResultFuture = Future.failedFuture(errorMessage);
-        } else if (apiKey != null && authorization != null) {
-            if (apiKey.equals(extractTokenFromHeader(authorization))) {
-                // we don't know exactly what kind of credentials a client provided to us
-                // we try if it's access token the first and then API key
-                authorizationResultFuture = tokenValidator.extractClaims(authorization)
-                        .transform(asyncResult -> {
-                            if (asyncResult.succeeded()) {
-                                return Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), asyncResult.result()));
-                            } else {
-                                // it could be an API key
-                                return apiKeyStore.getApiKeyData(apiKey)
-                                        .onFailure(apiKeyError -> onGettingApiKeyDataFailure(apiKeyError, request))
-                                        .compose(apiKeyData -> {
-                                            if (apiKeyData == null) {
-                                                // we don't know what kind of credentials was provided,
-                                                // so we return a generic error
-                                                String errorMessage = "Bad credentials";
-                                                respond(request, HttpStatus.UNAUTHORIZED, errorMessage);
-                                                return Future.failedFuture(errorMessage);
-                                            }
-                                            return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
-                                        });
-                            }
-                        });
-            } else {
-                // interceptor case
-                authorizationResultFuture = apiKeyStore.getApiKeyData(apiKey)
-                        .onFailure(error -> onGettingApiKeyDataFailure(error, request))
-                        .compose(apiKeyData -> {
-                            if (apiKeyData == null) {
-                                String errorMessage = "Unknown api key";
-                                respond(request, HttpStatus.UNAUTHORIZED, errorMessage);
-                                return Future.failedFuture(errorMessage);
-                            }
-                            if (apiKeyData.isInterceptor()) {
-                                return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
-                            } else {
-                                String errorMessage = "Either API-KEY or Authorization header must be provided but not both";
-                                respond(request, HttpStatus.BAD_REQUEST, errorMessage);
-                                return Future.failedFuture(errorMessage);
-                            }
-                        });
-            }
-        } else if (apiKey != null) {
-            authorizationResultFuture = apiKeyStore.getApiKeyData(apiKey)
-                    .onFailure(error -> onGettingApiKeyDataFailure(error, request))
-                    .compose(apiKeyData -> {
-                        if (apiKeyData == null) {
-                            String errorMessage = "Unknown api key";
-                            respond(request, HttpStatus.UNAUTHORIZED, errorMessage);
-                            return Future.failedFuture(errorMessage);
-                        }
-                        return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
-                    });
-        } else {
-            authorizationResultFuture = tokenValidator.extractClaims(authorization)
-                    .onFailure(error -> onExtractClaimsFailure(error, request))
+            return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided"));
+        }
+
+        if (apiKey != null && authorization == null) {
+            return apiKeyStore.getApiKeyData(apiKey)
+                    .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
+        }
+
+        if (apiKey == null) {
+            return tokenValidator.extractClaims(authorization)
                     .map(extractedClaims -> new AuthorizationResult(new ApiKeyData(), extractedClaims));
         }
-        return authorizationResultFuture;
+
+        if (apiKey.equals(extractTokenFromHeader(authorization))) {
+            // we don't know exactly what kind of credentials a client provided to us.
+            // we try if it's access token the first and then API key
+            return tokenValidator.extractClaims(authorization)
+                    .compose(claims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), claims)),
+                            error -> apiKeyStore.getApiKeyData(apiKey).map(apiKeyData -> new AuthorizationResult(apiKeyData, null)));
+        }
+        // interceptor case
+        return apiKeyStore.getApiKeyData(apiKey)
+                .compose(apiKeyData -> {
+                    if (apiKeyData.isInterceptor()) {
+                        return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
+                    } else {
+                        return Future.failedFuture(new HttpException(HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both"));
+                    }
+                });
+
     }
 
     private static void enableCors(HttpServerRequest request) {
@@ -291,16 +259,6 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     }
 
-    private void onExtractClaimsFailure(Throwable error, HttpServerRequest request) {
-        log.error("Can't extract claims from authorization header", error);
-        respond(request, HttpStatus.UNAUTHORIZED, "Bad Authorization header");
-    }
-
-    private void onGettingApiKeyDataFailure(Throwable error, HttpServerRequest request) {
-        log.error("Can't find data associated with API key", error);
-        respond(request, HttpStatus.UNAUTHORIZED, "Invalid API key");
-    }
-
     @SneakyThrows
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims, Config config,
                                                  HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
@@ -312,7 +270,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         } catch (Exception t) {
             future = Future.failedFuture(t);
         }
-        return future.onFailure(error -> handleError(error, request));
+        return future;
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {

@@ -93,7 +93,12 @@ public class ApiKeyStore {
             return Future.succeededFuture(apiKeyData);
         }
         ResourceDescription resource = toResource(key);
-        return vertx.executeBlocking(() -> ProxyUtil.convertToObject(resourceService.getResource(resource), ApiKeyData.class), false);
+        return vertx.executeBlocking(() -> ProxyUtil.convertToObject(resourceService.getResource(resource), ApiKeyData.class), false).compose(result -> {
+            if (result == null) {
+                return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Unknown api key"));
+            }
+            return Future.succeededFuture(result);
+        });
     }
 
     /**

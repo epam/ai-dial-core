@@ -32,6 +32,7 @@ import java.util.concurrent.Callable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -161,11 +162,15 @@ public class ApiKeyStoreTest {
         assertNotNull(res1);
         assertEquals(apiKeyData, res1.result());
 
-        assertNull(store.getApiKeyData("unknown-key").result());
+        assertTrue(store.getApiKeyData("unknown-key").failed());
     }
 
     @Test
     public void testInvalidateApiKey() {
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
         ApiKeyData apiKeyData = new ApiKeyData();
         store.assignPerRequestApiKey(apiKeyData);
 
@@ -173,7 +178,7 @@ public class ApiKeyStoreTest {
 
         store.invalidatePerRequestApiKey(apiKeyData);
 
-        assertNull(store.getApiKeyData(apiKeyData.getPerRequestKey()));
+        assertTrue(store.getApiKeyData(apiKeyData.getPerRequestKey()).failed());
     }
 
     @Test
