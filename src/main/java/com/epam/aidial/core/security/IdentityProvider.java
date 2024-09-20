@@ -5,11 +5,8 @@ import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
-import com.epam.aidial.core.util.HttpException;
-import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -201,8 +198,6 @@ public class IdentityProvider {
             return JWT.require(Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null)).build().verify(jwt);
         } catch (JwkException e) {
             throw new RuntimeException(e);
-        } catch (JWTVerificationException e) {
-            throw new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header");
         }
     }
 
