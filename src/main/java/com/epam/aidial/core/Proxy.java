@@ -219,7 +219,8 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         if (apiKey == null) {
             return tokenValidator.extractClaims(authorization)
-                    .map(extractedClaims -> new AuthorizationResult(new ApiKeyData(), extractedClaims));
+                    .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)),
+                            error -> Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header")));
         }
 
         if (apiKey.equals(extractTokenFromHeader(authorization))) {

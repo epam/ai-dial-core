@@ -3,8 +3,6 @@ package com.epam.aidial.core.security;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
-import com.epam.aidial.core.util.HttpException;
-import com.epam.aidial.core.util.HttpStatus;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -136,9 +134,6 @@ public class AccessTokenValidator {
                 futures.add(idp.extractClaimsFromUserInfo(accessToken));
             }
         }
-        if (futures.isEmpty()) {
-            return Future.failedFuture("IdP is not found in Core settings to support user info endpoint for extracting user claims from access token.");
-        }
         Future.any(futures).map(compositeFuture -> {
             int size = compositeFuture.size();
             for (int i = 0; i < size; i++) {
@@ -148,7 +143,7 @@ public class AccessTokenValidator {
                     return null;
                 }
             }
-            promise.fail(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header"));
+            promise.fail("IdP is not found in Core settings to support user info endpoint for extracting user claims from access token.");
             return null;
         }).onFailure(promise::fail);
         return promise.future();
