@@ -6,6 +6,25 @@
       "response" : {
         "status": 200
       }
+    },
+    "plain": {
+      "paths": ["/v1/plain"],
+      "methods": ["GET"],
+      "upstreams": [{"endpoint": "http://localhost:9876"}]
+    },
+    "vector_store_query": {
+      "paths": ["/v1/vector_store(/[^/]+)*$"],
+      "rewritePath": true,
+      "methods": ["GET"],
+      "userRoles": ["vstore_user", "vstore_admin"],
+      "upstreams": [{"endpoint": "http://localhost:9876"}]
+    },
+    "vector_store_mutation": {
+      "paths": ["/v1/vector_store(/[^/]+)*$"],
+      "rewritePath": true,
+      "methods": ["POST", "PUT", "DELETE"],
+      "userRoles": ["vstore_admin"],
+      "upstreams": [{"endpoint": "http://localhost:9876"}]
     }
   },
   "addons": {
@@ -101,6 +120,14 @@
     "proxyKey2": {
       "project": "EPM-RTC-RAIL",
       "role": "default"
+    },
+    "vstore_user_key": {
+      "project": "test",
+      "role": "vstore_user"
+    },
+    "vstore_admin_key": {
+      "project": "test",
+      "role": "vstore_admin"
     }
   },
   "roles": {

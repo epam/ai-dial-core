@@ -23,8 +23,8 @@ import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.client.utils.URIBuilder;
 
-import java.net.URL;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -46,6 +46,13 @@ public class RouteController implements Controller {
             return Future.succeededFuture();
         }
 
+        if (!hasAccess(route)) {
+            log.error("Forbidden route {}. Trace: {}. Span: {}. Key: {}. User sub: {}.",
+                    route.getName(), context.getTraceId(), context.getSpanId(), context.getProject(), context.getUserSub());
+            context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
+            return Future.succeededFuture();
+        }
+
         Route.Response response = route.getResponse();
         if (response == null) {
             UpstreamProvider upstreamProvider = new RouteEndpointProvider(route);
@@ -57,6 +64,7 @@ public class RouteController implements Controller {
                 return Future.succeededFuture();
             }
 
+            context.setRewritePath(route.isRewritePath());
             context.setUpstreamRoute(upstreamRoute);
         } else {
             context.getResponse().setStatusCode(response.getStatus());
@@ -87,7 +95,7 @@ public class RouteController implements Controller {
         Upstream upstream = route.get();
         Objects.requireNonNull(upstream);
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(new URL(upstream.getEndpoint()))
+                .setAbsoluteURI(getEndpointUri(upstream))
                 .setMethod(request.method());
 
         return proxy.getClient().request(options)
@@ -240,5 +248,22 @@ public class RouteController implements Controller {
         }
 
         return null;
+    }
+
+    @SneakyThrows
+    private String getEndpointUri(Upstream upstream) {
+        URIBuilder uriBuilder = new URIBuilder(upstream.getEndpoint());
+        if (context.isRewritePath()) {
+            uriBuilder.setPath(context.getRequest().path());
+        }
+        return uriBuilder.toString();
+    }
+
+    private boolean hasAccess(Route route) {
+        Set<String> allowedRoles = route.getUserRoles();
+        List<String> actualRoles = context.getUserRoles();
+
+        return allowedRoles.isEmpty() || actualRoles.stream()
+                .anyMatch(allowedRoles::contains);
     }
 }

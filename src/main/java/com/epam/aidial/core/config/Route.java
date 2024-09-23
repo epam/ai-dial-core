@@ -13,9 +13,11 @@ public class Route {
 
     private String name;
     private Response response;
+    private boolean rewritePath;
     private List<Pattern> paths = List.of();
     private Set<HttpMethod> methods = Set.of();
     private List<Upstream> upstreams = List.of();
+    private Set<String> userRoles = Set.of();
 
     @Data
     public static class Response {
