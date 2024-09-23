@@ -266,7 +266,7 @@ public class IdentityProvider {
             request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
             request.send().onFailure(promise::fail).onSuccess(response -> {
                 if (response.statusCode() != 200) {
-                    promise.fail(String.format("Request failed with http code %d", response.statusCode()));
+                    promise.fail(String.format("UserInfo endpoint '%s' is failed with http code %d", userInfoUrl, response.statusCode()));
                     return;
                 }
                 response.body().map(body -> {
@@ -280,7 +280,7 @@ public class IdentityProvider {
                 }).onFailure(promise::fail);
             });
         });
-        return promise.future();
+        return promise.future().onFailure(error -> log.warn(String.format("Can't extract claims from user info endpoint '%s':", userInfoUrl), error));
     }
 
     private ExtractedClaims from(DecodedJWT jwt) {
