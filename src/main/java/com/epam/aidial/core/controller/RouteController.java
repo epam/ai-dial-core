@@ -47,7 +47,8 @@ public class RouteController implements Controller {
         }
 
         if (!hasAccess(route)) {
-            log.error("Forbidden route {}. Key: {}. User sub: {}", route.getName(), context.getProject(), context.getUserSub());
+            log.error("Forbidden route {}. Trace: {}. Span: {}. Key: {}. User sub: {}.",
+                    route.getName(), context.getTraceId(), context.getSpanId(), context.getProject(), context.getUserSub());
             context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
             return Future.succeededFuture();
         }
