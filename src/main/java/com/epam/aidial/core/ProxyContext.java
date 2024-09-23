@@ -67,6 +67,7 @@ public class ProxyContext {
     private List<String> userRoles;
     private String userHash;
     private TokenUsage tokenUsage;
+    private boolean rewritePath;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;
     private Map<String, String> requestHeaders = Map.of();
