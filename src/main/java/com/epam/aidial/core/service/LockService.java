@@ -10,7 +10,9 @@ import org.redisson.client.codec.StringCodec;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
@@ -30,6 +32,8 @@ public class LockService {
     private final String prefix;
     private final RScript script;
 
+    private final Map<String, Long> measureLockTime = new HashMap<>();
+
     public LockService(RedissonClient redis, @Nullable String prefix) {
         this.prefix = prefix;
         this.script = redis.getScript(StringCodec.INSTANCE);
@@ -40,6 +44,7 @@ public class LockService {
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
         String id = id(key);
+        measureLockTime.put(id, System.currentTimeMillis());
         log.info("Lock key {}. TraceId {}. SpanId {}. ", id, traceId, spanId);
         long owner = ThreadLocalRandom.current().nextLong();
         long ttl = tryLock(id, owner);
@@ -110,13 +115,18 @@ public class LockService {
 
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
+        var time = measureLockTime.remove(id);
+        if (time == null) {
+            time = 0L;
+            log.warn("Id is not found {}", id);
+        }
         if (!ok) {
             log.error("Lock service failed to unlock: {}", id);
         } else {
             SpanContext spanContext = Span.current().getSpanContext();
             String traceId = spanContext.getTraceId();
             String spanId = spanContext.getSpanId();
-            log.info("Unlock key {}. TraceId {}. SpanId {}. ", id, traceId, spanId);
+            log.info("Unlock key {}. TraceId {}. SpanId {}. elapsed lock time in ms {}", id, traceId, spanId, System.currentTimeMillis() - time);
         }
 
     }
