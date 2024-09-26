@@ -269,6 +269,8 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
+            log.info("start handling request `{}` `{}`. TraceId {}. SpanId {}. User sub {}. Project key {}",
+                    request.method().name(), request.path(), traceId, spanId, context.getUserSub(), context.getProject());
             Controller controller = ControllerSelector.select(this, context);
             future = controller.handle();
         } catch (Exception t) {

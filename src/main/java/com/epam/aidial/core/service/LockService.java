@@ -1,6 +1,8 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
@@ -34,7 +36,11 @@ public class LockService {
     }
 
     public Lock lock(String key) {
+        SpanContext spanContext = Span.current().getSpanContext();
+        String traceId = spanContext.getTraceId();
+        String spanId = spanContext.getSpanId();
         String id = id(key);
+        log.info("Lock key {}. TraceId {}. SpanId {}. ", id, traceId, spanId);
         long owner = ThreadLocalRandom.current().nextLong();
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
@@ -106,7 +112,13 @@ public class LockService {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
             log.error("Lock service failed to unlock: {}", id);
+        } else {
+            SpanContext spanContext = Span.current().getSpanContext();
+            String traceId = spanContext.getTraceId();
+            String spanId = spanContext.getSpanId();
+            log.info("Unlock key {}. TraceId {}. SpanId {}. ", id, traceId, spanId);
         }
+
     }
 
     private boolean tryUnlock(String id, long owner) {

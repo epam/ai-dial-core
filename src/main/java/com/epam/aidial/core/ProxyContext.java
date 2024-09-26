@@ -146,6 +146,8 @@ public class ProxyContext {
         if (status != HttpStatus.OK) {
             log.warn("Responding with error. Key: {}. Trace: {}. Span: {}. Status: {}. Body: {}", getProject(), traceId, spanId, status,
                     body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
+        } else {
+            log.warn("Responding with success. Key: {}. Trace: {}. Span: {}. Status: {}", getProject(), traceId, spanId, status);
         }
 
         response.setStatusCode(status.getCode()).end(body);
