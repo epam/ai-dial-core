@@ -44,9 +44,9 @@ public class LockService {
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
         String id = id(key);
-        measureLockTime.put(id, System.currentTimeMillis());
         log.info("Lock key {}. TraceId {}. SpanId {}. ", id, traceId, spanId);
         long owner = ThreadLocalRandom.current().nextLong();
+        measureLockTime.put(String.format("%s-%d", id, owner), System.currentTimeMillis());
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
 
@@ -115,7 +115,7 @@ public class LockService {
 
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
-        var time = measureLockTime.remove(id);
+        var time = measureLockTime.remove(String.format("%s-%d", id, owner));
         if (time == null) {
             time = 0L;
             log.warn("Id is not found {}", id);
