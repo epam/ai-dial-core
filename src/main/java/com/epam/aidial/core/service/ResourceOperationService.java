@@ -69,7 +69,7 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == ResourceType.APPLICATION) {
-            applicationService.deleteApplication(source,  EtagHeader.ANY);
+            applicationService.deleteApplication(source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);
         }
