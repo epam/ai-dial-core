@@ -152,6 +152,8 @@ public class IdentityProvider {
             if (i == rolePath.length - 1) {
                 if (next instanceof List) {
                     return (List<String>) next;
+                } else if (next instanceof String) {
+                    return List.of((String) next);
                 }
             } else {
                 if (next instanceof Map) {
