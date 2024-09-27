@@ -18,8 +18,8 @@ public class Application extends Deployment {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class Function {
 
-        private String sources;
-        private String targets;
+        private String sourceFolder;
+        private String targetFolder;
         private Status status;
         private State state;
 

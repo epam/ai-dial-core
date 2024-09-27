@@ -22,12 +22,12 @@ public class ApplicationController {
 
     private final ProxyContext context;
     private final Vertx vertx;
-    private final ApplicationService applications;
+    private final ApplicationService applicationService;
 
     public ApplicationController(ProxyContext context, Proxy proxy) {
         this.context = context;
         this.vertx = proxy.getVertx();
-        this.applications = proxy.getApplicationService();
+        this.applicationService = proxy.getApplicationService();
     }
 
     public Future<?> getApplication(String applicationId) {
@@ -46,7 +46,7 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-    public Future<?> getApplications() {
+    public Future<?> getApplicationService() {
         Config config = context.getConfig();
         List<ApplicationData> list = new ArrayList<>();
 
@@ -59,8 +59,8 @@ public class ApplicationController {
 
         Future<List<ApplicationData>> future = Future.succeededFuture(list);
 
-        if (applications.isIncludeCustomApps()) {
-            future = vertx.executeBlocking(() -> applications.getAllApplications(context), false)
+        if (applicationService.isIncludeCustomApps()) {
+            future = vertx.executeBlocking(() -> applicationService.getAllApplications(context), false)
                     .map(apps -> {
                         apps.forEach(app -> list.add(ApplicationUtil.mapApplication(app)));
                         return list;

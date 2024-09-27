@@ -143,7 +143,7 @@ public class ControllerSelector {
         match = match(PATTERN_APPLICATIONS, path);
         if (match != null) {
             ApplicationController controller = new ApplicationController(context, proxy);
-            return controller::getApplications;
+            return controller::getApplicationService;
         }
 
         match = match(PATTERN_FILES_METADATA, path);

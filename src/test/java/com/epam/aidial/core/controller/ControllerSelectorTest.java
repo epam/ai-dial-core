@@ -180,7 +180,7 @@ public class ControllerSelectorTest {
         assertEquals(1, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         assertInstanceOf(ApplicationController.class, arg1);
-        assertEquals("getApplications", lambda.getImplMethodName());
+        assertEquals("getApplicationService", lambda.getImplMethodName());
     }
 
     @Test

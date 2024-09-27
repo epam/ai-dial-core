@@ -33,15 +33,15 @@ public class ApplicationService {
 
     private static final int PAGE_SIZE = 1000;
 
-    private final EncryptionService encryption;
-    private final ResourceService resources;
+    private final EncryptionService encryptionService;
+    private final ResourceService resourceService;
     private final String controllerUrl;
     @Getter
     private final boolean includeCustomApps;
 
-    public ApplicationService(EncryptionService encryption, ResourceService resources, JsonObject settings) {
-        this.encryption = encryption;
-        this.resources = resources;
+    public ApplicationService(EncryptionService encryptionService, ResourceService resourceService, JsonObject settings) {
+        this.encryptionService = encryptionService;
+        this.resourceService = resourceService;
         this.controllerUrl = settings.getString("controllerUrl", null);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
     }
@@ -56,7 +56,7 @@ public class ApplicationService {
 
     public List<Application> getPrivateApplications(ProxyContext context) {
         String location = BlobStorageUtil.buildInitiatorBucket(context);
-        String bucket = encryption.encrypt(location);
+        String bucket = encryptionService.encrypt(location);
 
         ResourceDescription folder = ResourceDescription.fromDecoded(ResourceType.APPLICATION, bucket, location, null);
         return getApplications(folder);
@@ -64,7 +64,7 @@ public class ApplicationService {
 
     public List<Application> getSharedApplications(ProxyContext context) {
         String location = BlobStorageUtil.buildInitiatorBucket(context);
-        String bucket = encryption.encrypt(location);
+        String bucket = encryptionService.encrypt(location);
 
         ListSharedResourcesRequest request = new ListSharedResourcesRequest();
         request.setResourceTypes(Set.of(ResourceType.APPLICATION));
@@ -76,7 +76,7 @@ public class ApplicationService {
         List<Application> list = new ArrayList<>();
 
         for (MetadataBase meta : metadata) {
-            ResourceDescription resource = ResourceDescription.fromAnyUrl(meta.getUrl(), encryption);
+            ResourceDescription resource = ResourceDescription.fromAnyUrl(meta.getUrl(), encryptionService);
 
             if (meta instanceof ResourceItemMetadata) {
                 list.add(getApplication(resource).getValue());
@@ -90,8 +90,8 @@ public class ApplicationService {
 
     public List<Application> getPublicApplications(ProxyContext context) {
         ResourceDescription folder = ResourceDescription.fromDecoded(ResourceType.APPLICATION, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
-        AccessService accesses = context.getProxy().getAccessService();
-        return getApplications(folder, page -> accesses.filterForbidden(context, folder, page));
+        AccessService accessService = context.getProxy().getAccessService();
+        return getApplications(folder, page -> accessService.filterForbidden(context, folder, page));
     }
 
     public Pair<ResourceItemMetadata, Application> getApplication(ResourceDescription resource) {
@@ -99,7 +99,7 @@ public class ApplicationService {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
         }
 
-        Pair<ResourceItemMetadata, String> result = resources.getResourceWithMetadata(resource);
+        Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource);
         if (result == null) {
             throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
         }
@@ -129,7 +129,7 @@ public class ApplicationService {
         String nextToken = null;
 
         do {
-            ResourceFolderMetadata folder = resources.getFolderMetadata(resource, nextToken, PAGE_SIZE, true);
+            ResourceFolderMetadata folder = resourceService.getFolderMetadata(resource, nextToken, PAGE_SIZE, true);
             if (folder == null) {
                 break;
             }
@@ -139,7 +139,7 @@ public class ApplicationService {
             for (MetadataBase meta : folder.getItems()) {
                 if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceType.APPLICATION) {
                     try {
-                        ResourceDescription item = ResourceDescription.fromAnyUrl(meta.getUrl(), encryption);
+                        ResourceDescription item = ResourceDescription.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = getApplication(item).getValue();
                         applications.add(application);
                     } catch (ResourceNotFoundException ignore) {
@@ -166,7 +166,7 @@ public class ApplicationService {
             throw new HttpException(HttpStatus.CONFLICT, "Currently not supported");
         }
 
-        ResourceItemMetadata meta = resources.computeResource(resource, etag, json -> {
+        ResourceItemMetadata meta = resourceService.computeResource(resource, etag, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class, true);
             Application.Function function = application.getFunction();
 
@@ -183,7 +183,7 @@ public class ApplicationService {
                 }
 
                 if (function != null) {
-                    function.setTargets(existing.getFunction().getTargets());
+                    function.setTargetFolder(existing.getFunction().getTargetFolder());
                     function.setStatus(existing.getFunction().getStatus());
                     function.setState(existing.getFunction().getState());
                 }
@@ -200,7 +200,7 @@ public class ApplicationService {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
         }
 
-        resources.computeResource(resource, etag, json -> {
+        resourceService.computeResource(resource, etag, json -> {
             Application application = ProxyUtil.convertToObject(json, Application.class, true);
             if (application == null) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Application is not found: " + resource.getUrl());
@@ -259,23 +259,23 @@ public class ApplicationService {
         Application.Function function = application.getFunction();
         if (function != null) {
             function.setStatus(null);
-            function.setTargets(null);
+            function.setTargetFolder(null);
             function.setState(null);
 
-            if (function.getSources() == null) {
+            if (function.getSourceFolder() == null) {
                 throw new IllegalArgumentException("Application function sources must be provided");
             }
 
             try {
-                ResourceDescription folder = ResourceDescription.fromAnyUrl(function.getSources(), encryption);
+                ResourceDescription folder = ResourceDescription.fromAnyUrl(function.getSourceFolder(), encryptionService);
 
                 if (!folder.isFolder() || folder.getType() != ResourceType.FILE) {
                     throw new IllegalArgumentException();
                 }
 
-                function.setSources(folder.getUrl());
+                function.setSourceFolder(folder.getUrl());
             } catch (Throwable e) {
-                throw new IllegalArgumentException("Application function sources must be a valid file folder: " + function.getSources());
+                throw new IllegalArgumentException("Application function sources must be a valid file folder: " + function.getSourceFolder());
             }
         }
     }
