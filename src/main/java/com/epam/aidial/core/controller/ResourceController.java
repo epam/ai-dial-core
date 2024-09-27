@@ -122,32 +122,8 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        Future<Pair<ResourceItemMetadata, String>> responseFuture;
-
-        if (descriptor.getType() == ResourceType.APPLICATION) {
-            responseFuture = vertx.executeBlocking(() -> {
-                Pair<ResourceItemMetadata, Application> result = applicationService.getApplication(descriptor);
-                ResourceItemMetadata meta = result.getKey();
-
-                Application application = result.getValue();
-                String body = hasWriteAccess
-                        ? ProxyUtil.convertToString(application, true)
-                        : ProxyUtil.convertToString(ApplicationUtil.mapApplication(application));
-
-                return Pair.of(meta, body);
-
-            }, false);
-        } else {
-            responseFuture = vertx.executeBlocking(() -> {
-                Pair<ResourceItemMetadata, String> result = service.getResourceWithMetadata(descriptor);
-
-                if (result == null) {
-                    throw new ResourceNotFoundException();
-                }
-
-                return result;
-            }, false);
-        }
+        Future<Pair<ResourceItemMetadata, String>> responseFuture = (descriptor.getType() == ResourceType.APPLICATION)
+                ? getApplicationData(descriptor, hasWriteAccess) : getResourceData(descriptor);
 
         responseFuture.onSuccess(pair -> {
                     context.putHeader(HttpHeaders.ETAG, pair.getKey().getEtag())
@@ -157,6 +133,33 @@ public class ResourceController extends AccessControlBaseController {
                 .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
+    }
+
+    private Future<Pair<ResourceItemMetadata, String>> getApplicationData(ResourceDescription descriptor, boolean hasWriteAccess) {
+        return vertx.executeBlocking(() -> {
+            Pair<ResourceItemMetadata, Application> result = applicationService.getApplication(descriptor);
+            ResourceItemMetadata meta = result.getKey();
+
+            Application application = result.getValue();
+            String body = hasWriteAccess
+                    ? ProxyUtil.convertToString(application, true)
+                    : ProxyUtil.convertToString(ApplicationUtil.mapApplication(application));
+
+            return Pair.of(meta, body);
+
+        }, false);
+    }
+
+    private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescription descriptor) {
+        return vertx.executeBlocking(() -> {
+            Pair<ResourceItemMetadata, String> result = service.getResourceWithMetadata(descriptor);
+
+            if (result == null) {
+                throw new ResourceNotFoundException();
+            }
+
+            return result;
+        }, false);
     }
 
     private Future<?> putResource(ResourceDescription descriptor) {
