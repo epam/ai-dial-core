@@ -12,7 +12,7 @@ import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
-import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.ApplicationService;
 import com.epam.aidial.core.service.HeartbeatService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
@@ -92,7 +92,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ResourceOperationService resourceOperationService;
     private final RuleService ruleService;
     private final NotificationService notificationService;
-    private final CustomApplicationService customApplicationService;
+    private final ApplicationService applicationService;
     private final HeartbeatService heartbeatService;
     private final String version;
 
@@ -268,7 +268,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                                                  HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
         Future<?> future;
         try {
-            ProxyContext context = new ProxyContext(config, request, apiKeyData, extractedClaims, traceId, spanId);
+            ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId);
             Controller controller = ControllerSelector.select(this, context);
             future = controller.handle();
         } catch (Exception t) {

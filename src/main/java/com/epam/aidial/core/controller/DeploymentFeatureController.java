@@ -3,7 +3,7 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.ApplicationService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.util.BufferingReadStream;
@@ -28,34 +28,18 @@ public class DeploymentFeatureController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private final CustomApplicationService applicationService;
 
     public DeploymentFeatureController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.applicationService = proxy.getCustomApplicationService();
-    }
+   }
 
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
-        Deployment deployment = context.getConfig().selectDeployment(deploymentId);
-
-        Future<Deployment> deploymentFuture;
-        if (deployment != null) {
-            if (!DeploymentController.hasAccess(context, deployment)) {
-                deploymentFuture = Future.failedFuture(new PermissionDeniedException("Forbidden deployment: " + deploymentId));
-            } else {
-                deploymentFuture = Future.succeededFuture(deployment);
-            }
-        } else {
-            deploymentFuture = proxy.getVertx().executeBlocking(() ->
-                    applicationService.getCustomApplication(deploymentId, context), false);
-        }
-
-        deploymentFuture.map(dep -> {
+        DeploymentController.selectDeployment(context, deploymentId).map(dep -> {
             String endpoint = endpointGetter.apply(dep);
             context.setDeployment(dep);
             context.getRequest().body()
-                    .onSuccess(requestBody -> this.handleRequestBody(endpoint, requireEndpoint, requestBody))
+                    .onSuccess(requestBody -> handleRequestBody(endpoint, requireEndpoint, requestBody))
                     .onFailure(this::handleRequestBodyError);
             return dep;
         }).otherwise(error -> {

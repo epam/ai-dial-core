@@ -32,21 +32,21 @@ public class ResourceDescription {
 
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(UrlUtil.encodePath(type.getGroup()))
+        builder.append(UrlUtil.encodePathSegment(type.getGroup()))
                 .append(BlobStorageUtil.PATH_SEPARATOR)
-                .append(UrlUtil.encodePath(bucketName))
+                .append(UrlUtil.encodePathSegment(bucketName))
                 .append(BlobStorageUtil.PATH_SEPARATOR);
 
         if (!parentFolders.isEmpty()) {
             String parentPath = parentFolders.stream()
-                    .map(UrlUtil::encodePath)
+                    .map(UrlUtil::encodePathSegment)
                     .collect(Collectors.joining(BlobStorageUtil.PATH_SEPARATOR));
             builder.append(parentPath)
                     .append(BlobStorageUtil.PATH_SEPARATOR);
         }
 
         if (name != null) {
-            builder.append(UrlUtil.encodePath(name));
+            builder.append(UrlUtil.encodePathSegment(name));
 
             if (isFolder) {
                 builder.append(BlobStorageUtil.PATH_SEPARATOR);

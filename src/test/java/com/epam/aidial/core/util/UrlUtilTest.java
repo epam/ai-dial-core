@@ -10,14 +10,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class UrlUtilTest {
 
     @Test
+    public void testPathSegmentEncoding() {
+        assertEquals("folder%201", UrlUtil.encodePathSegment("folder 1"));
+        assertEquals("folder%20%23", UrlUtil.encodePathSegment("folder #"));
+        assertEquals("%D1%84%D0%B0%D0%B9%D0%BB.txt", UrlUtil.encodePathSegment("файл.txt"));
+        assertEquals("fo$l+=d,e%23r%201", UrlUtil.encodePathSegment("fo$l+=d,e#r 1"));
+        assertEquals("%5BPlayback%5D", UrlUtil.encodePathSegment("[Playback]"));
+        assertEquals("%E2%98%BB%E2%98%BB%E2%98%B9%CF%A1%E2%8D%A3%EF%BD%BC", UrlUtil.encodePathSegment("☻☻☹ϡ⍣ｼ"));
+        assertEquals("gpt-35-turbo__(%60~!@%23$%5E*-_+%5B%5D'%7C%3C%3E.%3F%22)", UrlUtil.encodePathSegment("gpt-35-turbo__(`~!@#$^*-_+[]'|<>.?\")"));
+    }
+
+    @Test
     public void testPathEncoding() {
-        assertEquals("folder%201", UrlUtil.encodePath("folder 1"));
-        assertEquals("folder%20%23", UrlUtil.encodePath("folder #"));
-        assertEquals("%D1%84%D0%B0%D0%B9%D0%BB.txt", UrlUtil.encodePath("файл.txt"));
-        assertEquals("fo$l+=d,e%23r%201", UrlUtil.encodePath("fo$l+=d,e#r 1"));
-        assertEquals("%5BPlayback%5D", UrlUtil.encodePath("[Playback]"));
-        assertEquals("%E2%98%BB%E2%98%BB%E2%98%B9%CF%A1%E2%8D%A3%EF%BD%BC", UrlUtil.encodePath("☻☻☹ϡ⍣ｼ"));
-        assertEquals("gpt-35-turbo__(%60~!@%23$%5E*-_+%5B%5D'%7C%3C%3E.%3F%22)", UrlUtil.encodePath("gpt-35-turbo__(`~!@#$^*-_+[]'|<>.?\")"));
+        assertEquals("", UrlUtil.encodePath(""));
+        assertEquals("/", UrlUtil.encodePath("/"));
+        assertEquals("//", UrlUtil.encodePath("//"));
+        assertEquals("a/", UrlUtil.encodePath("a/"));
+        assertEquals("/b", UrlUtil.encodePath("/b"));
+        assertEquals("a/b", UrlUtil.encodePath("a/b"));
+        assertEquals("a//b", UrlUtil.encodePath("a//b"));
+        assertEquals("a//b/", UrlUtil.encodePath("a//b/"));
+        assertEquals("/a//b/", UrlUtil.encodePath("/a//b/"));
+        assertEquals("folder%201/folder%202/file%203.txt", UrlUtil.encodePath("folder 1/folder 2/file 3.txt"));
     }
 
     @Test

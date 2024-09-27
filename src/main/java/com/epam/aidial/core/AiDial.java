@@ -11,7 +11,7 @@ import com.epam.aidial.core.security.AccessService;
 import com.epam.aidial.core.security.AccessTokenValidator;
 import com.epam.aidial.core.security.ApiKeyStore;
 import com.epam.aidial.core.security.EncryptionService;
-import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.ApplicationService;
 import com.epam.aidial.core.service.HeartbeatService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
@@ -113,7 +113,6 @@ public class AiDial {
             resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
-            ResourceOperationService resourceOperationService = new ResourceOperationService(resourceService, invitationService, shareService);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
@@ -124,10 +123,11 @@ public class AiDial {
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
 
-            CustomApplicationService customApplicationService = new CustomApplicationService(encryptionService,
-                    resourceService, shareService, accessService, settings("applications"));
+            ApplicationService applicationService = new ApplicationService(encryptionService, resourceService,
+                    settings("applications"));
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
+            ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService, resourceService, invitationService, shareService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, settings("resources").getLong("heartbeatPeriod"));
@@ -135,7 +135,7 @@ public class AiDial {
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, customApplicationService, heartbeatService, version());
+                    notificationService, applicationService, heartbeatService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

@@ -2,7 +2,7 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.service.CustomApplicationService;
+import com.epam.aidial.core.service.ApplicationService;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -155,9 +155,8 @@ public class ControllerSelectorTest {
     public void testSelectGetApplicationController() {
         when(request.path()).thenReturn("/openai/applications/app1");
         when(request.method()).thenReturn(HttpMethod.GET);
-        CustomApplicationService customApplicationServiceMock = mock(CustomApplicationService.class);
-        when(proxy.getCustomApplicationService()).thenReturn(customApplicationServiceMock);
-        when(customApplicationServiceMock.includeCustomApplications()).thenReturn(true);
+        ApplicationService customApplicationServiceMock = mock(ApplicationService.class);
+        when(proxy.getApplicationService()).thenReturn(customApplicationServiceMock);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
@@ -172,9 +171,8 @@ public class ControllerSelectorTest {
     public void testSelectGetApplicationsController() {
         when(request.path()).thenReturn("/openai/applications");
         when(request.method()).thenReturn(HttpMethod.GET);
-        CustomApplicationService customApplicationServiceMock = mock(CustomApplicationService.class);
-        when(proxy.getCustomApplicationService()).thenReturn(customApplicationServiceMock);
-        when(customApplicationServiceMock.includeCustomApplications()).thenReturn(false);
+        ApplicationService customApplicationServiceMock = mock(ApplicationService.class);
+        when(proxy.getApplicationService()).thenReturn(customApplicationServiceMock);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
@@ -405,11 +403,17 @@ public class ControllerSelectorTest {
     }
 
     @Test
-    void testFailDeploymentWithSlash() {
+    void testSelectDeploymentWithSlash() {
         when(request.path()).thenReturn("/openai/deployments/deployment/xy");
         when(request.method()).thenReturn(HttpMethod.GET);
         Controller controller = ControllerSelector.select(proxy, context);
-        assertInstanceOf(RouteController.class, controller);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(DeploymentController.class, arg1);
+        assertEquals("deployment/xy", arg2);
     }
 
     @Test
