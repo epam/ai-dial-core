@@ -31,8 +31,8 @@ public class Application extends Deployment {
         @Accessors(chain = true)
         @JsonInclude(JsonInclude.Include.NON_NULL)
         public static class State {
-           private Image image;
-           private Deployment deployment;
+            private Image image;
+            private Deployment deployment;
         }
 
         @Data

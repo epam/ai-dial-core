@@ -67,12 +67,7 @@ public class ApplicationController {
                     });
         }
 
-        future.map(apps -> {
-                    ListData<ApplicationData> data = new ListData<>();
-                    data.setData(apps);
-                    return data;
-                })
-                .onSuccess(data -> context.respond(HttpStatus.OK, data))
+        future.onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
                 .onFailure(this::handleRequestError);
 
         return Future.succeededFuture();

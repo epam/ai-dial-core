@@ -3,7 +3,6 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.service.ApplicationService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.util.BufferingReadStream;
@@ -32,7 +31,7 @@ public class DeploymentFeatureController {
     public DeploymentFeatureController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-   }
+    }
 
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         DeploymentController.selectDeployment(context, deploymentId).map(dep -> {
