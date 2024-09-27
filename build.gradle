@@ -29,7 +29,7 @@ configurations.all {
 }
 
 dependencies {
-    implementation 'com.google.protobuf:protobuf-java:3.19.6'
+    implementation 'com.google.protobuf:protobuf-java:3.25.5'
     implementation 'org.slf4j:slf4j-api:1.7.32'
     implementation 'com.epam.deltix:gflog-api:3.0.6'
     implementation 'com.epam.deltix:gflog-core:3.0.6'
