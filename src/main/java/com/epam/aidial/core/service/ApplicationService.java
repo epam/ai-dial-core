@@ -217,9 +217,9 @@ public class ApplicationService {
         });
     }
 
-    public void copyApplication(ResourceDescription source, ResourceDescription description, boolean overwrite) {
+    public void copyApplication(ResourceDescription source, ResourceDescription destination, boolean overwrite) {
         Application application = getApplication(source).getValue();
-        putApplication(description, overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY, application, true);
+        putApplication(destination, overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY, application, true);
     }
 
     private void prepareApplication(ResourceDescription resource, EtagHeader etag,
