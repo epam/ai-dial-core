@@ -3,15 +3,17 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.data.ApplicationData;
 import com.epam.aidial.core.data.Conversation;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Prompt;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.security.AccessService;
+import com.epam.aidial.core.service.ApplicationService;
 import com.epam.aidial.core.service.InvitationService;
 import com.epam.aidial.core.service.LockService;
+import com.epam.aidial.core.service.PermissionDeniedException;
+import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.ShareService;
 import com.epam.aidial.core.storage.ResourceDescription;
@@ -24,6 +26,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -36,6 +39,7 @@ public class ResourceController extends AccessControlBaseController {
     private final ResourceService service;
     private final ShareService shareService;
     private final LockService lockService;
+    private final ApplicationService applicationService;
     private final InvitationService invitationService;
     private final boolean metadata;
     private final AccessService accessService;
@@ -45,6 +49,7 @@ public class ResourceController extends AccessControlBaseController {
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
+        this.applicationService = proxy.getApplicationService();
         this.shareService = proxy.getShareService();
         this.accessService = proxy.getAccessService();
         this.lockService = proxy.getLockService();
@@ -117,32 +122,44 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        vertx.executeBlocking(() -> service.getResourceWithMetadata(descriptor), false)
-                .onSuccess(pair -> {
-                    if (pair == null) {
-                        context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
-                    } else {
-                        ResourceItemMetadata itemMetadata = pair.getKey();
-                        String body = pair.getValue();
-                        context.putHeader(HttpHeaders.ETAG, itemMetadata.getEtag())
-                                .exposeHeaders();
+        Future<Pair<ResourceItemMetadata, String>> responseFuture = (descriptor.getType() == ResourceType.APPLICATION)
+                ? getApplicationData(descriptor, hasWriteAccess) : getResourceData(descriptor);
 
-                        // if resource type is application and caller has no write access - return application data
-                        if (descriptor.getType() == ResourceType.APPLICATION && !hasWriteAccess) {
-                            Application application = ProxyUtil.convertToObject(body, Application.class, true);
-                            ApplicationData applicationData = ApplicationUtil.mapApplication(application);
-                            context.respond(HttpStatus.OK, ProxyUtil.convertToString(applicationData));
-                        } else {
-                            context.respond(HttpStatus.OK, body);
-                        }
-                    }
+        responseFuture.onSuccess(pair -> {
+                    context.putHeader(HttpHeaders.ETAG, pair.getKey().getEtag())
+                            .exposeHeaders()
+                            .respond(HttpStatus.OK, pair.getValue());
                 })
-                .onFailure(error -> {
-                    log.warn("Can't get resource: {}", descriptor.getUrl(), error);
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-                });
+                .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
+    }
+
+    private Future<Pair<ResourceItemMetadata, String>> getApplicationData(ResourceDescription descriptor, boolean hasWriteAccess) {
+        return vertx.executeBlocking(() -> {
+            Pair<ResourceItemMetadata, Application> result = applicationService.getApplication(descriptor);
+            ResourceItemMetadata meta = result.getKey();
+
+            Application application = result.getValue();
+            String body = hasWriteAccess
+                    ? ProxyUtil.convertToString(application, true)
+                    : ProxyUtil.convertToString(ApplicationUtil.mapApplication(application));
+
+            return Pair.of(meta, body);
+
+        }, false);
+    }
+
+    private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescription descriptor) {
+        return vertx.executeBlocking(() -> {
+            Pair<ResourceItemMetadata, String> result = service.getResourceWithMetadata(descriptor);
+
+            if (result == null) {
+                throw new ResourceNotFoundException();
+            }
+
+            return result;
+        }, false);
     }
 
     private Future<?> putResource(ResourceDescription descriptor) {
@@ -162,73 +179,43 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
         }
 
-        context.getRequest().body().compose(bytes -> {
-                    if (bytes.length() > contentLimit) {
-                        String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
-                        throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
-                    }
+        Future<Pair<EtagHeader, String>> requestFuture = context.getRequest().body().map(bytes -> {
+            if (bytes.length() > contentLimit) {
+                String message = "Resource size: %s exceeds max limit: %s".formatted(bytes.length(), contentLimit);
+                throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
+            }
 
-                    EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
-                    ResourceType resourceType = descriptor.getType();
-                    String body = validateRequestBody(descriptor, resourceType, bytes.toString(StandardCharsets.UTF_8), etag.isOverwrite());
+            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+            String body = bytes.toString(StandardCharsets.UTF_8);
 
-                    return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag), false);
+            return Pair.of(etag, body);
+        });
+
+        Future<ResourceItemMetadata> responseFuture;
+
+        if (descriptor.getType() == ResourceType.APPLICATION) {
+            responseFuture =  requestFuture.compose(pair -> {
+                EtagHeader etag = pair.getKey();
+                Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class, true);
+                return vertx.executeBlocking(() -> applicationService.putApplication(descriptor, etag, application).getKey(), false);
+            });
+        } else {
+           responseFuture =  requestFuture.compose(pair -> {
+                EtagHeader etag = pair.getKey();
+                String body = pair.getValue();
+                validateRequestBody(descriptor, body);
+                return vertx.executeBlocking(() -> service.putResource(descriptor, body, etag), false);
+            });
+        }
+
+        responseFuture.onSuccess((metadata) -> {
+                    context.putHeader(HttpHeaders.ETAG, metadata.getEtag())
+                            .exposeHeaders()
+                            .respond(HttpStatus.OK, metadata);
                 })
-                .onSuccess((metadata) -> {
-                    if (metadata == null) {
-                        context.respond(HttpStatus.CONFLICT, "Resource already exists: " + descriptor.getUrl());
-                    } else {
-                        context.putHeader(HttpHeaders.ETAG, metadata.getEtag())
-                                .exposeHeaders()
-                                .respond(HttpStatus.OK, metadata);
-                    }
-                })
-                .onFailure(error -> {
-                    if (error instanceof HttpException exception) {
-                        context.respond(exception.getStatus(), exception.getMessage());
-                    } else if (error instanceof IllegalArgumentException badRequest) {
-                        context.respond(HttpStatus.BAD_REQUEST, badRequest.getMessage());
-                    } else {
-                        log.warn("Can't put resource: {}", descriptor.getUrl(), error);
-                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-                    }
-                });
+                .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
-    }
-
-    private static String validateRequestBody(ResourceDescription descriptor, ResourceType resourceType, String body, boolean overwrite) {
-        switch (resourceType) {
-            case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
-            case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
-            case APPLICATION -> {
-                Application application = ProxyUtil.convertToObject(body, Application.class, true);
-                if (application != null) {
-                    if (application.getEndpoint() == null) {
-                        throw new IllegalArgumentException("Application endpoint must be provided");
-                    }
-                    // replace application name with it's url
-                    application.setName(descriptor.getUrl());
-                    // defining user roles in custom applications are not allowed
-                    application.setUserRoles(null);
-                    // forward auth token is not allowed for custom applications
-                    application.setForwardAuthToken(false);
-                    String reference = application.getReference();
-                    // reject request if both If-None-Match header and reference provided
-                    if (reference != null && !overwrite) {
-                        throw new IllegalArgumentException("Creating application with provided reference is not allowed");
-                    }
-                    // generate reference if not provided
-                    if (reference == null) {
-                        application.setReference(ApplicationUtil.generateReference());
-                    }
-
-                    body = ProxyUtil.convertToString(application, true);
-                }
-            }
-            default -> throw new IllegalArgumentException("Unsupported resource type " + resourceType);
-        }
-        return body;
     }
 
     private Future<?> deleteResource(ResourceDescription descriptor) {
@@ -240,24 +227,52 @@ public class ResourceController extends AccessControlBaseController {
                     EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
+
                     return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
                         shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
-                        return service.deleteResource(descriptor, etag);
+
+                        boolean deleted = true;
+
+                        if (descriptor.getType() == ResourceType.APPLICATION) {
+                            applicationService.deleteApplication(descriptor, etag);
+                        } else {
+                           deleted = service.deleteResource(descriptor, etag);
+                        }
+
+                        if (!deleted) {
+                            throw new ResourceNotFoundException();
+                        }
+
+                        return null;
                     });
                 }, false)
-                .onSuccess(deleted -> {
-                    if (deleted) {
-                        context.respond(HttpStatus.OK);
-                    } else {
-                        context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
-                    }
-                })
-                .onFailure(error -> {
-                    log.warn("Can't delete resource: {}", descriptor.getUrl(), error);
-                    context.respond(error, error.getMessage());
-                });
+                .onSuccess(ignore -> context.respond(HttpStatus.OK))
+                .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
+    }
+
+    private void handleError(ResourceDescription descriptor, Throwable error) {
+        if (error instanceof HttpException exception) {
+            context.respond(exception.getStatus(), exception.getMessage());
+        } else if (error instanceof IllegalArgumentException) {
+            context.respond(HttpStatus.BAD_REQUEST, "Bad request: " + descriptor.getUrl());
+        } else if (error instanceof ResourceNotFoundException) {
+            context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
+        } else if (error instanceof PermissionDeniedException) {
+            context.respond(HttpStatus.FORBIDDEN, "Forbidden: " + descriptor.getUrl());
+        } else {
+            log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private static void validateRequestBody(ResourceDescription descriptor, String body) {
+        switch (descriptor.getType()) {
+            case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
+            case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+            default -> throw new IllegalArgumentException("Unsupported resource type " + descriptor.getType());
+        }
     }
 }

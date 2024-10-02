@@ -32,21 +32,21 @@ public class ResourceDescription {
 
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(UrlUtil.encodePath(type.getGroup()))
+        builder.append(UrlUtil.encodePathSegment(type.getGroup()))
                 .append(BlobStorageUtil.PATH_SEPARATOR)
-                .append(UrlUtil.encodePath(bucketName))
+                .append(UrlUtil.encodePathSegment(bucketName))
                 .append(BlobStorageUtil.PATH_SEPARATOR);
 
         if (!parentFolders.isEmpty()) {
             String parentPath = parentFolders.stream()
-                    .map(UrlUtil::encodePath)
+                    .map(UrlUtil::encodePathSegment)
                     .collect(Collectors.joining(BlobStorageUtil.PATH_SEPARATOR));
             builder.append(parentPath)
                     .append(BlobStorageUtil.PATH_SEPARATOR);
         }
 
         if (name != null) {
-            builder.append(UrlUtil.encodePath(name));
+            builder.append(UrlUtil.encodePathSegment(name));
 
             if (isFolder) {
                 builder.append(BlobStorageUtil.PATH_SEPARATOR);
@@ -202,39 +202,6 @@ public class ResourceDescription {
 
     public static ResourceDescription fromAnyUrl(String url, EncryptionService encryption) {
         return fromUrl(url, null, null, encryption);
-    }
-
-    public static ResourceDescription fromAnyDecodedUrl(String url, EncryptionService encryption) {
-        String[] parts = url.split(BlobStorageUtil.PATH_SEPARATOR);
-
-        if (parts.length < 2) {
-            throw new IllegalArgumentException("Url has less than two segments: " + url);
-        }
-
-        if (url.startsWith(BlobStorageUtil.PATH_SEPARATOR)) {
-            throw new IllegalArgumentException("Url must not start with " + BlobStorageUtil.PATH_SEPARATOR + ", but: " + url);
-        }
-
-        if (parts.length == 2 && !url.endsWith(BlobStorageUtil.PATH_SEPARATOR)) {
-            throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
-        }
-
-        ResourceType resourceType = ResourceType.of(parts[0]);
-        String bucket = parts[1];
-        String location = null;
-
-        if (bucket.equals(BlobStorageUtil.PUBLIC_BUCKET)) {
-            location = BlobStorageUtil.PUBLIC_LOCATION;
-        } else if (encryption != null) {
-            location = encryption.decrypt(bucket);
-        }
-
-        if (location == null) {
-            throw new IllegalArgumentException("Url has invalid bucket: " + url);
-        }
-
-        String relativePath = url.substring(parts[0].length() + parts[1].length() + 2);
-        return fromDecoded(resourceType, bucket, location, relativePath);
     }
 
     @Override

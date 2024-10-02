@@ -442,24 +442,47 @@ public class ResourceService implements AutoCloseable {
     }
 
     public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
+        computeResource(descriptor, EtagHeader.ANY, fn);
+    }
+
+    public ResourceItemMetadata computeResource(ResourceDescription descriptor, EtagHeader etag, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
-            String oldBody = getResource(descriptor, false);
-            String newBody = fn.apply(oldBody);
-            if (newBody != null) {
-                // update resource only if body changed
-                if (!newBody.equals(oldBody)) {
-                    putResource(descriptor, newBody, EtagHeader.ANY, false);
-                }
+            Pair<ResourceItemMetadata, String> oldResult = getResourceWithMetadata(descriptor, false);
+
+            if (oldResult != null) {
+                etag.validate(oldResult.getKey().getEtag());
             }
+
+            String oldBody = oldResult == null ? null : oldResult.getValue();
+            String newBody = fn.apply(oldBody);
+
+            if (oldBody == null && newBody == null) {
+                return null;
+            }
+
+            if (oldBody != null && newBody == null) {
+                deleteResource(descriptor, etag, false);
+                return oldResult.getKey();
+            }
+
+            if (Objects.equals(oldBody, newBody)) {
+                return oldResult.getKey();
+            }
+
+            return putResource(descriptor, newBody, etag, false);
         }
     }
 
     public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag) {
+        return deleteResource(descriptor, etag, true);
+    }
+
+    private boolean deleteResource(ResourceDescription descriptor, EtagHeader etag, boolean lock) {
         String redisKey = redisKey(descriptor);
 
-        try (var ignore = lockService.lock(redisKey)) {
+        try (var ignore = lock ? lockService.lock(redisKey) : null) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
             if (metadata == null) {

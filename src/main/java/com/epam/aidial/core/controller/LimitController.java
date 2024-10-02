@@ -2,7 +2,6 @@ package com.epam.aidial.core.controller;
 
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.util.HttpStatus;
@@ -22,33 +21,15 @@ public class LimitController {
     }
 
     public Future<?> getLimits(String deploymentId) {
-
-        Deployment deployment = context.getConfig().selectDeployment(deploymentId);
-
-        Future<Deployment> deploymentFuture;
-        if (deployment != null) {
-            if (DeploymentController.hasAccess(context, deployment)) {
-                deploymentFuture = Future.succeededFuture(deployment);
-            } else {
-                deploymentFuture = Future.failedFuture(new PermissionDeniedException("Forbidden deployment: " + deploymentId));
-            }
-        } else {
-            deploymentFuture = proxy.getVertx().executeBlocking(() ->
-                    proxy.getCustomApplicationService().getCustomApplication(deploymentId, context), false);
-        }
-
-        deploymentFuture.compose(dep -> {
-            if (dep == null) {
-                throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
-            }
-            return proxy.getRateLimiter().getLimitStats(dep, context);
-        }).onSuccess(limitStats -> {
-            if (limitStats == null) {
-                context.respond(HttpStatus.NOT_FOUND);
-            } else {
-                context.respond(HttpStatus.OK, limitStats);
-            }
-        }).onFailure(error -> handleRequestError(deploymentId, error));
+        DeploymentController.selectDeployment(context, deploymentId)
+                .compose(dep -> proxy.getRateLimiter().getLimitStats(dep, context))
+                .onSuccess(limitStats -> {
+                    if (limitStats == null) {
+                        context.respond(HttpStatus.NOT_FOUND);
+                    } else {
+                        context.respond(HttpStatus.OK, limitStats);
+                    }
+                }).onFailure(error -> handleRequestError(deploymentId, error));
 
         return Future.succeededFuture();
     }

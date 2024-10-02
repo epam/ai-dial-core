@@ -46,6 +46,7 @@ public class ProxyContext {
             .map(header -> header.toString().toLowerCase())
             .collect(Collectors.toUnmodifiableSet());
 
+    private final Proxy proxy;
     private final Config config;
     // API key of root requester
     private final Key key;
@@ -89,7 +90,8 @@ public class ProxyContext {
     private List<String> interceptors;
     private boolean isStreamingRequest;
 
-    public ProxyContext(Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
+    public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
+        this.proxy = proxy;
         this.config = config;
         this.apiKeyData = apiKeyData;
         this.request = request;

@@ -26,7 +26,7 @@ public class ResourceUrl {
                 builder.append(BlobStorageUtil.PATH_SEPARATOR);
             }
 
-            builder.append(UrlUtil.encodePath(segments[i]));
+            builder.append(UrlUtil.encodePathSegment(segments[i]));
         }
 
         if (folder) {

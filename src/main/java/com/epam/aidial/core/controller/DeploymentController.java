@@ -1,17 +1,20 @@
 package com.epam.aidial.core.controller;
 
+import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.Key;
-import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.data.DeploymentData;
 import com.epam.aidial.core.data.FeaturesData;
 import com.epam.aidial.core.data.ListData;
+import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.service.PermissionDeniedException;
+import com.epam.aidial.core.service.ResourceNotFoundException;
+import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.HttpStatus;
+import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 
@@ -55,6 +58,41 @@ public class DeploymentController {
         list.setData(deployments);
 
         return context.respond(HttpStatus.OK, list);
+    }
+
+    public static Future<Deployment> selectDeployment(ProxyContext context, String id) {
+        Deployment deployment = context.getConfig().selectDeployment(id);
+
+        if (deployment != null) {
+            if (!DeploymentController.hasAccess(context, deployment)) {
+                return Future.failedFuture(new PermissionDeniedException("Forbidden deployment: " + id));
+            } else {
+                return Future.succeededFuture(deployment);
+            }
+        }
+
+        Proxy proxy = context.getProxy();
+        return proxy.getVertx().executeBlocking(() -> {
+            String url;
+            ResourceDescription resource;
+
+            try {
+                url = UrlUtil.encodePath(id);
+                resource = ResourceDescription.fromAnyUrl(url, proxy.getEncryptionService());
+            } catch (Throwable ignore) {
+                throw new ResourceNotFoundException("Unknown application: " + id);
+            }
+
+            if (resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
+                throw new ResourceNotFoundException("Invalid application url: " + url);
+            }
+
+            if (!proxy.getAccessService().hasReadAccess(resource, context)) {
+                throw new PermissionDeniedException();
+            }
+
+            return proxy.getApplicationService().getApplication(resource).getValue();
+        }, false);
     }
 
     public static boolean hasAccess(ProxyContext context, Deployment deployment) {

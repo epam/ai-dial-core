@@ -17,16 +17,16 @@ import java.util.regex.Pattern;
 public class ControllerSelector {
 
     private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(.+?)/(completions|chat/completions|embeddings)$");
-    private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/([^/]+)$");
+    private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(.+?)$");
     private static final Pattern PATTERN_DEPLOYMENTS = Pattern.compile("^/+openai/deployments$");
 
-    private static final Pattern PATTERN_MODEL = Pattern.compile("^/+openai/models/([^/]+)$");
+    private static final Pattern PATTERN_MODEL = Pattern.compile("^/+openai/models/(.+?)$");
     private static final Pattern PATTERN_MODELS = Pattern.compile("^/+openai/models$");
 
-    private static final Pattern PATTERN_ADDON = Pattern.compile("^/+openai/addons/([^/]+)$");
+    private static final Pattern PATTERN_ADDON = Pattern.compile("^/+openai/addons/(.+?)$");
     private static final Pattern PATTERN_ADDONS = Pattern.compile("^/+openai/addons$");
 
-    private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/([^/]+)$");
+    private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/(.+?)$");
     private static final Pattern PATTERN_ASSISTANTS = Pattern.compile("^/+openai/assistants$");
 
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(.+?)$");
@@ -56,7 +56,7 @@ public class ControllerSelector {
 
     private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move|subscribe)$");
 
-    private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/([^/]+)/limits$");
+    private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/(.+?)/limits$");
 
     private static final Pattern NOTIFICATIONS = Pattern.compile("^/v1/ops/notification/(list|delete)$");
 
@@ -143,7 +143,7 @@ public class ControllerSelector {
         match = match(PATTERN_APPLICATIONS, path);
         if (match != null) {
             ApplicationController controller = new ApplicationController(context, proxy);
-            return controller::getApplications;
+            return controller::getApplicationService;
         }
 
         match = match(PATTERN_FILES_METADATA, path);

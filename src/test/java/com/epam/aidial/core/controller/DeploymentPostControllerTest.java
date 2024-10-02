@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
 import com.epam.aidial.core.security.ApiKeyStore;
+import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.token.TokenUsage;
 import com.epam.aidial.core.upstream.UpstreamProvider;
@@ -129,7 +130,9 @@ public class DeploymentPostControllerTest {
         when(context.getConfig()).thenReturn(config);
         when(proxy.getVertx()).thenReturn(vertx);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(null));
+        when(vertx.executeBlocking(any(Callable.class), eq(false)))
+                .thenReturn(Future.failedFuture(new ResourceNotFoundException("Not found")));
+        when(context.getProxy()).thenReturn(proxy);
 
         controller.handle("unknown-app", "chat/completions");
 
@@ -404,6 +407,7 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxy()).thenReturn(proxy);
 
         controller.handle("applications/bucket/app1", "chat/completions");
 

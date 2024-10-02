@@ -23,8 +23,26 @@ public class UrlUtil {
     private static final Pattern ABSOLUTE_URL_PATTERN = Pattern.compile("^[a-z][a-z0-9-+.]*?://", Pattern.CASE_INSENSITIVE);
 
     @SneakyThrows
+    public String encodePathSegment(String segment) {
+        return ENCODER.escape(segment);
+    }
+
     public String encodePath(String path) {
-        return ENCODER.escape(path);
+        StringBuilder builder = new StringBuilder();
+
+        for (int i = 0; i < path.length(); i++) {
+            int index = path.indexOf('/', i);
+            if (index == -1) {
+                builder.append(encodePathSegment(path.substring(i)));
+                break;
+            }
+
+            builder.append(encodePathSegment(path.substring(i, index)));
+            builder.append("/");
+            i = index;
+        }
+
+        return builder.toString();
     }
 
     public String decodePath(String path) {

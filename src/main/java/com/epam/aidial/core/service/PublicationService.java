@@ -332,7 +332,7 @@ public class PublicationService {
                     .formatted(PUBLIC_BUCKET, PATH_SEPARATOR));
         }
 
-        String id = UrlUtil.encodePath(ids.get());
+        String id = UrlUtil.encodePathSegment(ids.get());
         String publicationUrl = String.join(PATH_SEPARATOR, "publications", bucketName, id);
         String reviewBucket = encodeReviewBucket(bucketLocation, id);
         targetFolder = targetFolderUrl.getUrl();

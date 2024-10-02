@@ -19,7 +19,6 @@ import com.epam.aidial.core.function.enhancement.ApplyDefaultDeploymentSettingsF
 import com.epam.aidial.core.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.limiter.RateLimitResult;
-import com.epam.aidial.core.service.CustomApplicationService;
 import com.epam.aidial.core.service.PermissionDeniedException;
 import com.epam.aidial.core.service.ResourceNotFoundException;
 import com.epam.aidial.core.token.TokenUsage;
@@ -63,13 +62,11 @@ public class DeploymentPostController {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private final CustomApplicationService applicationService;
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.applicationService = proxy.getCustomApplicationService();
         this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
@@ -92,32 +89,8 @@ public class DeploymentPostController {
     }
 
     private Future<?> handleDeployment(String deploymentId, String deploymentApi) {
-        Deployment deployment = context.getConfig().selectDeployment(deploymentId);
-        boolean isValidDeployment = isValidDeploymentApi(deployment, deploymentApi);
-
-        if (!isValidDeployment) {
-            log.warn("Deployment {}/{} is not valid", deploymentId, deploymentApi);
-            return respond(HttpStatus.NOT_FOUND, "Deployment is not found");
-        }
-
-        Future<Deployment> deploymentFuture;
-        if (deployment != null) {
-            if (!isBaseAssistant(deployment) && !DeploymentController.hasAccess(context, deployment)) {
-                log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-                return respond(HttpStatus.FORBIDDEN, "Forbidden deployment: " + deploymentId);
-            }
-            deploymentFuture = Future.succeededFuture(deployment);
-        } else {
-            deploymentFuture = proxy.getVertx().executeBlocking(() ->
-                applicationService.getCustomApplication(deploymentId, context), false);
-        }
-
-        return deploymentFuture
+        return DeploymentController.selectDeployment(context, deploymentId)
                 .map(dep -> {
-                    if (dep == null) {
-                        throw new ResourceNotFoundException("Deployment " + deploymentId + " not found");
-                    }
-
                     context.setDeployment(dep);
                     return dep;
                 })
@@ -574,10 +547,6 @@ public class DeploymentPostController {
         String endpoint = deployment.getEndpoint();
         String query = request.query();
         return endpoint + (query == null ? "" : "?" + query);
-    }
-
-    private static boolean isBaseAssistant(Deployment deployment) {
-        return deployment.getName().equals(Config.ASSISTANT);
     }
 
     private Future<?> respond(HttpStatus status, String errorMessage) {

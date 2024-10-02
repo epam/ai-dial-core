@@ -197,29 +197,4 @@ public class ResourceDescriptionTest {
         assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/public"));
         assertThrows(IllegalArgumentException.class, () -> ResourceDescription.fromPublicUrl("publications/private/"));
     }
-
-    @Test
-    public void testFromAnyDecodedUrl() {
-        JsonObject encryptionSettings = new JsonObject();
-        encryptionSettings.put("secret", "secret");
-        encryptionSettings.put("key", "key");
-        EncryptionService encryptionService = new EncryptionService(encryptionSettings);
-        String location = "Users/User1/";
-        String bucket = encryptionService.encrypt(location);
-
-        ResourceDescription privateResource = ResourceDescription.fromAnyDecodedUrl("files/%s/my folder/some file".formatted(bucket), encryptionService);
-        assertEquals(ResourceType.FILE, privateResource.getType());
-        assertEquals(bucket, privateResource.getBucketName());
-        assertEquals(location, privateResource.getBucketLocation());
-        assertEquals("files/" + bucket + "/my%20folder/some%20file", privateResource.getUrl());
-        assertFalse(privateResource.isFolder());
-        assertTrue(privateResource.isPrivate());
-
-        ResourceDescription publicResource = ResourceDescription.fromAnyDecodedUrl("applications/public/my folder/some app", encryptionService);
-        assertEquals(ResourceType.APPLICATION, publicResource.getType());
-        assertEquals("public", publicResource.getBucketName());
-        assertEquals("applications/public/my%20folder/some%20app", publicResource.getUrl());
-        assertFalse(publicResource.isFolder());
-        assertTrue(publicResource.isPublic());
-    }
 }

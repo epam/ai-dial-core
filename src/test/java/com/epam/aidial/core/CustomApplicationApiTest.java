@@ -47,6 +47,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "icon_url":"http://application1/icon.svg",
                 "description":"My Custom Application Description",
                 "reference": "@ignore",
+                "user_roles" : [ ],
                 "forward_auth_token":false,
                 "defaults": {},
                 "interceptors": [],
@@ -206,6 +207,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "reference": "@ignore",
+                "user_roles" : [ ],
                 "forward_auth_token": false,
                 "features": {
                  "rate_endpoint": "http://application1/rate",
@@ -822,6 +824,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "reference": "@ignore",
+                "user_roles" : [ ],
                 "forward_auth_token": false,
                 "defaults": {},
                 "interceptors": [],
@@ -842,6 +845,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "reference": "@ignore",
+                "user_roles" : [ ],
                 "forward_auth_token": false,
                 "defaults": {},
                 "interceptors": [],
@@ -861,7 +865,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "destinationUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2"
                 }
                 """);
-        verify(response, 400);
+        verify(response, 412, "Resource already exists");
 
         // verify move operation succeed
         response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
@@ -884,6 +888,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "icon_url": "http://application1/icon.svg",
                 "description": "My Custom Application Description",
                 "reference": "@ignore",
+                "user_roles" : [ ],
                 "forward_auth_token": false,
                 "defaults": {},
                 "interceptors": [],

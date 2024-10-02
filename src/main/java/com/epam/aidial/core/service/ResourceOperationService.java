@@ -17,6 +17,7 @@ public class ResourceOperationService {
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
             ResourceType.PROMPT, ResourceType.APPLICATION);
 
+    private final ApplicationService applicationService;
     private final ResourceService resourceService;
     private final InvitationService invitationService;
     private final ShareService shareService;
@@ -42,15 +43,14 @@ public class ResourceOperationService {
             throw new IllegalStateException("Unsupported type: " + source.getType());
         }
 
-        boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
-        if (!copied) {
-            throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
-                    .formatted(sourceResourceUrl, destinationResourceUrl));
-        }
-
-        // replace application identity, preserve reference
         if (destination.getType() == ResourceType.APPLICATION) {
-            resourceService.computeResource(destination, body -> PublicationUtil.replaceApplicationIdentity(body, destination, true));
+            applicationService.copyApplication(source, destination, overwriteIfExists);
+        } else {
+            boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
+            if (!copied) {
+                throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
+                        .formatted(sourceResourceUrl, destinationResourceUrl));
+            }
         }
 
         if (source.isPrivate()) {
@@ -68,6 +68,10 @@ public class ResourceOperationService {
             }
         }
 
-        resourceService.deleteResource(source, EtagHeader.ANY);
+        if (destination.getType() == ResourceType.APPLICATION) {
+            applicationService.deleteApplication(source, EtagHeader.ANY);
+        } else {
+            resourceService.deleteResource(source, EtagHeader.ANY);
+        }
     }
 }
