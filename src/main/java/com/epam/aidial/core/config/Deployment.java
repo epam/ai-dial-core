@@ -32,4 +32,8 @@ public abstract class Deployment {
      * List of interceptors to be called for the deployment
      */
     private List<String> interceptors = List.of();
+    /**
+     * The field contains a list of keywords aka tags which describe the deployment, e.g. code-gen, text2image.
+     */
+    private List<String> descriptionKeywords = List.of();
 }
