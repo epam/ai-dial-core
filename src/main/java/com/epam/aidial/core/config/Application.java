@@ -18,33 +18,13 @@ public class Application extends Deployment {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class Function {
 
+        private String id;
         private String sourceFolder;
         private String targetFolder;
         private Status status;
-        private State state;
 
         public enum Status {
             CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED
-        }
-
-        @Data
-        @Accessors(chain = true)
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        public static class State {
-            private Image image;
-            private Deployment deployment;
-        }
-
-        @Data
-        @Accessors(chain = true)
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        public static class Image {
-        }
-
-        @Data
-        @Accessors(chain = true)
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        public static class Deployment {
         }
     }
 }

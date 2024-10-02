@@ -116,15 +116,14 @@ public class AiDial {
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
+            ApplicationService applicationService = new ApplicationService(vertx, client,
+                    encryptionService, resourceService, lockService, generator, settings("applications"));
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, generator, clock);
+                    ruleService, notificationService, applicationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
-
-            ApplicationService applicationService = new ApplicationService(encryptionService, resourceService,
-                    settings("applications"));
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService, resourceService, invitationService, shareService);

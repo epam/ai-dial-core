@@ -50,43 +50,6 @@ public class PublicationUtil {
         return conversation.toString();
     }
 
-    public String replaceApplicationLinks(String body, ResourceDescription targetResource, boolean preserveReference, Map<String, String> attachmentsMapping) {
-        return Optional.ofNullable(body).map(JsonObject::new)
-                .map(app -> PublicationUtil.replaceApplicationIdentity(app, targetResource, preserveReference))
-                .map(app -> PublicationUtil.replaceApplicationLinks(app, attachmentsMapping))
-                .map(JsonObject::toString)
-                .orElse(null);
-    }
-
-    private JsonObject replaceApplicationLinks(JsonObject application, Map<String, String> attachmentsMapping) {
-        String iconUrl = application.getString("icon_url");
-        if (iconUrl != null) {
-            String decodedIconUrl = UrlUtil.decodePath(iconUrl);
-            String toReplace = attachmentsMapping.get(decodedIconUrl);
-            if (toReplace != null) {
-                application.put("icon_url", toReplace);
-            }
-        }
-        return application;
-    }
-
-    public String replaceApplicationIdentity(String body, ResourceDescription targetResource, boolean preserveReference) {
-        return Optional.ofNullable(body).map(JsonObject::new)
-                .map(app -> PublicationUtil.replaceApplicationIdentity(app, targetResource, preserveReference))
-                .map(JsonObject::toString)
-                .orElse(null);
-    }
-
-    private JsonObject replaceApplicationIdentity(JsonObject application, ResourceDescription targetResource, boolean preserveReference) {
-        application.put("name", targetResource.getUrl());
-
-        if (!preserveReference) {
-            application.put("reference", ApplicationUtil.generateReference());
-        }
-
-        return application;
-    }
-
     private void replaceAttachments(JsonArray messages, Map<String, String> attachmentsMapping) {
         if (messages == null || messages.isEmpty()) {
             return;

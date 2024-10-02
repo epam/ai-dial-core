@@ -3,7 +3,6 @@ package com.epam.aidial.core.controller;
 import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
@@ -27,6 +26,7 @@ import com.epam.aidial.core.upstream.DeploymentUpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamProvider;
 import com.epam.aidial.core.upstream.UpstreamRoute;
 import com.epam.aidial.core.util.BufferingReadStream;
+import com.epam.aidial.core.util.HttpException;
 import com.epam.aidial.core.util.HttpStatus;
 import com.epam.aidial.core.util.ModelCostCalculator;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -91,6 +91,10 @@ public class DeploymentPostController {
     private Future<?> handleDeployment(String deploymentId, String deploymentApi) {
         return DeploymentController.selectDeployment(context, deploymentId)
                 .map(dep -> {
+                    if (dep.getEndpoint() == null) {
+                        throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
+                    }
+
                     context.setDeployment(dep);
                     return dep;
                 })
@@ -153,6 +157,9 @@ public class DeploymentPostController {
         } else if (error instanceof ResourceNotFoundException) {
             log.error("Deployment not found {}", deploymentId, error);
             respond(HttpStatus.NOT_FOUND, error.getMessage());
+        } else if (error instanceof HttpException e) {
+            log.error("Deployment error {}", deploymentId, error);
+            respond(e.getStatus(), e.getMessage());
         } else {
             log.error("Failed to handle deployment {}", deploymentId, error);
             respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);

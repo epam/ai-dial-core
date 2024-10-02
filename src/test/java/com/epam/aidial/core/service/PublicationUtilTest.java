@@ -1,7 +1,6 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.ResourceBaseTest;
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.ProxyUtil;
@@ -11,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 public class PublicationUtilTest {
 
@@ -301,81 +299,6 @@ public class PublicationUtilTest {
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", "files/public/License",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", "files/public/Dockerfile",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/", "files/public/attachments/")));
-    }
-
-    @Test
-    void testReplaceApplicationIdentity() {
-        String application = """
-                {
-                "name":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                "endpoint":"http://application1/v1/completions",
-                "display_name":"My Custom Application",
-                "display_version":"1.0",
-                "icon_url":"http://application1/icon.svg",
-                "description":"My Custom Application Description",
-                "reference":"id1",
-                "forward_auth_token":false,
-                "defaults": {}
-                }
-                """;
-        ResourceDescription targetResource1 = ResourceDescription.fromDecoded(ResourceType.APPLICATION, "bucketName", "bucket/location/", "my-app");
-        verifyJson("""
-                {
-                "name":"applications/bucketName/my-app",
-                "endpoint":"http://application1/v1/completions",
-                "display_name":"My Custom Application",
-                "display_version":"1.0",
-                "icon_url":"http://application1/icon.svg",
-                "description":"My Custom Application Description",
-                "reference":"id1",
-                "forward_auth_token":false,
-                "defaults": {}
-                }
-                """, PublicationUtil.replaceApplicationIdentity(application, targetResource1, true));
-
-        Application actualApplication = ProxyUtil.convertToObject(
-                PublicationUtil.replaceApplicationIdentity(application, targetResource1, false),
-                Application.class, true);
-        assertEquals("applications/bucketName/my-app", actualApplication.getName());
-        assertNotEquals("id1", actualApplication.getReference());
-    }
-
-    @Test
-    void testReplaceApplicationLinks() {
-        String application = """
-                {
-                "name":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                "endpoint":"http://application1/v1/completions",
-                "display_name":"My Custom Application",
-                "display_version":"1.0",
-                "icon_url":"abc/files/myfolder/icon.svg",
-                "description":"My Custom Application Description",
-                "reference":"id1",
-                "forward_auth_token":false,
-                "defaults": {}
-                }
-                """;
-        Map<String, String> attachmentMapping = Map.of("abc/files/myfolder/icon.svg", "public/folder/icon.svg");
-        ResourceDescription targetResource1 = ResourceDescription.fromDecoded(ResourceType.APPLICATION, "bucketName", "bucket/location/", "my-app");
-        verifyJson("""
-                {
-                "name":"applications/bucketName/my-app",
-                "endpoint":"http://application1/v1/completions",
-                "display_name":"My Custom Application",
-                "display_version":"1.0",
-                "icon_url":"public/folder/icon.svg",
-                "description":"My Custom Application Description",
-                "reference":"id1",
-                "forward_auth_token":false,
-                "defaults": {}
-                }
-                """, PublicationUtil.replaceApplicationLinks(application, targetResource1, true, attachmentMapping));
-
-        Application actualApplication = ProxyUtil.convertToObject(
-                PublicationUtil.replaceApplicationIdentity(application, targetResource1, false),
-                Application.class, true);
-        assertEquals("applications/bucketName/my-app", actualApplication.getName());
-        assertNotEquals("id1", actualApplication.getReference());
     }
 
     private static void verifyJson(String expected, String actual) {

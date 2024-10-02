@@ -147,6 +147,7 @@ public class DeploymentPostControllerTest {
         config.setApplications(new HashMap<>());
         Application application = new Application();
         application.setName("app1");
+        application.setEndpoint("http://fake.com");
         config.getApplications().put("app1", application);
         when(context.getConfig()).thenReturn(config);
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
@@ -174,6 +175,7 @@ public class DeploymentPostControllerTest {
         config.setApplications(new HashMap<>());
         Application application = new Application();
         application.setName("app1");
+        application.setEndpoint("http://fake.com");
         config.getApplications().put("app1", application);
         when(context.getConfig()).thenReturn(config);
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
@@ -395,6 +397,7 @@ public class DeploymentPostControllerTest {
         when(context.getConfig()).thenReturn(config);
         Application application = new Application();
         application.setName("applications/bucket/app1");
+        application.setEndpoint("http://fake.com");
         when(proxy.getVertx()).thenReturn(vertx);
         when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);

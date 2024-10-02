@@ -441,8 +441,8 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
-        computeResource(descriptor, EtagHeader.ANY, fn);
+    public ResourceItemMetadata computeResource(ResourceDescription descriptor, Function<String, String> fn) {
+        return computeResource(descriptor, EtagHeader.ANY, fn);
     }
 
     public ResourceItemMetadata computeResource(ResourceDescription descriptor, EtagHeader etag, Function<String, String> fn) {

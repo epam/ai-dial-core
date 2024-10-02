@@ -157,6 +157,7 @@ public class ControllerSelectorTest {
         when(request.method()).thenReturn(HttpMethod.GET);
         ApplicationService customApplicationServiceMock = mock(ApplicationService.class);
         when(proxy.getApplicationService()).thenReturn(customApplicationServiceMock);
+        when(context.getProxy()).thenReturn(proxy);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
@@ -173,6 +174,7 @@ public class ControllerSelectorTest {
         when(request.method()).thenReturn(HttpMethod.GET);
         ApplicationService customApplicationServiceMock = mock(ApplicationService.class);
         when(proxy.getApplicationService()).thenReturn(customApplicationServiceMock);
+        when(context.getProxy()).thenReturn(proxy);
         Controller controller = ControllerSelector.select(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
@@ -180,7 +182,7 @@ public class ControllerSelectorTest {
         assertEquals(1, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         assertInstanceOf(ApplicationController.class, arg1);
-        assertEquals("getApplicationService", lambda.getImplMethodName());
+        assertEquals("getApplications", lambda.getImplMethodName());
     }
 
     @Test

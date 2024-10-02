@@ -60,7 +60,7 @@ dependencies {
     testImplementation 'io.vertx:vertx-junit5:4.5.8'
     testImplementation 'org.mockito:mockito-core:5.7.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
-    testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
+    testImplementation 'org.apache.httpcomponents.client5:httpclient5:5.4'
     testImplementation('com.github.codemonstur:embedded-redis:1.4.3') {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
