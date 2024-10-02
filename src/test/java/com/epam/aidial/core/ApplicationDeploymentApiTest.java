@@ -235,6 +235,87 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testRecoverApplicationAfterFailedStart() throws Exception {
+        testApplicationCreated();
+
+        Response response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
+                }
+                """);
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "displayName" : "My App",
+                  "displayVersion" : "1.0",
+                  "iconUrl" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "userRoles" : [ ],
+                  "forwardAuthToken" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "descriptionKeywords" : [ ],
+                  "function" : {
+                    "id" : "0123",
+                    "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "status" : "STARTING"
+                  }
+                }
+                """);
+
+        Thread.sleep(300); // does not cause tests to be fluky
+
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STARTING");
+        webServer.map(HttpMethod.DELETE, "/v1/image/delete/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/service/delete/0123", 200);
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "FAILED");
+    }
+
+    @Test
+    void testRecoverApplicationAfterFailedStop() throws Exception {
+        testApplicationStarted();
+
+        Response response = send(HttpMethod.POST, "/v1/ops/application/stop", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
+                }
+                """);
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "displayName" : "My App",
+                  "displayVersion" : "1.0",
+                  "iconUrl" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "userRoles" : [ ],
+                  "forwardAuthToken" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "descriptionKeywords" : [ ],
+                  "function" : {
+                    "id" : "0123",
+                    "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "status" : "STOPPING"
+                  }
+                }
+                """);
+
+        Thread.sleep(300); // does not cause tests to be fluky
+
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPING");
+        webServer.map(HttpMethod.DELETE, "/v1/image/delete/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/service/delete/0123", 200);
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPED");
+
+    }
+
+    @Test
     void testAccessToCopiedSourceFiles() {
         testApplicationStarted();
 

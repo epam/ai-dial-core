@@ -153,7 +153,9 @@ public class ResourceBaseTest {
                         "heartbeatPeriod": 1000
                       },
                       "applications": {
-                        "controllerUrl": "http://localhost:10001"
+                        "controllerUrl": "http://localhost:10001",
+                        "checkDelay": 100,
+                        "checkPeriod": 100
                       }
                     }
                     """.formatted(Json.encode(testDir.toString()));

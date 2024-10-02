@@ -33,6 +33,9 @@ import io.vertx.core.json.JsonObject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
+import org.redisson.api.RScoredSortedSet;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -62,25 +65,37 @@ public class ApplicationService {
     private final ResourceService resourceService;
     private final LockService lockService;
     private final Supplier<String> idGenerator;
+    private final RScoredSortedSet<String> pendingApplications;
     private final String controllerUrl;
+    private final long checkDelay;
+    private final int checkSize;
     @Getter
     private final boolean includeCustomApps;
 
     public ApplicationService(Vertx vertx,
                               HttpClient httpClient,
+                              RedissonClient redis,
                               EncryptionService encryptionService,
                               ResourceService resourceService,
                               LockService lockService,
                               Supplier<String> idGenerator,
                               JsonObject settings) {
+        String pendingApplicationsKey = BlobStorageUtil.toStoragePath(lockService.getPrefix(), "pending-applications");
+
         this.vertx = vertx;
         this.httpClient = httpClient;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
         this.lockService = lockService;
         this.idGenerator = idGenerator;
+        this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
         this.controllerUrl = settings.getString("controllerUrl", null);
+        this.checkDelay = settings.getLong("checkDelay", 300000L);
+        this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
+
+        long checkPeriod = settings.getLong("checkPeriod", 300000L);
+        vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
     }
 
     public static boolean hasDeploymentAccess(ProxyContext context, ResourceDescription resource) {
@@ -295,11 +310,10 @@ public class ApplicationService {
                 throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + resource.getUrl());
             }
 
-            // add to queue
-
             application.getFunction().setStatus(Application.Function.Status.STARTING);
             result.setPlain(application);
 
+            pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
             return ProxyUtil.convertToString(application, true);
         });
 
@@ -334,6 +348,8 @@ public class ApplicationService {
             application.getFunction().setStatus(Application.Function.Status.STOPPING);
 
             result.setPlain(application);
+            pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
+
             return ProxyUtil.convertToString(application, true);
         });
 
@@ -394,9 +410,31 @@ public class ApplicationService {
         }
     }
 
+    private Void checkApplications() {
+        log.debug("Checking pending applications");
+        try {
+            long now = System.currentTimeMillis();
+
+            for (String redisKey : pendingApplications.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, checkSize)) {
+                log.debug("Checking pending application: {}", redisKey);
+                ResourceDescription resource = ResourceDescription.fromAnyUrl(redisKey, encryptionService);
+
+                try {
+                    terminateApplication(resource);
+                } catch (Throwable e) {
+                    // ignore
+                }
+            }
+        } catch (Throwable e) {
+            log.warn("Failed to check pending applications:", e);
+        }
+
+        return null;
+    }
+
     // region Launching Application
 
-    private ResourceItemMetadata launchApplication(ProxyContext context, ResourceDescription resource) {
+    private Void launchApplication(ProxyContext context, ResourceDescription resource) {
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
                 throw new IllegalStateException("Application function is locked: " + resource.getUrl());
@@ -417,7 +455,7 @@ public class ApplicationService {
             createApplicationImage(context, function);
             String endpoint = createApplicationDeployment(context, function);
 
-            return resourceService.computeResource(resource, json -> {
+            resourceService.computeResource(resource, json -> {
                 Application existing = ProxyUtil.convertToObject(json, Application.class, true);
                 if (existing == null || !Objects.equals(existing.getFunction(), application.getFunction())) {
                     throw new IllegalStateException("Application function has been updated");
@@ -428,6 +466,9 @@ public class ApplicationService {
                 existing.setFunction(function);
                 return ProxyUtil.convertToString(existing, true);
             });
+
+            pendingApplications.remove(resource.getUrl());
+            return null;
         } catch (Throwable error) {
             log.warn("Failed to launch application: {}", resource.getUrl(), error);
             throw error;
@@ -441,7 +482,7 @@ public class ApplicationService {
 
         String token = null;
         do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(sourceFolder, token, 1000, true);
+            ResourceFolderMetadata folder = resourceService.getFolderMetadata(sourceFolder, token, PAGE_SIZE, true);
             if (folder == null) {
                 throw new IllegalStateException("Application function source folder is empty");
             }
@@ -520,47 +561,44 @@ public class ApplicationService {
 
     // region Terminate Application
 
-    private ResourceItemMetadata terminateApplication(ResourceDescription resource) {
+    private Void terminateApplication(ResourceDescription resource) {
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
                 return null;
             }
 
             Application application;
+
             try {
                 application = getApplication(resource).getValue();
             } catch (ResourceNotFoundException e) {
-                return null;
+                application = null;
             }
 
-            Application.Function function = application.getFunction();
+            if (isPending(application)) {
+                Application.Function function = application.getFunction();
+                removeApplicationTargets(function);
+                deleteApplicationImage(function);
+                deleteApplicationDeployment(function);
 
-            if (function == null
-                    || function.getStatus() == Application.Function.Status.CREATED
-                    || function.getStatus() == Application.Function.Status.STARTED
-                    || function.getStatus() == Application.Function.Status.STOPPED
-                    || function.getStatus() == Application.Function.Status.FAILED) {
-                return null;
+                resourceService.computeResource(resource, json -> {
+                    Application existing = ProxyUtil.convertToObject(json, Application.class, true);
+                    if (existing == null || !Objects.equals(existing.getFunction(), function)) {
+                        throw new IllegalStateException("Application function has been updated");
+                    }
+
+                    Application.Function.Status status = (function.getStatus() == Application.Function.Status.STOPPING)
+                            ? Application.Function.Status.STOPPED
+                            : Application.Function.Status.FAILED;
+
+                    function.setStatus(status);
+                    existing.setFunction(function);
+                    return ProxyUtil.convertToString(existing, true);
+                });
             }
 
-            removeApplicationTargets(function);
-            deleteApplicationImage(function);
-            deleteApplicationDeployment(function);
-
-            return resourceService.computeResource(resource, json -> {
-                Application existing = ProxyUtil.convertToObject(json, Application.class, true);
-                if (existing == null || !Objects.equals(existing.getFunction(), application.getFunction())) {
-                    throw new IllegalStateException("Application function has been updated");
-                }
-
-                Application.Function.Status status = (function.getStatus() == Application.Function.Status.STOPPING)
-                        ? Application.Function.Status.STOPPED
-                        : Application.Function.Status.FAILED;
-
-                function.setStatus(status);
-                existing.setFunction(function);
-                return ProxyUtil.convertToString(existing, true);
-            });
+            pendingApplications.remove(resource.getUrl());
+            return null;
         } catch (Throwable e) {
             log.warn("Failed to terminate application: {}", resource.getUrl(), e);
             throw e;
@@ -679,6 +717,17 @@ public class ApplicationService {
         return switch (status) {
             case CREATED, FAILED, STOPPED -> false;
             case STARTING, STARTED, STOPPING -> true;
+        };
+    }
+
+    private static boolean isPending(Application application) {
+        return application != null && application.getFunction() != null && isPending(application.getFunction().getStatus());
+    }
+
+    private static boolean isPending(Application.Function.Status status) {
+        return switch (status) {
+            case CREATED, STARTED, FAILED, STOPPED -> false;
+            case STARTING, STOPPING -> true;
         };
     }
 

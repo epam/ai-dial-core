@@ -116,7 +116,7 @@ public class AiDial {
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
-            ApplicationService applicationService = new ApplicationService(vertx, client,
+            ApplicationService applicationService = new ApplicationService(vertx, client, redis,
                     encryptionService, resourceService, lockService, generator, settings("applications"));
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, generator, clock);
