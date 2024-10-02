@@ -23,6 +23,7 @@ public class ApplicationUtil {
         data.setInputAttachmentTypes(application.getInputAttachmentTypes());
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
+        data.setDescriptionKeywords(application.getDescriptionKeywords());
 
         String reference = application.getReference();
         data.setReference(reference == null ? application.getName() : reference);

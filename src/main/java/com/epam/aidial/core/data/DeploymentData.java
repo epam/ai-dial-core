@@ -32,4 +32,5 @@ public class DeploymentData {
     private List<String> inputAttachmentTypes;
     private Integer maxInputAttachments;
     private Map<String, Object> defaults;
+    private List<String> descriptionKeywords;
 }

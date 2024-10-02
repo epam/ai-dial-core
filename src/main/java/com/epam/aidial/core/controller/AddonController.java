@@ -59,6 +59,7 @@ public class AddonController {
         data.setIconUrl(addon.getIconUrl());
         data.setDescription(addon.getDescription());
         data.setReference(addon.getName());
+        data.setDescriptionKeywords(addon.getDescriptionKeywords());
         return data;
     }
 }

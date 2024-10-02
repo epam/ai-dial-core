@@ -67,6 +67,7 @@ public class ModelController {
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         data.setReference(model.getName());
+        data.setDescriptionKeywords(model.getDescriptionKeywords());
 
         if (model.getType() == ModelType.EMBEDDING) {
             data.getCapabilities().setEmbeddings(true);
