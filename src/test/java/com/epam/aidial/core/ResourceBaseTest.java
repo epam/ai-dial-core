@@ -153,7 +153,7 @@ public class ResourceBaseTest {
                         "heartbeatPeriod": 1000
                       },
                       "applications": {
-                        "controllerUrl": "http://localhost:10001",
+                        "controllerEndpoint": "http://localhost:10001",
                         "checkDelay": 100,
                         "checkPeriod": 100
                       }

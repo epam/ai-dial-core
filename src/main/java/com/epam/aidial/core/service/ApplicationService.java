@@ -57,7 +57,6 @@ public class ApplicationService {
 
     private static final String DEPLOYMENTS_NAME = "deployments";
     private static final int PAGE_SIZE = 1000;
-    private static final long CONTROLLER_TIMEOUT = TimeUnit.MINUTES.toMillis(2);
 
     private final Vertx vertx;
     private final HttpClient httpClient;
@@ -66,7 +65,8 @@ public class ApplicationService {
     private final LockService lockService;
     private final Supplier<String> idGenerator;
     private final RScoredSortedSet<String> pendingApplications;
-    private final String controllerUrl;
+    private final String controllerEndpoint;
+    private final long controllerTimeout;
     private final long checkDelay;
     private final int checkSize;
     @Getter
@@ -89,7 +89,8 @@ public class ApplicationService {
         this.lockService = lockService;
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
-        this.controllerUrl = settings.getString("controllerUrl", null);
+        this.controllerEndpoint = settings.getString("controllerEndpoint", null);
+        this.controllerTimeout = settings.getLong("controllerTimeout", 120000L);
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
@@ -662,8 +663,8 @@ public class ApplicationService {
 
         RequestOptions requestOptions = new RequestOptions()
                 .setMethod(method)
-                .setAbsoluteURI(controllerUrl + path)
-                .setIdleTimeout(CONTROLLER_TIMEOUT);
+                .setAbsoluteURI(controllerEndpoint + path)
+                .setIdleTimeout(controllerTimeout);
 
         httpClient.request(requestOptions)
                 .compose(request -> {
@@ -684,7 +685,7 @@ public class ApplicationService {
                 .onFailure(resultFuture::completeExceptionally);
 
         try {
-            return resultFuture.get(CONTROLLER_TIMEOUT, TimeUnit.MILLISECONDS);
+            return resultFuture.get(controllerTimeout, TimeUnit.MILLISECONDS);
         } catch (Throwable e) {
             HttpClientRequest request = requestReference.get();
 
@@ -738,7 +739,7 @@ public class ApplicationService {
     }
 
     private void verifyController() {
-        if (controllerUrl == null) {
+        if (controllerEndpoint == null) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "The functionality is not available");
         }
     }
