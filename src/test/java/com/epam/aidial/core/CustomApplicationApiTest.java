@@ -50,7 +50,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "user_roles" : [ ],
                 "forward_auth_token":false,
                 "defaults": {},
-                "interceptors": []
+                "interceptors": [],
+                "description_keywords": []
                 }
                 """);
 
@@ -213,7 +214,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                  "configuration_endpoint": "http://application1/configuration"
                  },
                 "defaults": {},
-                "interceptors": []
+                "interceptors": [],
+                "description_keywords":[]
                 }
                 """);
 
@@ -335,7 +337,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "folder_attachments" : false,
                      "allow_resume":true
                    },
-                   "defaults" : { }
+                   "defaults" : { },
+                   "description_keywords":[]
                 }
                 """);
 
@@ -368,7 +371,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "folder_attachments":false,
                                 "allow_resume":true
                                 },
-                            "defaults":{}
+                            "defaults":{},
+                            "description_keywords":[]
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -395,7 +399,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "folder_attachments" : false,
                               "allow_resume":true
                             },
-                            "defaults" : { }
+                            "defaults" : { },
+                            "description_keywords":[]
                           }
                     ],
                     "object":"list"
@@ -431,7 +436,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "folder_attachments":false,
                                 "allow_resume":true
                                 },
-                            "defaults":{}
+                            "defaults":{},
+                            "description_keywords":[]
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -458,7 +464,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "folder_attachments" : false,
                               "allow_resume":true
                             },
-                            "defaults" : { }
+                            "defaults" : { },
+                            "description_keywords":[]
                           }
                     ],
                     "object":"list"
@@ -567,7 +574,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "folder_attachments":false,
                                 "allow_resume":true
                                 },
-                            "defaults":{}
+                            "defaults":{},
+                            "description_keywords":[]
                         },
                         {
                             "id" : "applications/public/folder/my-custom-application",
@@ -594,7 +602,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "folder_attachments" : false,
                               "allow_resume":true
                             },
-                            "defaults" : { }
+                            "defaults" : { },
+                            "description_keywords":[]
                           }
                     ],
                     "object":"list"
@@ -633,7 +642,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "folder_attachments":false,
                                 "allow_resume": true
                                 },
-                            "defaults":{}
+                            "defaults":{},
+                            "description_keywords":[]
                         }
                     ],
                     "object":"list"
@@ -684,7 +694,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "folder_attachments":false,
                         "allow_resume": true
                     },
-                    "defaults":{}
+                    "defaults":{},
+                    "description_keywords":[]
                 }
                 """);
 
@@ -717,7 +728,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "folder_attachments":false,
                                 "allow_resume": true
                                 },
-                            "defaults":{}
+                            "defaults":{},
+                            "description_keywords":[]
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -744,7 +756,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "folder_attachments" : false,
                               "allow_resume": true
                             },
-                            "defaults" : { }
+                            "defaults" : { },
+                            "description_keywords":[]
                           }
                     ],
                     "object":"list"
@@ -814,7 +827,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "user_roles" : [ ],
                 "forward_auth_token": false,
                 "defaults": {},
-                "interceptors": []
+                "interceptors": [],
+                "description_keywords": []
                 }
                 """);
         Application application1 = ProxyUtil.convertToObject(response.body(), Application.class, true);
@@ -834,7 +848,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "user_roles" : [ ],
                 "forward_auth_token": false,
                 "defaults": {},
-                "interceptors": []
+                "interceptors": [],
+                "description_keywords": []
                 }
                 """);
         Application application2 = ProxyUtil.convertToObject(response.body(), Application.class, true);
@@ -876,7 +891,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "user_roles" : [ ],
                 "forward_auth_token": false,
                 "defaults": {},
-                "interceptors": []
+                "interceptors": [],
+                "description_keywords": []
                 }
                 """);
         Application application = ProxyUtil.convertToObject(response.body(), Application.class, true);

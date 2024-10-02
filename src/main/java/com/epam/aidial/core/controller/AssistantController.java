@@ -66,6 +66,7 @@ public class AssistantController {
         data.setMaxInputAttachments(assistant.getMaxInputAttachments());
         data.setDefaults(assistant.getDefaults());
         data.setReference(assistant.getName());
+        data.setDescriptionKeywords(assistant.getDescriptionKeywords());
         return data;
     }
 }
