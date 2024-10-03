@@ -354,9 +354,7 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application, true);
         });
 
-        vertx.executeBlocking(() -> terminateApplication(resource), false)
-                .onFailure(error -> log.warn("Failed to terminate application: {}", resource.getUrl(), error));
-
+        vertx.executeBlocking(() -> terminateApplication(resource), false);
         return result.getPlain();
     }
 
@@ -518,6 +516,8 @@ public class ApplicationService {
                         request.putHeader(HttpHeaders.AUTHORIZATION, apiKey);
                     }
 
+                    request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+
                     CreateImageRequest body = new CreateImageRequest(function.getId(), function.getTargetFolder());
                     return ProxyUtil.convertToString(body);
                 },
@@ -543,6 +543,8 @@ public class ApplicationService {
                     if (auth != null) {
                         request.putHeader(HttpHeaders.AUTHORIZATION, apiKey);
                     }
+
+                    request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
 
                     CreateDeploymentRequest body = new CreateDeploymentRequest(function.getId());
                     return ProxyUtil.convertToString(body);
