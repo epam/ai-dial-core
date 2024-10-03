@@ -318,8 +318,8 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application, true);
         });
 
-        vertx.executeBlocking(() -> launchApplication(context, resource), false)/*
-                .onFailure(error -> vertx.executeBlocking(() -> terminateApplication(resource), false))*/;
+        vertx.executeBlocking(() -> launchApplication(context, resource), false)
+                .onFailure(error -> vertx.executeBlocking(() -> terminateApplication(resource), false));
 
         return result.getPlain();
     }

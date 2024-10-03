@@ -359,6 +359,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         testApplicationStarted();
 
         String answer = """
+                {
                   "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
                   "object": "chat.completion",
                   "created": 1687781517,
