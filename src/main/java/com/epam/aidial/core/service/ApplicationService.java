@@ -672,6 +672,11 @@ public class ApplicationService {
                 .compose(request -> {
                     requestReference.set(request);
                     String body = requestMapper.apply(request);
+
+                    System.out.println("PATH: " + request.path());
+                    System.out.println("HEADERS: " + request.headers().entries());
+                    System.out.println("BODY: " + body);
+
                     return request.send((body == null) ? "" : body);
                 })
                 .compose(response -> {
