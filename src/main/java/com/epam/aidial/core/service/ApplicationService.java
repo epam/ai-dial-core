@@ -93,7 +93,7 @@ public class ApplicationService {
         this.controllerTimeout = settings.getLong("controllerTimeout", 120000L);
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
-        this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
+        this.includeCustomApps = settings.getBoolean("includeCustomApps", true);
 
         long checkPeriod = settings.getLong("checkPeriod", 300000L);
         vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
