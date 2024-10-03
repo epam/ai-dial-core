@@ -89,7 +89,7 @@ public class ApplicationService {
         this.lockService = lockService;
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
-        this.controllerEndpoint = settings.getString("controllerEndpoint", null);
+        this.controllerEndpoint = settings.getString("controllerEndpoint", "https://ai-dial-app-controller.deltixuat.com/");
         this.controllerTimeout = settings.getLong("controllerTimeout", 120000L);
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
