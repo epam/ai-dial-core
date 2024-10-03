@@ -505,8 +505,6 @@ public class ApplicationService {
     private void createApplicationImage(ProxyContext context, Application.Function function) {
         callController(HttpMethod.POST, "/v1/image/create",
                 request -> {
-                    System.out.println("IN-HEADERS: " + context.getRequest().headers().entries());
-
                     String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
                     String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
 
@@ -515,7 +513,7 @@ public class ApplicationService {
                     }
 
                     if (auth != null) {
-                        request.putHeader(HttpHeaders.AUTHORIZATION, apiKey);
+                        request.putHeader(HttpHeaders.AUTHORIZATION, auth);
                     }
 
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -543,7 +541,7 @@ public class ApplicationService {
                     }
 
                     if (auth != null) {
-                        request.putHeader(HttpHeaders.AUTHORIZATION, apiKey);
+                        request.putHeader(HttpHeaders.AUTHORIZATION, auth);
                     }
 
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -674,11 +672,6 @@ public class ApplicationService {
                 .compose(request -> {
                     requestReference.set(request);
                     String body = requestMapper.apply(request);
-
-                    System.out.println("PATH: " + request.path());
-                    System.out.println("HEADERS: " + request.headers().entries());
-                    System.out.println("BODY: " + body);
-
                     return request.send((body == null) ? "" : body);
                 })
                 .compose(response -> {
