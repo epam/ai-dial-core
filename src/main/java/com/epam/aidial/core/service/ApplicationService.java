@@ -505,6 +505,8 @@ public class ApplicationService {
     private void createApplicationImage(ProxyContext context, Application.Function function) {
         callController(HttpMethod.POST, "/v1/image/create",
                 request -> {
+                    System.out.println("IN-HEADERS: " + context.getRequest().headers().entries());
+
                     String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
                     String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
 
