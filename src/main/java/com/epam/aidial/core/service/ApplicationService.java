@@ -93,7 +93,7 @@ public class ApplicationService {
         this.controllerTimeout = settings.getLong("controllerTimeout", 120000L);
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
-        this.includeCustomApps = settings.getBoolean("includeCustomApps", true);
+        this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
 
         long checkPeriod = settings.getLong("checkPeriod", 300000L);
         vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
@@ -503,7 +503,7 @@ public class ApplicationService {
     }
 
     private void createApplicationImage(ProxyContext context, Application.Function function) {
-        callController(HttpMethod.POST, "/v1/image/create",
+        callController(HttpMethod.POST, "/v1/image/create/" + function.getId(),
                 request -> {
                     String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
                     String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
@@ -518,7 +518,7 @@ public class ApplicationService {
 
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
 
-                    CreateImageRequest body = new CreateImageRequest(function.getId(), function.getTargetFolder());
+                    CreateImageRequest body = new CreateImageRequest(function.getTargetFolder());
                     return ProxyUtil.convertToString(body);
                 },
                 (response, body) -> {
@@ -531,7 +531,7 @@ public class ApplicationService {
     }
 
     private String createApplicationDeployment(ProxyContext context, Application.Function function) {
-        CreateDeploymentResponse deployment = callController(HttpMethod.POST, "/v1/service/create",
+        CreateDeploymentResponse deployment = callController(HttpMethod.POST, "/v1/deployment/create/" + function.getId(),
                 request -> {
                     String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
                     String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
@@ -545,9 +545,7 @@ public class ApplicationService {
                     }
 
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-
-                    CreateDeploymentRequest body = new CreateDeploymentRequest(function.getId());
-                    return ProxyUtil.convertToString(body);
+                    return null;
                 },
                 (response, body) -> {
                     if (response.statusCode() != 200) {
@@ -643,7 +641,7 @@ public class ApplicationService {
     }
 
     private void deleteApplicationDeployment(Application.Function function) {
-        callController(HttpMethod.DELETE, "/v1/service/delete/" + function.getId(),
+        callController(HttpMethod.DELETE, "/v1/deployment/delete/" + function.getId(),
                 request -> null,
                 (response, body) -> {
                     if (response.statusCode() != 200 && response.statusCode() != 404) {
@@ -746,14 +744,11 @@ public class ApplicationService {
         }
     }
 
-    private record CreateImageRequest(String name, String sources) {
+    private record CreateImageRequest(String sources) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record CreateImageResponse() {
-    }
-
-    public record CreateDeploymentRequest(String name) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
