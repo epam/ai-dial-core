@@ -178,7 +178,7 @@ public class ProxyUtil {
                 continue;
             }
             JsonNode urlNode = imageNode.get("url");
-            collectUrl(urlNode, null, consumer);
+            collectAttachedFilesFromUrl(urlNode, null, consumer);
         }
     }
 
@@ -224,12 +224,16 @@ public class ProxyUtil {
         }
     }
 
-    private static void collectUrl(JsonNode urlNode, JsonNode typeNode, Consumer<String> consumer) {
+    private static void collectAttachedFilesFromUrl(JsonNode urlNode, JsonNode typeNode, Consumer<String> consumer) {
         if (urlNode == null) {
             return;
         }
 
         String url = urlNode.textValue();
+
+        if (url == null) {
+            return;
+        }
 
         if (typeNode != null && typeNode.textValue().equals(MetadataBase.MIME_TYPE)) {
             if (!url.startsWith(METADATA_PREFIX)) {
@@ -239,13 +243,12 @@ public class ProxyUtil {
         }
 
         consumer.accept(url);
-
     }
 
     private static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
         JsonNode urlNode = attachment.get("url");
         JsonNode typeNode = attachment.get("type");
-        collectUrl(urlNode, typeNode, consumer);
+        collectAttachedFilesFromUrl(urlNode, typeNode, consumer);
     }
 
     public static <T> T convertToObject(Buffer json, Class<T> clazz) {
