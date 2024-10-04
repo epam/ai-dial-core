@@ -240,6 +240,7 @@ public class ApplicationService {
                     function.setId(existing.getFunction().getId());
                     function.setStatus(existing.getFunction().getStatus());
                     function.setTargetFolder(existing.getFunction().getTargetFolder());
+                    function.setError(existing.getFunction().getError());
                 }
             }
 
@@ -280,7 +281,9 @@ public class ApplicationService {
         Application application = getApplication(source).getValue();
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
 
+        function.accept(application);
         prepareApplication(destination, EtagHeader.ANY, application);
+
         resourceService.computeResource(destination, etag, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class, true);
 
@@ -312,14 +315,16 @@ public class ApplicationService {
             }
 
             application.getFunction().setStatus(Application.Function.Status.STARTING);
-            result.setPlain(application);
+            application.getFunction().setError(null);
 
+            result.setPlain(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
+
             return ProxyUtil.convertToString(application, true);
         });
 
         vertx.executeBlocking(() -> launchApplication(context, resource), false)
-                .onFailure(error -> vertx.executeBlocking(() -> terminateApplication(resource), false));
+                .onFailure(error -> vertx.executeBlocking(() -> terminateApplication(resource, error.getMessage()), false));
 
         return result.getPlain();
     }
@@ -343,9 +348,11 @@ public class ApplicationService {
                 throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
             }
 
-            // add to queue
-
             application.setEndpoint(null);
+            application.getFeatures().setRateEndpoint(null);
+            application.getFeatures().setTokenizeEndpoint(null);
+            application.getFeatures().setTruncatePromptEndpoint(null);
+            application.getFeatures().setConfigurationEndpoint(null);
             application.getFunction().setStatus(Application.Function.Status.STOPPING);
 
             result.setPlain(application);
@@ -354,7 +361,7 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application, true);
         });
 
-        vertx.executeBlocking(() -> terminateApplication(resource), false);
+        vertx.executeBlocking(() -> terminateApplication(resource, null), false);
         return result.getPlain();
     }
 
@@ -385,6 +392,7 @@ public class ApplicationService {
                 application.setFeatures(new Features());
             }
 
+            application.getFunction().setError(null);
             application.setEndpoint(null);
             application.getFeatures().setRateEndpoint(null);
             application.getFeatures().setTokenizeEndpoint(null);
@@ -419,7 +427,7 @@ public class ApplicationService {
                 ResourceDescription resource = ResourceDescription.fromAnyUrl(redisKey, encryptionService);
 
                 try {
-                    terminateApplication(resource);
+                    terminateApplication(resource, "Application failed to start in the specified interval");
                 } catch (Throwable e) {
                     // ignore
                 }
@@ -436,18 +444,18 @@ public class ApplicationService {
     private Void launchApplication(ProxyContext context, ResourceDescription resource) {
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
-                throw new IllegalStateException("Application function is locked: " + resource.getUrl());
+                throw new IllegalStateException("Application function is locked");
             }
 
             Application application = getApplication(resource).getValue();
             Application.Function function = application.getFunction();
 
             if (function == null) {
-                throw new IllegalStateException("Application has no function: " + resource.getUrl());
+                throw new IllegalStateException("Application has no function");
             }
 
             if (function.getStatus() != Application.Function.Status.STARTING) {
-                throw new IllegalStateException("Application is not starting: " + resource.getUrl());
+                throw new IllegalStateException("Application is not starting");
             }
 
             copyApplicationSources(function);
@@ -483,7 +491,7 @@ public class ApplicationService {
         do {
             ResourceFolderMetadata folder = resourceService.getFolderMetadata(sourceFolder, token, PAGE_SIZE, true);
             if (folder == null) {
-                throw new IllegalStateException("Application function source folder is empty");
+                throw new IllegalStateException("Source folder is empty");
             }
 
             for (MetadataBase item : folder.getItems()) {
@@ -523,7 +531,7 @@ public class ApplicationService {
                 },
                 (response, body) -> {
                     if (response.statusCode() != 200) {
-                        throw new RuntimeException("Failed to create image. Status: " + response.statusCode());
+                        throw new RuntimeException("Failed to create image. Code: " + response.statusCode() + ". Body: " + body);
                     }
 
                     return ProxyUtil.convertToObject(body, CreateImageResponse.class);
@@ -549,7 +557,7 @@ public class ApplicationService {
                 },
                 (response, body) -> {
                     if (response.statusCode() != 200) {
-                        throw new RuntimeException("Failed to create deployment. Status: " + response.statusCode());
+                        throw new RuntimeException("Failed to create deployment. Code: " + response.statusCode() + ". Body: " + body);
                     }
 
                     return ProxyUtil.convertToObject(body, CreateDeploymentResponse.class);
@@ -562,7 +570,7 @@ public class ApplicationService {
 
     // region Terminate Application
 
-    private Void terminateApplication(ResourceDescription resource) {
+    private Void terminateApplication(ResourceDescription resource, String error) {
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
                 return null;
@@ -593,6 +601,8 @@ public class ApplicationService {
                             : Application.Function.Status.FAILED;
 
                     function.setStatus(status);
+                    function.setError(status == Application.Function.Status.FAILED ? error : null);
+
                     existing.setFunction(function);
                     return ProxyUtil.convertToString(existing, true);
                 });

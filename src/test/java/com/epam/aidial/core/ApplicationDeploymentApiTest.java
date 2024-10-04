@@ -221,7 +221,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "FAILED"
+                    "status" : "FAILED",
+                    "error" : "Source folder is empty"
                   }
                 }
                 """);

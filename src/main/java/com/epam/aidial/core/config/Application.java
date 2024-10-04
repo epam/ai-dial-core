@@ -22,6 +22,7 @@ public class Application extends Deployment {
         private String sourceFolder;
         private String targetFolder;
         private Status status;
+        private String error;
 
         public enum Status {
             CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED
