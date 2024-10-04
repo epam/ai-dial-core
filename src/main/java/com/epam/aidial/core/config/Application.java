@@ -5,6 +5,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+import java.util.Map;
+
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = true)
@@ -23,6 +25,7 @@ public class Application extends Deployment {
         private String targetFolder;
         private Status status;
         private String error;
+        private Map<String, String> env = Map.of();
 
         public enum Status {
             CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED

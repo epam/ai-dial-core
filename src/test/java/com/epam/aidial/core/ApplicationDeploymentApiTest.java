@@ -32,7 +32,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "icon_url": "http://application1/icon.svg",
                   "description": "My App Description",
                   "function": {
-                    "source_folder": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/"
+                    "source_folder": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "env": {
+                      "VAR": "VAL"
+                    }
                   }
                 }
                 """);
@@ -75,7 +78,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTING"
+                    "status" : "STARTING",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);
@@ -100,7 +106,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTED"
+                    "status" : "STARTED",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);
@@ -136,7 +145,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STOPPING"
+                    "status" : "STOPPING",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);
@@ -160,7 +172,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STOPPED"
+                    "status" : "STOPPED",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);
@@ -197,7 +212,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTING"
+                    "status" : "STARTING",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);
@@ -222,7 +240,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "FAILED",
-                    "error" : "Source folder is empty"
+                    "error" : "Source folder is empty",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);
@@ -262,7 +283,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTING"
+                    "status" : "STARTING",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);
@@ -302,7 +326,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "id" : "0123",
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STOPPING"
+                    "status" : "STOPPING",
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
                   }
                 }
                 """);

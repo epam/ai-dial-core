@@ -40,6 +40,7 @@ import org.redisson.client.codec.StringCodec;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -392,12 +393,16 @@ public class ApplicationService {
                 application.setFeatures(new Features());
             }
 
-            application.getFunction().setError(null);
             application.setEndpoint(null);
             application.getFeatures().setRateEndpoint(null);
             application.getFeatures().setTokenizeEndpoint(null);
             application.getFeatures().setTruncatePromptEndpoint(null);
             application.getFeatures().setConfigurationEndpoint(null);
+            application.getFunction().setError(null);
+
+            if (application.getFunction().getEnv() == null) {
+                application.getFunction().setEnv(Map.of());
+            }
 
             if (function.getSourceFolder() == null) {
                 throw new IllegalArgumentException("Application function source folder must be provided");
@@ -553,7 +558,9 @@ public class ApplicationService {
                     }
 
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-                    return null;
+
+                    CreateDeploymentRequest body = new CreateDeploymentRequest(function.getEnv());
+                    return ProxyUtil.convertToString(body);
                 },
                 (response, body) -> {
                     if (response.statusCode() != 200) {
@@ -755,6 +762,9 @@ public class ApplicationService {
     }
 
     private record CreateImageRequest(String sources) {
+    }
+
+    private record CreateDeploymentRequest(Map<String, String> env) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
