@@ -161,6 +161,54 @@ public class ProxyUtil {
         }
     }
 
+    private static void collectAttachedFilesFromContent(JsonNode content, Consumer<String> consumer) {
+        if (content == null || !(content instanceof ArrayNode)) {
+            return;
+        }
+        ArrayNode contentParts = (ArrayNode) content;
+
+        for (int i = 0; i < contentParts.size(); i++) {
+            JsonNode partNode = contentParts.get(i);
+            JsonNode partTypeNode = partNode.get("type");
+            if (partTypeNode == null || !partTypeNode.textValue().equals("image_url")) {
+                continue;
+            }
+            JsonNode imageNode = partNode.get("image_url");
+            if (imageNode == null) {
+                continue;
+            }
+            JsonNode urlNode = imageNode.get("url");
+            collectURL(urlNode, null, consumer);
+        }
+    }
+
+    private static void collectAttachedFilesFromCustomContent(JsonNode customContent, Consumer<String> consumer) {
+        if (customContent == null) {
+            return;
+        }
+        ArrayNode attachments = (ArrayNode) customContent.get("attachments");
+        if (attachments != null) {
+            for (int i = 0; i < attachments.size(); i++) {
+                JsonNode attachment = attachments.get(i);
+                collectAttachedFile(attachment, consumer);
+            }
+        }
+        ArrayNode stages = (ArrayNode) customContent.get("stages");
+        if (stages != null) {
+            for (int i = 0; i < stages.size(); i++) {
+                JsonNode stage = stages.get(i);
+                attachments = (ArrayNode) stage.get("attachments");
+                if (attachments == null) {
+                    continue;
+                }
+                for (int j = 0; j < attachments.size(); j++) {
+                    JsonNode attachment = attachments.get(j);
+                    collectAttachedFile(attachment, consumer);
+                }
+            }
+        }
+    }
+
     private static void collectAttachedFilesChatCompletion(ObjectNode tree, Consumer<String> consumer) {
         ArrayNode messages = (ArrayNode) tree.get("messages");
         if (messages == null) {
@@ -168,43 +216,21 @@ public class ProxyUtil {
         }
         for (int i = 0; i < messages.size(); i++) {
             JsonNode message = messages.get(i);
+            JsonNode content = message.get("content");
+            collectAttachedFilesFromContent(content, consumer);
+
             JsonNode customContent = message.get("custom_content");
-            if (customContent == null) {
-                continue;
-            }
-            ArrayNode attachments = (ArrayNode) customContent.get("attachments");
-            if (attachments != null) {
-                for (int j = 0; j < attachments.size(); j++) {
-                    JsonNode attachment = attachments.get(j);
-                    collectAttachedFile(attachment, consumer);
-                }
-            }
-            ArrayNode stages = (ArrayNode) customContent.get("stages");
-            if (stages != null) {
-                for (int j = 0; j < stages.size(); j++) {
-                    JsonNode stage = stages.get(j);
-                    attachments = (ArrayNode) stage.get("attachments");
-                    if (attachments == null) {
-                        continue;
-                    }
-                    for (int k = 0; k < attachments.size(); k++) {
-                        JsonNode attachment = attachments.get(k);
-                        collectAttachedFile(attachment, consumer);
-                    }
-                }
-            }
+            collectAttachedFilesFromCustomContent(customContent, consumer);
         }
     }
 
-    public static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
-        JsonNode urlNode = attachment.get("url");
+    private static void collectURL(JsonNode urlNode, JsonNode typeNode, Consumer<String> consumer) {
         if (urlNode == null) {
             return;
         }
 
         String url = urlNode.textValue();
 
-        JsonNode typeNode = attachment.get("type");
         if (typeNode != null && typeNode.textValue().equals(MetadataBase.MIME_TYPE)) {
             if (!url.startsWith(METADATA_PREFIX)) {
                 throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
@@ -213,6 +239,13 @@ public class ProxyUtil {
         }
 
         consumer.accept(url);
+
+    }
+
+    private static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
+        JsonNode urlNode = attachment.get("url");
+        JsonNode typeNode = attachment.get("type");
+        collectURL(urlNode, typeNode, consumer);
     }
 
     public static <T> T convertToObject(Buffer json, Class<T> clazz) {
