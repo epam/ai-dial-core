@@ -178,7 +178,7 @@ public class ProxyUtil {
                 continue;
             }
             JsonNode urlNode = imageNode.get("url");
-            collectURL(urlNode, null, consumer);
+            collectUrl(urlNode, null, consumer);
         }
     }
 
@@ -224,7 +224,7 @@ public class ProxyUtil {
         }
     }
 
-    private static void collectURL(JsonNode urlNode, JsonNode typeNode, Consumer<String> consumer) {
+    private static void collectUrl(JsonNode urlNode, JsonNode typeNode, Consumer<String> consumer) {
         if (urlNode == null) {
             return;
         }
@@ -245,7 +245,7 @@ public class ProxyUtil {
     private static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
         JsonNode urlNode = attachment.get("url");
         JsonNode typeNode = attachment.get("type");
-        collectURL(urlNode, typeNode, consumer);
+        collectUrl(urlNode, typeNode, consumer);
     }
 
     public static <T> T convertToObject(Buffer json, Class<T> clazz) {
