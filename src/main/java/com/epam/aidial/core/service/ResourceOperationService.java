@@ -5,6 +5,8 @@ import com.epam.aidial.core.data.ResourceEvent;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
+import com.epam.aidial.core.util.HttpException;
+import com.epam.aidial.core.util.HttpStatus;
 import lombok.AllArgsConstructor;
 
 import java.util.Collection;
@@ -44,7 +46,11 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == ResourceType.APPLICATION) {
-            applicationService.copyApplication(source, destination, overwriteIfExists);
+            applicationService.copyApplication(source, destination, overwriteIfExists, app -> {
+                if (ApplicationService.isActive(app)) {
+                    throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
+                }
+            });
         } else {
             boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
             if (!copied) {

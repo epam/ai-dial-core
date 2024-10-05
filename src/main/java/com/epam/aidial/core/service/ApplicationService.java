@@ -223,7 +223,7 @@ public class ApplicationService {
             Application existing = ProxyUtil.convertToObject(json, Application.class, true);
             Application.Function function = application.getFunction();
 
-            if (function == null && isActive(existing)) {
+            if (isActive(existing)) {
                 throw new HttpException(HttpStatus.CONFLICT, "The application must be stopped");
             }
 
@@ -262,7 +262,7 @@ public class ApplicationService {
             }
 
             if (isActive(application)) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "Application must be stopped: " + resource.getUrl());
+                throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + resource.getUrl());
             }
 
             return null;
@@ -283,17 +283,7 @@ public class ApplicationService {
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
 
         function.accept(application);
-        prepareApplication(destination, EtagHeader.ANY, application);
-
-        resourceService.computeResource(destination, etag, json -> {
-            Application existing = ProxyUtil.convertToObject(json, Application.class, true);
-
-            if (isActive(existing)) {
-                throw new HttpException(HttpStatus.CONFLICT, "The application must be stopped: " + destination.getUrl());
-            }
-
-            return ProxyUtil.convertToString(application, true);
-        });
+        putApplication(destination, etag, application);
     }
 
     public Application startApplication(ProxyContext context, ResourceDescription resource) {
@@ -377,11 +367,6 @@ public class ApplicationService {
         application.setName(resource.getUrl());
         application.setUserRoles(Set.of());
         application.setForwardAuthToken(false);
-
-        // reject request if both If-None-Match header and reference provided
-        if (application.getReference() != null && !etag.isOverwrite()) {
-            throw new IllegalArgumentException("Creating application with provided reference is not allowed");
-        }
 
         if (application.getReference() == null) {
             application.setReference(ApplicationUtil.generateReference());
@@ -727,7 +712,7 @@ public class ApplicationService {
         return ResourceDescription.fromDecoded(ResourceType.FILE, name, location, null).getUrl();
     }
 
-    private static boolean isActive(Application application) {
+    public static boolean isActive(Application application) {
         return application != null && application.getFunction() != null && isActive(application.getFunction().getStatus());
     }
 
