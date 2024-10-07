@@ -25,10 +25,22 @@ public class Application extends Deployment {
         private String targetFolder;
         private Status status;
         private String error;
+        private Mapping mapping;
         private Map<String, String> env = Map.of();
 
         public enum Status {
             CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED
+        }
+
+        @Data
+        @Accessors(chain = true)
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public static class Mapping {
+            private String completion;
+            private String rate;
+            private String tokenize;
+            private String truncatePrompt;
+            private String configuration;
         }
     }
 }

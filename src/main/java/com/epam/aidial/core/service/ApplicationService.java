@@ -217,7 +217,7 @@ public class ApplicationService {
     }
 
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescription resource, EtagHeader etag, Application application) {
-        prepareApplication(resource, etag, application);
+        prepareApplication(resource, application);
 
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class, true);
@@ -266,12 +266,6 @@ public class ApplicationService {
             }
 
             return null;
-        });
-    }
-
-    public void copyApplication(ResourceDescription source, ResourceDescription destination, boolean overwrite) {
-        copyApplication(source, destination, overwrite, application -> {
-            // nothing
         });
     }
 
@@ -356,8 +350,7 @@ public class ApplicationService {
         return result.getPlain();
     }
 
-    private void prepareApplication(ResourceDescription resource, EtagHeader etag,
-                                    Application application) {
+    private void prepareApplication(ResourceDescription resource, Application application) {
         verifyApplication(resource);
 
         if (application.getEndpoint() == null && application.getFunction() == null) {
@@ -383,11 +376,21 @@ public class ApplicationService {
             application.getFeatures().setTokenizeEndpoint(null);
             application.getFeatures().setTruncatePromptEndpoint(null);
             application.getFeatures().setConfigurationEndpoint(null);
-            application.getFunction().setError(null);
+            function.setError(null);
 
-            if (application.getFunction().getEnv() == null) {
-                application.getFunction().setEnv(Map.of());
+            if (function.getEnv() == null) {
+                function.setEnv(Map.of());
             }
+
+            if (function.getMapping() == null) {
+                throw new IllegalArgumentException("Application function mapping must be provided");
+            }
+
+            verifyMapping(function.getMapping().getCompletion(), true, "Application completion mapping is missing/invalid");
+            verifyMapping(function.getMapping().getRate(), false, "Application rate mapping is invalid");
+            verifyMapping(function.getMapping().getTokenize(), false, "Application tokenize mapping is invalid");
+            verifyMapping(function.getMapping().getTruncatePrompt(), false, "Application truncate_prompt mapping is invalid");
+            verifyMapping(function.getMapping().getConfiguration(), false, "Application configuration mapping is invalid");
 
             if (function.getSourceFolder() == null) {
                 throw new IllegalArgumentException("Application function source folder must be provided");
@@ -459,8 +462,13 @@ public class ApplicationService {
                 }
 
                 function.setStatus(Application.Function.Status.STARTED);
-                existing.setEndpoint(endpoint);
                 existing.setFunction(function);
+                existing.setEndpoint(buildMapping(endpoint, function.getMapping().getCompletion()));
+                existing.getFeatures().setRateEndpoint(buildMapping(endpoint, function.getMapping().getRate()));
+                existing.getFeatures().setTokenizeEndpoint(buildMapping(endpoint, function.getMapping().getTokenize()));
+                existing.getFeatures().setTruncatePromptEndpoint(buildMapping(endpoint, function.getMapping().getTruncatePrompt()));
+                existing.getFeatures().setConfigurationEndpoint(buildMapping(endpoint, function.getMapping().getConfiguration()));
+
                 return ProxyUtil.convertToString(existing, true);
             });
 
@@ -744,6 +752,30 @@ public class ApplicationService {
         if (controllerEndpoint == null) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "The functionality is not available");
         }
+    }
+
+    private static void verifyMapping(String path, boolean required, String message) {
+        if (path == null) {
+            if (required) {
+                throw new IllegalArgumentException(message);
+            }
+
+            return;
+        }
+
+        if (!path.startsWith("/")) {
+            throw new IllegalArgumentException(message);
+        }
+
+        try {
+            UrlUtil.decodePath(path, true);
+        } catch (Throwable e) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private static String buildMapping(String endpoint, String path) {
+        return (endpoint == null || path == null) ? null : (endpoint + path);
     }
 
     private record CreateImageRequest(String sources) {

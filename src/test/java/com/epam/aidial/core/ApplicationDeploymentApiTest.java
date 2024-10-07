@@ -33,6 +33,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description": "My App Description",
                   "function": {
                     "source_folder": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env": {
                       "VAR": "VAL"
                     }
@@ -53,7 +56,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         webServer.map(HttpMethod.POST, "/v1/image/create/0123", 200);
-        webServer.map(HttpMethod.POST, "/v1/deployment/create/0123", 200, "{\"url\":\"http://localhost:10001/application\"}");
+        webServer.map(HttpMethod.POST, "/v1/deployment/create/0123", 200, "{\"url\":\"http://localhost:10001\"}");
 
         response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
                 {
@@ -79,6 +82,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
@@ -107,6 +113,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTED",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
@@ -146,6 +155,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPING",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
@@ -173,6 +185,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPED",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
@@ -213,6 +228,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
@@ -241,6 +259,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "FAILED",
                     "error" : "Source folder is empty",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
@@ -284,6 +305,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
@@ -327,6 +351,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPING",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
                     "env" : {
                       "VAR" : "VAL"
                     }
