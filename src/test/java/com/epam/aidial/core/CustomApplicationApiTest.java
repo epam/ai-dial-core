@@ -831,7 +831,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description_keywords": []
                 }
                 """);
-        Application application1 = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        Application application1 = ProxyUtil.convertToObject(response.body(), Application.class);
         String reference1 = application1.getReference();
 
         // verify app2
@@ -852,7 +852,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description_keywords": []
                 }
                 """);
-        Application application2 = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        Application application2 = ProxyUtil.convertToObject(response.body(), Application.class);
         String reference2 = application2.getReference();
 
         // verify references are not the same
@@ -895,7 +895,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description_keywords": []
                 }
                 """);
-        Application application = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        Application application = ProxyUtil.convertToObject(response.body(), Application.class);
         String reference = application.getReference();
 
         // verify app2 has same reference as app1

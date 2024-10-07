@@ -55,8 +55,16 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        webServer.map(HttpMethod.POST, "/v1/image/0123", 200);
-        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, "{\"url\":\"http://localhost:10001\"}");
+        webServer.map(HttpMethod.POST, "/v1/image/0123", 200, """
+                :heartbeat
+                
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, """
+                event: result
+                data: {"url":"http://localhost:10001"}
+                """);
 
         response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
                 {
@@ -66,21 +74,21 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
-                  "displayName" : "My App",
-                  "displayVersion" : "1.0",
-                  "iconUrl" : "http://application1/icon.svg",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
                   "description" : "My App Description",
                   "reference" : "@ignore",
-                  "userRoles" : [ ],
-                  "forwardAuthToken" : false,
+                  "user_roles" : [ ],
+                  "forward_auth_token" : false,
                   "features" : { },
                   "defaults" : { },
                   "interceptors" : [ ],
-                  "descriptionKeywords" : [ ],
+                  "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
-                    "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
-                    "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
                     "mapping" : {
                       "completion" : "/application"
@@ -128,8 +136,16 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testApplicationStopped() {
         testApplicationStarted();
 
-        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200,
+                """
+                event: result
+                data: {"deleted":true}
+                """);
 
         Response response = send(HttpMethod.POST, "/v1/ops/application/stop", null, """
                 {
@@ -139,21 +155,21 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
-                  "displayName" : "My App",
-                  "displayVersion" : "1.0",
-                  "iconUrl" : "http://application1/icon.svg",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
                   "description" : "My App Description",
                   "reference" : "@ignore",
-                  "userRoles" : [ ],
-                  "forwardAuthToken" : false,
+                  "user_roles" : [ ],
+                  "forward_auth_token" : false,
                   "features" : { },
                   "defaults" : { },
                   "interceptors" : [ ],
-                  "descriptionKeywords" : [ ],
+                  "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
-                    "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
-                    "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPING",
                     "mapping" : {
                       "completion" : "/application"
@@ -201,8 +217,16 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testApplicationFailed() {
         testApplicationCreated();
 
-        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 404);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 404);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200,
+                """
+                event: result
+                data: {"deleted":true}
+                """);
 
         Response response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
                 {
@@ -212,21 +236,21 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
-                  "displayName" : "My App",
-                  "displayVersion" : "1.0",
-                  "iconUrl" : "http://application1/icon.svg",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
                   "description" : "My App Description",
                   "reference" : "@ignore",
-                  "userRoles" : [ ],
-                  "forwardAuthToken" : false,
+                  "user_roles" : [ ],
+                  "forward_auth_token" : false,
                   "features" : { },
                   "defaults" : { },
                   "interceptors" : [ ],
-                  "descriptionKeywords" : [ ],
+                  "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
-                    "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
-                    "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
                     "mapping" : {
                       "completion" : "/application"
@@ -289,21 +313,21 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
-                  "displayName" : "My App",
-                  "displayVersion" : "1.0",
-                  "iconUrl" : "http://application1/icon.svg",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
                   "description" : "My App Description",
                   "reference" : "@ignore",
-                  "userRoles" : [ ],
-                  "forwardAuthToken" : false,
+                  "user_roles" : [ ],
+                  "forward_auth_token" : false,
                   "features" : { },
                   "defaults" : { },
                   "interceptors" : [ ],
-                  "descriptionKeywords" : [ ],
+                  "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
-                    "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
-                    "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
                     "mapping" : {
                       "completion" : "/application"
@@ -318,8 +342,16 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         Thread.sleep(300); // does not cause tests to be fluky
 
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STARTING");
-        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200,
+                """
+                event: result
+                data: {"deleted":false}
+                """);
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "FAILED");
     }
 
@@ -335,21 +367,21 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
-                  "displayName" : "My App",
-                  "displayVersion" : "1.0",
-                  "iconUrl" : "http://application1/icon.svg",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
                   "description" : "My App Description",
                   "reference" : "@ignore",
-                  "userRoles" : [ ],
-                  "forwardAuthToken" : false,
+                  "user_roles" : [ ],
+                  "forward_auth_token" : false,
                   "features" : { },
                   "defaults" : { },
                   "interceptors" : [ ],
-                  "descriptionKeywords" : [ ],
+                  "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
-                    "sourceFolder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
-                    "targetFolder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPING",
                     "mapping" : {
                       "completion" : "/application"
@@ -364,10 +396,17 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         Thread.sleep(300); // does not cause tests to be fluky
 
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPING");
-        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200,
+                """
+                event: result
+                data: {"deleted":true}
+                """);
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPED");
-
     }
 
     @Test
@@ -483,6 +522,74 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                         }
                         """, "content-type", "application/json");
         verify(response, 503);
+    }
+
+    @Test
+    void testControllerError() {
+        testApplicationCreated();
+
+        Response response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/app.py", null, """
+                some python code
+                """);
+        verify(response, 200);
+
+        webServer.map(HttpMethod.POST, "/v1/image/0123", 200, """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, """
+                event: error
+                data: {"message":"failed to deploy"}
+                """);
+
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200,
+                """
+                event: result
+                data: {"deleted":true}
+                """);
+
+        response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
+                }
+                """);
+        verify(response, 200);
+
+        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "FAILED");;
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "user_roles" : [ ],
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "function" : {
+                    "id" : "0123",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "status" : "FAILED",
+                    "error" : "failed to deploy",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  }
+                }
+                """);
     }
 
     @SneakyThrows

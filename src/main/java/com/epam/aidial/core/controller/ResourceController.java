@@ -142,7 +142,7 @@ public class ResourceController extends AccessControlBaseController {
 
             Application application = result.getValue();
             String body = hasWriteAccess
-                    ? ProxyUtil.convertToString(application, true)
+                    ? ProxyUtil.convertToString(application)
                     : ProxyUtil.convertToString(ApplicationUtil.mapApplication(application));
 
             return Pair.of(meta, body);
@@ -196,7 +196,7 @@ public class ResourceController extends AccessControlBaseController {
         if (descriptor.getType() == ResourceType.APPLICATION) {
             responseFuture =  requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
-                Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class, true);
+                Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class);
                 return vertx.executeBlocking(() -> applicationService.putApplication(descriptor, etag, application).getKey(), false);
             });
         } else {

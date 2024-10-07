@@ -31,6 +31,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.redisson.api.RScoredSortedSet;
@@ -43,7 +44,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
@@ -91,7 +94,7 @@ public class ApplicationService {
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
         this.controllerEndpoint = settings.getString("controllerEndpoint", "https://ai-dial-app-controller.deltixuat.com");
-        this.controllerTimeout = settings.getLong("controllerTimeout", 120000L);
+        this.controllerTimeout = settings.getLong("controllerTimeout", 300000L);
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
@@ -167,7 +170,7 @@ public class ApplicationService {
         }
 
         ResourceItemMetadata meta = result.getKey();
-        Application application = ProxyUtil.convertToObject(result.getValue(), Application.class, true);
+        Application application = ProxyUtil.convertToObject(result.getValue(), Application.class);
 
         if (application == null) {
             throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
@@ -220,7 +223,7 @@ public class ApplicationService {
         prepareApplication(resource, application);
 
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, json -> {
-            Application existing = ProxyUtil.convertToObject(json, Application.class, true);
+            Application existing = ProxyUtil.convertToObject(json, Application.class);
             Application.Function function = application.getFunction();
 
             if (isActive(existing)) {
@@ -245,7 +248,7 @@ public class ApplicationService {
                 }
             }
 
-            return ProxyUtil.convertToString(application, true);
+            return ProxyUtil.convertToString(application);
         });
 
         return Pair.of(meta, application);
@@ -255,7 +258,7 @@ public class ApplicationService {
         verifyApplication(resource);
 
         resourceService.computeResource(resource, etag, json -> {
-            Application application = ProxyUtil.convertToObject(json, Application.class, true);
+            Application application = ProxyUtil.convertToObject(json, Application.class);
 
             if (application == null) {
                 throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
@@ -286,7 +289,7 @@ public class ApplicationService {
 
         AtomicReference<Application> result = new AtomicReference<>();
         resourceService.computeResource(resource, json -> {
-            Application application = ProxyUtil.convertToObject(json, Application.class, true);
+            Application application = ProxyUtil.convertToObject(json, Application.class);
             if (application == null) {
                 throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
             }
@@ -305,7 +308,7 @@ public class ApplicationService {
             result.setPlain(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
 
-            return ProxyUtil.convertToString(application, true);
+            return ProxyUtil.convertToString(application);
         });
 
         vertx.executeBlocking(() -> launchApplication(context, resource), false)
@@ -320,7 +323,7 @@ public class ApplicationService {
 
         AtomicReference<Application> result = new AtomicReference<>();
         resourceService.computeResource(resource, json -> {
-            Application application = ProxyUtil.convertToObject(json, Application.class, true);
+            Application application = ProxyUtil.convertToObject(json, Application.class);
             if (application == null) {
                 throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
             }
@@ -343,7 +346,7 @@ public class ApplicationService {
             result.setPlain(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
 
-            return ProxyUtil.convertToString(application, true);
+            return ProxyUtil.convertToString(application);
         });
 
         vertx.executeBlocking(() -> terminateApplication(resource, null), false);
@@ -456,7 +459,7 @@ public class ApplicationService {
             String endpoint = createApplicationDeployment(context, function);
 
             resourceService.computeResource(resource, json -> {
-                Application existing = ProxyUtil.convertToObject(json, Application.class, true);
+                Application existing = ProxyUtil.convertToObject(json, Application.class);
                 if (existing == null || !Objects.equals(existing.getFunction(), application.getFunction())) {
                     throw new IllegalStateException("Application function has been updated");
                 }
@@ -469,7 +472,7 @@ public class ApplicationService {
                 existing.getFeatures().setTruncatePromptEndpoint(buildMapping(endpoint, function.getMapping().getTruncatePrompt()));
                 existing.getFeatures().setConfigurationEndpoint(buildMapping(endpoint, function.getMapping().getConfiguration()));
 
-                return ProxyUtil.convertToString(existing, true);
+                return ProxyUtil.convertToString(existing);
             });
 
             pendingApplications.remove(resource.getUrl());
@@ -527,13 +530,7 @@ public class ApplicationService {
                     CreateImageRequest body = new CreateImageRequest(function.getTargetFolder());
                     return ProxyUtil.convertToString(body);
                 },
-                (response, body) -> {
-                    if (response.statusCode() != 200) {
-                        throw new RuntimeException("Failed to create image. Code: " + response.statusCode() + ". Body: " + body);
-                    }
-
-                    return ProxyUtil.convertToObject(body, CreateImageResponse.class);
-                });
+                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
     private String createApplicationDeployment(ProxyContext context, Application.Function function) {
@@ -555,13 +552,7 @@ public class ApplicationService {
                     CreateDeploymentRequest body = new CreateDeploymentRequest(function.getEnv());
                     return ProxyUtil.convertToString(body);
                 },
-                (response, body) -> {
-                    if (response.statusCode() != 200) {
-                        throw new RuntimeException("Failed to create deployment. Code: " + response.statusCode() + ". Body: " + body);
-                    }
-
-                    return ProxyUtil.convertToObject(body, CreateDeploymentResponse.class);
-                });
+                (response, body) -> convertServerSentEvent(body, CreateDeploymentResponse.class));
 
         return deployment.url();
     }
@@ -591,7 +582,7 @@ public class ApplicationService {
                 deleteApplicationDeployment(function);
 
                 resourceService.computeResource(resource, json -> {
-                    Application existing = ProxyUtil.convertToObject(json, Application.class, true);
+                    Application existing = ProxyUtil.convertToObject(json, Application.class);
                     if (existing == null || !Objects.equals(existing.getFunction(), function)) {
                         throw new IllegalStateException("Application function has been updated");
                     }
@@ -604,7 +595,7 @@ public class ApplicationService {
                     function.setError(status == Application.Function.Status.FAILED ? error : null);
 
                     existing.setFunction(function);
-                    return ProxyUtil.convertToString(existing, true);
+                    return ProxyUtil.convertToString(existing);
                 });
             }
 
@@ -641,29 +632,18 @@ public class ApplicationService {
     private void deleteApplicationImage(Application.Function function) {
         callController(HttpMethod.DELETE, "/v1/image/" + function.getId(),
                 request -> null,
-                (response, body) -> {
-                    if (response.statusCode() != 200 && response.statusCode() != 404) {
-                        throw new RuntimeException("Failed to delete image. Status: " + response.statusCode());
-                    }
-
-                    return null;
-                });
+                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
     private void deleteApplicationDeployment(Application.Function function) {
         callController(HttpMethod.DELETE, "/v1/deployment/" + function.getId(),
                 request -> null,
-                (response, body) -> {
-                    if (response.statusCode() != 200 && response.statusCode() != 404) {
-                        throw new RuntimeException("Failed to delete deployment. Status: " + response.statusCode());
-                    }
-
-                    return null;
-                });
+                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
     // endregion
 
+    @SneakyThrows
     private <R> R callController(HttpMethod method, String path,
                                  Function<HttpClientRequest, String> requestMapper,
                                  BiFunction<HttpClientResponse, String, R> responseMapper) {
@@ -683,6 +663,10 @@ public class ApplicationService {
                     return request.send((body == null) ? "" : body);
                 })
                 .compose(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new IllegalStateException("Controller API error. Code: " + response.statusCode());
+                    }
+
                     responseReference.set(response);
                     return response.body();
                 })
@@ -703,7 +687,11 @@ public class ApplicationService {
                 request.reset();
             }
 
-            throw new RuntimeException(e);
+            if (e instanceof ExecutionException) {
+                e = e.getCause();
+            }
+
+            throw e;
         }
     }
 
@@ -778,6 +766,42 @@ public class ApplicationService {
         return (endpoint == null || path == null) ? null : (endpoint + path);
     }
 
+    private static <T> T convertServerSentEvent(String body, Class<T> clazz) {
+        StringTokenizer tokenizer = new StringTokenizer(body, "\n");
+
+        while (tokenizer.hasMoreTokens()) {
+            String line = tokenizer.nextToken().trim();
+            if (line.isBlank() || line.startsWith(":")) {
+                continue; // empty or comment
+            }
+
+            if (!line.startsWith("event:")) {
+                throw new IllegalStateException("Invalid response. Invalid line: " + line);
+            }
+
+            if (!tokenizer.hasMoreTokens()) {
+                throw new IllegalStateException("Invalid response. No line: \"data:\"" + line);
+            }
+
+            String event = line.substring("event:".length()).trim();
+            line = tokenizer.nextToken().trim();
+            String data = line.substring("data:".length()).trim();
+
+            if (event.equals("result")) {
+                return ProxyUtil.convertToObject(data, clazz);
+            }
+
+            if (event.equals("error")) {
+                ErrorResponse error = ProxyUtil.convertToObject(data, ErrorResponse.class);
+                throw new IllegalStateException(error == null ? "Unknown error" : error.message());
+            }
+
+            throw new IllegalStateException("Invalid response. Invalid event: " + event);
+        }
+
+        throw new IllegalStateException("Invalid response. Unexpected end of stream");
+    }
+
     private record CreateImageRequest(String sources) {
     }
 
@@ -785,10 +809,14 @@ public class ApplicationService {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record CreateImageResponse() {
+    public record CreateDeploymentResponse(String url) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record CreateDeploymentResponse(String url) {
+    public record EmptyResponse() {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ErrorResponse(String message) {
     }
 }
