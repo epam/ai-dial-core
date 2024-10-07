@@ -509,7 +509,7 @@ public class ApplicationService {
     }
 
     private void createApplicationImage(ProxyContext context, Application.Function function) {
-        callController(HttpMethod.POST, "/v1/image/create/" + function.getId(),
+        callController(HttpMethod.POST, "/v1/image/" + function.getId(),
                 request -> {
                     String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
                     String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
@@ -537,7 +537,7 @@ public class ApplicationService {
     }
 
     private String createApplicationDeployment(ProxyContext context, Application.Function function) {
-        CreateDeploymentResponse deployment = callController(HttpMethod.POST, "/v1/deployment/create/" + function.getId(),
+        CreateDeploymentResponse deployment = callController(HttpMethod.POST, "/v1/deployment/" + function.getId(),
                 request -> {
                     String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
                     String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
@@ -639,7 +639,7 @@ public class ApplicationService {
     }
 
     private void deleteApplicationImage(Application.Function function) {
-        callController(HttpMethod.DELETE, "/v1/image/delete/" + function.getId(),
+        callController(HttpMethod.DELETE, "/v1/image/" + function.getId(),
                 request -> null,
                 (response, body) -> {
                     if (response.statusCode() != 200 && response.statusCode() != 404) {
@@ -651,7 +651,7 @@ public class ApplicationService {
     }
 
     private void deleteApplicationDeployment(Application.Function function) {
-        callController(HttpMethod.DELETE, "/v1/deployment/delete/" + function.getId(),
+        callController(HttpMethod.DELETE, "/v1/deployment/" + function.getId(),
                 request -> null,
                 (response, body) -> {
                     if (response.statusCode() != 200 && response.statusCode() != 404) {

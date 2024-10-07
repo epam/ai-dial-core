@@ -55,8 +55,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        webServer.map(HttpMethod.POST, "/v1/image/create/0123", 200);
-        webServer.map(HttpMethod.POST, "/v1/deployment/create/0123", 200, "{\"url\":\"http://localhost:10001\"}");
+        webServer.map(HttpMethod.POST, "/v1/image/0123", 200);
+        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, "{\"url\":\"http://localhost:10001\"}");
 
         response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
                 {
@@ -128,8 +128,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testApplicationStopped() {
         testApplicationStarted();
 
-        webServer.map(HttpMethod.DELETE, "/v1/image/delete/0123", 200);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/delete/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200);
 
         Response response = send(HttpMethod.POST, "/v1/ops/application/stop", null, """
                 {
@@ -201,8 +201,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testApplicationFailed() {
         testApplicationCreated();
 
-        webServer.map(HttpMethod.DELETE, "/v1/image/delete/0123", 404);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/delete/0123", 404);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 404);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 404);
 
         Response response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
                 {
@@ -318,8 +318,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         Thread.sleep(300); // does not cause tests to be fluky
 
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STARTING");
-        webServer.map(HttpMethod.DELETE, "/v1/image/delete/0123", 200);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/delete/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200);
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "FAILED");
     }
 
@@ -364,8 +364,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         Thread.sleep(300); // does not cause tests to be fluky
 
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPING");
-        webServer.map(HttpMethod.DELETE, "/v1/image/delete/0123", 200);
-        webServer.map(HttpMethod.DELETE, "/v1/deployment/delete/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200);
         awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPED");
 
     }
