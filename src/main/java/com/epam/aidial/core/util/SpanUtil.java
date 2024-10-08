@@ -7,7 +7,7 @@ import io.opentelemetry.sdk.trace.ReadableSpan;
 import lombok.experimental.UtilityClass;
 
 import java.util.List;
-import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @UtilityClass
 public class SpanUtil {
@@ -15,27 +15,14 @@ public class SpanUtil {
     private static final AttributeKey<String> ATTR_HTTP_METHOD = AttributeKey.stringKey(HttpTraceAttributeConstants.HTTP_METHOD);
     private static final List<String> GROUPS = List.of("id", "bucket", "path");
 
-    public void updateName(String path, Matcher matcher) {
-        String spanName = path;
+    public static void updateName(Pattern pathPattern, String path) {
+        String spanName = RegexUtil.replaceNamedGroups(pathPattern, path, GROUPS);
         if (Span.current() instanceof ReadableSpan span) {
             String method = span.getAttribute(ATTR_HTTP_METHOD);
             if (method != null) {
                 spanName = method + " " + spanName;
             }
         }
-        if (matcher.groupCount() > 0) {
-            for (String group : GROUPS) {
-                spanName = replace(spanName, group, matcher);
-            }
-        }
         Span.current().updateName(spanName);
-    }
-
-    private String replace(String spanName, String group, Matcher matcher) {
-        try {
-            return spanName.replaceAll(matcher.group(group), "{%s}".formatted(group));
-        } catch (IllegalArgumentException ignored) {
-            return spanName;
-        }
     }
 }

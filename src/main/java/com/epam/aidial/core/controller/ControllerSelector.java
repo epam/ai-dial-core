@@ -366,7 +366,7 @@ public class ControllerSelector {
     private Matcher match(Pattern pattern, String path) {
         Matcher matcher = pattern.matcher(path);
         if (matcher.find()) {
-            SpanUtil.updateName(path, matcher);
+            SpanUtil.updateName(pattern, path);
             return matcher;
         }
         return null;
