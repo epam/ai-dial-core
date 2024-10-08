@@ -4,6 +4,7 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.util.SpanUtil;
 import com.epam.aidial.core.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import lombok.experimental.UtilityClass;
@@ -16,47 +17,47 @@ import java.util.regex.Pattern;
 @UtilityClass
 public class ControllerSelector {
 
-    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(.+?)/(completions|chat/completions|embeddings)$");
-    private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(.+?)$");
+    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(?<id>.+?)/(completions|chat/completions|embeddings)$");
+    private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(?<id>.+?)$");
     private static final Pattern PATTERN_DEPLOYMENTS = Pattern.compile("^/+openai/deployments$");
 
-    private static final Pattern PATTERN_MODEL = Pattern.compile("^/+openai/models/(.+?)$");
+    private static final Pattern PATTERN_MODEL = Pattern.compile("^/+openai/models/(?<id>.+?)$");
     private static final Pattern PATTERN_MODELS = Pattern.compile("^/+openai/models$");
 
-    private static final Pattern PATTERN_ADDON = Pattern.compile("^/+openai/addons/(.+?)$");
+    private static final Pattern PATTERN_ADDON = Pattern.compile("^/+openai/addons/(?<id>.+?)$");
     private static final Pattern PATTERN_ADDONS = Pattern.compile("^/+openai/addons$");
 
-    private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/(.+?)$");
+    private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/(?<id>.+?)$");
     private static final Pattern PATTERN_ASSISTANTS = Pattern.compile("^/+openai/assistants$");
 
-    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(.+?)$");
+    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(?<id>.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
 
 
     private static final Pattern PATTERN_BUCKET = Pattern.compile("^/v1/bucket$");
 
-    private static final Pattern PATTERN_FILES = Pattern.compile("^/v1/files/[a-zA-Z0-9]+/.*");
-    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("^/v1/metadata/files/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_FILES = Pattern.compile("^/v1/files/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
+    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("^/v1/metadata/files/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
 
-    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
-    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts|applications)/[a-zA-Z0-9]+/.*");
+    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
+    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
 
     // deployment feature patterns
-    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/(.+?)/rate$");
-    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/(.+?)/tokenize$");
-    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/(.+?)/truncate_prompt$");
-    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/(.+?)/configuration$");
+    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/(?<id>.+?)/rate$");
+    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/(?<id>.+?)/tokenize$");
+    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/(?<id>.+?)/truncate_prompt$");
+    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/(?<id>.+?)/configuration$");
 
     private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
-    private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/([a-zA-Z0-9]+)$");
+    private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/(?<id>[a-zA-Z0-9]+)$");
     private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
     private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
     private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
     private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move|subscribe)$");
 
-    private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/(.+?)/limits$");
+    private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/(?<id>.+?)/limits$");
 
     private static final Pattern NOTIFICATIONS = Pattern.compile("^/v1/ops/notification/(list|delete)$");
 
@@ -295,7 +296,7 @@ public class ControllerSelector {
             String operation = match.group(1);
             ResourceOperationController controller = new ResourceOperationController(proxy, context);
 
-            return switch (operation)  {
+            return switch (operation) {
                 case "move" -> controller::move;
                 case "subscribe" -> controller::subscribe;
                 default -> null;
@@ -364,7 +365,11 @@ public class ControllerSelector {
 
     private Matcher match(Pattern pattern, String path) {
         Matcher matcher = pattern.matcher(path);
-        return matcher.find() ? matcher : null;
+        if (matcher.find()) {
+            SpanUtil.updateName(path, matcher);
+            return matcher;
+        }
+        return null;
     }
 
     private String resourcePath(String url) {
