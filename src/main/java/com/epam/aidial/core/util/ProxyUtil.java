@@ -162,10 +162,9 @@ public class ProxyUtil {
     }
 
     private static void collectAttachedFilesFromContent(JsonNode content, Consumer<String> consumer) {
-        if (content == null || !(content instanceof ArrayNode)) {
+        if (!(content instanceof ArrayNode contentParts)) {
             return;
         }
-        ArrayNode contentParts = (ArrayNode) content;
 
         for (int i = 0; i < contentParts.size(); i++) {
             JsonNode partNode = contentParts.get(i);

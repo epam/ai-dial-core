@@ -51,6 +51,9 @@ public class ProxyUtilTest {
                       }
                     },
                     {
+                      "content": null
+                    },
+                    {
                       "content": "The file you provided is a Dockerfile.",
                       "role": "assistant",
                       "custom_content": {
