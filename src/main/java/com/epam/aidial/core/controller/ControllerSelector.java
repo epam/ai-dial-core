@@ -82,122 +82,122 @@ public class ControllerSelector {
     private static Controller selectGet(Proxy proxy, ProxyContext context, String path) {
         Matcher match;
 
-        match = match(PATTERN_DEPLOYMENT, path);
+        match = match(PATTERN_DEPLOYMENT, path, context);
         if (match != null) {
             DeploymentController controller = new DeploymentController(context);
             String deploymentId = UrlUtil.decodePath(match.group(1));
             return () -> controller.getDeployment(deploymentId);
         }
 
-        match = match(PATTERN_DEPLOYMENTS, path);
+        match = match(PATTERN_DEPLOYMENTS, path, context);
         if (match != null) {
             DeploymentController controller = new DeploymentController(context);
             return controller::getDeployments;
         }
 
-        match = match(PATTERN_MODEL, path);
+        match = match(PATTERN_MODEL, path, context);
         if (match != null) {
             ModelController controller = new ModelController(context);
             String modelId = UrlUtil.decodePath(match.group(1));
             return () -> controller.getModel(modelId);
         }
 
-        match = match(PATTERN_MODELS, path);
+        match = match(PATTERN_MODELS, path, context);
         if (match != null) {
             ModelController controller = new ModelController(context);
             return controller::getModels;
         }
 
-        match = match(PATTERN_ADDON, path);
+        match = match(PATTERN_ADDON, path, context);
         if (match != null) {
             AddonController controller = new AddonController(context);
             String addonId = UrlUtil.decodePath(match.group(1));
             return () -> controller.getAddon(addonId);
         }
 
-        match = match(PATTERN_ADDONS, path);
+        match = match(PATTERN_ADDONS, path, context);
         if (match != null) {
             AddonController controller = new AddonController(context);
             return controller::getAddons;
         }
 
-        match = match(PATTERN_ASSISTANT, path);
+        match = match(PATTERN_ASSISTANT, path, context);
         if (match != null) {
             AssistantController controller = new AssistantController(context);
             String assistantId = UrlUtil.decodePath(match.group(1));
             return () -> controller.getAssistant(assistantId);
         }
 
-        match = match(PATTERN_ASSISTANTS, path);
+        match = match(PATTERN_ASSISTANTS, path, context);
         if (match != null) {
             AssistantController controller = new AssistantController(context);
             return controller::getAssistants;
         }
 
-        match = match(PATTERN_APPLICATION, path);
+        match = match(PATTERN_APPLICATION, path, context);
         if (match != null) {
             ApplicationController controller = new ApplicationController(context, proxy);
             String application = UrlUtil.decodePath(match.group(1));
             return () -> controller.getApplication(application);
         }
 
-        match = match(PATTERN_APPLICATIONS, path);
+        match = match(PATTERN_APPLICATIONS, path, context);
         if (match != null) {
             ApplicationController controller = new ApplicationController(context, proxy);
             return controller::getApplicationService;
         }
 
-        match = match(PATTERN_FILES_METADATA, path);
+        match = match(PATTERN_FILES_METADATA, path, context);
         if (match != null) {
             FileMetadataController controller = new FileMetadataController(proxy, context);
             return () -> controller.handle(resourcePath(path));
         }
 
-        match = match(PATTERN_FILES, path);
+        match = match(PATTERN_FILES, path, context);
         if (match != null) {
             DownloadFileController controller = new DownloadFileController(proxy, context);
             return () -> controller.handle(resourcePath(path));
         }
 
-        match = match(PATTERN_RESOURCE, path);
+        match = match(PATTERN_RESOURCE, path, context);
         if (match != null) {
             ResourceController controller = new ResourceController(proxy, context, false);
             return () -> controller.handle(resourcePath(path));
         }
 
-        match = match(PATTERN_RESOURCE_METADATA, path);
+        match = match(PATTERN_RESOURCE_METADATA, path, context);
         if (match != null) {
             ResourceController controller = new ResourceController(proxy, context, true);
             return () -> controller.handle(resourcePath(path));
         }
 
-        match = match(PATTERN_BUCKET, path);
+        match = match(PATTERN_BUCKET, path, context);
         if (match != null) {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;
         }
 
-        match = match(INVITATION, path);
+        match = match(INVITATION, path, context);
         if (match != null) {
             String invitationId = UrlUtil.decodePath(match.group(1));
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.getOrAcceptInvitation(invitationId);
         }
 
-        match = match(INVITATIONS, path);
+        match = match(INVITATIONS, path, context);
         if (match != null) {
             InvitationController controller = new InvitationController(proxy, context);
             return controller::getInvitations;
         }
 
-        match = match(DEPLOYMENT_LIMITS, path);
+        match = match(DEPLOYMENT_LIMITS, path, context);
         if (match != null) {
             String deploymentId = UrlUtil.decodePath(match.group(1));
             LimitController controller = new LimitController(proxy, context);
             return () -> controller.getLimits(deploymentId);
         }
 
-        match = match(PATTERN_CONFIGURATION, path);
+        match = match(PATTERN_CONFIGURATION, path, context);
         if (match != null) {
             String deploymentId = UrlUtil.decodePath(match.group(1));
             Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
@@ -213,7 +213,7 @@ public class ControllerSelector {
     }
 
     private static Controller selectPost(Proxy proxy, ProxyContext context, String path) {
-        Matcher match = match(PATTERN_POST_DEPLOYMENT, path);
+        Matcher match = match(PATTERN_POST_DEPLOYMENT, path, context);
         if (match != null) {
             String deploymentId = UrlUtil.decodePath(match.group(1));
             String deploymentApi = UrlUtil.decodePath(match.group(2));
@@ -221,7 +221,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, deploymentApi);
         }
 
-        match = match(PATTERN_RATE_RESPONSE, path);
+        match = match(PATTERN_RATE_RESPONSE, path, context);
         if (match != null) {
             String deploymentId = UrlUtil.decodePath(match.group(1));
 
@@ -234,7 +234,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         }
 
-        match = match(PATTERN_TOKENIZE, path);
+        match = match(PATTERN_TOKENIZE, path, context);
         if (match != null) {
             String deploymentId = UrlUtil.decodePath(match.group(1));
 
@@ -247,7 +247,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, true);
         }
 
-        match = match(PATTERN_TRUNCATE_PROMPT, path);
+        match = match(PATTERN_TRUNCATE_PROMPT, path, context);
         if (match != null) {
             String deploymentId = UrlUtil.decodePath(match.group(1));
 
@@ -260,7 +260,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, true);
         }
 
-        match = match(SHARE_RESOURCE_OPERATIONS, path);
+        match = match(SHARE_RESOURCE_OPERATIONS, path, context);
         if (match != null) {
             String operation = match.group(1);
             ShareController.Operation op = ShareController.Operation.valueOf(operation.toUpperCase());
@@ -269,7 +269,7 @@ public class ControllerSelector {
             return () -> controller.handle(op);
         }
 
-        match = match(PUBLICATIONS, path);
+        match = match(PUBLICATIONS, path, context);
         if (match != null) {
             String operation = match.group(1);
             PublicationController controller = new PublicationController(proxy, context);
@@ -285,13 +285,13 @@ public class ControllerSelector {
             };
         }
 
-        match = match(PUBLICATION_RULES, path);
+        match = match(PUBLICATION_RULES, path, context);
         if (match != null) {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
         }
 
-        match = match(RESOURCE_OPERATIONS, path);
+        match = match(RESOURCE_OPERATIONS, path, context);
         if (match != null) {
             String operation = match.group(1);
             ResourceOperationController controller = new ResourceOperationController(proxy, context);
@@ -303,13 +303,13 @@ public class ControllerSelector {
             };
         }
 
-        match = match(PUBLISHED_RESOURCES, path);
+        match = match(PUBLISHED_RESOURCES, path, context);
         if (match != null) {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listPublishedResources;
         }
 
-        match = match(NOTIFICATIONS, path);
+        match = match(NOTIFICATIONS, path, context);
         if (match != null) {
             String operation = match.group(1);
             NotificationController controller = new NotificationController(proxy, context);
@@ -325,19 +325,19 @@ public class ControllerSelector {
     }
 
     private static Controller selectDelete(Proxy proxy, ProxyContext context, String path) {
-        Matcher match = match(PATTERN_FILES, path);
+        Matcher match = match(PATTERN_FILES, path, context);
         if (match != null) {
             DeleteFileController controller = new DeleteFileController(proxy, context);
             return () -> controller.handle(resourcePath(path));
         }
 
-        match = match(PATTERN_RESOURCE, path);
+        match = match(PATTERN_RESOURCE, path, context);
         if (match != null) {
             ResourceController controller = new ResourceController(proxy, context, false);
             return () -> controller.handle(resourcePath(path));
         }
 
-        match = match(INVITATION, path);
+        match = match(INVITATION, path, context);
         if (match != null) {
             String invitationId = UrlUtil.decodePath(match.group(1));
             InvitationController controller = new InvitationController(proxy, context);
@@ -348,13 +348,13 @@ public class ControllerSelector {
     }
 
     private static Controller selectPut(Proxy proxy, ProxyContext context, String path) {
-        Matcher match = match(PATTERN_FILES, path);
+        Matcher match = match(PATTERN_FILES, path, context);
         if (match != null) {
             UploadFileController controller = new UploadFileController(proxy, context);
             return () -> controller.handle(resourcePath(path));
         }
 
-        match = match(PATTERN_RESOURCE, path);
+        match = match(PATTERN_RESOURCE, path, context);
         if (match != null) {
             ResourceController controller = new ResourceController(proxy, context, false);
             return () -> controller.handle(resourcePath(path));
@@ -363,10 +363,10 @@ public class ControllerSelector {
         return null;
     }
 
-    private Matcher match(Pattern pattern, String path) {
+    private Matcher match(Pattern pattern, String path, ProxyContext context) {
         Matcher matcher = pattern.matcher(path);
         if (matcher.find()) {
-            SpanUtil.updateName(pattern, path);
+            SpanUtil.updateName(pattern, path, context.getRequest().method().name());
             return matcher;
         }
         return null;

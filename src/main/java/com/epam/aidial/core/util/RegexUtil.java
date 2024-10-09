@@ -3,8 +3,8 @@ package com.epam.aidial.core.util;
 import lombok.experimental.UtilityClass;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,18 +19,16 @@ public class RegexUtil {
         if (regexGroups.isEmpty()) {
             return input;
         }
+        regexGroups.sort(Comparator.comparingInt(RegexGroup::start));
         StringBuilder nameBuilder = new StringBuilder();
-        for (int i = 0; i < input.length(); ) {
-            Optional<RegexGroup> groupOpt = find(regexGroups, i);
-            if (groupOpt.isEmpty()) {
-                nameBuilder.append(input.charAt(i));
-                i++;
-            } else {
-                RegexGroup group = groupOpt.get();
-                nameBuilder.append("{").append(group.group()).append("}");
-                i = group.end();
-            }
+        int prev = 0;
+        for (RegexGroup rg : regexGroups) {
+            nameBuilder
+                    .append(input, prev, rg.start())
+                    .append('{').append(rg.group()).append('}');
+            prev = rg.end();
         }
+        nameBuilder.append(input, prev, input.length());
         return nameBuilder.toString();
     }
 
@@ -44,17 +42,11 @@ public class RegexUtil {
                     int end = matcher.end(group);
                     regexGroups.add(new RegexGroup(group, start, end));
                 } catch (IllegalStateException | IllegalArgumentException ignored) {
-                    // Ignore
+                    //Ignore group mismatch
                 }
             }
         }
         return regexGroups;
-    }
-
-    private Optional<RegexGroup> find(List<RegexGroup> groups, int position) {
-        return groups.stream()
-                .filter(g -> g.start() <= position && position < g.end())
-                .findFirst();
     }
 
     private record RegexGroup(String group, int start, int end) {
