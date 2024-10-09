@@ -1,6 +1,8 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.ProxyContext;
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.controller.ApplicationUtil;
 import com.epam.aidial.core.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.Notification;
@@ -61,8 +63,12 @@ public class PublicationService {
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
+    public static boolean isReviewBucket(ResourceDescription resource) {
+        return resource.isPrivate() && resource.getBucketLocation().contains(PUBLICATIONS_NAME);
+    }
+
     public static boolean hasReviewAccess(ProxyContext context, ResourceDescription resource) {
-        if (resource.isPrivate() && resource.getBucketLocation().contains(PUBLICATIONS_NAME)) {
+        if (isReviewBucket(resource)) {
             String location = BlobStorageUtil.buildInitiatorBucket(context);
             String reviewLocation = location + PUBLICATIONS_NAME + PATH_SEPARATOR;
             return resource.getBucketLocation().startsWith(reviewLocation);
@@ -138,8 +144,9 @@ public class PublicationService {
     public Publication createPublication(ProxyContext context, Publication publication) {
         String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
         String bucket = encryption.encrypt(bucketLocation);
+        boolean isAdmin = accessService.hasAdminAccess(context);
 
-        prepareAndValidatePublicationRequest(context, bucket, bucketLocation, publication);
+        prepareAndValidatePublicationRequest(context, publication, bucket, bucketLocation, isAdmin);
 
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                 .filter(resource -> resource.getAction() == Publication.ResourceAction.ADD)
@@ -301,7 +308,9 @@ public class PublicationService {
         return publication;
     }
 
-    private void prepareAndValidatePublicationRequest(ProxyContext context, String bucketName, String bucketLocation, Publication publication) {
+    private void prepareAndValidatePublicationRequest(ProxyContext context, Publication publication,
+                                                      String bucketName, String bucketLocation,
+                                                      boolean isAdmin) {
         String targetFolder = publication.getTargetFolder();
         if (targetFolder == null) {
             throw new IllegalArgumentException("Publication \"targetFolder\" is missing");
@@ -344,7 +353,7 @@ public class PublicationService {
             if (action == Publication.ResourceAction.ADD) {
                 validateResourceForAddition(context, resource, targetFolder, reviewBucket, urls);
             } else if (action == Publication.ResourceAction.DELETE) {
-                validateResourceForDeletion(resource, targetFolder, urls);
+                validateResourceForDeletion(resource, targetFolder, urls, bucketName, isAdmin);
             } else {
                 throw new UnsupportedOperationException("Unsupported resource action: " + action);
             }
@@ -424,7 +433,8 @@ public class PublicationService {
         resource.setReviewUrl(reviewUrl);
     }
 
-    private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls) {
+    private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls,
+                                             String bucketName, boolean isAdmin) {
         String targetUrl = resource.getTargetUrl();
         ResourceDescription target = ResourceDescription.fromPublicUrl(targetUrl);
         verifyResourceType(target);
@@ -444,6 +454,13 @@ public class PublicationService {
 
         if (!resourceService.hasResource(target)) {
             throw new IllegalArgumentException("Target resource does not exists: " + targetUrl);
+        }
+
+        if (target.getType() == ResourceType.APPLICATION && !isAdmin) {
+            Application application = applicationService.getApplication(target).getValue();
+            if (application.getFunction() != null && !application.getFunction().getAuthorBucket().equals(bucketName)) {
+                throw new IllegalArgumentException("Target application has a different author: " + targetUrl);
+            }
         }
 
         resource.setTargetUrl(targetUrl);
@@ -521,8 +538,8 @@ public class PublicationService {
             ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
 
             if (from.getType() == ResourceType.APPLICATION) {
-                applicationService.copyApplication(from, to, true, app -> {
-                    app.setReference(null); // generate a new reference
+                applicationService.copyApplication(from, to, false, app -> {
+                    app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (!resourceService.copyResource(from, to)) {
@@ -561,8 +578,8 @@ public class PublicationService {
             ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
 
             if (from.getType() == ResourceType.APPLICATION) {
-                applicationService.copyApplication(from, to, true, app -> {
-                    app.setReference(null); // generate a new reference
+                applicationService.copyApplication(from, to, false, app -> {
+                    app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (!resourceService.copyResource(from, to)) {

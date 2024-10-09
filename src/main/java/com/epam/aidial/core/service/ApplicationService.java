@@ -226,22 +226,28 @@ public class ApplicationService {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             Application.Function function = application.getFunction();
 
-            if (isActive(existing)) {
-                throw new HttpException(HttpStatus.CONFLICT, "The application must be stopped");
-            }
-
             if (function != null) {
                 if (existing == null || existing.getFunction() == null) {
+                    if (isPublicOrReview(resource)) {
+                        throw new HttpException(HttpStatus.CONFLICT, "The application function cannot be created in public/review bucket");
+                    }
+
                     function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
+                    function.setAuthorBucket(resource.getBucketName());
                     function.setStatus(Application.Function.Status.CREATED);
                     function.setTargetFolder(encodeTargetFolder(resource, function.getId()));
                 } else {
+                    if (isPublicOrReview(resource) && !function.getSourceFolder().equals(existing.getFunction().getSourceFolder())) {
+                        throw new HttpException(HttpStatus.CONFLICT, "The application function source folder cannot be updated in public/review bucket");
+                    }
+
                     application.setEndpoint(existing.getEndpoint());
                     application.getFeatures().setRateEndpoint(existing.getFeatures().getRateEndpoint());
                     application.getFeatures().setTokenizeEndpoint(existing.getFeatures().getTokenizeEndpoint());
                     application.getFeatures().setTruncatePromptEndpoint(existing.getFeatures().getTruncatePromptEndpoint());
                     application.getFeatures().setConfigurationEndpoint(existing.getFeatures().getConfigurationEndpoint());
                     function.setId(existing.getFunction().getId());
+                    function.setAuthorBucket(existing.getFunction().getAuthorBucket());
                     function.setStatus(existing.getFunction().getStatus());
                     function.setTargetFolder(existing.getFunction().getTargetFolder());
                     function.setError(existing.getFunction().getError());
@@ -256,6 +262,7 @@ public class ApplicationService {
 
     public void deleteApplication(ResourceDescription resource, EtagHeader etag) {
         verifyApplication(resource);
+        AtomicReference<Application> reference = new AtomicReference<>();
 
         resourceService.computeResource(resource, etag, json -> {
             Application application = ProxyUtil.convertToObject(json, Application.class);
@@ -268,19 +275,69 @@ public class ApplicationService {
                 throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + resource.getUrl());
             }
 
+            reference.setPlain(application);
             return null;
         });
+
+        Application application = reference.getPlain();
+
+        if (isPublicOrReview(resource) && application.getFunction() != null) {
+            deleteFolder(application.getFunction().getSourceFolder());
+        }
     }
 
-    public void copyApplication(ResourceDescription source, ResourceDescription destination, boolean overwrite, Consumer<Application> function) {
+    public void copyApplication(ResourceDescription source, ResourceDescription destination, boolean overwrite, Consumer<Application> consumer) {
         verifyApplication(source);
         verifyApplication(destination);
 
         Application application = getApplication(source).getValue();
-        EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
+        Application.Function function = application.getFunction();
 
-        function.accept(application);
-        putApplication(destination, etag, application);
+        EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
+        consumer.accept(application);
+        application.setName(destination.getUrl());
+
+        boolean isPublicOrReview = isPublicOrReview(destination);
+        String sourceFolder = (function == null) ? null : function.getSourceFolder();
+
+        resourceService.computeResource(destination, etag, json -> {
+            Application existing = ProxyUtil.convertToObject(json, Application.class);
+
+            if (function != null) {
+                if (existing == null || existing.getFunction() == null) {
+                    function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
+                    function.setStatus(Application.Function.Status.CREATED);
+                    function.setTargetFolder(encodeTargetFolder(destination, function.getId()));
+
+                    if (isPublicOrReview) {
+                        function.setSourceFolder(function.getTargetFolder());
+                    } else {
+                        function.setAuthorBucket(destination.getBucketName());
+                    }
+                } else {
+                    if (isPublicOrReview) {
+                        throw new HttpException(HttpStatus.CONFLICT, "The application function must be deleted in public/review bucket");
+                    }
+
+                    application.setEndpoint(existing.getEndpoint());
+                    application.getFeatures().setRateEndpoint(existing.getFeatures().getRateEndpoint());
+                    application.getFeatures().setTokenizeEndpoint(existing.getFeatures().getTokenizeEndpoint());
+                    application.getFeatures().setTruncatePromptEndpoint(existing.getFeatures().getTruncatePromptEndpoint());
+                    application.getFeatures().setConfigurationEndpoint(existing.getFeatures().getConfigurationEndpoint());
+                    function.setId(existing.getFunction().getId());
+                    function.setAuthorBucket(existing.getFunction().getAuthorBucket());
+                    function.setStatus(existing.getFunction().getStatus());
+                    function.setTargetFolder(existing.getFunction().getTargetFolder());
+                    function.setError(existing.getFunction().getError());
+                }
+            }
+
+            return ProxyUtil.convertToString(application);
+        });
+
+        if (isPublicOrReview && function != null) {
+            copyFolder(sourceFolder, function.getSourceFolder());
+        }
     }
 
     public Application startApplication(ProxyContext context, ResourceDescription resource) {
@@ -379,6 +436,7 @@ public class ApplicationService {
             application.getFeatures().setTokenizeEndpoint(null);
             application.getFeatures().setTruncatePromptEndpoint(null);
             application.getFeatures().setConfigurationEndpoint(null);
+            function.setAuthorBucket(resource.getBucketName());
             function.setError(null);
 
             if (function.getEnv() == null) {
@@ -454,7 +512,10 @@ public class ApplicationService {
                 throw new IllegalStateException("Application is not starting");
             }
 
-            copyApplicationSources(function);
+            if (!isPublicOrReview(resource)) {
+                copyFolder(function.getSourceFolder(), function.getTargetFolder());
+            }
+
             createApplicationImage(context, function);
             String endpoint = createApplicationDeployment(context, function);
 
@@ -481,34 +542,6 @@ public class ApplicationService {
             log.warn("Failed to launch application: {}", resource.getUrl(), error);
             throw error;
         }
-    }
-
-    private void copyApplicationSources(Application.Function function) {
-        String sourceFolderUrl = function.getSourceFolder();
-        String targetFolderUrl = function.getTargetFolder();
-        ResourceDescription sourceFolder = ResourceDescription.fromAnyUrl(sourceFolderUrl, encryptionService);
-
-        String token = null;
-        do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(sourceFolder, token, PAGE_SIZE, true);
-            if (folder == null) {
-                throw new IllegalStateException("Source folder is empty");
-            }
-
-            for (MetadataBase item : folder.getItems()) {
-                String sourceFileUrl = item.getUrl();
-                String targetFileUrl = targetFolderUrl + sourceFileUrl.substring(sourceFolder.getUrl().length());
-
-                ResourceDescription sourceFile = ResourceDescription.fromAnyUrl(sourceFileUrl, encryptionService);
-                ResourceDescription targetFile = ResourceDescription.fromAnyUrl(targetFileUrl, encryptionService);
-
-                if (!resourceService.copyResource(sourceFile, targetFile)) {
-                    throw new IllegalStateException("Can't copy function source file: " + sourceFileUrl);
-                }
-            }
-
-            token = folder.getNextToken();
-        } while (token != null);
     }
 
     private void createApplicationImage(ProxyContext context, Application.Function function) {
@@ -577,7 +610,11 @@ public class ApplicationService {
 
             if (isPending(application)) {
                 Application.Function function = application.getFunction();
-                removeApplicationTargets(function);
+
+                if (!isPublicOrReview(resource)) {
+                    deleteFolder(function.getTargetFolder());
+                }
+
                 deleteApplicationImage(function);
                 deleteApplicationDeployment(function);
 
@@ -607,8 +644,48 @@ public class ApplicationService {
         }
     }
 
-    private void removeApplicationTargets(Application.Function function) {
-        ResourceDescription folder = ResourceDescription.fromAnyUrl(function.getTargetFolder(), encryptionService);
+    private void deleteApplicationImage(Application.Function function) {
+        callController(HttpMethod.DELETE, "/v1/image/" + function.getId(),
+                request -> null,
+                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
+    }
+
+    private void deleteApplicationDeployment(Application.Function function) {
+        callController(HttpMethod.DELETE, "/v1/deployment/" + function.getId(),
+                request -> null,
+                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
+    }
+
+    // endregion
+
+    private void copyFolder(String sourceFolderUrl, String targetFolderUrl) {
+        ResourceDescription sourceFolder = ResourceDescription.fromAnyUrl(sourceFolderUrl, encryptionService);
+
+        String token = null;
+        do {
+            ResourceFolderMetadata folder = resourceService.getFolderMetadata(sourceFolder, token, PAGE_SIZE, true);
+            if (folder == null) {
+                throw new IllegalStateException("Source folder is empty");
+            }
+
+            for (MetadataBase item : folder.getItems()) {
+                String sourceFileUrl = item.getUrl();
+                String targetFileUrl = targetFolderUrl + sourceFileUrl.substring(sourceFolder.getUrl().length());
+
+                ResourceDescription sourceFile = ResourceDescription.fromAnyUrl(sourceFileUrl, encryptionService);
+                ResourceDescription targetFile = ResourceDescription.fromAnyUrl(targetFileUrl, encryptionService);
+
+                if (!resourceService.copyResource(sourceFile, targetFile)) {
+                    throw new IllegalStateException("Can't copy function source file: " + sourceFileUrl);
+                }
+            }
+
+            token = folder.getNextToken();
+        } while (token != null);
+    }
+
+    private void deleteFolder(String folderUrl) {
+        ResourceDescription folder = ResourceDescription.fromAnyUrl(folderUrl, encryptionService);
 
         String token = null;
         do {
@@ -628,20 +705,6 @@ public class ApplicationService {
             token = metadata.getNextToken();
         } while (token != null);
     }
-
-    private void deleteApplicationImage(Application.Function function) {
-        callController(HttpMethod.DELETE, "/v1/image/" + function.getId(),
-                request -> null,
-                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
-    }
-
-    private void deleteApplicationDeployment(Application.Function function) {
-        callController(HttpMethod.DELETE, "/v1/deployment/" + function.getId(),
-                request -> null,
-                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
-    }
-
-    // endregion
 
     @SneakyThrows
     private <R> R callController(HttpMethod method, String path,
@@ -800,6 +863,10 @@ public class ApplicationService {
         }
 
         throw new IllegalStateException("Invalid response. Unexpected end of stream");
+    }
+
+    private static boolean isPublicOrReview(ResourceDescription resource) {
+        return resource.isPublic() || PublicationService.isReviewBucket(resource);
     }
 
     private record CreateImageRequest(String sources) {

@@ -87,6 +87,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
@@ -118,6 +119,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTED",
@@ -168,6 +170,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPING",
@@ -198,6 +201,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPED",
@@ -249,6 +253,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
@@ -279,6 +284,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "FAILED",
@@ -326,6 +332,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STARTING",
@@ -380,6 +387,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "STOPPING",
@@ -577,6 +585,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "FAILED",
@@ -590,6 +599,112 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   }
                 }
                 """);
+    }
+
+    @Test
+    void testPublication() {
+        testApplicationCreated();
+        Response response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/app.py", null, """
+                some python code
+                """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                      "targetUrl": "applications/public/my-app"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve", """
+                {
+                "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0125"
+                }
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0125",
+                  "targetFolder" : "public/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "action" : "ADD",
+                    "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                    "targetUrl" : "applications/public/my-app",
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhG9cWs5cubLjt6DVqa4wmnj/my-app"
+                  } ],
+                  "resourceTypes" : [ "APPLICATION" ]
+                }
+                """);
+
+        response = send(HttpMethod.GET, "/v1/applications/public/my-app",
+                null, null, "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/public/my-app",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "user_roles" : [ ],
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "function" : {
+                    "id" : "0127",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "source_folder" : "files/BHSYDZdoJ31Kxh6XahLj91R6sRAnZtraHCQmDeK3uajc/",
+                    "target_folder" : "files/BHSYDZdoJ31Kxh6XahLj91R6sRAnZtraHCQmDeK3uajc/",
+                    "status" : "CREATED",
+                    "mapping" : {
+                      "completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  }
+                }
+                """);
+
+        response = send(HttpMethod.GET, "/v1/applications/public/my-app",
+                null, null, "authorization", "user");
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "DELETE",
+                      "targetUrl": "applications/public/my-app"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "DELETE",
+                      "targetUrl": "applications/public/my-app"
+                    }
+                  ]
+                }
+                """, "authorization", "user");
+        verify(response, 400, "Target application has a different author: applications/public/my-app");
     }
 
     @SneakyThrows

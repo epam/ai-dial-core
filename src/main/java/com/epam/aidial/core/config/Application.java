@@ -25,6 +25,7 @@ public class Application extends Deployment {
     public static class Function {
 
         private String id;
+        private String authorBucket;
         private String sourceFolder;
         private String targetFolder;
         private Status status;
