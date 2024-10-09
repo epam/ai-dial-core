@@ -15,7 +15,7 @@ public class RegexUtil {
         if (groups == null || groups.isEmpty()) {
             return input;
         }
-        var regexGroups = collectGroups(pattern, input, groups);
+        List<RegexGroup> regexGroups = collectGroups(pattern, input, groups);
         if (regexGroups.isEmpty()) {
             return input;
         }
