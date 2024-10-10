@@ -15,7 +15,7 @@
     "vector_store_query": {
       "paths": ["/v1/vector_store(/[^/]+)*$"],
       "rewritePath": true,
-      "methods": ["GET"],
+      "methods": ["GET", "HEAD"],
       "userRoles": ["vstore_user", "vstore_admin"],
       "upstreams": [{"endpoint": "http://localhost:9876"}]
     },
