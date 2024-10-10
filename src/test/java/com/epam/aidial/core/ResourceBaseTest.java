@@ -20,6 +20,7 @@ import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.apache.hc.client5.http.classic.methods.HttpDelete;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.classic.methods.HttpHead;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.classic.methods.HttpPut;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
@@ -31,7 +32,6 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.apache.http.client.methods.HttpHead;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -320,7 +320,7 @@ public class ResourceBaseTest {
 
         return client.execute(request, response -> {
             int status = response.getCode();
-            String answer = EntityUtils.toString(response.getEntity());
+            String answer = (response.getEntity() == null) ? null : EntityUtils.toString(response.getEntity());
             Map<String, String> responseHeaders = new HashMap<>();
 
             for (Header header : response.getHeaders()) {
@@ -350,7 +350,7 @@ public class ResourceBaseTest {
             request.setHeader(key, value);
         }
 
-        if (!isAuthorized) {
+        if (!request.containsHeader("authorization") && !request.containsHeader("api-key")) {
             request.setHeader("api-key", "proxyKey1");
         }
 
@@ -386,16 +386,14 @@ public class ResourceBaseTest {
                 .onFailure(requestFuture::completeExceptionally);
 
         HttpClientRequest request = requestFuture.get(10, TimeUnit.SECONDS);
-        boolean isAuthorized = false;
 
         for (int i = 0; i < headers.length; i += 2) {
             String key = headers[i];
             String value = headers[i + 1];
             request.putHeader(key, value);
-            isAuthorized = key.equalsIgnoreCase("authorization") || key.equalsIgnoreCase("api-key");
         }
 
-        if (!isAuthorized) {
+        if (!request.headers().contains("authorization") && !request.headers().contains("api-key")) {
             request.putHeader("api-key", "proxyKey1");
         }
 

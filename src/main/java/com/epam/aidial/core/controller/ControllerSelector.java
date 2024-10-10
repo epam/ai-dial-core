@@ -321,7 +321,7 @@ public class ControllerSelector {
             };
         }
 
-        match = match(APPLICATIONS, path);
+        match = match(APPLICATIONS, path, context);
         if (match != null) {
             String operation = match.group(1);
             ApplicationController controller = new ApplicationController(context);

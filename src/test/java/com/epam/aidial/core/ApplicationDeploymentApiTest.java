@@ -214,7 +214,6 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   }
                 }
                 """);
-
     }
 
     @Test
