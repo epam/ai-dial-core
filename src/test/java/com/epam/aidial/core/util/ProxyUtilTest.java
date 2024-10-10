@@ -51,6 +51,9 @@ public class ProxyUtilTest {
                       }
                     },
                     {
+                      "content": null
+                    },
+                    {
                       "content": "The file you provided is a Dockerfile.",
                       "role": "assistant",
                       "custom_content": {
@@ -80,7 +83,14 @@ public class ProxyUtilTest {
                       }
                     },
                     {
-                      "content": "Compare these files?",
+                      "content": [
+                        {"type": "text", "text": "Compare these files?"},
+                        {"type": "image_url"},
+                        {"type": "image_url", "image_url": null},
+                        {"type": "image_url", "image_url": {}},
+                        {"type": "image_url", "image_url": {"url": null}},
+                        {"type": "image_url", "image_url": {"url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/README.md"}}
+                      ],
                       "role": "user",
                       "custom_content": {
                         "attachments": [
@@ -133,6 +143,7 @@ public class ProxyUtilTest {
                 Map.of(
                         "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile", new AutoSharedData(ResourceAccessType.READ_ONLY),
                         "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE", new AutoSharedData(ResourceAccessType.READ_ONLY),
+                        "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/README.md", new AutoSharedData(ResourceAccessType.READ_ONLY),
                         "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore", new AutoSharedData(ResourceAccessType.READ_ONLY),
                         "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0", new AutoSharedData(ResourceAccessType.READ_ONLY),
                         "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1", new AutoSharedData(ResourceAccessType.READ_ONLY)

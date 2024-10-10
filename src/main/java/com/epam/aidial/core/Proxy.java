@@ -70,7 +70,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final int REQUEST_BODY_MAX_SIZE_BYTES = 16 * 1024 * 1024;
     public static final int FILES_REQUEST_BODY_MAX_SIZE_BYTES = 512 * 1024 * 1024;
 
-    private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE);
+    private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.HEAD);
 
     private final Vertx vertx;
     private final HttpClient client;

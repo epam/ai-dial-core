@@ -31,6 +31,7 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.http.client.methods.HttpHead;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -297,6 +298,8 @@ public class ResourceBaseTest {
             request = new HttpDelete(uri);
         } else if (method == HttpMethod.POST) {
             request = new HttpPost(uri);
+        } else if (method == HttpMethod.HEAD) {
+            request = new HttpHead(uri);
         } else {
             throw new IllegalArgumentException("Unsupported method: " + method);
         }
@@ -347,7 +350,7 @@ public class ResourceBaseTest {
             request.setHeader(key, value);
         }
 
-        if (!request.containsHeader("authorization") && !request.containsHeader("api-key")) {
+        if (!isAuthorized) {
             request.setHeader("api-key", "proxyKey1");
         }
 
