@@ -22,7 +22,7 @@ public class DeploymentControllerTest {
 
         when(deployment.getUserRoles()).thenReturn(Collections.emptySet());
 
-        assertTrue(DeploymentController.hasAccess(proxyContext, deployment));
+        assertFalse(DeploymentController.hasAccess(proxyContext, deployment));
     }
 
     @Test
@@ -30,7 +30,7 @@ public class DeploymentControllerTest {
         ProxyContext proxyContext = mock(ProxyContext.class);
         Deployment deployment = mock(Deployment.class);
 
-        when(deployment.getUserRoles()).thenReturn(Collections.emptySet());
+        when(deployment.getUserRoles()).thenReturn(null);
 
         assertTrue(DeploymentController.hasAccess(proxyContext, deployment));
     }

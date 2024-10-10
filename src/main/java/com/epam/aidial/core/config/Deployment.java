@@ -15,7 +15,7 @@ public abstract class Deployment {
     private String iconUrl;
     private String description;
     private String reference;
-    private Set<String> userRoles = Set.of();
+    private Set<String> userRoles;
     /**
      * Forward Http header with authorization token when request is sent to deployment.
      * Authorization token is NOT forwarded by default.

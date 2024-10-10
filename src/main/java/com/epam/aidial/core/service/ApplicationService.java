@@ -208,8 +208,8 @@ public class ApplicationService {
 
             Application.Function function = application.getFunction();
             if (function != null && (function.getStatus() == Application.Function.Status.STARTING
-                            || function.getStatus() == Application.Function.Status.STARTED
-                            || function.getStatus() == Application.Function.Status.STOPPING)) {
+                    || function.getStatus() == Application.Function.Status.STARTED
+                    || function.getStatus() == Application.Function.Status.STOPPING)) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Application must be stopped: " + resource.getUrl());
             }
 
@@ -239,7 +239,7 @@ public class ApplicationService {
         // replace application name with it's url
         application.setName(resource.getUrl());
         // defining user roles in custom applications are not allowed
-        application.setUserRoles(Set.of());
+        application.setUserRoles(null);
         // forward auth token is not allowed for custom applications
         application.setForwardAuthToken(false);
         // reject request if both If-None-Match header and reference provided

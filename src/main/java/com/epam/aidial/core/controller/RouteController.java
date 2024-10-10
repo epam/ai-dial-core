@@ -263,7 +263,10 @@ public class RouteController implements Controller {
         Set<String> allowedRoles = route.getUserRoles();
         List<String> actualRoles = context.getUserRoles();
 
-        return allowedRoles.isEmpty() || actualRoles.stream()
-                .anyMatch(allowedRoles::contains);
+        if (allowedRoles == null) {
+            return true;
+        }
+
+        return !allowedRoles.isEmpty() && actualRoles.stream().anyMatch(allowedRoles::contains);
     }
 }

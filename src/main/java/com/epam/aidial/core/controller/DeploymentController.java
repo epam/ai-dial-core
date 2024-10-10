@@ -99,11 +99,12 @@ public class DeploymentController {
         Set<String> expectedUserRoles = deployment.getUserRoles();
         List<String> actualUserRoles = context.getUserRoles();
 
-        if (expectedUserRoles.isEmpty() || actualUserRoles == null) {
+        if (expectedUserRoles == null) {
             return true;
         }
 
-        return actualUserRoles.stream().anyMatch(expectedUserRoles::contains);
+        return !expectedUserRoles.isEmpty()
+                && actualUserRoles.stream().anyMatch(expectedUserRoles::contains);
     }
 
     private static DeploymentData createDeployment(Model model) {

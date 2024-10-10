@@ -207,7 +207,7 @@ public class RateLimiter {
     private Limit getLimitByUser(ProxyContext context, Deployment deployment) {
         String deploymentName = deployment.getName();
         List<String> userRoles;
-        if (deployment.getUserRoles().isEmpty()) {
+        if (deployment.getUserRoles() == null) {
             // find limits for all user roles
             userRoles = context.getUserRoles();
         } else {
