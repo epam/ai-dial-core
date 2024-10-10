@@ -22,6 +22,7 @@ import org.apache.http.NameValuePair;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpHead;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -295,6 +296,8 @@ public class ResourceBaseTest {
             HttpPost post = new HttpPost(uri);
             post.setEntity(new StringEntity(body));
             request = post;
+        } else if (method == HttpMethod.HEAD) {
+            request = new HttpHead(uri);
         } else {
             throw new IllegalArgumentException("Unsupported method: " + method);
         }
@@ -314,7 +317,7 @@ public class ResourceBaseTest {
 
         try (CloseableHttpResponse response = client.execute(request)) {
             int status = response.getStatusLine().getStatusCode();
-            String answer = EntityUtils.toString(response.getEntity());
+            String answer = response.getEntity() != null ? EntityUtils.toString(response.getEntity()) : null;
             return new Response(status, answer, Arrays.stream(response.getAllHeaders())
                     .collect(Collectors.toUnmodifiableMap(NameValuePair::getName, NameValuePair::getValue)));
         }
