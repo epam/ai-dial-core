@@ -23,7 +23,7 @@ public enum ResourceType {
             case "invitations" -> INVITATION;
             case "publications" -> PUBLICATION;
             case "applications" -> APPLICATION;
-            default -> throw new IllegalArgumentException("Unsupported group: " + group);
+            default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }
 }

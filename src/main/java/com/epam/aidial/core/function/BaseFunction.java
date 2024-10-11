@@ -20,8 +20,8 @@ public abstract class BaseFunction<T, R> implements Function<T, R> {
 
     @SneakyThrows
     public static ResourceDescription fromAnyUrl(String url, EncryptionService encryption) {
-        if (url == null || UrlUtil.isAbsoluteUrl(url)) {
-            // second check to skip public resource
+        if (url == null || UrlUtil.isAbsoluteUrl(url) || UrlUtil.isDataUrl(url)) {
+            // skipping public resources and Data URLs
             return null;
         }
 
