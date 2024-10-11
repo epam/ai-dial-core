@@ -706,6 +706,36 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verify(response, 400, "Target application has a different author: applications/public/my-app");
     }
 
+    @Test
+    void testLogs() {
+        testApplicationStarted();
+        webServer.map(HttpMethod.GET, "/v1/deployment/0123/logs", 200, """
+                {
+                  "logs": [
+                    {"instance": "instance1", "content": "Log message #1"},
+                    {"instance": "instance2", "content": "Log message #2"}
+                  ]
+                }
+                """);
+
+        Response response = send(HttpMethod.POST, "/v1/ops/application/logs", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
+                }
+                """);
+        verifyJsonNotExact(response, 200, """
+                {
+                  "logs" : [ {
+                    "instance" : "instance1",
+                    "content" : "Log message #1"
+                  }, {
+                    "instance" : "instance2",
+                    "content" : "Log message #2"
+                  } ]
+                }
+                """);
+    }
+
     @SneakyThrows
     private Response awaitApplicationStatus(String path, String status) {
         for (long deadline = System.currentTimeMillis() + 10_000; ; ) {

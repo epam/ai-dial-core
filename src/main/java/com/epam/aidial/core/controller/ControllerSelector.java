@@ -32,7 +32,7 @@ public class ControllerSelector {
 
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(?<id>.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
-    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(start|stop)$");
+    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(start|stop|logs)$");
 
     private static final Pattern PATTERN_BUCKET = Pattern.compile("^/v1/bucket$");
 
@@ -329,6 +329,7 @@ public class ControllerSelector {
             return switch (operation) {
                 case "start" -> controller::startApplication;
                 case "stop" -> controller::stopApplication;
+                case "logs" -> controller::getApplicationLogs;
                 default -> null;
             };
         }

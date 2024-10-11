@@ -114,6 +114,21 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    public Future<?> getApplicationLogs() {
+        context.getRequest()
+                .body()
+                .compose(body -> {
+                    String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
+                    ResourceDescription resource = decodeUrl(url);
+                    checkAccess(resource);
+                    return vertx.executeBlocking(() -> applicationService.getApplicationLogs(resource), false);
+                })
+                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
+                .onFailure(this::respondError);
+
+        return Future.succeededFuture();
+    }
+
     private ResourceDescription decodeUrl(String url) {
         ResourceDescription resource;
         try {

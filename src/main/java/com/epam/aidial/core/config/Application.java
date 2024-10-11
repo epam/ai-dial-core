@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+import java.util.Collection;
 import java.util.Map;
 
 @Data
@@ -48,5 +49,21 @@ public class Application extends Deployment {
             private String truncatePrompt;
             private String configuration;
         }
+    }
+
+    @Data
+    @Accessors(chain = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class Logs {
+        private Collection<Log> logs;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class Log {
+        private String instance;
+        private String content;
     }
 }

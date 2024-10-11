@@ -410,6 +410,21 @@ public class ApplicationService {
         return result.getPlain();
     }
 
+    public Application.Logs getApplicationLogs(ResourceDescription resource) {
+        verifyApplication(resource);
+        verifyController();
+
+        Application application = getApplication(resource).getValue();
+
+        if (application.getFunction() == null || application.getFunction().getStatus() != Application.Function.Status.STARTED) {
+            throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
+        }
+
+        return callController(HttpMethod.GET, "/v1/deployment/" + application.getFunction().getId() + "/logs",
+                request -> null,
+                (response, body) -> ProxyUtil.convertToObject(body, Application.Logs.class));
+    }
+
     private void prepareApplication(ResourceDescription resource, Application application) {
         verifyApplication(resource);
 
