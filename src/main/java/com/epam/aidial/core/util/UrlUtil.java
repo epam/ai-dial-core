@@ -22,11 +22,6 @@ public class UrlUtil {
      */
     private static final Pattern ABSOLUTE_URL_PATTERN = Pattern.compile("^[a-z][a-z0-9-+.]*?://", Pattern.CASE_INSENSITIVE);
 
-    /**
-     * Pattern for Data URLs
-     */
-    private static final Pattern DATA_URL_PATTERN = Pattern.compile("^data:");
-
     @SneakyThrows
     public String encodePathSegment(String segment) {
         return ENCODER.escape(segment);
@@ -74,6 +69,6 @@ public class UrlUtil {
     }
 
     public boolean isDataUrl(String url) {
-        return DATA_URL_PATTERN.matcher(url).find();
+        return url.startsWith("data:");
     }
 }
