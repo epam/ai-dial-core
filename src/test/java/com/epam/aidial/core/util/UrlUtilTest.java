@@ -57,4 +57,15 @@ public class UrlUtilTest {
         assertFalse(UrlUtil.isAbsoluteUrl("/example/file.txt"));
         assertFalse(UrlUtil.isAbsoluteUrl("file"));
     }
+
+    @Test
+    public void testIsDataUrl() {
+        assertTrue(UrlUtil.isDataUrl("data:whatever"));
+        assertTrue(UrlUtil.isDataUrl("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAIAAADZSiLoAAAAF0lEQVR4nGNkYPjPwMDAwMDAxAADCBYAG10BBdmz9y8AAAAASUVORK5CYII="));
+        assertFalse(UrlUtil.isDataUrl("data"));
+        assertFalse(UrlUtil.isDataUrl("DATA:whatever"));
+        assertFalse(UrlUtil.isDataUrl(" data:whatever"));
+        assertFalse(UrlUtil.isDataUrl("data;whatever"));
+        assertFalse(UrlUtil.isDataUrl("https://example.com"));
+    }
 }

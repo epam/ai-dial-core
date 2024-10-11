@@ -67,4 +67,8 @@ public class UrlUtil {
     public boolean isAbsoluteUrl(String url) {
         return ABSOLUTE_URL_PATTERN.matcher(url).find();
     }
+
+    public boolean isDataUrl(String url) {
+        return url.startsWith("data:");
+    }
 }
