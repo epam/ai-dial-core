@@ -454,6 +454,10 @@ public class ApplicationService {
             function.setAuthorBucket(resource.getBucketName());
             function.setError(null);
 
+            if (function.getRuntime() == null) {
+                throw new IllegalArgumentException("Application function runtime must be provided");
+            }
+
             if (function.getEnv() == null) {
                 function.setEnv(Map.of());
             }
@@ -575,7 +579,7 @@ public class ApplicationService {
 
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
 
-                    CreateImageRequest body = new CreateImageRequest(function.getTargetFolder());
+                    CreateImageRequest body = new CreateImageRequest(function.getRuntime(), function.getTargetFolder());
                     return ProxyUtil.convertToString(body);
                 },
                 (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
@@ -884,7 +888,7 @@ public class ApplicationService {
         return resource.isPublic() || PublicationService.isReviewBucket(resource);
     }
 
-    private record CreateImageRequest(String sources) {
+    private record CreateImageRequest(String runtime, String sources) {
     }
 
     private record CreateDeploymentRequest(Map<String, String> env) {

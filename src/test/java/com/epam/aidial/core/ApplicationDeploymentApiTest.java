@@ -32,6 +32,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "icon_url": "http://application1/icon.svg",
                   "description": "My App Description",
                   "function": {
+                    "runtime": "python3.11",
                     "source_folder": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "mapping" : {
                       "completion" : "/application"
@@ -87,6 +88,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -119,6 +121,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -170,6 +173,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -201,6 +205,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -252,6 +257,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -283,6 +289,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -331,6 +338,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -386,6 +394,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -584,6 +593,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0123",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
@@ -661,6 +671,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "description_keywords" : [ ],
                   "function" : {
                     "id" : "0127",
+                    "runtime": "python3.11",
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/BHSYDZdoJ31Kxh6XahLj91R6sRAnZtraHCQmDeK3uajc/",
                     "target_folder" : "files/BHSYDZdoJ31Kxh6XahLj91R6sRAnZtraHCQmDeK3uajc/",

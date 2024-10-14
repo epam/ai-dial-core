@@ -26,6 +26,7 @@ public class Application extends Deployment {
     public static class Function {
 
         private String id;
+        private String runtime;
         private String authorBucket;
         private String sourceFolder;
         private String targetFolder;
