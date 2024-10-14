@@ -7,6 +7,12 @@
         "status": 200
       }
     },
+    "forbidden" : {
+      "paths": ["/v1/forbidden"],
+      "methods": ["GET"],
+      "userRoles": [],
+      "upstreams": [{"endpoint": "http://localhost:9876"}]
+    },
     "plain": {
       "paths": ["/v1/plain"],
       "methods": ["GET"],

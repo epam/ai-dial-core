@@ -17,7 +17,7 @@ public class Route {
     private List<Pattern> paths = List.of();
     private Set<HttpMethod> methods = Set.of();
     private List<Upstream> upstreams = List.of();
-    private Set<String> userRoles = Set.of();
+    private Set<String> userRoles;
 
     @Data
     public static class Response {
