@@ -433,7 +433,7 @@ public class ApplicationService {
         }
 
         application.setName(resource.getUrl());
-        application.setUserRoles(Set.of());
+        application.setUserRoles(null);
         application.setForwardAuthToken(false);
 
         if (application.getReference() == null) {
