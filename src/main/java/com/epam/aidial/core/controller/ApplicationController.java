@@ -93,7 +93,7 @@ public class ApplicationController {
                     checkAccess(resource);
                     return vertx.executeBlocking(() -> applicationService.startApplication(context, resource), false);
                 })
-                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
+                .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
 
         return Future.succeededFuture();
@@ -108,7 +108,7 @@ public class ApplicationController {
                     checkAccess(resource);
                     return vertx.executeBlocking(() -> applicationService.stopApplication(resource), false);
                 })
-                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
+                .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
 
         return Future.succeededFuture();
@@ -123,7 +123,7 @@ public class ApplicationController {
                     checkAccess(resource);
                     return vertx.executeBlocking(() -> applicationService.getApplicationLogs(resource), false);
                 })
-                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
+                .onSuccess(logs -> context.respond(HttpStatus.OK, logs))
                 .onFailure(this::respondError);
 
         return Future.succeededFuture();

@@ -36,7 +36,21 @@ public class Application extends Deployment {
         private Map<String, String> env = Map.of();
 
         public enum Status {
-            CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED
+            CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED;
+
+            public boolean isPending() {
+                return switch (this) {
+                    case CREATED, STARTED, FAILED, STOPPED -> false;
+                    case STARTING, STOPPING -> true;
+                };
+            }
+
+            public boolean isActive() {
+                return switch (this) {
+                    case CREATED, FAILED, STOPPED -> false;
+                    case STARTING, STARTED, STOPPING -> true;
+                };
+            }
         }
 
         @Data
