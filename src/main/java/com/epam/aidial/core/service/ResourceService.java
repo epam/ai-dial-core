@@ -8,16 +8,14 @@ import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
-import com.epam.aidial.core.storage.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.Compression;
 import com.epam.aidial.core.util.EtagBuilder;
 import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.RedisUtil;
 import com.epam.aidial.core.util.ResourceUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
-import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonObject;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -41,6 +39,7 @@ import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.codec.CompositeCodec;
 
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -56,7 +55,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.util.ResourceUtil.CREATED_AT_ATTRIBUTE;
 import static com.epam.aidial.core.util.ResourceUtil.RESOURCE_TYPE_ATTRIBUTE;
@@ -85,14 +83,13 @@ public class ResourceService implements AutoCloseable {
             StringCodec.INSTANCE,
             ByteArrayCodec.INSTANCE);
 
-    private final Vertx vertx;
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
-    private final long syncTimer;
+    private final ScheduledTimer syncTimer;
     private final long syncDelay;
     private final int syncBatch;
     private final Duration cacheExpiration;
@@ -100,20 +97,21 @@ public class ResourceService implements AutoCloseable {
     private final String prefix;
     private final String resourceQueue;
 
-    public ResourceService(Vertx vertx,
+    public ResourceService(ScheduledService scheduledService,
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
-                           JsonObject settings,
+                           JsonNode settings,
                            String prefix) {
-        this(vertx, redis, blobStore, lockService,
-                settings.getInteger("maxSize"),
-                settings.getLong("syncPeriod"),
-                settings.getLong("syncDelay"),
-                settings.getInteger("syncBatch"),
-                settings.getLong("cacheExpiration"),
-                settings.getInteger("compressionMinSize"),
-                prefix
+        this(scheduledService, redis, blobStore, lockService,
+                settings.get("maxSize").asInt(),
+                settings.get("syncPeriod").asLong(),
+                settings.get("syncDelay").asLong(),
+                settings.get("syncBatch").asInt(),
+                settings.get("cacheExpiration").asLong(),
+                settings.get("compressionMinSize").asInt(),
+                prefix,
+                settings.get("queuePrefix").asText()
         );
     }
 
@@ -125,7 +123,7 @@ public class ResourceService implements AutoCloseable {
      * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
      * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
      */
-    public ResourceService(Vertx vertx,
+    public ResourceService(ScheduledService scheduledService,
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
@@ -135,27 +133,26 @@ public class ResourceService implements AutoCloseable {
                            int syncBatch,
                            long cacheExpiration,
                            int compressionMinSize,
-                           String prefix) {
-        this.vertx = vertx;
+                           String BlobStorePrefix,
+                           String queuePrefix) {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
-        this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
+        this.topic = new ResourceTopic(redis, queuePrefix + ":" + BlobStorageUtil.toStoragePath(BlobStorePrefix, "topic"));
         this.maxSize = maxSize;
         this.syncDelay = syncDelay;
         this.syncBatch = syncBatch;
         this.cacheExpiration = Duration.ofMillis(cacheExpiration);
         this.compressionMinSize = compressionMinSize;
-        this.prefix = prefix;
-        this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
+        this.prefix = BlobStorePrefix;
+        this.resourceQueue = queuePrefix + ":" + BlobStorageUtil.toStoragePath(BlobStorePrefix, "queue");
 
-        // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
-        this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
+        this.syncTimer = scheduledService.scheduleWithFixedDelay(syncPeriod, syncPeriod, this::sync);
     }
 
     @Override
     public void close() {
-        vertx.cancelTimer(syncTimer);
+        syncTimer.cancel();
     }
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
@@ -405,10 +402,6 @@ public class ResourceService implements AutoCloseable {
         }
 
         return (FileMetadata) putResource(descriptor, body, etag, contentType, true);
-    }
-
-    public BlobWriteStream beginFileUpload(ResourceDescription descriptor, EtagHeader etag, String contentType) {
-        return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
     }
 
     public FileMetadata finishFileUpload(

@@ -20,11 +20,15 @@ import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.ResourceOperationService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.service.RuleService;
+import com.epam.aidial.core.service.ScheduledService;
 import com.epam.aidial.core.service.ShareService;
+import com.epam.aidial.core.service.VertxScheduledService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.token.TokenStatsTracker;
 import com.epam.aidial.core.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.util.ProxyUtil;
 import com.epam.deltix.gflog.core.LogConfigurator;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -110,7 +114,9 @@ public class AiDial {
             redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            ScheduledService scheduledService = new VertxScheduledService(vertx);
+            JsonObject resourceSettings = settings("resources");
+            resourceService = new ResourceService(scheduledService, redis, storage, lockService, ProxyUtil.MAPPER.readTree(resourceSettings.encode()), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);

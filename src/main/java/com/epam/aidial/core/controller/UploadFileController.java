@@ -4,11 +4,13 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.FileMetadata;
 import com.epam.aidial.core.service.ResourceService;
-import com.epam.aidial.core.storage.BlobWriteStream;
+import com.epam.aidial.core.storage.BlobStorage;
+import com.epam.aidial.core.vertx.BlobWriteStream;
 import com.epam.aidial.core.storage.ResourceDescription;
 import com.epam.aidial.core.util.EtagHeader;
 import com.epam.aidial.core.util.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.streams.Pipe;
@@ -17,10 +19,17 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UploadFileController extends AccessControlBaseController {
+
+    private final BlobStorage blobStorage;
+
+    private final Vertx vertx;
+
     private final ResourceService resourceService;
 
     public UploadFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
+        this.blobStorage = proxy.getStorage();
+        this.vertx = proxy.getVertx();
         this.resourceService = proxy.getResourceService();
     }
 
@@ -42,7 +51,7 @@ public class UploadFileController extends AccessControlBaseController {
                     .uploadHandler(upload -> {
                         String contentType = upload.contentType();
                         Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                        BlobWriteStream writeStream = resourceService.beginFileUpload(resource, etag, contentType);
+                        BlobWriteStream writeStream = new BlobWriteStream(vertx, resourceService, blobStorage, resource, etag, contentType);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
                                     FileMetadata metadata = writeStream.getMetadata();

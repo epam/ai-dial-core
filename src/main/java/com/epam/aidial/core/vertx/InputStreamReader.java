@@ -1,4 +1,4 @@
-package com.epam.aidial.core.storage;
+package com.epam.aidial.core.vertx;
 
 import io.netty.buffer.Unpooled;
 import io.vertx.core.AsyncResult;
