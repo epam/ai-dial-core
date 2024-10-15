@@ -48,6 +48,9 @@ public class ApiKeyStoreTest {
     private Vertx vertx;
 
     @Mock
+    private EncryptionService encryptionService;
+
+    @Mock
     private BlobStorage blobStorage;
 
     private ApiKeyStore store;
@@ -100,7 +103,7 @@ public class ApiKeyStoreTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(vertx, redissonClient, encryptionService, blobStorage, lockService, new JsonObject(resourceConfig), null);
         store = new ApiKeyStore(resourceService, vertx);
     }
 

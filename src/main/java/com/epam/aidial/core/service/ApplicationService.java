@@ -265,7 +265,7 @@ public class ApplicationService {
         Application application = reference.getValue();
 
         if (isPublicOrReview(resource) && application.getFunction() != null) {
-            deleteFolder(application.getFunction().getSourceFolder());
+            resourceService.deleteFolder(application.getFunction().getSourceFolder());
         }
     }
 
@@ -319,7 +319,7 @@ public class ApplicationService {
         });
 
         if (isPublicOrReview && function != null) {
-            copyFolder(sourceFolder, function.getSourceFolder());
+            resourceService.copyFolder(sourceFolder, function.getSourceFolder(), false);
         }
     }
 
@@ -493,8 +493,6 @@ public class ApplicationService {
         return null;
     }
 
-    // region Launching Application
-
     private Void launchApplication(ProxyContext context, ResourceDescription resource) {
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
@@ -513,7 +511,7 @@ public class ApplicationService {
             }
 
             if (!isPublicOrReview(resource)) {
-                copyFolder(function.getSourceFolder(), function.getTargetFolder());
+                resourceService.copyFolder(function.getSourceFolder(), function.getTargetFolder(), false);
             }
 
             controller.createApplicationImage(context, function);
@@ -544,10 +542,6 @@ public class ApplicationService {
         }
     }
 
-    // endregion
-
-    // region Terminate Application
-
     private Void terminateApplication(ResourceDescription resource, String error) {
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
@@ -566,7 +560,7 @@ public class ApplicationService {
                 Application.Function function = application.getFunction();
 
                 if (!isPublicOrReview(resource)) {
-                    deleteFolder(function.getTargetFolder());
+                    resourceService.deleteFolder(function.getTargetFolder());
                 }
 
                 controller.deleteApplicationImage(function);
@@ -596,56 +590,6 @@ public class ApplicationService {
             log.warn("Failed to terminate application: {}", resource.getUrl(), e);
             throw e;
         }
-    }
-
-    // endregion
-
-    private void copyFolder(String sourceFolderUrl, String targetFolderUrl) {
-        ResourceDescription sourceFolder = ResourceDescription.fromAnyUrl(sourceFolderUrl, encryptionService);
-
-        String token = null;
-        do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(sourceFolder, token, PAGE_SIZE, true);
-            if (folder == null) {
-                throw new IllegalStateException("Source folder is empty");
-            }
-
-            for (MetadataBase item : folder.getItems()) {
-                String sourceFileUrl = item.getUrl();
-                String targetFileUrl = targetFolderUrl + sourceFileUrl.substring(sourceFolder.getUrl().length());
-
-                ResourceDescription sourceFile = ResourceDescription.fromAnyUrl(sourceFileUrl, encryptionService);
-                ResourceDescription targetFile = ResourceDescription.fromAnyUrl(targetFileUrl, encryptionService);
-
-                if (!resourceService.copyResource(sourceFile, targetFile)) {
-                    throw new IllegalStateException("Can't copy function source file: " + sourceFileUrl);
-                }
-            }
-
-            token = folder.getNextToken();
-        } while (token != null);
-    }
-
-    private void deleteFolder(String folderUrl) {
-        ResourceDescription folder = ResourceDescription.fromAnyUrl(folderUrl, encryptionService);
-
-        String token = null;
-        do {
-            ResourceFolderMetadata metadata = resourceService.getFolderMetadata(folder, token, 1000, true);
-            if (metadata == null) {
-                break;
-            }
-
-            for (MetadataBase item : metadata.getItems()) {
-                ResourceDescription file = ResourceDescription.fromAnyUrl(item.getUrl(), encryptionService);
-
-                if (!resourceService.deleteResource(file, EtagHeader.ANY)) {
-                    throw new IllegalStateException("Can't delete function target file: " + item.getUrl());
-                }
-            }
-
-            token = metadata.getNextToken();
-        } while (token != null);
     }
 
     private String deploymentLockKey(ResourceDescription resource) {
