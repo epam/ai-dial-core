@@ -22,6 +22,7 @@ import java.util.StringTokenizer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -155,10 +156,12 @@ class ApplicationOperatorService {
         try {
             return resultFuture.get(timeout, TimeUnit.MILLISECONDS);
         } catch (Throwable e) {
-            HttpClientRequest request = requestReference.get();
+            if (e instanceof TimeoutException) {
+                HttpClientRequest request = requestReference.get();
 
-            if (request != null) {
-                request.reset();
+                if (request != null) {
+                    request.reset();
+                }
             }
 
             if (e instanceof ExecutionException) {

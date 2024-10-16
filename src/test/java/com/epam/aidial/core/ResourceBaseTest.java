@@ -148,15 +148,15 @@ public class ResourceBaseTest {
                         }
                       },
                       "resources": {
-                        "syncPeriod": 100,
-                        "syncDelay": 100,
-                        "cacheExpiration": 100,
+                        "syncPeriod": 1000,
+                        "syncDelay": 1000,
+                        "cacheExpiration": 1000,
                         "heartbeatPeriod": 1000
                       },
                       "applications": {
-                        "controllerEndpoint": "http://localhost:10001",
-                        "checkDelay": 100,
-                        "checkPeriod": 100
+                        "controllerEndpoint": "http://localhost:17321",
+                        "checkDelay": 1000,
+                        "checkPeriod": 1000
                       }
                     }
                     """.formatted(Json.encode(testDir.toString()));
@@ -223,11 +223,11 @@ public class ResourceBaseTest {
     }
 
     static void verify(Response response, int status) {
-        assertEquals(status, response.status());
+        assertEquals(status, response.status(), () -> "Actual response body: " + response.body());
     }
 
     static void verify(Response response, int status, String body) {
-        assertEquals(status, response.status());
+        assertEquals(status, response.status(), () -> "Actual response body: " + response.body());
         assertEquals(body, response.body());
     }
 

@@ -65,6 +65,7 @@ dependencies {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 }
 
 application {

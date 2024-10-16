@@ -138,7 +138,6 @@ public class AiDial {
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
-
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
@@ -148,7 +147,7 @@ public class AiDial {
     }
 
     @VisibleForTesting
-    void stop() {
+    void stop() throws Exception {
         try {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
@@ -157,11 +156,9 @@ public class AiDial {
             close(storage);
             close(redis);
             log.info("Proxy stopped");
-            LogConfigurator.unconfigure();
         } catch (Throwable e) {
             log.warn("Proxy failed to stop:", e);
-            LogConfigurator.unconfigure();
-            System.exit(-1);
+            throw e;
         }
     }
 
@@ -264,14 +261,21 @@ public class AiDial {
         Future<Void> close(R resource);
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         AiDial dial = new AiDial();
         try {
             dial.start();
         } catch (Throwable e) {
             System.exit(-1);
         }
-        Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                dial.stop();
+            } catch (Throwable e) {
+                System.exit(-1);
+            }
+        }, "shutdown-hook"));
     }
 
     private static void setupMetrics(VertxOptions options) {

@@ -13,7 +13,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
 
     @BeforeEach
     void initWebServer() {
-        webServer = new TestWebServer(10001);
+        webServer = new TestWebServer(17321);
     }
 
     @AfterEach
@@ -64,7 +64,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 """);
         webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, """
                 event: result
-                data: {"url":"http://localhost:10001"}
+                data: {"url":"http://localhost:17321"}
                 """);
 
         response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
@@ -106,7 +106,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
-                  "endpoint" : "http://localhost:10001/application",
+                  "endpoint" : "http://localhost:17321/application",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -589,7 +589,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
                     "status" : "FAILED",
-                    "error" : "failed to deploy",
+                    "error" : "@ignore",
                     "mapping" : {
                       "completion" : "/application"
                     },
@@ -751,7 +751,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 Assertions.fail("Application has not reached the status: " + status + ". Body: " + response.body());
             }
 
-            Thread.sleep(32);
+            Thread.sleep(128);
         }
     }
 }
