@@ -33,7 +33,7 @@ public class Application extends Deployment {
         private Status status;
         private String error;
         private Mapping mapping;
-        private Map<String, String> env = Map.of();
+        private Map<String, String> env;
 
         public enum Status {
             CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED;

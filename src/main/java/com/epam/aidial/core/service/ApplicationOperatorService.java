@@ -26,13 +26,16 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-class ApplicationOperator {
+/**
+ * A web client to Application Controller Web Service that manages deployments for applications with functions.
+ */
+class ApplicationOperatorService {
 
     private final HttpClient client;
     private final String endpoint;
     private final long timeout;
 
-    public ApplicationOperator(HttpClient client, JsonObject settings) {
+    public ApplicationOperatorService(HttpClient client, JsonObject settings) {
         this.client = client;
         this.endpoint = settings.getString("controllerEndpoint", "https://ai-dial-app-controller.deltixuat.com");
         this.timeout = settings.getLong("controllerTimeout", 240000L);

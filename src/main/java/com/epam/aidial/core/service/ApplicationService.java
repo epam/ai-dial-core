@@ -53,7 +53,7 @@ public class ApplicationService {
     private final LockService lockService;
     private final Supplier<String> idGenerator;
     private final RScoredSortedSet<String> pendingApplications;
-    private final ApplicationOperator controller;
+    private final ApplicationOperatorService controller;
     private final long checkDelay;
     private final int checkSize;
     @Getter
@@ -75,7 +75,7 @@ public class ApplicationService {
         this.lockService = lockService;
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
-        this.controller = new ApplicationOperator(httpClient, settings);
+        this.controller = new ApplicationOperatorService(httpClient, settings);
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
@@ -318,6 +318,8 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
+        // for public/review application source folder is equal to target folder
+        // source files are copied to read-only deployment bucket for such applications
         if (isPublicOrReview && function != null) {
             resourceService.copyFolder(sourceFolder, function.getSourceFolder(), false);
         }
@@ -494,6 +496,9 @@ public class ApplicationService {
     }
 
     private Void launchApplication(ProxyContext context, ResourceDescription resource) {
+        // right now there is no lock watchdog mechanism
+        // this lock can expire before this operation is finished
+        // for extra safety the controller timeout is less than lock timeout
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
                 throw new IllegalStateException("Application function is locked");
@@ -510,6 +515,8 @@ public class ApplicationService {
                 throw new IllegalStateException("Application is not starting");
             }
 
+            // for public/review application source folder is equal to target folder
+            // source files are copied to read-only deployment bucket for such applications
             if (!isPublicOrReview(resource)) {
                 resourceService.copyFolder(function.getSourceFolder(), function.getTargetFolder(), false);
             }
@@ -559,6 +566,8 @@ public class ApplicationService {
             if (isPending(application)) {
                 Application.Function function = application.getFunction();
 
+                // for public/review application source folder is equal to target folder
+                // source files are copied to read-only deployment bucket for such applications
                 if (!isPublicOrReview(resource)) {
                     resourceService.deleteFolder(function.getTargetFolder());
                 }
