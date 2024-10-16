@@ -333,7 +333,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "seed" : false,
                      "url_attachments" : false,
                      "folder_attachments" : false,
-                     "allow_resume":true
+                     "allow_resume":true,
+                     "accessible_by_per_request_key": true
                    },
                    "defaults" : { },
                    "description_keywords":[]
@@ -367,7 +368,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume":true
+                                "allow_resume":true,
+                                "accessible_by_per_request_key": true
                                 },
                             "defaults":{},
                             "description_keywords":[]
@@ -395,7 +397,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume":true
+                              "allow_resume":true,
+                              "accessible_by_per_request_key": true
                             },
                             "defaults" : { },
                             "description_keywords":[]
@@ -432,7 +435,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume":true
+                                "allow_resume":true,
+                                "accessible_by_per_request_key": true
                                 },
                             "defaults":{},
                             "description_keywords":[]
@@ -460,7 +464,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume":true
+                              "allow_resume":true,
+                              "accessible_by_per_request_key": true
                             },
                             "defaults" : { },
                             "description_keywords":[]
@@ -570,7 +575,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume":true
+                                "allow_resume":true,
+                                "accessible_by_per_request_key": true
                                 },
                             "defaults":{},
                             "description_keywords":[]
@@ -598,7 +604,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume":true
+                              "allow_resume":true,
+                              "accessible_by_per_request_key": true
                             },
                             "defaults" : { },
                             "description_keywords":[]
@@ -638,7 +645,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume": true
+                                "allow_resume": true,
+                                "accessible_by_per_request_key": true
                                 },
                             "defaults":{},
                             "description_keywords":[]
@@ -690,7 +698,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "seed":false,
                         "url_attachments":false,
                         "folder_attachments":false,
-                        "allow_resume": true
+                        "allow_resume": true,
+                        "accessible_by_per_request_key": true
                     },
                     "defaults":{},
                     "description_keywords":[]
@@ -724,7 +733,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "seed":false,
                                 "url_attachments":false,
                                 "folder_attachments":false,
-                                "allow_resume": true
+                                "allow_resume": true,
+                                "accessible_by_per_request_key": true
                                 },
                             "defaults":{},
                             "description_keywords":[]
@@ -752,7 +762,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "seed" : false,
                               "url_attachments" : false,
                               "folder_attachments" : false,
-                              "allow_resume": true
+                              "allow_resume": true,
+                              "accessible_by_per_request_key": true
                             },
                             "defaults" : { },
                             "description_keywords":[]
