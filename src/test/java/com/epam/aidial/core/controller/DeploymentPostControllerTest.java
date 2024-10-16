@@ -147,6 +147,7 @@ public class DeploymentPostControllerTest {
         Config config = new Config();
         config.setApplications(new HashMap<>());
         Application app = new Application();
+        app.setEndpoint("http://fake-endpoint.com");
         Features features = new Features();
         features.setAccessibleByPerRequestKey(false);
         app.setFeatures(features);
