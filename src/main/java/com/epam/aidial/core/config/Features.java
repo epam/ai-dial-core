@@ -32,4 +32,5 @@ public class Features {
     private Boolean folderAttachmentsSupported;
     @JsonAlias({"allowResume", "allow_resume"})
     private Boolean allowResume;
+    private Boolean accessibleByPerRequestKey;
 }

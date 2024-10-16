@@ -4,6 +4,7 @@ import com.epam.aidial.core.Proxy;
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
@@ -93,6 +94,12 @@ public class DeploymentPostController {
                 .map(dep -> {
                     if (dep.getEndpoint() == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
+                    }
+
+                    Features features = dep.getFeatures();
+                    boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
+                    if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+                        throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
                     }
 
                     context.setDeployment(dep);

@@ -61,6 +61,8 @@ public class ControllerSelector {
 
     private static final Pattern NOTIFICATIONS = Pattern.compile("^/v1/ops/notification/(list|delete)$");
 
+    private static final Pattern USER_INFO = Pattern.compile("^/v1/user/info$");
+
     public Controller select(Proxy proxy, ProxyContext context) {
         String path = context.getRequest().path();
         HttpMethod method = context.getRequest().method();
@@ -207,6 +209,11 @@ public class ControllerSelector {
 
             DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
             return () -> controller.handle(deploymentId, getter, false);
+        }
+
+        match = match(USER_INFO, path, context);
+        if (match != null) {
+            return new UserInfoController(context);
         }
 
         return null;

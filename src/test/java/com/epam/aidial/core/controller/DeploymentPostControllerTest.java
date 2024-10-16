@@ -5,6 +5,7 @@ import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.limiter.RateLimiter;
 import com.epam.aidial.core.log.LogStore;
@@ -140,8 +141,35 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    public void testDeploymentIsNotAccessible() {
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        Config config = new Config();
+        config.setApplications(new HashMap<>());
+        Application app = new Application();
+        Features features = new Features();
+        features.setAccessibleByPerRequestKey(false);
+        app.setFeatures(features);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("perRequestKey");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        config.getApplications().put("app1", app);
+        when(context.getConfig()).thenReturn(config);
+        when(proxy.getVertx()).thenReturn(vertx);
+        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
+        when(vertx.executeBlocking(any(Callable.class), eq(false)))
+                .thenReturn(Future.succeededFuture(app));
+        when(context.getProxy()).thenReturn(proxy);
+
+        controller.handle("unknown-app", "chat/completions");
+
+        verify(context).respond(eq(FORBIDDEN), anyString());
+    }
+
+    @Test
     public void testNoRoute() {
         when(context.getRequest()).thenReturn(request);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Config config = new Config();
         config.setApplications(new HashMap<>());
