@@ -9,6 +9,6 @@ on:
 
 jobs:
   pr-title-check:
-    uses: epam/ai-dial-ci/.github/workflows/pr-title-check.yml@1.9.0
+    uses: epam/ai-dial-ci/.github/workflows/pr-title-check.yml@1.9.2
     secrets:
       ACTIONS_BOT_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}
