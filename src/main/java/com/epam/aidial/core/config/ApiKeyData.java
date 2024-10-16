@@ -2,17 +2,14 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.data.AutoSharedData;
-import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The container keeps data associated with API key.

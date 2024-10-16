@@ -150,6 +150,10 @@ public class DeploymentController {
             data.setAllowResume(features.getAllowResume());
         }
 
+        if (features.getAccessibleByPerRequestKey() != null) {
+            data.setAccessibleByPerRequestKey(features.getAccessibleByPerRequestKey());
+        }
+
         return data;
     }
 }

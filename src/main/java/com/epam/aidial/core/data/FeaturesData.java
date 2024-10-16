@@ -20,4 +20,5 @@ public class FeaturesData {
     private boolean urlAttachments = false;
     private boolean folderAttachments = false;
     private boolean allowResume = true;
+    private boolean accessibleByPerRequestKey = true;
 }

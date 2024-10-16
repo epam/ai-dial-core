@@ -180,5 +180,8 @@ public final class FileConfigStore implements ConfigStore {
         if (modelFeatures.getAllowResume() == null) {
             modelFeatures.setAllowResume(features.getAllowResume());
         }
+        if (modelFeatures.getAccessibleByPerRequestKey() == null) {
+            modelFeatures.setAccessibleByPerRequestKey(features.getAccessibleByPerRequestKey());
+        }
     }
 }
