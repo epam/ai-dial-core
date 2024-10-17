@@ -18,12 +18,8 @@ import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
-import org.apache.hc.client5.http.classic.methods.HttpDelete;
-import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.classic.methods.HttpHead;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.classic.methods.HttpPut;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
 import org.apache.hc.client5.http.entity.mime.HttpMultipartMode;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -38,6 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -288,21 +285,7 @@ public class ResourceBaseTest {
     @SneakyThrows
     Response send(HttpMethod method, String path, String queryParams, String body, String... headers) {
         String uri = "http://127.0.0.1:" + serverPort + path + (queryParams != null ? "?" + queryParams : "");
-        HttpUriRequest request;
-
-        if (method == HttpMethod.GET) {
-            request = new HttpGet(uri);
-        } else if (method == HttpMethod.PUT) {
-            request = new HttpPut(uri);
-        } else if (method == HttpMethod.DELETE) {
-            request = new HttpDelete(uri);
-        } else if (method == HttpMethod.POST) {
-            request = new HttpPost(uri);
-        } else if (method == HttpMethod.HEAD) {
-            request = new HttpHead(uri);
-        } else {
-            throw new IllegalArgumentException("Unsupported method: " + method);
-        }
+        HttpUriRequest request = new HttpUriRequestBase(method.name(), URI.create(uri));
 
         for (int i = 0; i < headers.length; i += 2) {
             String key = headers[i];
@@ -334,15 +317,7 @@ public class ResourceBaseTest {
     @SneakyThrows
     Response upload(HttpMethod method, String path, String queryParams, String body, String... headers) {
         String uri = "http://127.0.0.1:" + serverPort + path + (queryParams != null ? "?" + queryParams : "");
-        HttpUriRequest request;
-
-        if (method == HttpMethod.PUT) {
-            request = new HttpPut(uri);
-        } else if (method == HttpMethod.POST) {
-            request = new HttpPost(uri);
-        } else {
-            throw new IllegalArgumentException("Unsupported method: " + method);
-        }
+        HttpUriRequest request = new HttpUriRequestBase(method.name(), URI.create(uri));
 
         for (int i = 0; i < headers.length; i += 2) {
             String key = headers[i];
