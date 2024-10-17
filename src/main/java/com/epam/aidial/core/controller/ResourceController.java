@@ -257,7 +257,7 @@ public class ResourceController extends AccessControlBaseController {
         if (error instanceof HttpException exception) {
             context.respond(exception.getStatus(), exception.getMessage());
         } else if (error instanceof IllegalArgumentException) {
-            context.respond(HttpStatus.BAD_REQUEST, "Bad request: " + descriptor.getUrl());
+            context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
             context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
         } else if (error instanceof PermissionDeniedException) {
