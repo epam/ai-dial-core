@@ -1,0 +1,43 @@
+plugins {
+    id "java"
+    id 'checkstyle'
+    id 'application'
+    id 'io.freefair.lombok' version '8.0.1'
+}
+
+group = 'com.epam.aidial'
+version = '0.18.0-rc'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+checkstyle {
+    configDirectory = file("$rootProject.projectDir/checkstyle")
+}
+
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.slf4j:slf4j-api:1.7.32'
+    implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
+    implementation 'org.apache.jclouds.api:filesystem:2.5.0'
+    implementation 'org.apache.commons:commons-lang3:3.12.0'
+    implementation 'org.redisson:redisson:3.27.0'
+    implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
+    implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
+    implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
+    implementation group: 'com.azure', name: 'azure-identity', version: '1.13.2'
+
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}

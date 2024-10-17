@@ -1,2 +1,5 @@
 rootProject.name = "aidial-core"
+include 'server'
+include 'config'
+include 'resource-service'
 
