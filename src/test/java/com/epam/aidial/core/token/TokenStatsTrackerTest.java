@@ -2,6 +2,7 @@ package com.epam.aidial.core.token;
 
 import com.epam.aidial.core.ProxyContext;
 import com.epam.aidial.core.config.ApiKeyData;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
 import com.epam.aidial.core.storage.BlobStorage;
@@ -43,6 +44,9 @@ public class TokenStatsTrackerTest {
 
     @Mock
     private Vertx vertx;
+
+    @Mock
+    private EncryptionService encryptionService;
 
     @Mock
     private BlobStorage blobStorage;
@@ -98,7 +102,7 @@ public class TokenStatsTrackerTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(vertx, redissonClient, encryptionService, blobStorage, lockService, new JsonObject(resourceConfig), null);
         tracker = new TokenStatsTracker(vertx, resourceService);
     }
 

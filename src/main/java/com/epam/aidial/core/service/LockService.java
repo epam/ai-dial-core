@@ -1,6 +1,7 @@
 package com.epam.aidial.core.service;
 
 import com.epam.aidial.core.storage.BlobStorageUtil;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
@@ -25,6 +26,7 @@ public class LockService {
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
 
+    @Getter
     private final String prefix;
     private final RScript script;
 

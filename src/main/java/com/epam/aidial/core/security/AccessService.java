@@ -6,6 +6,7 @@ import com.epam.aidial.core.data.MetadataBase;
 import com.epam.aidial.core.data.ResourceAccessType;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.Rule;
+import com.epam.aidial.core.service.ApplicationService;
 import com.epam.aidial.core.service.PublicationService;
 import com.epam.aidial.core.service.RuleService;
 import com.epam.aidial.core.service.ShareService;
@@ -40,7 +41,8 @@ public class AccessService {
             AccessService::getAppResourceAccess,
             this::getSharedAccess,
             this::getPublicAccess,
-            this::getReviewAccess);
+            this::getReviewAccess,
+            this::getDeploymentAccess);
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
@@ -226,8 +228,16 @@ public class AccessService {
             Set<ResourceDescription> resources, ProxyContext context) {
 
         return resources.stream()
-                .filter(resource -> PublicationService.isReviewResource(resource)
-                        && PublicationService.hasReviewAccess(context, resource))
+                .filter(resource -> PublicationService.hasReviewAccess(context, resource))
+                .collect(Collectors.toUnmodifiableMap(
+                        Function.identity(), resource -> ResourceAccessType.READ_ONLY));
+    }
+
+    private Map<ResourceDescription, Set<ResourceAccessType>> getDeploymentAccess(
+            Set<ResourceDescription> resources, ProxyContext context) {
+
+        return resources.stream()
+                .filter(resource -> ApplicationService.hasDeploymentAccess(context, resource))
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(), resource -> ResourceAccessType.READ_ONLY));
     }

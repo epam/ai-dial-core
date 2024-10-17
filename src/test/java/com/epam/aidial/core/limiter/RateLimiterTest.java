@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.data.LimitStats;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.security.ExtractedClaims;
 import com.epam.aidial.core.service.LockService;
 import com.epam.aidial.core.service.ResourceService;
@@ -52,6 +53,9 @@ public class RateLimiterTest {
 
     @Mock
     private Vertx vertx;
+
+    @Mock
+    private EncryptionService encryptionService;
 
     @Mock
     private BlobStorage blobStorage;
@@ -109,7 +113,7 @@ public class RateLimiterTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(vertx, redissonClient, encryptionService, blobStorage, lockService, new JsonObject(resourceConfig), null);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 

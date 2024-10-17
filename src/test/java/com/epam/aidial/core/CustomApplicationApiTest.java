@@ -69,7 +69,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 """, "If-None-Match", "*");
         verify(response, 412);
 
-        // verify can't create new app with provided reference
+        // verify able to create new app with provided reference
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application2", null, """
                 {
                 "endpoint": "http://application1/v1/completions",
@@ -80,7 +80,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "ref1"
                 }
                 """, "If-None-Match", "*");
-        verify(response, 400);
+        verify(response, 200);
     }
 
     @Test
@@ -839,7 +839,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description_keywords": []
                 }
                 """);
-        Application application1 = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        Application application1 = ProxyUtil.convertToObject(response.body(), Application.class);
         String reference1 = application1.getReference();
 
         // verify app2
@@ -859,7 +859,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description_keywords": []
                 }
                 """);
-        Application application2 = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        Application application2 = ProxyUtil.convertToObject(response.body(), Application.class);
         String reference2 = application2.getReference();
 
         // verify references are not the same
@@ -901,7 +901,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description_keywords": []
                 }
                 """);
-        Application application = ProxyUtil.convertToObject(response.body(), Application.class, true);
+        Application application = ProxyUtil.convertToObject(response.body(), Application.class);
         String reference = application.getReference();
 
         // verify app2 has same reference as app1

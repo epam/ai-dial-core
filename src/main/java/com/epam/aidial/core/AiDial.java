@@ -110,21 +110,20 @@ public class AiDial {
             redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            resourceService = new ResourceService(vertx, redis, encryptionService, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
+            ApplicationService applicationService = new ApplicationService(vertx, client, redis,
+                    encryptionService, resourceService, lockService, generator, settings("applications"));
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, generator, clock);
+                    ruleService, notificationService, applicationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
-
-            ApplicationService applicationService = new ApplicationService(encryptionService, resourceService,
-                    settings("applications"));
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService, resourceService, invitationService, shareService);
@@ -139,7 +138,6 @@ public class AiDial {
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
-
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
@@ -149,7 +147,7 @@ public class AiDial {
     }
 
     @VisibleForTesting
-    void stop() {
+    void stop() throws Exception {
         try {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
@@ -158,11 +156,9 @@ public class AiDial {
             close(storage);
             close(redis);
             log.info("Proxy stopped");
-            LogConfigurator.unconfigure();
         } catch (Throwable e) {
             log.warn("Proxy failed to stop:", e);
-            LogConfigurator.unconfigure();
-            System.exit(-1);
+            throw e;
         }
     }
 
@@ -265,14 +261,21 @@ public class AiDial {
         Future<Void> close(R resource);
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         AiDial dial = new AiDial();
         try {
             dial.start();
         } catch (Throwable e) {
             System.exit(-1);
         }
-        Runtime.getRuntime().addShutdownHook(new Thread(dial::stop, "shutdown-hook"));
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                dial.stop();
+            } catch (Throwable e) {
+                System.exit(-1);
+            }
+        }, "shutdown-hook"));
     }
 
     private static void setupMetrics(VertxOptions options) {

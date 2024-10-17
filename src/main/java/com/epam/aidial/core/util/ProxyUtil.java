@@ -8,7 +8,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -34,11 +33,6 @@ public class ProxyUtil {
 
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
-            .build();
-
-    public static final JsonMapper SNAKE_CASE_MAPPER = JsonMapper.builder()
-            .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
-            .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
             .build();
 
     private static final MultiMap HOP_BY_HOP_HEADERS = MultiMap.caseInsensitiveMultiMap()
@@ -272,12 +266,12 @@ public class ProxyUtil {
     }
 
     @Nullable
-    public static <T> T convertToObject(String payload, Class<T> clazz, boolean snakeCase) {
+    public static <T> T convertToObject(String payload, Class<T> clazz) {
         if (payload == null || payload.isEmpty()) {
             return null;
         }
         try {
-            return snakeCase ? SNAKE_CASE_MAPPER.readValue(payload, clazz) : MAPPER.readValue(payload, clazz);
+            return MAPPER.readValue(payload, clazz);
         } catch (JsonProcessingException e) {
             log.error("Failed to convert payload to the object", e);
             if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
@@ -291,26 +285,16 @@ public class ProxyUtil {
     }
 
     @Nullable
-    public static <T> T convertToObject(String payload, Class<T> clazz) {
-        return convertToObject(payload, clazz, false);
-    }
-
-    @Nullable
-    public static String convertToString(Object data, boolean snakeCase) {
+    public static String convertToString(Object data) {
         if (data == null) {
             return null;
         }
 
         try {
-            return snakeCase ? SNAKE_CASE_MAPPER.writeValueAsString(data) : MAPPER.writeValueAsString(data);
+            return MAPPER.writeValueAsString(data);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException(e);
         }
-    }
-
-    @Nullable
-    public static String convertToString(Object data) {
-        return convertToString(data, false);
     }
 
     public static <T> Throwable processChain(T item, List<BaseRequestFunction<T>> chain) {

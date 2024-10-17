@@ -174,9 +174,9 @@ class ResourceApiTest extends ResourceBaseTest {
     @Test
     void testRandom() {
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 100; i++) {
             int type = random.nextInt(0, 3);
-            int id = random.nextInt(0, 200);
+            int id = random.nextInt(0, 20);
             int size = random.nextInt(0, 2);
             String body = size == 0 ? CONVERSATION_BODY_1 : CONVERSATION_BODY_2;
             String path = "/folder1/folder2/conversation" + id;

@@ -6,6 +6,7 @@ import com.epam.aidial.core.data.ResourceEvent;
 import com.epam.aidial.core.data.ResourceFolderMetadata;
 import com.epam.aidial.core.data.ResourceItemMetadata;
 import com.epam.aidial.core.data.ResourceType;
+import com.epam.aidial.core.security.EncryptionService;
 import com.epam.aidial.core.storage.BlobStorage;
 import com.epam.aidial.core.storage.BlobStorageUtil;
 import com.epam.aidial.core.storage.BlobWriteStream;
@@ -87,6 +88,7 @@ public class ResourceService implements AutoCloseable {
 
     private final Vertx vertx;
     private final RedissonClient redis;
+    private final EncryptionService encryptionService;
     private final BlobStorage blobStore;
     private final LockService lockService;
     private final ResourceTopic topic;
@@ -102,11 +104,12 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
+                           EncryptionService encryptionService,
                            BlobStorage blobStore,
                            LockService lockService,
                            JsonObject settings,
                            String prefix) {
-        this(vertx, redis, blobStore, lockService,
+        this(vertx, redis, encryptionService, blobStore, lockService,
                 settings.getInteger("maxSize"),
                 settings.getLong("syncPeriod"),
                 settings.getLong("syncDelay"),
@@ -127,6 +130,7 @@ public class ResourceService implements AutoCloseable {
      */
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
+                           EncryptionService encryptionService,
                            BlobStorage blobStore,
                            LockService lockService,
                            int maxSize,
@@ -138,6 +142,7 @@ public class ResourceService implements AutoCloseable {
                            String prefix) {
         this.vertx = vertx;
         this.redis = redis;
+        this.encryptionService = encryptionService;
         this.blobStore = blobStore;
         this.lockService = lockService;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
@@ -161,6 +166,61 @@ public class ResourceService implements AutoCloseable {
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
                                                          Consumer<ResourceEvent> subscriber) {
         return topic.subscribe(resources, subscriber);
+    }
+
+    public void copyFolder(String sourceFolderUrl, String targetFolderUrl, boolean overwrite) {
+        ResourceDescription sourceFolder = ResourceDescription.fromAnyUrl(sourceFolderUrl, encryptionService);
+        ResourceDescription targetFolder = ResourceDescription.fromAnyUrl(targetFolderUrl, encryptionService);
+        copyFolder(sourceFolder, targetFolder, overwrite);
+    }
+
+    public void copyFolder(ResourceDescription sourceFolder, ResourceDescription targetFolder, boolean overwrite) {
+        String token = null;
+        do {
+            ResourceFolderMetadata folder = getFolderMetadata(sourceFolder, token, 1000, true);
+            if (folder == null) {
+                throw new IllegalArgumentException("Source folder is empty");
+            }
+
+            for (MetadataBase item : folder.getItems()) {
+                String sourceFileUrl = item.getUrl();
+                String targetFileUrl = targetFolder + sourceFileUrl.substring(sourceFolder.getUrl().length());
+
+                ResourceDescription sourceFile = ResourceDescription.fromAnyUrl(sourceFileUrl, encryptionService);
+                ResourceDescription targetFile = ResourceDescription.fromAnyUrl(targetFileUrl, encryptionService);
+
+                if (!copyResource(sourceFile, targetFile, overwrite)) {
+                    throw new IllegalArgumentException("Can't copy source file: " + sourceFileUrl
+                                                       + " to target file: " + targetFileUrl);
+                }
+            }
+
+            token = folder.getNextToken();
+        } while (token != null);
+    }
+
+    public boolean deleteFolder(String folderUrl) {
+        ResourceDescription folder = ResourceDescription.fromAnyUrl(folderUrl, encryptionService);
+        return deleteFolder(folder);
+    }
+
+    public boolean deleteFolder(ResourceDescription folder) {
+        String token = null;
+        do {
+            ResourceFolderMetadata metadata = getFolderMetadata(folder, token, 1000, true);
+            if (metadata == null) {
+                return false;
+            }
+
+            for (MetadataBase item : metadata.getItems()) {
+                ResourceDescription file = ResourceDescription.fromAnyUrl(item.getUrl(), encryptionService);
+                deleteResource(file, EtagHeader.ANY);
+            }
+
+            token = metadata.getNextToken();
+        } while (token != null);
+
+        return true;
     }
 
     @Nullable
@@ -441,8 +501,8 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public void computeResource(ResourceDescription descriptor, Function<String, String> fn) {
-        computeResource(descriptor, EtagHeader.ANY, fn);
+    public ResourceItemMetadata computeResource(ResourceDescription descriptor, Function<String, String> fn) {
+        return computeResource(descriptor, EtagHeader.ANY, fn);
     }
 
     public ResourceItemMetadata computeResource(ResourceDescription descriptor, EtagHeader etag, Function<String, String> fn) {

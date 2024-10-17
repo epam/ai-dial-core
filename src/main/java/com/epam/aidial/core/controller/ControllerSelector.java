@@ -32,7 +32,7 @@ public class ControllerSelector {
 
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(?<id>.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
-
+    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(start|stop|logs)$");
 
     private static final Pattern PATTERN_BUCKET = Pattern.compile("^/v1/bucket$");
 
@@ -138,15 +138,15 @@ public class ControllerSelector {
 
         match = match(PATTERN_APPLICATION, path, context);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context, proxy);
+            ApplicationController controller = new ApplicationController(context);
             String application = UrlUtil.decodePath(match.group(1));
             return () -> controller.getApplication(application);
         }
 
         match = match(PATTERN_APPLICATIONS, path, context);
         if (match != null) {
-            ApplicationController controller = new ApplicationController(context, proxy);
-            return controller::getApplicationService;
+            ApplicationController controller = new ApplicationController(context);
+            return controller::getApplications;
         }
 
         match = match(PATTERN_FILES_METADATA, path, context);
@@ -324,6 +324,19 @@ public class ControllerSelector {
             return switch (operation) {
                 case "list" -> controller::listNotifications;
                 case "delete" -> controller::deleteNotification;
+                default -> null;
+            };
+        }
+
+        match = match(APPLICATIONS, path, context);
+        if (match != null) {
+            String operation = match.group(1);
+            ApplicationController controller = new ApplicationController(context);
+
+            return switch (operation) {
+                case "start" -> controller::startApplication;
+                case "stop" -> controller::stopApplication;
+                case "logs" -> controller::getApplicationLogs;
                 default -> null;
             };
         }

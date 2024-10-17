@@ -46,50 +46,53 @@ Priority order:
 2. File specified in "AIDIAL_SETTINGS" environment variable.
 3. Default resource file: src/main/resources/aidial.settings.json.
 
-| Setting                                       | Default           | Required | Description
-|-----------------------------------------------|:-----------:|:--------:|-------------------------------------------------|
+| Setting                                       |      Default       | Required | Description
+|-----------------------------------------------|:------------------:|:--------:|-------------------------------------------------|
 | config.files                                  | aidial.config.json |    No    |List of paths to dynamic settings. Refer to [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).|
-| config.reload                                 | 60000             |    No    |Config reload interval in milliseconds.
-| identityProviders                             | -                 |   Yes    |Map of identity providers. **Note**: At least one identity provider must be provided. Refer to [examples](sample/aidial.settings.json) to view available providers. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/Auth/2.%20Web/1.overview.md) to view guidelines for configuring supported providers.
-| identityProviders.*.jwksUrl                   | -                 | Optional |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided.
-| identityProviders.*.userInfoEndpoint          | -                 | Optional |Url to user info endpoint. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided or `disableJwtVerification` is unset. Refer to [Google example](sample/aidial.settings.json). 
-| identityProviders.*.rolePath                  | -                 |   Yes    |Path to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/Auth/2.%20Web/1.overview.md) to view guidelines for configuring supported providers.
-| identityProviders.*.loggingKey                | -                 |    No    |User information to search in claims of JWT token. `email` or `sub` should be sufficient in most cases. **Note**: `email` might be unavailable for some IDPs. Please check your IDP documentation in this case.
-| identityProviders.*.loggingSalt               | -                 |    No    |Salt to hash user information for logging.
-| identityProviders.*.positiveCacheExpirationMs | 600000            |    No    | How long to retain JWKS response in the cache in case of successfull response.
-| identityProviders.*.negativeCacheExpirationMs | 10000             |    No    |How long to retain JWKS response in the cache in case of failed response.
-| identityProviders.*.issuerPattern             | -                 |    No    |Regexp to match the claim "iss" to identity provider.
-| identityProviders.*.disableJwtVerification    | false             |    No    |The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.
-| vertx.*                                       | -                 |    No    |Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.
-| server.*                                      | -                 |    No    |Vertx HTTP server settings for incoming requests.
-| client.*                                      | -                 |    No    |Vertx HTTP client settings for outbound requests.
-| storage.provider                              | filesystem                  |   Yes    |Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem. See examples in the sections below.
-| storage.endpoint                              | -                 | Optional |Specifies endpoint url for s3 compatible storages. **Note**: The setting might be required. That depends on a concrete provider.
-| storage.identity                              | -                 | Optional |Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers. Refer to [sections in this document](#aws-s3-blob-store) dedicated to specific storage providers.
-| storage.credential                            | -                 | Optional |Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers.
-| storage.bucket                                | -                 |    No    |Blob storage bucket.
-| storage.overrides.*                           | -                 |    No    |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. Refer to [examples](#temporary-credentials-1) in the sections below. 
-| storage.createBucket                          | false             |    No    |Indicates whether bucket should be created on start-up.
-| storage.prefix                                | -                 |    No    |Base prefix for all stored resources. The purpose to use the same bucket for different environments, e.g. dev, prod, pre-prod. Must not contain path separators or any invalid chars.
-| encryption.secret                             | -                 |    No    |Secret is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
-| encryption.key                                | -                 |    No    |Key is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
-| resources.maxSize                             | 1048576           |    No    |Max allowed size in bytes for a resource.
-| resources.syncPeriod                          | 60000             |    No    |Period in milliseconds, how frequently check for resources to sync.
-| resources.syncDelay                           | 120000            |    No    |Delay in milliseconds for a resource to be written back in object storage after last modification.
-| resources.syncBatch                           | 4096              |    No    |How many resources to sync in one go.
-| resources.cacheExpiration                     | 300000            |    No    |Expiration in milliseconds for synced resources in Redis.
-| resources.compressionMinSize                  | 256               |    No    |Compress a resource with gzip if its size in bytes more or equal to this value.
-| redis.singleServerConfig.address              | -                 |   Yes    |Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided. 
-| redis.clusterServersConfig.nodeAddresses      | -                 |   Yes    |Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.
-| redis.provider.*                              | -                 |    No    |Provider specific settings
-| redis.provider.name                           | -                 |   Yes    |Provider name. The valid values are `aws-elasti-cache`(see [instructions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html)).
-| redis.provider.userId                         | -                 |   Yes    | IAM-enabled user ID. **Note**. It's applied to `aws-elasti-cache`
-| redis.provider.region                         | -                 |   Yes    | Geo region where the cache is located. **Note**. It's applied to `aws-elasti-cache` 
-| redis.provider.clusterName                    | -                 |   Yes    | Redis cluster name. **Note**. It's applied to `aws-elasti-cache`
-| redis.provider.serverless                     | -                 |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
-| invitations.ttlInSeconds                      | 259200            |    No    |Invitation time to live in seconds.
-| access.admin.rules                            | -                 |    No    |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
-| applications.includeCustomApps                | false             |    No    |The flag indicates whether custom applications should be included into openai listing
+| config.reload                                 |       60000        |    No    |Config reload interval in milliseconds.
+| identityProviders                             |         -          |   Yes    |Map of identity providers. **Note**: At least one identity provider must be provided. Refer to [examples](sample/aidial.settings.json) to view available providers. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/Auth/2.%20Web/1.overview.md) to view guidelines for configuring supported providers.
+| identityProviders.*.jwksUrl                   |         -          | Optional |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided.
+| identityProviders.*.userInfoEndpoint          |         -          | Optional |Url to user info endpoint. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided or `disableJwtVerification` is unset. Refer to [Google example](sample/aidial.settings.json). 
+| identityProviders.*.rolePath                  |         -          |   Yes    |Path to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/Auth/2.%20Web/1.overview.md) to view guidelines for configuring supported providers.
+| identityProviders.*.loggingKey                |         -          |    No    |User information to search in claims of JWT token. `email` or `sub` should be sufficient in most cases. **Note**: `email` might be unavailable for some IDPs. Please check your IDP documentation in this case.
+| identityProviders.*.loggingSalt               |         -          |    No    |Salt to hash user information for logging.
+| identityProviders.*.positiveCacheExpirationMs |       600000       |    No    | How long to retain JWKS response in the cache in case of successfull response.
+| identityProviders.*.negativeCacheExpirationMs |       10000        |    No    |How long to retain JWKS response in the cache in case of failed response.
+| identityProviders.*.issuerPattern             |         -          |    No    |Regexp to match the claim "iss" to identity provider.
+| identityProviders.*.disableJwtVerification    |       false        |    No    |The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.
+| vertx.*                                       |         -          |    No    |Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.
+| server.*                                      |         -          |    No    |Vertx HTTP server settings for incoming requests.
+| client.*                                      |         -          |    No    |Vertx HTTP client settings for outbound requests.
+| storage.provider                              |     filesystem     |   Yes    |Specifies blob storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem. See examples in the sections below.
+| storage.endpoint                              |         -          | Optional |Specifies endpoint url for s3 compatible storages. **Note**: The setting might be required. That depends on a concrete provider.
+| storage.identity                              |         -          | Optional |Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers. Refer to [sections in this document](#aws-s3-blob-store) dedicated to specific storage providers.
+| storage.credential                            |         -          | Optional |Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers.
+| storage.bucket                                |         -          |    No    |Blob storage bucket.
+| storage.overrides.*                           |         -          |    No    |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. Refer to [examples](#temporary-credentials-1) in the sections below. 
+| storage.createBucket                          |       false        |    No    |Indicates whether bucket should be created on start-up.
+| storage.prefix                                |         -          |    No    |Base prefix for all stored resources. The purpose to use the same bucket for different environments, e.g. dev, prod, pre-prod. Must not contain path separators or any invalid chars.
+| encryption.secret                             |         -          |    No    |Secret is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
+| encryption.key                                |         -          |    No    |Key is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
+| resources.maxSize                             |      1048576       |    No    |Max allowed size in bytes for a resource.
+| resources.syncPeriod                          |       60000        |    No    |Period in milliseconds, how frequently check for resources to sync.
+| resources.syncDelay                           |       120000       |    No    |Delay in milliseconds for a resource to be written back in object storage after last modification.
+| resources.syncBatch                           |        4096        |    No    |How many resources to sync in one go.
+| resources.cacheExpiration                     |       300000       |    No    |Expiration in milliseconds for synced resources in Redis.
+| resources.compressionMinSize                  |        256         |    No    |Compress a resource with gzip if its size in bytes more or equal to this value.
+| redis.singleServerConfig.address              |         -          |   Yes    |Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided. 
+| redis.clusterServersConfig.nodeAddresses      |         -          |   Yes    |Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.
+| redis.provider.*                              |         -          |    No    |Provider specific settings
+| redis.provider.name                           |         -          |   Yes    |Provider name. The valid values are `aws-elasti-cache`(see [instructions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html)).
+| redis.provider.userId                         |         -          |   Yes    | IAM-enabled user ID. **Note**. It's applied to `aws-elasti-cache`
+| redis.provider.region                         |         -          |   Yes    | Geo region where the cache is located. **Note**. It's applied to `aws-elasti-cache` 
+| redis.provider.clusterName                    |         -          |   Yes    | Redis cluster name. **Note**. It's applied to `aws-elasti-cache`
+| redis.provider.serverless                     |         -          |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
+| invitations.ttlInSeconds                      |       259200       |    No    |Invitation time to live in seconds.
+| access.admin.rules                            |         -          |    No    |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
+| applications.includeCustomApps                |       false        |    No    |The flag indicates whether custom applications should be included into openai listing
+| applications.controllerEndpoint               |         -          |    No    |The endpoint to Application Controller Web Service that manages deployments for applications with functions 
+| applications.controllerTimeout                |       240000       |    No    |The timeout of operations to Application Controller Web Service
+| applications.checkPeriod                      |       300000       |    No    |The interval at which to check the pending operations for applications with functions
 
 ### Storage requirements
 
