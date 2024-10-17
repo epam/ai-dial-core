@@ -1,10 +1,7 @@
 package com.epam.aidial.core;
 
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.junit5.VertxExtension;
-import io.vertx.junit5.VertxTestContext;
-import org.junit.jupiter.api.extension.ExtendWith;
+import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -14,24 +11,19 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@ExtendWith(VertxExtension.class)
 class RouteApiTest extends ResourceBaseTest {
 
     @ParameterizedTest
     @MethodSource("datasource")
-    void route(HttpMethod method, String path, String apiKey, int expectedStatus, String expectedResponse,
-               Vertx vertx, VertxTestContext context) {
+    void route(HttpMethod method, String path, String apiKey, int expectedStatus, String expectedResponse) {
+        TestWebServer.Handler handler = request -> new MockResponse().setBody(request.getPath());
+        try (TestWebServer server = new TestWebServer(9876, handler)) {
+            String reqBody = (method == HttpMethod.POST) ? UUID.randomUUID().toString() : null;
+            Response resp = send(method, path, null, reqBody, "api-key", apiKey);
 
-        var targetServer = vertx.createHttpServer()
-                .requestHandler(req -> req.response().end(req.path()));
-        targetServer.listen(9876)
-                .onComplete(context.succeedingThenComplete());
-
-        var reqBody = method == HttpMethod.POST ? UUID.randomUUID().toString() : null;
-        var resp = send(method, path, null, reqBody, "api-key", apiKey);
-
-        assertEquals(expectedStatus, resp.status());
-        assertEquals(expectedResponse, resp.body());
+            assertEquals(expectedStatus, resp.status());
+            assertEquals(expectedResponse, resp.body());
+        }
     }
 
     private static List<Arguments> datasource() {
