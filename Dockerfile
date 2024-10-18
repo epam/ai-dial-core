@@ -1,19 +1,11 @@
-FROM gradle:8.2.0-jdk17-alpine as cache
-
-WORKDIR /home/gradle/src
-ENV GRADLE_USER_HOME /cache
-COPY build.gradle settings.gradle ./
-# just pull dependencies for cache
-RUN gradle --no-daemon build --stacktrace
-
 FROM gradle:8.2.0-jdk17-alpine as builder
 
-COPY --from=cache /cache /home/gradle/.gradle
+#COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
 
 WORKDIR /home/gradle/src
 RUN gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
-RUN mkdir /build && tar -xf /home/gradle/src/build/distributions/aidial-core*.tar --strip-components=1 -C /build
+RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
 
 FROM eclipse-temurin:17-jdk-alpine
 
