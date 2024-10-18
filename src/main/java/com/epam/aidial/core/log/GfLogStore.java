@@ -107,8 +107,11 @@ public class GfLogStore implements LogStore {
 
         String sourceDeployment = context.getSourceDeployment();
         if (sourceDeployment != null) {
+            String initialDeployment = context.getInitialDeployment();
             append(entry, ",\"parent_deployment\":\"", false);
-            append(entry, sourceDeployment, true);
+            // if deployment(callee) is configured with interceptors the return initial deployment(which triggers interceptors)
+            // otherwise return source deployment(caller)
+            append(entry, initialDeployment != null ? initialDeployment : sourceDeployment, true);
             append(entry, "\"", false);
         }
 
