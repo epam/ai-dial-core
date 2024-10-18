@@ -85,6 +85,7 @@ public class AiDial {
     @VisibleForTesting
     void start() throws Exception {
         System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
+
         try {
             settings = (settings == null) ? settings() : settings;
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
@@ -92,7 +93,7 @@ public class AiDial {
             setupTracing(vertxOptions);
 
             vertx = Vertx.vertx(vertxOptions);
-            client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
+            client = vertx.createHttpClient(new HttpClientOptions(settings("client")).setLogActivity(true));
 
             LogStore logStore = new GfLogStore(vertx);
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
