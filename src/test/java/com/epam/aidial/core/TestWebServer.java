@@ -14,17 +14,21 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 class TestWebServer implements AutoCloseable {
 
-    private static final MockResponse DEFAULT_RESPONSE = createResponse(500, "No mapping");
-
-    private final ConcurrentHashMap<Key, MockResponse> mapping = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Key, Handler> mapping = new ConcurrentHashMap<>();
     private final MockWebServer server;
+    private final Handler fallback;
+
+    TestWebServer(int port) {
+        this(port, Handler.NO_MAPPING);
+    }
 
     @SneakyThrows
-    TestWebServer(int port) {
-        server = new MockWebServer();
-        server.setDispatcher(new Router());
-        server.start(port);
-        log.info("TestWebServer started");
+    TestWebServer(int port, Handler fallback) {
+        this.fallback = fallback;
+        this.server = new MockWebServer();
+        this.server.setDispatcher(new Router());
+        this.server.start(port);
+        log.info("TestWebServer started on {}:{}", server.getHostName(), server.getPort());
     }
 
     @Override
@@ -34,9 +38,13 @@ class TestWebServer implements AutoCloseable {
         log.info("TestWebServer stopped");
     }
 
-    public void map(HttpMethod method, String path, MockResponse response) {
+    public void map(HttpMethod method, String path, Handler handler) {
         Key key = new Key(method.name(), path);
-        mapping.put(key, response);
+        mapping.put(key, handler);
+    }
+
+    public void map(HttpMethod method, String path, MockResponse response) {
+        map(method, path, request -> response);
     }
 
     public void map(HttpMethod method, String path, int status) {
@@ -52,7 +60,8 @@ class TestWebServer implements AutoCloseable {
                 request.getMethod(), request.getPath(), request.getHeaders().toMultimap(), request.getBody());
 
         Key key = new Key(request.getMethod(), request.getPath());
-        MockResponse response = mapping.getOrDefault(key, DEFAULT_RESPONSE);
+        Handler handler = mapping.getOrDefault(key, fallback);
+        MockResponse response = handler.map(request);
 
         log.info("[Test Web Server] Sent response. Status: {}. Body: {}", response.getStatus(), response.getBody());
         return response;
@@ -66,6 +75,12 @@ class TestWebServer implements AutoCloseable {
     }
 
     private record Key(String method, String path) {
+    }
+
+    public interface Handler {
+        Handler NO_MAPPING = request -> createResponse(500, "No mapping");
+
+        MockResponse map(RecordedRequest request);
     }
 
     private class Router extends Dispatcher {
