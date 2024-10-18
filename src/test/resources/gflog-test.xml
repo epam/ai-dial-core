@@ -1,7 +1,7 @@
 <config>
     <appender name="console" factory="com.epam.deltix.gflog.core.appender.ConsoleAppenderFactory"/>
 
-    <logger level="INFO">
+    <logger level="TRACE">
         <appender-ref ref="console"/>
     </logger>
 
