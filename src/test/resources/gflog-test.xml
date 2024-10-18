@@ -9,5 +9,8 @@
         <appender-ref ref="console"/>
     </logger>
 
+    <logger name="io.netty.handler.logging.LoggingHandler" level="TRACE">
+        <appender-ref ref="console"/>
+    </logger>
     <service/>
 </config>
