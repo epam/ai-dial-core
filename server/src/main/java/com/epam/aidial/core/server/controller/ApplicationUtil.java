@@ -27,6 +27,7 @@ public class ApplicationUtil {
 
         String reference = application.getReference();
         data.setReference(reference == null ? application.getName() : reference);
+        data.setFunction(application.getFunction());
 
         return data;
     }
