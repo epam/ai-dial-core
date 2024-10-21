@@ -71,7 +71,7 @@ dependencies {
 }
 
 application {
-    mainClass = 'com.epam.aidial.core.AiDial'
+    mainClass = 'com.epam.aidial.core.server.AiDial'
 }
 
 distributions {
