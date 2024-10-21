@@ -9,7 +9,6 @@ import com.epam.aidial.core.util.ProxyUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
@@ -24,7 +23,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -71,7 +69,7 @@ class ApplicationOperatorService {
                     CreateImageRequest body = new CreateImageRequest(function.getRuntime(), function.getTargetFolder());
                     return ProxyUtil.convertToString(body);
                 },
-                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
+                body -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
     String createApplicationDeployment(ProxyContext context, Application.Function function) {
@@ -93,7 +91,7 @@ class ApplicationOperatorService {
                     CreateDeploymentRequest body = new CreateDeploymentRequest(function.getEnv());
                     return ProxyUtil.convertToString(body);
                 },
-                (response, body) -> convertServerSentEvent(body, CreateDeploymentResponse.class));
+                body -> convertServerSentEvent(body, CreateDeploymentResponse.class));
 
         return deployment.url();
     }
@@ -101,30 +99,29 @@ class ApplicationOperatorService {
     void deleteApplicationImage(Application.Function function) {
         callController(HttpMethod.DELETE, "/v1/image/" + function.getId(),
                 request -> null,
-                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
+                body -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
     void deleteApplicationDeployment(Application.Function function) {
         callController(HttpMethod.DELETE, "/v1/deployment/" + function.getId(),
                 request -> null,
-                (response, body) -> convertServerSentEvent(body, EmptyResponse.class));
+                body -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
     Application.Logs getApplicationLogs(Application.Function function) {
         return callController(HttpMethod.GET, "/v1/deployment/" + function.getId() + "/logs",
                 request -> null,
-                (response, body) -> ProxyUtil.convertToObject(body, Application.Logs.class));
+                body -> ProxyUtil.convertToObject(body, Application.Logs.class));
     }
 
     @SneakyThrows
     private <R> R callController(HttpMethod method, String path,
                                  Function<HttpClientRequest, String> requestMapper,
-                                 BiFunction<HttpClientResponse, String, R> responseMapper) {
+                                 Function<String, R> responseMapper) {
         verifyActive();
 
         CompletableFuture<R> resultFuture = new CompletableFuture<>();
         AtomicReference<HttpClientRequest> requestReference = new AtomicReference<>();
-        AtomicReference<HttpClientResponse> responseReference = new AtomicReference<>();
 
         RequestOptions requestOptions = new RequestOptions()
                 .setMethod(method)
@@ -135,20 +132,18 @@ class ApplicationOperatorService {
                 .compose(request -> {
                     requestReference.set(request);
                     String body = requestMapper.apply(request);
-                    return request.send((body == null) ? "" : body);
-                })
-                .compose(response -> {
-                    if (response.statusCode() != 200) {
-                        throw new IllegalStateException("Controller API error. Code: " + response.statusCode());
-                    }
+                    return request.send((body == null) ? "" : body)
+                            .compose(response -> { // must be inside to eliminate race condition for response.body()
+                                if (response.statusCode() != 200) {
+                                    throw new IllegalStateException("Controller API error. Code: " + response.statusCode());
+                                }
 
-                    responseReference.set(response);
-                    return response.body();
+                                return response.body();
+                            });
                 })
                 .map(buffer -> {
-                    HttpClientResponse response = responseReference.get();
                     String body = buffer.toString(StandardCharsets.UTF_8);
-                    return responseMapper.apply(response, body);
+                    return responseMapper.apply(body);
                 })
                 .onSuccess(resultFuture::complete)
                 .onFailure(resultFuture::completeExceptionally);
