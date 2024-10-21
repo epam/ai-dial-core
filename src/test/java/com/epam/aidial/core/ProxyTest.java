@@ -273,7 +273,7 @@ public class ProxyTest {
 
         Config config = new Config();
         Route route = new Route();
-        route.setMethods(Set.of(HttpMethod.GET));
+        route.setMethods(Set.of("GET"));
         route.setName("route");
         route.setPaths(List.of(Pattern.compile("/foo")));
         route.setResponse(new Route.Response());
@@ -335,7 +335,7 @@ public class ProxyTest {
 
         Config config = new Config();
         Route route = new Route();
-        route.setMethods(Set.of(HttpMethod.GET));
+        route.setMethods(Set.of("GET"));
         route.setName("route");
         route.setPaths(List.of(Pattern.compile("/foo")));
         route.setResponse(new Route.Response());
@@ -371,7 +371,7 @@ public class ProxyTest {
 
         Config config = new Config();
         Route route = new Route();
-        route.setMethods(Set.of(HttpMethod.GET));
+        route.setMethods(Set.of("GET"));
         route.setName("route");
         route.setPaths(List.of(Pattern.compile("/foo")));
         route.setResponse(new Route.Response());
@@ -407,7 +407,7 @@ public class ProxyTest {
 
         Config config = new Config();
         Route route = new Route();
-        route.setMethods(Set.of(HttpMethod.GET));
+        route.setMethods(Set.of("GET"));
         route.setName("route");
         route.setPaths(List.of(Pattern.compile("/foo")));
         route.setResponse(new Route.Response());
@@ -465,7 +465,7 @@ public class ProxyTest {
 
         Config config = new Config();
         Route route = new Route();
-        route.setMethods(Set.of(HttpMethod.GET));
+        route.setMethods(Set.of("GET"));
         route.setName("route");
         route.setPaths(List.of(Pattern.compile("/foo")));
         route.setResponse(new Route.Response());
@@ -497,7 +497,7 @@ public class ProxyTest {
 
         Config config = new Config();
         Route route = new Route();
-        route.setMethods(Set.of(HttpMethod.GET));
+        route.setMethods(Set.of("GET"));
         route.setName("route");
         route.setPaths(List.of(Pattern.compile("/foo")));
         route.setResponse(new Route.Response());
@@ -526,7 +526,7 @@ public class ProxyTest {
 
         Config config = new Config();
         Route route = new Route();
-        route.setMethods(Set.of(HttpMethod.GET));
+        route.setMethods(Set.of("GET"));
         route.setName("route");
         route.setPaths(List.of(Pattern.compile("/foo")));
         route.setResponse(new Route.Response());

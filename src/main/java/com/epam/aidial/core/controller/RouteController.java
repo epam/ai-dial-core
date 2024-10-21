@@ -230,9 +230,9 @@ public class RouteController implements Controller {
 
         for (Route route : config.getRoutes().values()) {
             List<Pattern> paths = route.getPaths();
-            Set<HttpMethod> methods = route.getMethods();
+            Set<String> methods = route.getMethods();
 
-            if (!methods.isEmpty() && !methods.contains(request.method())) {
+            if (!methods.isEmpty() && !methods.contains(request.method().name())) {
                 continue;
             }
 

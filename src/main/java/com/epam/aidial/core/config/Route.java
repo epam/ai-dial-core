@@ -1,7 +1,5 @@
 package com.epam.aidial.core.config;
 
-import com.epam.aidial.core.util.HttpStatus;
-import io.vertx.core.http.HttpMethod;
 import lombok.Data;
 
 import java.util.List;
@@ -15,13 +13,13 @@ public class Route {
     private Response response;
     private boolean rewritePath;
     private List<Pattern> paths = List.of();
-    private Set<HttpMethod> methods = Set.of();
+    private Set<String> methods = Set.of();
     private List<Upstream> upstreams = List.of();
     private Set<String> userRoles;
 
     @Data
     public static class Response {
-        private int status = HttpStatus.OK.getCode();
+        private int status = 200;
         private String body = "";
     }
 }
