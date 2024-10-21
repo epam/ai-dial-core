@@ -11,10 +11,10 @@ if [ $# -lt 1 ]; then
     find "$LOG_DIR" ! -user appuser -exec chown appuser '{}' +
     find "$STORAGE_DIR" ! -user appuser -exec chown appuser '{}' +
 
-    exec su-exec appuser "/app/bin/aidial-core" "$@"
+    exec su-exec appuser "/app/bin/server" "$@"
   fi
 
-  exec "/app/bin/aidial-core" "$@"
+  exec "/app/bin/server" "$@"
 fi
 
 # Otherwise, we assume the user wants to run his own process,

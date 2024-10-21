@@ -1,0 +1,33 @@
+plugins {
+    id "java"
+    id 'checkstyle'
+    id 'application'
+    id 'io.freefair.lombok' version '8.0.1'
+}
+
+group = 'com.epam.aidial'
+version = '0.18.0-rc'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+checkstyle {
+    configDirectory = file("$rootProject.projectDir/checkstyle")
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}

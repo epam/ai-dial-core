@@ -9,3 +9,5 @@ bin/
 # since CI bumps version only in build.gradle and we are copying this value on fly we don't want to track version file changes
 # even if developer/user create own version file - distribution task overwrite it
 src/main/resources/version
+### Mac OS ###
+.DS_Store

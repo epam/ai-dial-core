@@ -1,0 +1,93 @@
+plugins {
+    id "java"
+    id 'checkstyle'
+    id 'application'
+    id 'io.freefair.lombok' version '8.0.1'
+}
+
+group = 'com.epam.aidial'
+version = '0.18.0-rc'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+checkstyle {
+    configDirectory = file("$rootProject.projectDir/checkstyle")
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'com.google.code.gson:gson:2.8.9'
+    }
+}
+
+dependencies {
+    implementation project(':config')
+
+    implementation 'com.google.protobuf:protobuf-java:3.25.5'
+    implementation 'org.slf4j:slf4j-api:1.7.32'
+    implementation 'com.epam.deltix:gflog-api:3.0.6'
+    implementation 'com.epam.deltix:gflog-core:3.0.6'
+    runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.6'
+    implementation 'io.vertx:vertx-core:4.5.10'
+    implementation 'io.vertx:vertx-config:4.5.10'
+    implementation 'io.vertx:vertx-opentelemetry:4.5.10'
+    implementation 'io.vertx:vertx-micrometer-metrics:4.5.10'
+    implementation 'io.micrometer:micrometer-registry-prometheus:1.11.2'
+    implementation 'io.micrometer:micrometer-registry-otlp:1.11.2'
+    implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.28.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.28.0'
+    implementation 'org.apache.commons:commons-lang3:3.12.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation 'com.auth0:java-jwt:4.4.0'
+    implementation 'com.auth0:jwks-rsa:0.22.1'
+    implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
+    implementation 'org.apache.jclouds.api:filesystem:2.5.0'
+    implementation 'org.redisson:redisson:3.27.0'
+    implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
+    implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
+    implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
+    implementation group: 'com.azure', name: 'azure-identity', version: '1.13.2'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
+    testImplementation 'commons-io:commons-io:2.11.0'
+    testImplementation 'io.vertx:vertx-web-client:4.5.10'
+    testImplementation 'io.vertx:vertx-junit5:4.5.10'
+    testImplementation 'org.mockito:mockito-core:5.7.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
+    testImplementation 'org.apache.httpcomponents.client5:httpclient5:5.4'
+    testImplementation('com.github.codemonstur:embedded-redis:1.4.3') {
+        exclude group: 'org.slf4j', module: 'slf4j-simple'
+    }
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+}
+
+application {
+    mainClass = 'com.epam.aidial.core.server.AiDial'
+}
+
+distributions {
+    // write current version to the version file
+    beforeEvaluate {
+        def versionFile = file("$projectDir/src/main/resources/version")
+        versionFile.getParentFile().mkdirs()
+        versionFile.createNewFile()
+        versionFile.write(version)
+    }
+}
+
+test {
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        exceptionFormat = "full"
+    }
+    useJUnitPlatform()
+}
