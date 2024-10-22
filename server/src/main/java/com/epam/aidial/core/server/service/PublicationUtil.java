@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
 import io.vertx.core.json.JsonArray;
@@ -23,7 +22,7 @@ public class PublicationUtil {
      * @param attachmentsMapping - attachments map (sourceUrl -> targetUrl) to replace
      * @return conversation body after replacement
      */
-    public String replaceConversationLinks(String conversationBody, ResourceDescription targetResource, Map<String, String> attachmentsMapping) {
+    public String replaceConversationLinks(String conversationBody, ResourceDescriptor targetResource, Map<String, String> attachmentsMapping) {
         JsonObject conversation = replaceConversationIdentity(conversationBody, targetResource);
 
         if (attachmentsMapping.isEmpty()) {
@@ -83,11 +82,11 @@ public class PublicationUtil {
         }
     }
 
-    private JsonObject replaceConversationIdentity(String conversationBody, ResourceDescription targetResource) {
+    private JsonObject replaceConversationIdentity(String conversationBody, ResourceDescriptor targetResource) {
         JsonObject conversation = new JsonObject(conversationBody);
-        ResourceDescription folderLink = targetResource.getParent();
+        ResourceDescriptor folderLink = targetResource.getParent();
         String folderUrl = folderLink == null
-                ? targetResource.getType().getGroup() + BlobStorageUtil.PATH_SEPARATOR + targetResource.getBucketName()
+                ? targetResource.getType().getGroup() + ResourceDescriptor.PATH_SEPARATOR + targetResource.getBucketName()
                 : folderLink.getDecodedUrl();
         if (folderUrl.charAt(folderUrl.length() - 1) == '/') {
             folderUrl = folderUrl.substring(0, folderUrl.length() - 1);

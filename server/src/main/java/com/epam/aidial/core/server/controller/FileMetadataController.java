@@ -3,9 +3,9 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.MetadataBase;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
@@ -32,7 +32,7 @@ public class FileMetadataController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
+    protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));

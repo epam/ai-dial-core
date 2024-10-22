@@ -11,10 +11,11 @@ import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
 import com.epam.aidial.core.server.data.ResourceType;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -84,10 +85,10 @@ public class ApplicationService {
         }
     }
 
-    public static boolean hasDeploymentAccess(ProxyContext context, ResourceDescription resource) {
+    public static boolean hasDeploymentAccess(ProxyContext context, ResourceDescriptor resource) {
         if (resource.getBucketLocation().contains(DEPLOYMENTS_NAME)) {
             String location = BlobStorageUtil.buildInitiatorBucket(context);
-            String reviewLocation = location + DEPLOYMENTS_NAME + BlobStorageUtil.PATH_SEPARATOR;
+            String reviewLocation = location + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR;
             return resource.getBucketLocation().startsWith(reviewLocation);
         }
 
@@ -106,7 +107,7 @@ public class ApplicationService {
         String location = BlobStorageUtil.buildInitiatorBucket(context);
         String bucket = encryptionService.encrypt(location);
 
-        ResourceDescription folder = ResourceDescription.fromDecoded(ResourceType.APPLICATION, bucket, location, null);
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceType.APPLICATION, bucket, location, null);
         return getApplications(folder);
     }
 
@@ -124,7 +125,7 @@ public class ApplicationService {
         List<Application> list = new ArrayList<>();
 
         for (MetadataBase meta : metadata) {
-            ResourceDescription resource = ResourceDescription.fromAnyUrl(meta.getUrl(), encryptionService);
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
 
             if (meta instanceof ResourceItemMetadata) {
                 list.add(getApplication(resource).getValue());
@@ -137,12 +138,12 @@ public class ApplicationService {
     }
 
     public List<Application> getPublicApplications(ProxyContext context) {
-        ResourceDescription folder = ResourceDescription.fromDecoded(ResourceType.APPLICATION, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceType.APPLICATION, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
         AccessService accessService = context.getProxy().getAccessService();
         return getApplications(folder, page -> accessService.filterForbidden(context, folder, page));
     }
 
-    public Pair<ResourceItemMetadata, Application> getApplication(ResourceDescription resource) {
+    public Pair<ResourceItemMetadata, Application> getApplication(ResourceDescriptor resource) {
         verifyApplication(resource);
         Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource);
 
@@ -160,13 +161,13 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    public List<Application> getApplications(ResourceDescription resource) {
+    public List<Application> getApplications(ResourceDescriptor resource) {
         Consumer<ResourceFolderMetadata> noop = ignore -> {
         };
         return getApplications(resource, noop);
     }
 
-    public List<Application> getApplications(ResourceDescription resource, Consumer<ResourceFolderMetadata> filter) {
+    public List<Application> getApplications(ResourceDescriptor resource, Consumer<ResourceFolderMetadata> filter) {
         if (!resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
             throw new IllegalArgumentException("Invalid application folder: " + resource.getUrl());
         }
@@ -185,7 +186,7 @@ public class ApplicationService {
             for (MetadataBase meta : folder.getItems()) {
                 if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceType.APPLICATION) {
                     try {
-                        ResourceDescription item = ResourceDescription.fromAnyUrl(meta.getUrl(), encryptionService);
+                        ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = getApplication(item).getValue();
                         applications.add(application);
                     } catch (ResourceNotFoundException ignore) {
@@ -200,7 +201,7 @@ public class ApplicationService {
         return applications;
     }
 
-    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescription resource, EtagHeader etag, Application application) {
+    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, Application application) {
         prepareApplication(resource, application);
 
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, json -> {
@@ -241,7 +242,7 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    public void deleteApplication(ResourceDescription resource, EtagHeader etag) {
+    public void deleteApplication(ResourceDescriptor resource, EtagHeader etag) {
         verifyApplication(resource);
         MutableObject<Application> reference = new MutableObject<>();
 
@@ -263,11 +264,11 @@ public class ApplicationService {
         Application application = reference.getValue();
 
         if (isPublicOrReview(resource) && application.getFunction() != null) {
-            resourceService.deleteFolder(application.getFunction().getSourceFolder());
+            deleteFolder(application.getFunction().getSourceFolder());
         }
     }
 
-    public void copyApplication(ResourceDescription source, ResourceDescription destination, boolean overwrite, Consumer<Application> consumer) {
+    public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, boolean overwrite, Consumer<Application> consumer) {
         verifyApplication(source);
         verifyApplication(destination);
 
@@ -319,11 +320,11 @@ public class ApplicationService {
         // for public/review application source folder is equal to target folder
         // source files are copied to read-only deployment bucket for such applications
         if (isPublicOrReview && function != null) {
-            resourceService.copyFolder(sourceFolder, function.getSourceFolder(), false);
+            copyFolder(sourceFolder, function.getSourceFolder(), false);
         }
     }
 
-    public Application startApplication(ProxyContext context, ResourceDescription resource) {
+    public Application startApplication(ProxyContext context, ResourceDescriptor resource) {
         verifyApplication(resource);
         controller.verifyActive();
 
@@ -357,7 +358,7 @@ public class ApplicationService {
         return result.getValue();
     }
 
-    public Application stopApplication(ResourceDescription resource) {
+    public Application stopApplication(ResourceDescriptor resource) {
         verifyApplication(resource);
         controller.verifyActive();
 
@@ -393,7 +394,7 @@ public class ApplicationService {
         return result.getValue();
     }
 
-    public Application.Logs getApplicationLogs(ResourceDescription resource) {
+    public Application.Logs getApplicationLogs(ResourceDescriptor resource) {
         verifyApplication(resource);
         controller.verifyActive();
 
@@ -406,7 +407,7 @@ public class ApplicationService {
         return controller.getApplicationLogs(application.getFunction());
     }
 
-    private void prepareApplication(ResourceDescription resource, Application application) {
+    private void prepareApplication(ResourceDescriptor resource, Application application) {
         verifyApplication(resource);
 
         if (application.getEndpoint() == null && application.getFunction() == null) {
@@ -458,7 +459,7 @@ public class ApplicationService {
             }
 
             try {
-                ResourceDescription folder = ResourceDescription.fromAnyUrl(function.getSourceFolder(), encryptionService);
+                ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(function.getSourceFolder(), encryptionService);
 
                 if (!folder.isFolder() || folder.getType() != ResourceType.FILE || !folder.getBucketName().equals(resource.getBucketName())) {
                     throw new IllegalArgumentException();
@@ -478,7 +479,7 @@ public class ApplicationService {
 
             for (String redisKey : pendingApplications.valueRange(Double.NEGATIVE_INFINITY, true, now, true, 0, checkSize)) {
                 log.debug("Checking pending application: {}", redisKey);
-                ResourceDescription resource = ResourceDescription.fromAnyUrl(redisKey, encryptionService);
+                ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(redisKey, encryptionService);
 
                 try {
                     terminateApplication(resource, "Application failed to start in the specified interval");
@@ -493,7 +494,7 @@ public class ApplicationService {
         return null;
     }
 
-    private Void launchApplication(ProxyContext context, ResourceDescription resource) {
+    private Void launchApplication(ProxyContext context, ResourceDescriptor resource) {
         // right now there is no lock watchdog mechanism
         // this lock can expire before this operation is finished
         // for extra safety the controller timeout is less than lock timeout
@@ -516,7 +517,7 @@ public class ApplicationService {
             // for public/review application source folder is equal to target folder
             // source files are copied to read-only deployment bucket for such applications
             if (!isPublicOrReview(resource)) {
-                resourceService.copyFolder(function.getSourceFolder(), function.getTargetFolder(), false);
+                copyFolder(function.getSourceFolder(), function.getTargetFolder(), false);
             }
 
             controller.createApplicationImage(context, function);
@@ -547,7 +548,7 @@ public class ApplicationService {
         }
     }
 
-    private Void terminateApplication(ResourceDescription resource, String error) {
+    private Void terminateApplication(ResourceDescriptor resource, String error) {
         try (LockService.Lock lock = lockService.tryLock(deploymentLockKey(resource))) {
             if (lock == null) {
                 return null;
@@ -567,7 +568,7 @@ public class ApplicationService {
                 // for public/review application source folder is equal to target folder
                 // source files are copied to read-only deployment bucket for such applications
                 if (!isPublicOrReview(resource)) {
-                    resourceService.deleteFolder(function.getTargetFolder());
+                    deleteFolder(function.getTargetFolder());
                 }
 
                 controller.deleteApplicationImage(function);
@@ -599,17 +600,17 @@ public class ApplicationService {
         }
     }
 
-    private String deploymentLockKey(ResourceDescription resource) {
+    private String deploymentLockKey(ResourceDescriptor resource) {
         return BlobStorageUtil.toStoragePath(lockService.getPrefix(), "deployment:" + resource.getAbsoluteFilePath());
     }
 
-    private String encodeTargetFolder(ResourceDescription resource, String id) {
+    private String encodeTargetFolder(ResourceDescriptor resource, String id) {
         String location = resource.getBucketLocation()
-                          + DEPLOYMENTS_NAME + BlobStorageUtil.PATH_SEPARATOR
-                          + id + BlobStorageUtil.PATH_SEPARATOR;
+                          + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR
+                          + id + ResourceDescriptor.PATH_SEPARATOR;
 
         String name = encryptionService.encrypt(location);
-        return ResourceDescription.fromDecoded(ResourceType.FILE, name, location, null).getUrl();
+        return ResourceDescriptorFactory.fromDecoded(ResourceType.FILE, name, location, null).getUrl();
     }
 
     public static boolean isActive(Application application) {
@@ -620,7 +621,7 @@ public class ApplicationService {
         return application != null && application.getFunction() != null && application.getFunction().getStatus().isPending();
     }
 
-    private static void verifyApplication(ResourceDescription resource) {
+    private static void verifyApplication(ResourceDescriptor resource) {
         if (resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
         }
@@ -646,11 +647,22 @@ public class ApplicationService {
         }
     }
 
+    private void copyFolder(String sourceFolderUrl, String targetFolderUrl, boolean overwrite) {
+        ResourceDescriptor sourceFolder = ResourceDescriptorFactory.fromAnyUrl(sourceFolderUrl, encryptionService);
+        ResourceDescriptor targetFolder = ResourceDescriptorFactory.fromAnyUrl(targetFolderUrl, encryptionService);
+        resourceService.copyFolder(sourceFolder, targetFolder, overwrite);
+    }
+
+    private boolean deleteFolder(String folderUrl) {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(folderUrl, encryptionService);
+        return resourceService.deleteFolder(folder);
+    }
+
     private static String buildMapping(String endpoint, String path) {
         return (endpoint == null || path == null) ? null : (endpoint + path);
     }
 
-    private static boolean isPublicOrReview(ResourceDescription resource) {
+    private static boolean isPublicOrReview(ResourceDescriptor resource) {
         return resource.isPublic() || PublicationService.isReviewBucket(resource);
     }
 }

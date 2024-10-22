@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,11 +28,11 @@ public class ResourceFolderMetadata extends MetadataBase {
         this(type, bucket, name, path, url, null);
     }
 
-    public ResourceFolderMetadata(ResourceDescription resource) {
+    public ResourceFolderMetadata(ResourceDescriptor resource) {
         this(resource, null, null);
     }
 
-    public ResourceFolderMetadata(ResourceDescription resource, List<MetadataBase> items, String nextToken) {
+    public ResourceFolderMetadata(ResourceDescriptor resource, List<MetadataBase> items, String nextToken) {
         this(resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl(), items);
         this.nextToken = nextToken;
     }

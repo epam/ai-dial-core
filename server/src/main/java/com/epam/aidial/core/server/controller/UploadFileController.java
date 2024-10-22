@@ -3,9 +3,10 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.FileMetadata;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.storage.BlobWriteStream;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
@@ -25,12 +26,12 @@ public class UploadFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
+    protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");
         }
 
-        if (!ResourceDescription.isValidResourcePath(resource)) {
+        if (!ResourceDescriptorFactory.isValidResourcePath(resource)) {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
 

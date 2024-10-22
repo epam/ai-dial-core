@@ -6,12 +6,13 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
 import com.google.common.collect.Sets;
@@ -54,8 +55,8 @@ public class AccessService {
         this.adminRules = adminRules(settings);
     }
 
-    public boolean hasReadAccess(ResourceDescription resource, ProxyContext context) {
-        Map<ResourceDescription, Set<ResourceAccessType>> permissions =
+    public boolean hasReadAccess(ResourceDescriptor resource, ProxyContext context) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
                 lookupPermissions(Set.of(resource), context, Set.of(ResourceAccessType.READ));
         return permissions.get(resource).contains(ResourceAccessType.READ);
     }
@@ -68,8 +69,8 @@ public class AccessService {
      * @param context - context
      * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
      */
-    public boolean hasPublicAccess(Set<ResourceDescription> resources, ProxyContext context) {
-        return resources.stream().allMatch(ResourceDescription::isPublic) && hasAdminAccess(context)
+    public boolean hasPublicAccess(Set<ResourceDescriptor> resources, ProxyContext context) {
+        return resources.stream().allMatch(ResourceDescriptor::isPublic) && hasAdminAccess(context)
                 || resources.equals(ruleService.getAllowedPublicResources(context, resources));
     }
 
@@ -90,17 +91,17 @@ public class AccessService {
      * @param context - proxy context
      * @return User permissions to all requested resources
      */
-    public Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
         return lookupPermissions(resources, context, ResourceAccessType.ALL);
     }
 
-    private Map<ResourceDescription, Set<ResourceAccessType>> lookupPermissions(
-            Set<ResourceDescription> resources, ProxyContext context, Set<ResourceAccessType> toLookup) {
-        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
-        Set<ResourceDescription> remainingResources = new HashSet<>(resources);
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
+            Set<ResourceDescriptor> resources, ProxyContext context, Set<ResourceAccessType> toLookup) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+        Set<ResourceDescriptor> remainingResources = new HashSet<>(resources);
         for (PermissionRule permissionRule : permissionRules) {
-            Map<ResourceDescription, Set<ResourceAccessType>> rulePermissions =
+            Map<ResourceDescriptor, Set<ResourceAccessType>> rulePermissions =
                     permissionRule.apply(remainingResources, context);
 
             // Merge permissions returned by the rule with previously collected permissions
@@ -112,15 +113,15 @@ public class AccessService {
                 }
             });
         }
-        for (ResourceDescription resource : resources) {
+        for (ResourceDescriptor resource : resources) {
             result.computeIfAbsent(resource, r -> Set.of());
         }
 
         return result;
     }
 
-    private Map<ResourceDescription, Set<ResourceAccessType>> getAdminAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
         if (hasAdminAccess(context)) {
             boolean isNotApplication = context.getApiKeyData().getPerRequestKey() == null;
             Set<ResourceAccessType> permissions = isNotApplication
@@ -140,18 +141,18 @@ public class AccessService {
      * @param context - context
      * @return USER permissions
      */
-    private Map<ResourceDescription, Set<ResourceAccessType>> getPublicAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> getPublicAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
         return ruleService.getAllowedPublicResources(context, resources).stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(),
                         resource -> ResourceAccessType.READ_ONLY));
     }
 
-    private static Map<ResourceDescription, Set<ResourceAccessType>> getAutoSharedAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
-        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
-        for (ResourceDescription resource : resources) {
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+        for (ResourceDescriptor resource : resources) {
             String resourceUrl = resource.getUrl();
             AutoSharedData autoSharedData = context.getApiKeyData().getAttachedFiles().get(resourceUrl);
             if (autoSharedData != null) {
@@ -172,11 +173,11 @@ public class AccessService {
         return result;
     }
 
-    private static Map<ResourceDescription, Set<ResourceAccessType>> getOwnResourcesAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
         String location = BlobStorageUtil.buildUserBucket(context);
-        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
-        for (ResourceDescription resource : resources) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+        for (ResourceDescriptor resource : resources) {
             if (resource.getBucketLocation().equals(location)) {
                 result.put(resource, ResourceAccessType.ALL);
             }
@@ -185,8 +186,8 @@ public class AccessService {
         return result;
     }
 
-    public static Map<ResourceDescription, Set<ResourceAccessType>> getAppResourceAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
         String deployment = context.getSourceDeployment();
         if (deployment == null) {
             return Map.of();
@@ -194,12 +195,12 @@ public class AccessService {
         return getAppResourceAccess(resources, context, deployment);
     }
 
-    public static Map<ResourceDescription, Set<ResourceAccessType>> getAppResourceAccess(
-            Set<ResourceDescription> resources, ProxyContext context, String deployment) {
+    public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context, String deployment) {
 
-        Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         String location = BlobStorageUtil.buildAppDataBucket(context);
-        for (ResourceDescription resource : resources) {
+        for (ResourceDescriptor resource : resources) {
             if (!resource.getBucketLocation().equals(location)) {
                 continue;
             }
@@ -207,7 +208,7 @@ public class AccessService {
             String parentPath = resource.getParentPath();
             String filePath = (parentPath == null)
                     ? resource.getName()
-                    : parentPath + BlobStorageUtil.PATH_SEPARATOR + resource.getName();
+                    : parentPath + ResourceDescriptor.PATH_SEPARATOR + resource.getName();
 
             if (filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment)))) {
                 result.put(resource, ResourceAccessType.ALL);
@@ -217,15 +218,15 @@ public class AccessService {
         return result;
     }
 
-    private Map<ResourceDescription, Set<ResourceAccessType>> getSharedAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> getSharedAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
         String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
         String actualUserBucket = encryptionService.encrypt(actualUserLocation);
         return shareService.getPermissions(actualUserBucket, actualUserLocation, resources);
     }
 
-    private Map<ResourceDescription, Set<ResourceAccessType>> getReviewAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> getReviewAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
 
         return resources.stream()
                 .filter(resource -> PublicationService.hasReviewAccess(context, resource))
@@ -233,8 +234,8 @@ public class AccessService {
                         Function.identity(), resource -> ResourceAccessType.READ_ONLY));
     }
 
-    private Map<ResourceDescription, Set<ResourceAccessType>> getDeploymentAccess(
-            Set<ResourceDescription> resources, ProxyContext context) {
+    private Map<ResourceDescriptor, Set<ResourceAccessType>> getDeploymentAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
 
         return resources.stream()
                 .filter(resource -> ApplicationService.hasDeploymentAccess(context, resource))
@@ -246,7 +247,7 @@ public class AccessService {
         return RuleMatcher.match(context, adminRules);
     }
 
-    public void filterForbidden(ProxyContext context, ResourceDescription descriptor, MetadataBase metadata) {
+    public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
             ruleService.filterForbidden(context, descriptor, folder);
@@ -254,17 +255,17 @@ public class AccessService {
     }
 
     public void populatePermissions(ProxyContext context, Collection<MetadataBase> metadata) {
-        Map<ResourceDescription, MetadataBase> allMetadata = new HashMap<>();
+        Map<ResourceDescriptor, MetadataBase> allMetadata = new HashMap<>();
         for (MetadataBase meta : metadata) {
             expandMetadata(meta, allMetadata);
         }
 
-        Map<ResourceDescription, Set<ResourceAccessType>> permissions = lookupPermissions(allMetadata.keySet(), context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = lookupPermissions(allMetadata.keySet(), context);
         allMetadata.forEach((resource, meta) -> meta.setPermissions(permissions.get(resource)));
     }
 
-    private void expandMetadata(MetadataBase metadata, Map<ResourceDescription, MetadataBase> result) {
-        ResourceDescription resource = ResourceDescription.fromAnyUrl(metadata.getUrl(), encryptionService);
+    private void expandMetadata(MetadataBase metadata, Map<ResourceDescriptor, MetadataBase> result) {
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
         result.put(resource, metadata);
         if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
             for (MetadataBase item : folderMetadata.getItems()) {
@@ -280,6 +281,6 @@ public class AccessService {
     }
 
     private interface PermissionRule extends BiFunction
-            <Set<ResourceDescription>, ProxyContext, Map<ResourceDescription, Set<ResourceAccessType>>> {
+            <Set<ResourceDescriptor>, ProxyContext, Map<ResourceDescriptor, Set<ResourceAccessType>>> {
     }
 }

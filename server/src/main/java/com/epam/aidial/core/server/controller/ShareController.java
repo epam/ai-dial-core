@@ -9,12 +9,13 @@ import com.epam.aidial.core.server.data.ResourceLinkCollection;
 import com.epam.aidial.core.server.data.RevokeResourcesRequest;
 import com.epam.aidial.core.server.data.ShareResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResource;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -136,7 +137,7 @@ public class ShareController {
                     RevokeResourcesRequest request = getRevokeResourcesRequest(buffer, Operation.REVOKE);
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
-                    Map<ResourceDescription, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
+                    Map<ResourceDescriptor, Set<ResourceAccessType>> permissionsToRevoke = request.getResources().stream()
                             .collect(Collectors.toUnmodifiableMap(
                                     resource -> ResourceUtil.resourceFromUrl(resource.url(), encryptionService),
                                     SharedResource::permissions));
@@ -175,11 +176,11 @@ public class ShareController {
                     String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
 
-                    ResourceDescription source = ResourceDescription.fromPrivateUrl(sourceUrl, encryptionService);
+                    ResourceDescriptor source = ResourceDescriptorFactory.fromPrivateUrl(sourceUrl, encryptionService);
                     if (!bucket.equals(source.getBucketName())) {
                         throw new IllegalArgumentException("sourceUrl does not belong to the user");
                     }
-                    ResourceDescription destination = ResourceDescription.fromPrivateUrl(destinationUrl, encryptionService);
+                    ResourceDescriptor destination = ResourceDescriptorFactory.fromPrivateUrl(destinationUrl, encryptionService);
                     if (!bucket.equals(destination.getBucketName())) {
                         throw new IllegalArgumentException("destinationUrl does not belong to the user");
                     }

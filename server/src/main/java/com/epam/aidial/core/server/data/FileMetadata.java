@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -18,7 +18,7 @@ public class FileMetadata extends ResourceItemMetadata {
         this.contentType = contentType;
     }
 
-    public FileMetadata(ResourceDescription resource, long contentLength, String contentType) {
+    public FileMetadata(ResourceDescriptor resource, long contentLength, String contentType) {
         super(resource);
         this.contentLength = contentLength;
         this.contentType = contentType;

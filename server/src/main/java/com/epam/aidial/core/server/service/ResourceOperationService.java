@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceEvent;
 import com.epam.aidial.core.server.data.ResourceType;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -24,12 +24,12 @@ public class ResourceOperationService {
     private final InvitationService invitationService;
     private final ShareService shareService;
 
-    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
+    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
         return resourceService.subscribeResources(resources, subscriber);
     }
 
-    public void moveResource(ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
+    public void moveResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -68,7 +68,7 @@ public class ResourceOperationService {
                 invitationService.moveResource(bucketName, bucketLocation, source, destination);
                 shareService.moveSharedAccess(bucketName, bucketLocation, source, destination);
             } else {
-                Map<ResourceDescription, Set<ResourceAccessType>> resources = Map.of(source, ResourceAccessType.ALL);
+                Map<ResourceDescriptor, Set<ResourceAccessType>> resources = Map.of(source, ResourceAccessType.ALL);
                 invitationService.cleanUpPermissions(bucketName, bucketLocation, resources);
                 shareService.revokeSharedAccess(bucketName, bucketLocation, resources);
             }

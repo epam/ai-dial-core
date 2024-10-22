@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.storage;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import io.vertx.core.http.impl.MimeMapping;
 import lombok.experimental.UtilityClass;
 
@@ -9,10 +10,8 @@ import javax.annotation.Nullable;
 @UtilityClass
 public class BlobStorageUtil {
 
-    public static final String PATH_SEPARATOR = "/";
-
     public static final String PUBLIC_BUCKET = "public";
-    public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + PATH_SEPARATOR;
+    public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + ResourceDescriptor.PATH_SEPARATOR;
 
     public static final String APPDATA_PATTERN = "appdata/%s";
     private static final String USER_BUCKET_PATTERN = "Users/%s/";
@@ -56,7 +55,7 @@ public class BlobStorageUtil {
     }
 
     public boolean isFolder(String path) {
-        return path.endsWith(PATH_SEPARATOR);
+        return path.endsWith(ResourceDescriptor.PATH_SEPARATOR);
     }
 
     public String toStoragePath(@Nullable String prefix, String absoluteResourcePath) {
@@ -64,6 +63,6 @@ public class BlobStorageUtil {
             return absoluteResourcePath;
         }
 
-        return prefix + PATH_SEPARATOR + absoluteResourcePath;
+        return prefix + ResourceDescriptor.PATH_SEPARATOR + absoluteResourcePath;
     }
 }

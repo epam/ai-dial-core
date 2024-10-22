@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.google.common.escape.Escaper;
 import com.google.common.net.UrlEscapers;
 import lombok.SneakyThrows;
@@ -70,5 +71,9 @@ public class UrlUtil {
 
     public boolean isDataUrl(String url) {
         return url.startsWith("data:");
+    }
+
+    public boolean isFolder(String url) {
+        return url.endsWith(ResourceDescriptor.PATH_SEPARATOR);
     }
 }

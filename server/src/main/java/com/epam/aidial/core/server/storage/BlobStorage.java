@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.storage;
 
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.storage.credential.CredentialProvider;
 import com.epam.aidial.core.server.storage.credential.CredentialProviderFactory;
 import lombok.Getter;
@@ -219,7 +220,7 @@ public class BlobStorage implements Closeable {
         if (recursive) {
             options.recursive();
         } else {
-            options.delimiter(BlobStorageUtil.PATH_SEPARATOR);
+            options.delimiter(ResourceDescriptor.PATH_SEPARATOR);
         }
 
         if (afterMarker != null) {

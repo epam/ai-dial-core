@@ -7,9 +7,10 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -47,7 +48,7 @@ public class RateLimiter {
             }
 
             String tokensPath = getPathToTokens(context.getDeployment().getName());
-            ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
+            ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
             return vertx.executeBlocking(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()), false);
         } catch (Throwable e) {
             return Future.failedFuture(e);
@@ -101,7 +102,7 @@ public class RateLimiter {
 
     private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
         String tokensPath = getPathToTokens(deploymentName);
-        ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
+        ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         String json = resourceService.getResource(resourceDescription, true);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(json, TokenRateLimit.class);
         if (rateLimit == null) {
@@ -112,7 +113,7 @@ public class RateLimiter {
 
     private void collectRequestLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
         String requestsPath = getPathToRequests(deploymentName);
-        ResourceDescription resourceDescription = getResourceDescription(context, requestsPath);
+        ResourceDescriptor resourceDescription = getResourceDescription(context, requestsPath);
         String json = resourceService.getResource(resourceDescription, true);
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
         if (rateLimit == null) {
@@ -143,12 +144,12 @@ public class RateLimiter {
         return limitStats;
     }
 
-    private ResourceDescription getResourceDescription(ProxyContext context, String path) {
+    private ResourceDescriptor getResourceDescription(ProxyContext context, String path) {
         // use bucket location of request's initiator,
         // e.g. user -> core -> application -> core -> model, limits must be applied to the user by JWT
         // e.g. service -> core -> application -> core -> model, limits must be applied to service by API key
         String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
-        return ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
+        return ResourceDescriptorFactory.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
     }
 
     private RateLimitResult checkLimit(ProxyContext context, Limit limit) {
@@ -162,7 +163,7 @@ public class RateLimiter {
 
     private RateLimitResult checkTokenLimit(ProxyContext context, Limit limit, long timestamp) {
         String tokensPath = getPathToTokens(context.getDeployment().getName());
-        ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
+        ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         String prevValue = resourceService.getResource(resourceDescription);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, TokenRateLimit.class);
         if (rateLimit == null) {
@@ -173,7 +174,7 @@ public class RateLimiter {
 
     private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp) {
         String tokensPath = getPathToRequests(context.getDeployment().getName());
-        ResourceDescription resourceDescription = getResourceDescription(context, tokensPath);
+        ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
         resourceService.computeResource(resourceDescription, json -> updateRequestLimit(json, timestamp, limit, result));
@@ -189,7 +190,7 @@ public class RateLimiter {
         return ProxyUtil.convertToString(rateLimit);
     }
 
-    private Void updateTokenLimit(ResourceDescription resourceDescription, long totalUsedTokens) {
+    private Void updateTokenLimit(ResourceDescriptor resourceDescription, long totalUsedTokens) {
         resourceService.computeResource(resourceDescription, json -> updateTokenLimit(json, totalUsedTokens));
         return null;
     }

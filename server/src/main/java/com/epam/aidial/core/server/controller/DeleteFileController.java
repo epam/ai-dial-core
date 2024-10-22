@@ -2,11 +2,11 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
@@ -29,7 +29,7 @@ public class DeleteFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
+    protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't delete a folder");
         }

@@ -13,10 +13,11 @@ import com.epam.aidial.core.server.data.ResourceItemMetadata;
 import com.epam.aidial.core.server.data.ResourceType;
 import com.epam.aidial.core.server.data.ResourceUrl;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
@@ -44,7 +45,7 @@ public class PublicationService {
     private static final TypeReference<Map<String, Publication>> PUBLICATIONS_TYPE = new TypeReference<>() {
     };
 
-    private static final ResourceDescription PUBLIC_PUBLICATIONS = ResourceDescription.fromDecoded(
+    private static final ResourceDescriptor PUBLIC_PUBLICATIONS = ResourceDescriptorFactory.fromDecoded(
             ResourceType.PUBLICATION, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
@@ -59,26 +60,26 @@ public class PublicationService {
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
-    public static boolean isReviewBucket(ResourceDescription resource) {
+    public static boolean isReviewBucket(ResourceDescriptor resource) {
         return resource.isPrivate() && resource.getBucketLocation().contains(PUBLICATIONS_NAME);
     }
 
-    public static boolean hasReviewAccess(ProxyContext context, ResourceDescription resource) {
+    public static boolean hasReviewAccess(ProxyContext context, ResourceDescriptor resource) {
         if (isReviewBucket(resource)) {
             String location = BlobStorageUtil.buildInitiatorBucket(context);
-            String reviewLocation = location + PUBLICATIONS_NAME + BlobStorageUtil.PATH_SEPARATOR;
+            String reviewLocation = location + PUBLICATIONS_NAME + ResourceDescriptor.PATH_SEPARATOR;
             return resource.getBucketLocation().startsWith(reviewLocation);
         }
 
         return false;
     }
 
-    public Collection<Publication> listPublications(ResourceDescription resource) {
+    public Collection<Publication> listPublications(ResourceDescriptor resource) {
         if (resource.getType() != ResourceType.PUBLICATION || !resource.isRootFolder()) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
 
-        ResourceDescription key = publications(resource);
+        ResourceDescriptor key = publications(resource);
         Map<String, Publication> publications = decodePublications(resourceService.getResource(key));
 
         for (Publication publication : publications.values()) {
@@ -89,7 +90,7 @@ public class PublicationService {
     }
 
     public Collection<MetadataBase> listPublishedResources(ListPublishedResourcesRequest request, String bucket, String location) {
-        ResourceDescription publicationResource = publications(bucket, location);
+        ResourceDescriptor publicationResource = publications(bucket, location);
         Map<String, Publication> publications = decodePublications(resourceService.getResource(publicationResource));
 
         // get approved publications only
@@ -105,7 +106,7 @@ public class PublicationService {
 
         Set<MetadataBase> metadata = new HashSet<>();
         for (Publication.Resource resource : resourceSet) {
-            ResourceDescription resourceDescription = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
+            ResourceDescriptor resourceDescription = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
             // check if published resource match requested criteria
             if (!requestedResourceTypes.contains(resourceDescription.getType())) {
                 continue;
@@ -121,12 +122,12 @@ public class PublicationService {
         return metadata;
     }
 
-    public Publication getPublication(ResourceDescription resource) {
+    public Publication getPublication(ResourceDescriptor resource) {
         if (resource.getType() != ResourceType.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
 
-        ResourceDescription key = publications(resource);
+        ResourceDescriptor key = publications(resource);
         Map<String, Publication> publications = decodePublications(resourceService.getResource(key));
         Publication publication = publications.get(resource.getUrl());
 
@@ -173,7 +174,7 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication deletePublication(ResourceDescription resource) {
+    public Publication deletePublication(ResourceDescriptor resource) {
         if (resource.getType() != ResourceType.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -210,7 +211,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication approvePublication(ResourceDescription resource) {
+    public Publication approvePublication(ResourceDescriptor resource) {
         Publication publication = getPublication(resource);
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
@@ -260,7 +261,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication rejectPublication(ResourceDescription resource, RejectPublicationRequest request) {
+    public Publication rejectPublication(ResourceDescriptor resource, RejectPublicationRequest request) {
         if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
             throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
         }
@@ -326,11 +327,11 @@ public class PublicationService {
 
         if (!targetFolderUrl.startsWith(BlobStorageUtil.PUBLIC_BUCKET) || !targetFolderUrl.isFolder()) {
             throw new IllegalArgumentException("Publication \"targetUrl\" must start with: %s and ends with: %s"
-                    .formatted(BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PATH_SEPARATOR));
+                    .formatted(BlobStorageUtil.PUBLIC_BUCKET, ResourceDescriptor.PATH_SEPARATOR));
         }
 
         String id = UrlUtil.encodePathSegment(ids.get());
-        String publicationUrl = String.join(BlobStorageUtil.PATH_SEPARATOR, "publications", bucketName, id);
+        String publicationUrl = String.join(ResourceDescriptor.PATH_SEPARATOR, "publications", bucketName, id);
         String reviewBucket = encodeReviewBucket(bucketLocation, id);
         targetFolder = targetFolderUrl.getUrl();
 
@@ -355,8 +356,8 @@ public class PublicationService {
             }
         }
 
-        Set<ResourceDescription> targetResources = publication.getResources().stream()
-                .map(resource -> ResourceDescription.fromPublicUrl(resource.getTargetUrl()))
+        Set<ResourceDescriptor> targetResources = publication.getResources().stream()
+                .map(resource -> ResourceDescriptorFactory.fromPublicUrl(resource.getTargetUrl()))
                 .collect(Collectors.toUnmodifiableSet());
 
         // validate if user has access to all target resources
@@ -370,8 +371,8 @@ public class PublicationService {
 
     private void validateResourceForAddition(ProxyContext context, Publication.Resource resource, String targetFolder,
                                              String reviewBucket, Set<String> urls) {
-        ResourceDescription source = ResourceDescription.fromPrivateUrl(resource.getSourceUrl(), encryption);
-        ResourceDescription target = ResourceDescription.fromPublicUrl(resource.getTargetUrl());
+        ResourceDescriptor source = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
+        ResourceDescriptor target = ResourceDescriptorFactory.fromPublicUrl(resource.getTargetUrl());
         verifyResourceType(source);
 
         String sourceUrl = source.getUrl();
@@ -409,8 +410,8 @@ public class PublicationService {
             throw new IllegalArgumentException("Target resource already exists: " + targetUrl);
         }
 
-        String reviewUrl = source.getType().getGroup() + BlobStorageUtil.PATH_SEPARATOR
-                + reviewBucket + BlobStorageUtil.PATH_SEPARATOR + targetSuffix;
+        String reviewUrl = source.getType().getGroup() + ResourceDescriptor.PATH_SEPARATOR
+                + reviewBucket + ResourceDescriptor.PATH_SEPARATOR + targetSuffix;
 
         if (!urls.add(sourceUrl)) {
             throw new IllegalArgumentException("Source resources have duplicate urls: " + sourceUrl);
@@ -432,7 +433,7 @@ public class PublicationService {
     private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls,
                                              String bucketName, boolean isAdmin) {
         String targetUrl = resource.getTargetUrl();
-        ResourceDescription target = ResourceDescription.fromPublicUrl(targetUrl);
+        ResourceDescriptor target = ResourceDescriptorFactory.fromPublicUrl(targetUrl);
         verifyResourceType(target);
 
         if (target.isFolder()) {
@@ -487,7 +488,7 @@ public class PublicationService {
     private void checkReviewResources(List<Publication.Resource> resources) {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
-            ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
+            ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
             if (!resourceService.hasResource(descriptor)) {
                 throw new IllegalArgumentException("Review resource does not exist: " + descriptor.getUrl());
@@ -498,7 +499,7 @@ public class PublicationService {
     private void checkTargetResources(List<Publication.Resource> resources, boolean exists) {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
-            ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
+            ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
 
             if (resourceService.hasResource(descriptor) != exists) {
@@ -515,8 +516,8 @@ public class PublicationService {
             String sourceUrl = resource.getSourceUrl();
             String reviewUrl = resource.getReviewUrl();
 
-            ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
-            ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
+            ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(sourceUrl, encryption);
+            ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(reviewUrl, encryption);
 
             verifyResourceType(from);
 
@@ -530,8 +531,8 @@ public class PublicationService {
             String sourceUrl = resource.getSourceUrl();
             String reviewUrl = resource.getReviewUrl();
 
-            ResourceDescription from = ResourceDescription.fromPrivateUrl(sourceUrl, encryption);
-            ResourceDescription to = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
+            ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(sourceUrl, encryption);
+            ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(reviewUrl, encryption);
 
             if (from.getType() == ResourceType.APPLICATION) {
                 applicationService.copyApplication(from, to, false, app -> {
@@ -555,8 +556,8 @@ public class PublicationService {
             String reviewUrl = resource.getReviewUrl();
             String targetUrl = resource.getTargetUrl();
 
-            ResourceDescription from = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
-            ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
+            ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(reviewUrl, encryption);
+            ResourceDescriptor to = ResourceDescriptorFactory.fromPublicUrl(targetUrl);
 
             verifyResourceType(from);
 
@@ -570,8 +571,8 @@ public class PublicationService {
             String reviewUrl = resource.getReviewUrl();
             String targetUrl = resource.getTargetUrl();
 
-            ResourceDescription from = ResourceDescription.fromPrivateUrl(reviewUrl, encryption);
-            ResourceDescription to = ResourceDescription.fromPublicUrl(targetUrl);
+            ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(reviewUrl, encryption);
+            ResourceDescriptor to = ResourceDescriptorFactory.fromPublicUrl(targetUrl);
 
             if (from.getType() == ResourceType.APPLICATION) {
                 applicationService.copyApplication(from, to, false, app -> {
@@ -591,7 +592,7 @@ public class PublicationService {
     private void deleteReviewResources(List<Publication.Resource> resources) {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
-            ResourceDescription descriptor = ResourceDescription.fromPrivateUrl(url, encryption);
+            ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
             resourceService.deleteResource(descriptor, EtagHeader.ANY);
         }
@@ -600,13 +601,13 @@ public class PublicationService {
     private void deletePublicResources(List<Publication.Resource> resources) {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
-            ResourceDescription descriptor = ResourceDescription.fromPublicUrl(url);
+            ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
             resourceService.deleteResource(descriptor, EtagHeader.ANY);
         }
     }
 
-    private void verifyResourceType(ResourceDescription descriptor) {
+    private void verifyResourceType(ResourceDescriptor descriptor) {
         if (!ALLOWED_RESOURCES.contains(descriptor.getType())) {
             throw new IllegalStateException("Unsupported type: " + descriptor.getType());
         }
@@ -614,8 +615,8 @@ public class PublicationService {
 
     private String encodeReviewBucket(String bucketLocation, String id) {
         String path = bucketLocation
-                + PUBLICATIONS_NAME + BlobStorageUtil.PATH_SEPARATOR
-                + id + BlobStorageUtil.PATH_SEPARATOR;
+                + PUBLICATIONS_NAME + ResourceDescriptor.PATH_SEPARATOR
+                + id + ResourceDescriptor.PATH_SEPARATOR;
 
         return encryption.encrypt(path);
     }
@@ -637,12 +638,12 @@ public class PublicationService {
                 .setCreatedAt(publication.getCreatedAt());
     }
 
-    private static ResourceDescription publications(ResourceDescription resource) {
+    private static ResourceDescriptor publications(ResourceDescriptor resource) {
         return publications(resource.getBucketName(), resource.getBucketLocation());
     }
 
-    private static ResourceDescription publications(String bucket, String location) {
-        return ResourceDescription.fromDecoded(ResourceType.PUBLICATION,
+    private static ResourceDescriptor publications(String bucket, String location) {
+        return ResourceDescriptorFactory.fromDecoded(ResourceType.PUBLICATION,
                 bucket, location, PUBLICATIONS_NAME);
     }
 

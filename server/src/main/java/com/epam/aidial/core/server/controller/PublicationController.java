@@ -10,6 +10,8 @@ import com.epam.aidial.core.server.data.RejectPublicationRequest;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.data.ResourceType;
 import com.epam.aidial.core.server.data.Rules;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.LockService;
@@ -18,7 +20,6 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -56,7 +57,7 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url, true);
+                    ResourceDescriptor resource = decodePublication(url, true);
                     checkAccess(resource, resource.isPrivate());
                     return vertx.executeBlocking(() -> publicationService.listPublications(resource), false);
                 })
@@ -71,7 +72,7 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url, false);
+                    ResourceDescriptor resource = decodePublication(url, false);
                     checkAccess(resource, true);
                     return vertx.executeBlocking(() -> publicationService.getPublication(resource), false);
                 })
@@ -99,7 +100,7 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url, false);
+                    ResourceDescriptor resource = decodePublication(url, false);
                     checkAccess(resource, true);
                     return vertx.executeBlocking(() -> publicationService.deletePublication(resource), false);
                 })
@@ -114,7 +115,7 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodePublication(url, false);
+                    ResourceDescriptor resource = decodePublication(url, false);
                     checkAccess(resource, false);
                     return vertx.executeBlocking(() ->
                             lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
@@ -132,7 +133,7 @@ public class PublicationController {
                 .compose(body -> {
                     RejectPublicationRequest request = ProxyUtil.convertToObject(body, RejectPublicationRequest.class);
                     String url = request.url();
-                    ResourceDescription resource = decodePublication(url, false);
+                    ResourceDescriptor resource = decodePublication(url, false);
                     checkAccess(resource, false);
                     return vertx.executeBlocking(() -> publicationService.rejectPublication(resource, request), false);
                 })
@@ -147,7 +148,7 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription rule = decodeRule(url);
+                    ResourceDescriptor rule = decodeRule(url);
                     checkRuleAccess(rule);
                     return vertx.executeBlocking(() -> ruleService.listRules(rule), false);
                 })
@@ -202,10 +203,10 @@ public class PublicationController {
         context.respond(status, body);
     }
 
-    private ResourceDescription decodePublication(String path, boolean allowPublic) {
-        ResourceDescription resource;
+    private ResourceDescriptor decodePublication(String path, boolean allowPublic) {
+        ResourceDescriptor resource;
         try {
-            resource = ResourceDescription.fromAnyUrl(path, encryptService);
+            resource = ResourceDescriptorFactory.fromAnyUrl(path, encryptService);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid resource: " + path, e);
         }
@@ -221,14 +222,14 @@ public class PublicationController {
         return resource;
     }
 
-    private ResourceDescription decodeRule(String path) {
+    private ResourceDescriptor decodeRule(String path) {
         try {
             if (!path.startsWith(BlobStorageUtil.PUBLIC_LOCATION)) {
                 throw new IllegalArgumentException();
             }
 
             String folder = path.substring(BlobStorageUtil.PUBLIC_LOCATION.length());
-            ResourceDescription resource = ResourceDescription.fromEncoded(ResourceType.RULES, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, folder);
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromEncoded(ResourceType.RULES, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, folder);
 
             if (!resource.isFolder()) {
                 throw new IllegalArgumentException();
@@ -240,7 +241,7 @@ public class PublicationController {
         }
     }
 
-    private void checkAccess(ResourceDescription resource, boolean allowUser) {
+    private void checkAccess(ResourceDescriptor resource, boolean allowUser) {
         boolean hasAccess = isAdmin();
 
         if (!hasAccess && allowUser) {
@@ -257,7 +258,7 @@ public class PublicationController {
         return accessService.hasAdminAccess(context);
     }
 
-    private void checkRuleAccess(ResourceDescription rule) {
+    private void checkRuleAccess(ResourceDescriptor rule) {
         if (!accessService.hasReadAccess(rule, context)) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden resource: " + rule.getUrl());
         }

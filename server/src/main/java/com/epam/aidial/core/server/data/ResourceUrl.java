@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.util.UrlUtil;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -23,14 +23,14 @@ public class ResourceUrl {
 
         for (int i = 0; i < segments.length; i++) {
             if (i > 0) {
-                builder.append(BlobStorageUtil.PATH_SEPARATOR);
+                builder.append(ResourceDescriptor.PATH_SEPARATOR);
             }
 
             builder.append(UrlUtil.encodePathSegment(segments[i]));
         }
 
         if (folder) {
-            builder.append(BlobStorageUtil.PATH_SEPARATOR);
+            builder.append(ResourceDescriptor.PATH_SEPARATOR);
         }
 
         return builder.toString();
@@ -47,19 +47,19 @@ public class ResourceUrl {
         }
 
         try {
-            String[] segments = url.split(BlobStorageUtil.PATH_SEPARATOR);
+            String[] segments = url.split(ResourceDescriptor.PATH_SEPARATOR);
 
             for (int i = 0; i < segments.length; i++) {
                 String segment = UrlUtil.decodePath(segments[i]);
 
-                if (segment == null || segment.isEmpty() || segment.contains(BlobStorageUtil.PATH_SEPARATOR)) {
+                if (segment == null || segment.isEmpty() || segment.contains(ResourceDescriptor.PATH_SEPARATOR)) {
                     throw new IllegalArgumentException("Bad segment: " + segment + " in url: " + url);
                 }
 
                 segments[i] = segment;
             }
 
-            return new ResourceUrl(url, segments, url.endsWith(BlobStorageUtil.PATH_SEPARATOR));
+            return new ResourceUrl(url, segments, url.endsWith(ResourceDescriptor.PATH_SEPARATOR));
         } catch (Throwable e) {
             throw new IllegalArgumentException("Bad resource url: " + url);
         }

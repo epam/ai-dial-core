@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -26,7 +26,7 @@ public class ResourceItemMetadata extends MetadataBase {
         super(name, path, bucket, url, NodeType.ITEM, type, null);
     }
 
-    public ResourceItemMetadata(ResourceDescription resource) {
+    public ResourceItemMetadata(ResourceDescriptor resource) {
         this(resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl());
     }
 }
