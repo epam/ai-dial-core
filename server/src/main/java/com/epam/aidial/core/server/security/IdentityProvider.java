@@ -40,6 +40,9 @@ public class IdentityProvider {
     // path to the claim of user roles in JWT
     private final String[] rolePath;
 
+    // Delimiter to split the roles is they are set as a single String
+    private final String rolesDelimiter;
+
     private JwkProvider jwkProvider;
 
     private URL userInfoUrl;
@@ -113,6 +116,7 @@ public class IdentityProvider {
         String rolePathStr = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed");
         getUserRoleFn = factory.getUserRoleFn(rolePathStr);
         rolePath = rolePathStr.split("\\.");
+        rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
         if (loggingKey != null) {
@@ -153,6 +157,9 @@ public class IdentityProvider {
                 if (next instanceof List) {
                     return (List<String>) next;
                 } else if (next instanceof String) {
+                    if (rolesDelimiter != null) {
+                       return List.of(((String) next).split(rolesDelimiter));
+                    }
                     return List.of((String) next);
                 }
             } else {
