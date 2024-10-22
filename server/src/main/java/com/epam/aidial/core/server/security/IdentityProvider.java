@@ -158,7 +158,7 @@ public class IdentityProvider {
                     return (List<String>) next;
                 } else if (next instanceof String) {
                     if (rolesDelimiter != null) {
-                       return List.of(((String) next).split(rolesDelimiter));
+                        return List.of(((String) next).split(rolesDelimiter));
                     }
                     return List.of((String) next);
                 }
