@@ -5,10 +5,11 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ResourceService;
+import com.epam.aidial.core.server.service.ScheduledService;
 import com.epam.aidial.core.server.storage.BlobStorage;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,7 +87,7 @@ public class TokenStatsTrackerTest {
     }
 
     @BeforeEach
-    public void beforeEach() {
+    public void beforeEach() throws Exception {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
@@ -102,7 +103,8 @@ public class TokenStatsTrackerTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, encryptionService, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(mock(ScheduledService.class), redissonClient,
+                encryptionService, blobStorage, lockService, ProxyUtil.MAPPER.readTree(resourceConfig), null);
         tracker = new TokenStatsTracker(vertx, resourceService);
     }
 

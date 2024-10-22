@@ -4,13 +4,16 @@ import com.epam.aidial.core.server.data.Invitation;
 import com.epam.aidial.core.server.data.InvitationCollection;
 import com.epam.aidial.core.server.data.InvitationsMap;
 import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResource;
+import com.epam.aidial.core.server.resource.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.security.ApiKeyGenerator;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceUtil;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -46,7 +49,7 @@ public class InvitationService {
     }
 
     public Invitation createInvitation(String bucket, String location, List<SharedResource> resources) {
-        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescription resource = ResourceDescription.fromDecoded(getInvitationResourceType(), bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
         Instant expirationTime = Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS);
@@ -105,7 +108,7 @@ public class InvitationService {
     }
 
     public InvitationCollection getMyInvitations(String bucket, String location) {
-        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescription resource = ResourceDescription.fromDecoded(getInvitationResourceType(), bucket, location, INVITATION_RESOURCE_FILENAME);
         String state = resourceService.getResource(resource);
         InvitationsMap invitationMap = ProxyUtil.convertToObject(state, InvitationsMap.class);
         if (invitationMap == null || invitationMap.getInvitations().isEmpty()) {
@@ -133,7 +136,7 @@ public class InvitationService {
 
     public void cleanUpPermissions(
             String bucket, String location, Map<ResourceDescription, Set<ResourceAccessType>> permissionsToCleanUp) {
-        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescription resource = ResourceDescription.fromDecoded(getInvitationResourceType(), bucket, location, INVITATION_RESOURCE_FILENAME);
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
@@ -171,7 +174,7 @@ public class InvitationService {
     }
 
     public void moveResource(String bucket, String location, ResourceDescription source, ResourceDescription destination) {
-        ResourceDescription resource = ResourceDescription.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescription resource = ResourceDescription.fromDecoded(getInvitationResourceType(), bucket, location, INVITATION_RESOURCE_FILENAME);
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
@@ -221,11 +224,15 @@ public class InvitationService {
         }
         String location = parts[0] + BlobStorageUtil.PATH_SEPARATOR + parts[1] + BlobStorageUtil.PATH_SEPARATOR;
         String bucket = encryptionService.encrypt(location);
-        ResourceType resourceType = ResourceType.of(parts[2]);
+        ResourceType resourceType = ResourceUtil.toExternal(parts[2]);
         return ResourceDescription.fromDecoded(resourceType, bucket, location, INVITATION_RESOURCE_FILENAME);
     }
 
     private String generateInvitationId(ResourceDescription resource) {
         return encryptionService.encrypt(resource.getAbsoluteFilePath() + BlobStorageUtil.PATH_SEPARATOR + ApiKeyGenerator.generateKey());
+    }
+
+    private static ResourceType getInvitationResourceType() {
+        return ResourceTypeRegistry.getByType(ResourceTypes.INVITATION.name());
     }
 }

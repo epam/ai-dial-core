@@ -6,10 +6,12 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -148,7 +150,8 @@ public class RateLimiter {
         // e.g. user -> core -> application -> core -> model, limits must be applied to the user by JWT
         // e.g. service -> core -> application -> core -> model, limits must be applied to service by API key
         String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
-        return ResourceDescription.fromEncoded(ResourceType.LIMIT, bucketLocation, bucketLocation, path);
+        ResourceType resourceType = ResourceTypeRegistry.getByType(ResourceTypes.LIMIT.name());
+        return ResourceDescription.fromEncoded(resourceType, bucketLocation, bucketLocation, path);
     }
 
     private RateLimitResult checkLimit(ProxyContext context, Limit limit) {

@@ -2,9 +2,11 @@ package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
@@ -142,7 +144,8 @@ public class TokenStatsTracker {
     }
 
     private static ResourceDescription toResource(String traceId) {
+        ResourceType resourceType = ResourceTypeRegistry.getByType(ResourceTypes.DEPLOYMENT_COST_STATS.name());
         return ResourceDescription.fromDecoded(
-                ResourceType.DEPLOYMENT_COST_STATS, DEPLOYMENT_COST_STATS_BUCKET, DEPLOYMENT_COST_STATS_LOCATION, traceId);
+                resourceType, DEPLOYMENT_COST_STATS_BUCKET, DEPLOYMENT_COST_STATS_LOCATION, traceId);
     }
 }

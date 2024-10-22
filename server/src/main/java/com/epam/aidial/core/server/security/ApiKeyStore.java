@@ -3,9 +3,11 @@ package com.epam.aidial.core.server.security;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -150,8 +152,9 @@ public class ApiKeyStore {
     }
 
     private static ResourceDescription toResource(String apiKey) {
+        ResourceType resourceType = ResourceTypeRegistry.getByType(ResourceTypes.API_KEY_DATA.name());
         return ResourceDescription.fromDecoded(
-                ResourceType.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
+                resourceType, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
     }
 
 }

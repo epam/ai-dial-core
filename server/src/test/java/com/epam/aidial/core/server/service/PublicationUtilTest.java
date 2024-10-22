@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ResourceBaseTest;
-import com.epam.aidial.core.server.data.ResourceType;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,8 @@ public class PublicationUtilTest {
 
     @Test
     void testConversationIdReplacement() {
-        ResourceDescription targetResource1 = ResourceDescription.fromDecoded(ResourceType.CONVERSATION, "bucketName", "bucket/location/", "conversation");
+        ResourceDescription targetResource1 = ResourceDescription.fromDecoded(ResourceTypes.CONVERSATION.getResourceType(),
+                "bucketName", "bucket/location/", "conversation");
         verifyJson("""
                 {
                 "id": "conversations/bucketName/conversation",
@@ -31,7 +32,8 @@ public class PublicationUtilTest {
                 }
                 """, PublicationUtil.replaceConversationLinks(ResourceBaseTest.CONVERSATION_BODY_1, targetResource1, Map.of()));
 
-        ResourceDescription targetResource2 = ResourceDescription.fromDecoded(ResourceType.CONVERSATION, "bucketName", "bucket/location/", "folder1/conversation");
+        ResourceDescription targetResource2 = ResourceDescription.fromDecoded(ResourceTypes.CONVERSATION.getResourceType(),
+                "bucketName", "bucket/location/", "folder1/conversation");
         verifyJson("""
                 {
                 "id": "conversations/bucketName/folder1/conversation",
@@ -50,7 +52,8 @@ public class PublicationUtilTest {
 
     @Test
     void testAttachmentLinksReplacement() {
-        ResourceDescription targetResource = ResourceDescription.fromDecoded(ResourceType.CONVERSATION, "bucketName", "bucket/location/", "conversation");
+        ResourceDescription targetResource = ResourceDescription.fromDecoded(ResourceTypes.CONVERSATION.getResourceType(),
+                "bucketName", "bucket/location/", "conversation");
         String conversationBody = """
                 {
                     "id": "conversations/bucketName2/folder1/conversation",

@@ -79,6 +79,7 @@ Priority order:
 | resources.syncBatch                           |        4096        |    No    |How many resources to sync in one go.
 | resources.cacheExpiration                     |       300000       |    No    |Expiration in milliseconds for synced resources in Redis.
 | resources.compressionMinSize                  |        256         |    No    |Compress a resource with gzip if its size in bytes more or equal to this value.
+| resources.redisPrefix                         |      resource      |    No    |Prefix name is used to form Redis key for resource's queue and topic.
 | redis.singleServerConfig.address              |         -          |   Yes    |Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided. 
 | redis.clusterServersConfig.nodeAddresses      |         -          |   Yes    |Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.
 | redis.provider.*                              |         -          |    No    |Provider specific settings

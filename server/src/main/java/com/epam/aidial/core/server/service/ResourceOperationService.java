@@ -2,8 +2,8 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceEvent;
-import com.epam.aidial.core.server.data.ResourceType;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -16,8 +16,8 @@ import java.util.function.Consumer;
 
 @AllArgsConstructor
 public class ResourceOperationService {
-    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
-            ResourceType.PROMPT, ResourceType.APPLICATION);
+    private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
+            ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
     private final ApplicationService applicationService;
     private final ResourceService resourceService;
@@ -45,7 +45,7 @@ public class ResourceOperationService {
             throw new IllegalStateException("Unsupported type: " + source.getType());
         }
 
-        if (destination.getType() == ResourceType.APPLICATION) {
+        if (destination.getType() == ResourceTypes.APPLICATION.getResourceType()) {
             applicationService.copyApplication(source, destination, overwriteIfExists, app -> {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
@@ -74,7 +74,7 @@ public class ResourceOperationService {
             }
         }
 
-        if (destination.getType() == ResourceType.APPLICATION) {
+        if (destination.getType() == ResourceTypes.APPLICATION.getResourceType()) {
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);

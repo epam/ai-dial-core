@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.resource;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.service.LockService;
 import org.junit.jupiter.api.AfterAll;

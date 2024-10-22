@@ -1,19 +1,19 @@
-package com.epam.aidial.core.server.storage;
+package com.epam.aidial.core.server.resource;
 
-import com.epam.aidial.core.server.data.ResourceType;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 
+import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 
 @Data
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -32,7 +32,7 @@ public class ResourceDescription {
 
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(UrlUtil.encodePathSegment(type.getGroup()))
+        builder.append(UrlUtil.encodePathSegment(type.group()))
                 .append(BlobStorageUtil.PATH_SEPARATOR)
                 .append(UrlUtil.encodePathSegment(bucketName))
                 .append(BlobStorageUtil.PATH_SEPARATOR);
@@ -58,7 +58,7 @@ public class ResourceDescription {
 
     public String getDecodedUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(type.getGroup())
+        builder.append(type.group())
                 .append(BlobStorageUtil.PATH_SEPARATOR)
                 .append(bucketName)
                 .append(BlobStorageUtil.PATH_SEPARATOR);
@@ -83,7 +83,7 @@ public class ResourceDescription {
     public String getAbsoluteFilePath() {
         StringBuilder builder = new StringBuilder();
         builder.append(bucketLocation)
-                .append(type.getGroup())
+                .append(type.group())
                 .append(BlobStorageUtil.PATH_SEPARATOR);
 
         if (!parentFolders.isEmpty()) {
@@ -169,7 +169,7 @@ public class ResourceDescription {
     }
 
     public static ResourceDescription fromDecoded(ResourceDescription description, String absolutePath) {
-        String prefix = description.getBucketLocation() + description.getType().getGroup() + "/";
+        String prefix = description.getBucketLocation() + description.getType().group() + "/";
         if (!absolutePath.startsWith(prefix)) {
             throw new IllegalArgumentException("Incompatible description and absolute path");
         }
@@ -234,7 +234,11 @@ public class ResourceDescription {
             throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
         }
 
-        ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
+        String resourceTypeStr = UrlUtil.decodePath(parts[0]);
+        ResourceType resourceType = ResourceTypeRegistry.getByGroup(resourceTypeStr);
+        if (resourceType == null || !resourceType.external()) {
+            throw new IllegalArgumentException("Unsupported resource type: " + resourceTypeStr);
+        }
         String bucket = UrlUtil.decodePath(parts[1]);
         String location = null;
 

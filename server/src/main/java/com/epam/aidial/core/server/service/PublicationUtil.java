@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
 import io.vertx.core.json.JsonArray;
@@ -87,7 +87,7 @@ public class PublicationUtil {
         JsonObject conversation = new JsonObject(conversationBody);
         ResourceDescription folderLink = targetResource.getParent();
         String folderUrl = folderLink == null
-                ? targetResource.getType().getGroup() + BlobStorageUtil.PATH_SEPARATOR + targetResource.getBucketName()
+                ? targetResource.getType().group() + BlobStorageUtil.PATH_SEPARATOR + targetResource.getBucketName()
                 : folderLink.getDecodedUrl();
         if (folderUrl.charAt(folderUrl.length() - 1) == '/') {
             folderUrl = folderUrl.substring(0, folderUrl.length() - 1);

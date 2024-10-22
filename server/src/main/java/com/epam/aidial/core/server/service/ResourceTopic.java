@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.data.ResourceEvent;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import io.vertx.core.impl.ConcurrentHashSet;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
