@@ -148,7 +148,7 @@ public class ResourceDescriptor {
 
         String name = paths.get(paths.size() - 1);
         boolean isFolder = UrlUtil.isFolder(url);
-        return new ResourceDescriptor(type, name, parentFolders, null, bucketName, bucketLocation, isFolder);
+        return new ResourceDescriptor(type, name, parentFolders, relativePath, bucketName, bucketLocation, isFolder);
     }
 
     @Override
