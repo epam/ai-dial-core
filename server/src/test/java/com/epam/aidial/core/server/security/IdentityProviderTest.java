@@ -479,7 +479,7 @@ public class IdentityProviderTest {
             assertTrue(res.succeeded());
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
-            assertEquals(List.of("r1","r2 r3"), claims.userRoles());
+            assertEquals(List.of("r1", "r2 r3"), claims.userRoles());
         });
     }
 
@@ -515,7 +515,7 @@ public class IdentityProviderTest {
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
 
-        String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles","").sign(algorithm);
+        String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", "").sign(algorithm);
         Jwk jwk = mock(Jwk.class);
         when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
         when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
