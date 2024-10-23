@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Bucket;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -27,7 +28,7 @@ public class BucketController {
         } else {
             String encryptedAppDataBucket = encryptionService.encrypt(appDataBucket);
             String encodedSourceDeployment = UrlUtil.encodePath(context.getSourceDeployment()); // bucket/my-app
-            appDataLocation = encryptedAppDataBucket + BlobStorageUtil.PATH_SEPARATOR + BlobStorageUtil.APPDATA_PATTERN.formatted(encodedSourceDeployment);
+            appDataLocation = encryptedAppDataBucket + ResourceDescriptor.PATH_SEPARATOR + BlobStorageUtil.APPDATA_PATTERN.formatted(encodedSourceDeployment);
         }
         return context.respond(HttpStatus.OK, new Bucket(encryptedBucket, appDataLocation));
     }

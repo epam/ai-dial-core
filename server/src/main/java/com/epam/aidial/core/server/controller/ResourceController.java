@@ -7,7 +7,9 @@ import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.InvitationService;
@@ -16,7 +18,6 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -58,7 +59,7 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription descriptor, boolean hasWriteAccess) {
+    protected Future<?> handle(ResourceDescriptor descriptor, boolean hasWriteAccess) {
         if (context.getRequest().method() == HttpMethod.GET) {
             return metadata ? getMetadata(descriptor) : getResource(descriptor, hasWriteAccess);
         }
@@ -81,7 +82,7 @@ public class ResourceController extends AccessControlBaseController {
                 : "application/json";
     }
 
-    private Future<?> getMetadata(ResourceDescription descriptor) {
+    private Future<?> getMetadata(ResourceDescriptor descriptor) {
         String token;
         int limit;
         boolean recursive;
@@ -117,12 +118,12 @@ public class ResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private Future<?> getResource(ResourceDescription descriptor, boolean hasWriteAccess) {
+    private Future<?> getResource(ResourceDescriptor descriptor, boolean hasWriteAccess) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        Future<Pair<ResourceItemMetadata, String>> responseFuture = (descriptor.getType() == ResourceType.APPLICATION)
+        Future<Pair<ResourceItemMetadata, String>> responseFuture = (descriptor.getType() == ResourceTypes.APPLICATION)
                 ? getApplicationData(descriptor, hasWriteAccess) : getResourceData(descriptor);
 
         responseFuture.onSuccess(pair -> {
@@ -135,7 +136,7 @@ public class ResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private Future<Pair<ResourceItemMetadata, String>> getApplicationData(ResourceDescription descriptor, boolean hasWriteAccess) {
+    private Future<Pair<ResourceItemMetadata, String>> getApplicationData(ResourceDescriptor descriptor, boolean hasWriteAccess) {
         return vertx.executeBlocking(() -> {
             Pair<ResourceItemMetadata, Application> result = applicationService.getApplication(descriptor);
             ResourceItemMetadata meta = result.getKey();
@@ -150,7 +151,7 @@ public class ResourceController extends AccessControlBaseController {
         }, false);
     }
 
-    private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescription descriptor) {
+    private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescriptor descriptor) {
         return vertx.executeBlocking(() -> {
             Pair<ResourceItemMetadata, String> result = service.getResourceWithMetadata(descriptor);
 
@@ -162,12 +163,12 @@ public class ResourceController extends AccessControlBaseController {
         }, false);
     }
 
-    private Future<?> putResource(ResourceDescription descriptor) {
+    private Future<?> putResource(ResourceDescriptor descriptor) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        if (!ResourceDescription.isValidResourcePath(descriptor)) {
+        if (!ResourceDescriptorFactory.isValidResourcePath(descriptor)) {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
 
@@ -193,7 +194,7 @@ public class ResourceController extends AccessControlBaseController {
 
         Future<ResourceItemMetadata> responseFuture;
 
-        if (descriptor.getType() == ResourceType.APPLICATION) {
+        if (descriptor.getType() == ResourceTypes.APPLICATION) {
             responseFuture =  requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class);
@@ -218,7 +219,7 @@ public class ResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private Future<?> deleteResource(ResourceDescription descriptor) {
+    private Future<?> deleteResource(ResourceDescriptor descriptor) {
         if (descriptor.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
@@ -234,7 +235,7 @@ public class ResourceController extends AccessControlBaseController {
 
                         boolean deleted = true;
 
-                        if (descriptor.getType() == ResourceType.APPLICATION) {
+                        if (descriptor.getType() == ResourceTypes.APPLICATION) {
                             applicationService.deleteApplication(descriptor, etag);
                         } else {
                            deleted = service.deleteResource(descriptor, etag);
@@ -253,7 +254,7 @@ public class ResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private void handleError(ResourceDescription descriptor, Throwable error) {
+    private void handleError(ResourceDescriptor descriptor, Throwable error) {
         if (error instanceof HttpException exception) {
             context.respond(exception.getStatus(), exception.getMessage());
         } else if (error instanceof IllegalArgumentException) {
@@ -268,8 +269,8 @@ public class ResourceController extends AccessControlBaseController {
         }
     }
 
-    private static void validateRequestBody(ResourceDescription descriptor, String body) {
-        switch (descriptor.getType()) {
+    private static void validateRequestBody(ResourceDescriptor descriptor, String body) {
+        switch ((ResourceTypes) descriptor.getType()) {
             case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
             case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
             default -> throw new IllegalArgumentException("Unsupported resource type " + descriptor.getType());

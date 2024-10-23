@@ -5,8 +5,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceAccessType;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -47,7 +47,7 @@ public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode>
     }
 
     private void processAttachedFile(String url) {
-        ResourceDescription resource = fromAnyUrl(url, proxy.getEncryptionService());
+        ResourceDescriptor resource = fromAnyUrl(url, proxy.getEncryptionService());
         if (resource == null) {
             return;
         }

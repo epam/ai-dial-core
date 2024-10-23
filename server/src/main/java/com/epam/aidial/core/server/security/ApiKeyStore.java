@@ -3,9 +3,10 @@ package com.epam.aidial.core.server.security;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -19,8 +20,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
+import static com.epam.aidial.core.server.resource.ResourceDescriptor.PATH_SEPARATOR;
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
-import static com.epam.aidial.core.server.storage.BlobStorageUtil.PATH_SEPARATOR;
 
 /**
  * The store keeps per request and project API key data.
@@ -57,7 +58,7 @@ public class ApiKeyStore {
      */
     public void assignPerRequestApiKey(ApiKeyData data) {
         String perRequestKey = generateKey();
-        ResourceDescription resource = toResource(perRequestKey);
+        ResourceDescriptor resource = toResource(perRequestKey);
         data.setPerRequestKey(perRequestKey);
         String json = ProxyUtil.convertToString(data);
         try {
@@ -75,7 +76,7 @@ public class ApiKeyStore {
             log.error("Error occurred at updating api key data: per request API key is undefined");
             return Future.failedFuture(error);
         }
-        ResourceDescription resource = toResource(key);
+        ResourceDescriptor resource = toResource(key);
         return vertx.executeBlocking(() -> {
             resourceService.computeResource(resource, fn);
             return null;
@@ -93,7 +94,7 @@ public class ApiKeyStore {
         if (apiKeyData != null) {
             return Future.succeededFuture(apiKeyData);
         }
-        ResourceDescription resource = toResource(key);
+        ResourceDescriptor resource = toResource(key);
         return vertx.executeBlocking(() -> ProxyUtil.convertToObject(resourceService.getResource(resource), ApiKeyData.class), false).compose(result -> {
             if (result == null) {
                 return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Unknown api key"));
@@ -112,7 +113,7 @@ public class ApiKeyStore {
     public Future<Boolean> invalidatePerRequestApiKey(ApiKeyData apiKeyData) {
         String apiKey = apiKeyData.getPerRequestKey();
         if (apiKey != null) {
-            ResourceDescription resource = toResource(apiKey);
+            ResourceDescriptor resource = toResource(apiKey);
             return vertx.executeBlocking(() -> resourceService.deleteResource(resource, EtagHeader.ANY), false);
         }
         return Future.succeededFuture(true);
@@ -149,9 +150,9 @@ public class ApiKeyStore {
         }
     }
 
-    private static ResourceDescription toResource(String apiKey) {
-        return ResourceDescription.fromDecoded(
-                ResourceType.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
+    private static ResourceDescriptor toResource(String apiKey) {
+        return ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
     }
 
 }

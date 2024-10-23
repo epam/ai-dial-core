@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.storage;
 
 import com.epam.aidial.core.server.data.FileMetadata;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
@@ -38,7 +39,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     private final Vertx vertx;
     private final ResourceService resourceService;
     private final BlobStorage storage;
-    private final ResourceDescription resource;
+    private final ResourceDescriptor resource;
     private final EtagHeader etag;
     private final String contentType;
 
@@ -64,7 +65,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     public BlobWriteStream(Vertx vertx,
                            ResourceService resourceService,
                            BlobStorage storage,
-                           ResourceDescription resource,
+                           ResourceDescriptor resource,
                            EtagHeader etag,
                            String contentType) {
         this.vertx = vertx;

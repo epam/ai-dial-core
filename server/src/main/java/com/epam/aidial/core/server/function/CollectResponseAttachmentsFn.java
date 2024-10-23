@@ -5,9 +5,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceAccessType;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -58,13 +58,13 @@ public class CollectResponseAttachmentsFn extends BaseResponseFunction {
     }
 
     private void processAttachedFile(String url, Set<String> collectedUrls) {
-        ResourceDescription resource = fromAnyUrl(url, proxy.getEncryptionService());
+        ResourceDescriptor resource = fromAnyUrl(url, proxy.getEncryptionService());
         if (resource == null) {
             return;
         }
         // Note. permission check: make sure that the target deployment has access to the resource only
         // we don't check other permissions like admin, share or publishing access since we give full permissions to the source deployment
-        Map<ResourceDescription, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(resource),
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(resource),
                 context, context.getDeployment().getName());
         if (result.containsKey(resource)) {
             collectedUrls.add(resource.getUrl());

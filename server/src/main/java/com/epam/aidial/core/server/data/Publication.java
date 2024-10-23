@@ -24,7 +24,7 @@ public class Publication {
     Status status;
     Long createdAt;
     List<Resource> resources;
-    Set<ResourceType> resourceTypes;
+    Set<ResourceTypes> resourceTypes;
     List<Rule> rules;
     String etag;
 
@@ -53,18 +53,18 @@ public class Publication {
         ADD, DELETE
     }
 
-    public Set<ResourceType> getResourceTypes() {
+    public Set<ResourceTypes> getResourceTypes() {
         if (resourceTypes != null) {
             return resourceTypes;
         }
         if (resources == null) {
             return Set.of();
         }
-        Set<ResourceType> resourceTypes = new HashSet<>();
+        Set<ResourceTypes> resourceTypes = new HashSet<>();
         for (Resource resource : resources) {
             String resourceUrl = resource.getTargetUrl();
             String resourceType = resourceUrl.substring(0, resourceUrl.indexOf('/'));
-            resourceTypes.add(ResourceType.of(resourceType));
+            resourceTypes.add(ResourceTypes.of(resourceType));
         }
 
         return resourceTypes;

@@ -3,8 +3,9 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceAccessType;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;
@@ -19,10 +20,10 @@ public abstract class AccessControlBaseController {
     final boolean isWriteAccess;
 
     public Future<?> handle(String resourceUrl) {
-        ResourceDescription resource;
+        ResourceDescriptor resource;
 
         try {
-            resource = ResourceDescription.fromAnyUrl(resourceUrl, proxy.getEncryptionService());
+            resource = ResourceDescriptorFactory.fromAnyUrl(resourceUrl, proxy.getEncryptionService());
         } catch (IllegalArgumentException e) {
             String errorMessage = e.getMessage() != null ? e.getMessage() : ("Invalid resource url provided: " + resourceUrl);
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
@@ -48,5 +49,5 @@ public abstract class AccessControlBaseController {
     /**
      * @return a successful future to read the request body after its completion.
      */
-    protected abstract Future<?> handle(ResourceDescription resource, boolean hasWriteAccess);
+    protected abstract Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess);
 }

@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.data.ResourceEvent;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import io.vertx.core.impl.ConcurrentHashSet;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -32,10 +32,10 @@ public class ResourceTopic {
         topic.publish(event);
     }
 
-    public Subscription subscribe(Collection<ResourceDescription> resources, Consumer<ResourceEvent> subscriber) {
+    public Subscription subscribe(Collection<ResourceDescriptor> resources, Consumer<ResourceEvent> subscriber) {
         Subscription subscription = new Subscription(resources, subscriber);
 
-        for (ResourceDescription resource : resources) {
+        for (ResourceDescriptor resource : resources) {
             String url = resource.getUrl();
             urlToSubscriptions.compute(url, (key, subs) -> {
                 if (subs == null) {
@@ -51,7 +51,7 @@ public class ResourceTopic {
     }
 
     private void unsubscribe(Subscription subscription) {
-        for (ResourceDescription resource : subscription.resources) {
+        for (ResourceDescriptor resource : subscription.resources) {
             String url = resource.getUrl();
             urlToSubscriptions.computeIfPresent(url, (key, subs) -> {
                 subs.remove(subscription);
@@ -74,7 +74,7 @@ public class ResourceTopic {
     public class Subscription implements AutoCloseable {
 
         AtomicBoolean active = new AtomicBoolean(true);
-        Collection<ResourceDescription> resources;
+        Collection<ResourceDescriptor> resources;
         Consumer<ResourceEvent> subscriber;
 
         @Override

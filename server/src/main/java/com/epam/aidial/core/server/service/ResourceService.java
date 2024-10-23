@@ -5,12 +5,11 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.ResourceEvent;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
-import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceType;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.storage.BlobWriteStream;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.Compression;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
@@ -84,7 +83,6 @@ public class ResourceService implements AutoCloseable {
 
     private final Vertx vertx;
     private final RedissonClient redis;
-    private final EncryptionService encryptionService;
     private final BlobStorage blobStore;
     private final LockService lockService;
     private final ResourceTopic topic;
@@ -100,12 +98,11 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
-                           EncryptionService encryptionService,
                            BlobStorage blobStore,
                            LockService lockService,
                            JsonObject settings,
                            String prefix) {
-        this(vertx, redis, encryptionService, blobStore, lockService,
+        this(vertx, redis, blobStore, lockService,
                 settings.getInteger("maxSize"),
                 settings.getLong("syncPeriod"),
                 settings.getLong("syncDelay"),
@@ -126,7 +123,6 @@ public class ResourceService implements AutoCloseable {
      */
     public ResourceService(Vertx vertx,
                            RedissonClient redis,
-                           EncryptionService encryptionService,
                            BlobStorage blobStore,
                            LockService lockService,
                            int maxSize,
@@ -138,7 +134,6 @@ public class ResourceService implements AutoCloseable {
                            String prefix) {
         this.vertx = vertx;
         this.redis = redis;
-        this.encryptionService = encryptionService;
         this.blobStore = blobStore;
         this.lockService = lockService;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
@@ -159,18 +154,12 @@ public class ResourceService implements AutoCloseable {
         vertx.cancelTimer(syncTimer);
     }
 
-    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
+    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
         return topic.subscribe(resources, subscriber);
     }
 
-    public void copyFolder(String sourceFolderUrl, String targetFolderUrl, boolean overwrite) {
-        ResourceDescription sourceFolder = ResourceDescription.fromAnyUrl(sourceFolderUrl, encryptionService);
-        ResourceDescription targetFolder = ResourceDescription.fromAnyUrl(targetFolderUrl, encryptionService);
-        copyFolder(sourceFolder, targetFolder, overwrite);
-    }
-
-    public void copyFolder(ResourceDescription sourceFolder, ResourceDescription targetFolder, boolean overwrite) {
+    public void copyFolder(ResourceDescriptor sourceFolder, ResourceDescriptor targetFolder, boolean overwrite) {
         String token = null;
         do {
             ResourceFolderMetadata folder = getFolderMetadata(sourceFolder, token, 1000, true);
@@ -182,8 +171,8 @@ public class ResourceService implements AutoCloseable {
                 String sourceFileUrl = item.getUrl();
                 String targetFileUrl = targetFolder + sourceFileUrl.substring(sourceFolder.getUrl().length());
 
-                ResourceDescription sourceFile = ResourceDescription.fromAnyUrl(sourceFileUrl, encryptionService);
-                ResourceDescription targetFile = ResourceDescription.fromAnyUrl(targetFileUrl, encryptionService);
+                ResourceDescriptor sourceFile = sourceFolder.resolveByUrl(sourceFileUrl);
+                ResourceDescriptor targetFile = targetFolder.resolveByUrl(targetFileUrl);
 
                 if (!copyResource(sourceFile, targetFile, overwrite)) {
                     throw new IllegalArgumentException("Can't copy source file: " + sourceFileUrl
@@ -195,12 +184,7 @@ public class ResourceService implements AutoCloseable {
         } while (token != null);
     }
 
-    public boolean deleteFolder(String folderUrl) {
-        ResourceDescription folder = ResourceDescription.fromAnyUrl(folderUrl, encryptionService);
-        return deleteFolder(folder);
-    }
-
-    public boolean deleteFolder(ResourceDescription folder) {
+    public boolean deleteFolder(ResourceDescriptor folder) {
         String token = null;
         do {
             ResourceFolderMetadata metadata = getFolderMetadata(folder, token, 1000, true);
@@ -209,7 +193,7 @@ public class ResourceService implements AutoCloseable {
             }
 
             for (MetadataBase item : metadata.getItems()) {
-                ResourceDescription file = ResourceDescription.fromAnyUrl(item.getUrl(), encryptionService);
+                ResourceDescriptor file = folder.resolveByUrl(item.getUrl());
                 deleteResource(file, EtagHeader.ANY);
             }
 
@@ -220,13 +204,13 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public MetadataBase getMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
+    public MetadataBase getMetadata(ResourceDescriptor descriptor, String token, int limit, boolean recursive) {
         return descriptor.isFolder()
                 ? getFolderMetadata(descriptor, token, limit, recursive)
                 : getResourceMetadata(descriptor);
     }
 
-    public ResourceFolderMetadata getFolderMetadata(ResourceDescription descriptor, String token, int limit, boolean recursive) {
+    public ResourceFolderMetadata getFolderMetadata(ResourceDescriptor descriptor, String token, int limit, boolean recursive) {
         String blobKey = blobKey(descriptor);
         PageSet<? extends StorageMetadata> set = blobStore.list(blobKey, token, limit, recursive);
 
@@ -237,7 +221,7 @@ public class ResourceService implements AutoCloseable {
         List<MetadataBase> resources = set.stream().map(meta -> {
             Map<String, String> metadata = meta.getUserMetadata();
             String path = meta.getName();
-            ResourceDescription description = ResourceDescription.fromDecoded(descriptor, path);
+            ResourceDescriptor description = descriptor.resolveByPath(path);
 
             if (meta.getType() != StorageType.BLOB) {
                 return new ResourceFolderMetadata(description);
@@ -259,20 +243,20 @@ public class ResourceService implements AutoCloseable {
                 updatedAt = meta.getLastModified().getTime();
             }
 
-            if (description.getType() == ResourceType.FILE) {
-                return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
-                        .setCreatedAt(createdAt)
-                        .setUpdatedAt(updatedAt);
+            if (description.getType().requireCompression()) {
+                return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
             }
 
-            return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+            return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
+                    .setCreatedAt(createdAt)
+                    .setUpdatedAt(updatedAt);
         }).toList();
 
         return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
     }
 
     @Nullable
-    public ResourceItemMetadata getResourceMetadata(ResourceDescription descriptor) {
+    public ResourceItemMetadata getResourceMetadata(ResourceDescriptor descriptor) {
         if (descriptor.isFolder()) {
             throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
         }
@@ -289,13 +273,13 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        return descriptor.getType() == ResourceType.FILE
-                ? toFileMetadata(descriptor, result)
-                : toResourceItemMetadata(descriptor, result);
+        return descriptor.getType().requireCompression()
+                ? toResourceItemMetadata(descriptor, result)
+                : toFileMetadata(descriptor, result);
     }
 
     private static ResourceItemMetadata toResourceItemMetadata(
-            ResourceDescription descriptor, Result result) {
+            ResourceDescriptor descriptor, Result result) {
         return new ResourceItemMetadata(descriptor)
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
@@ -303,14 +287,14 @@ public class ResourceService implements AutoCloseable {
     }
 
     private static FileMetadata toFileMetadata(
-            ResourceDescription resource, Result result) {
+            ResourceDescriptor resource, Result result) {
         return (FileMetadata) new FileMetadata(resource, result.contentLength(), result.contentType())
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
                 .setEtag(result.etag());
     }
 
-    public boolean hasResource(ResourceDescription descriptor) {
+    public boolean hasResource(ResourceDescriptor descriptor) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, false);
 
@@ -323,12 +307,12 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor) {
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescriptor descriptor) {
         return getResourceWithMetadata(descriptor, true);
     }
 
     @Nullable
-    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescription descriptor, boolean lock) {
+    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescriptor descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
@@ -354,19 +338,19 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public String getResource(ResourceDescription descriptor) {
+    public String getResource(ResourceDescriptor descriptor) {
         return getResource(descriptor, true);
     }
 
     @Nullable
-    public String getResource(ResourceDescription descriptor, boolean lock) {
+    public String getResource(ResourceDescriptor descriptor, boolean lock) {
         Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, lock);
         return (result == null) ? null : result.getRight();
     }
 
-    public ResourceStream getResourceStream(ResourceDescription resource) throws IOException {
-        if (resource.getType() != ResourceType.FILE) {
-            throw new IllegalArgumentException("Streaming is supported for files only");
+    public ResourceStream getResourceStream(ResourceDescriptor resource) throws IOException {
+        if (resource.getType().requireCompression()) {
+            throw new IllegalArgumentException("Streaming is supported for uncompressed resources only");
         }
 
         String key = redisKey(resource);
@@ -404,18 +388,18 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescription descriptor, String body, EtagHeader etag) {
+            ResourceDescriptor descriptor, String body, EtagHeader etag) {
         return putResource(descriptor, body, etag, true);
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescription descriptor, String body, EtagHeader etag, boolean lock) {
+            ResourceDescriptor descriptor, String body, EtagHeader etag, boolean lock) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         return putResource(descriptor, bytes, etag, "application/json", lock);
     }
 
     private ResourceItemMetadata putResource(
-            ResourceDescription descriptor,
+            ResourceDescriptor descriptor,
             byte[] body,
             EtagHeader etag,
             String contentType,
@@ -442,33 +426,33 @@ public class ResourceService implements AutoCloseable {
             } else {
                 flushToBlobStore(redisKey);
                 String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result, descriptor.getType() != ResourceType.FILE);
+                blobPut(blobKey, result, descriptor.getType().requireCompression());
             }
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
             publishEvent(descriptor, action, updatedAt, newEtag);
-            return descriptor.getType() == ResourceType.FILE
-                    ? toFileMetadata(descriptor, result)
-                    : toResourceItemMetadata(descriptor, result);
+            return descriptor.getType().requireCompression()
+                    ? toResourceItemMetadata(descriptor, result)
+                    : toFileMetadata(descriptor, result);
         }
     }
 
-    public FileMetadata putFile(ResourceDescription descriptor, byte[] body, EtagHeader etag, String contentType) {
-        if (descriptor.getType() != ResourceType.FILE) {
-            throw new IllegalArgumentException("Expected a file, got %s".formatted(descriptor.getType()));
+    public FileMetadata putFile(ResourceDescriptor descriptor, byte[] body, EtagHeader etag, String contentType) {
+        if (descriptor.getType().requireCompression()) {
+            throw new IllegalArgumentException("Resource must be uncompressed, got %s".formatted(descriptor.getType()));
         }
 
         return (FileMetadata) putResource(descriptor, body, etag, contentType, true);
     }
 
-    public BlobWriteStream beginFileUpload(ResourceDescription descriptor, EtagHeader etag, String contentType) {
+    public BlobWriteStream beginFileUpload(ResourceDescriptor descriptor, EtagHeader etag, String contentType) {
         return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
     }
 
     public FileMetadata finishFileUpload(
-            ResourceDescription descriptor, MultipartData multipartData, EtagHeader etag) {
+            ResourceDescriptor descriptor, MultipartData multipartData, EtagHeader etag) {
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
@@ -497,11 +481,11 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public ResourceItemMetadata computeResource(ResourceDescription descriptor, Function<String, String> fn) {
+    public ResourceItemMetadata computeResource(ResourceDescriptor descriptor, Function<String, String> fn) {
         return computeResource(descriptor, EtagHeader.ANY, fn);
     }
 
-    public ResourceItemMetadata computeResource(ResourceDescription descriptor, EtagHeader etag, Function<String, String> fn) {
+    public ResourceItemMetadata computeResource(ResourceDescriptor descriptor, EtagHeader etag, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
@@ -531,11 +515,11 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public boolean deleteResource(ResourceDescription descriptor, EtagHeader etag) {
+    public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag) {
         return deleteResource(descriptor, etag, true);
     }
 
-    private boolean deleteResource(ResourceDescription descriptor, EtagHeader etag, boolean lock) {
+    private boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -556,11 +540,11 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public boolean copyResource(ResourceDescription from, ResourceDescription to) {
+    public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to) {
         return copyResource(from, to, true);
     }
 
-    public boolean copyResource(ResourceDescription from, ResourceDescription to, boolean overwrite) {
+    public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to, boolean overwrite) {
         if (from.equals(to)) {
             return overwrite;
         }
@@ -592,7 +576,7 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    private void publishEvent(ResourceDescription descriptor, ResourceEvent.Action action, long timestamp, String etag) {
+    private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag) {
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)
@@ -681,7 +665,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @SneakyThrows
-    private static Result blobToResult(Blob blob, BlobMetadata meta) {
+    private Result blobToResult(Blob blob, BlobMetadata meta) {
         String etag = ResourceUtil.extractEtag(meta.getUserMetadata());
         String contentType = meta.getContentMetadata().getContentType();
         Long contentLength = meta.getContentMetadata().getContentLength();
@@ -691,9 +675,6 @@ public class ResourceService implements AutoCloseable {
         Long updatedAt = meta.getUserMetadata().containsKey(ResourceUtil.UPDATED_AT_ATTRIBUTE)
                 ? Long.parseLong(meta.getUserMetadata().get(ResourceUtil.UPDATED_AT_ATTRIBUTE))
                 : null;
-        ResourceType resourceType = Optional.ofNullable(meta.getUserMetadata().get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE))
-                .map(ResourceType::valueOf)
-                .orElse(null);
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
         if (createdAt == null && meta.getCreationDate() != null) {
@@ -716,7 +697,7 @@ public class ResourceService implements AutoCloseable {
             }
         }
 
-        return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, resourceType, true);
+        return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, null, true);
     }
 
     private void blobPut(String key, Result result, boolean compress) {
@@ -735,7 +716,7 @@ public class ResourceService implements AutoCloseable {
         blobStore.delete(key);
     }
 
-    private static String blobKey(ResourceDescription descriptor) {
+    private static String blobKey(ResourceDescriptor descriptor) {
         return descriptor.getAbsoluteFilePath();
     }
 
@@ -768,11 +749,7 @@ public class ResourceService implements AutoCloseable {
         Long createdAt = RedisUtil.redisToLong(fields.get(ResourceUtil.CREATED_AT_ATTRIBUTE));
         Long updatedAt = RedisUtil.redisToLong(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
 
-        ResourceType resourceType = Optional.ofNullable(RedisUtil.redisToString(fields.get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE), null))
-                .map(ResourceType::valueOf)
-                .orElse(null);
-
-        return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, resourceType, synced);
+        return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, null, synced);
     }
 
     private void redisPut(String key, Result result) {
@@ -821,7 +798,7 @@ public class ResourceService implements AutoCloseable {
         return map;
     }
 
-    private String redisKey(ResourceDescription descriptor) {
+    private String redisKey(ResourceDescriptor descriptor) {
         String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
@@ -835,7 +812,7 @@ public class ResourceService implements AutoCloseable {
         map.delete();
     }
 
-    public String getEtag(ResourceDescription descriptor) {
+    public String getEtag(ResourceDescriptor descriptor) {
         ResourceItemMetadata metadata = getResourceMetadata(descriptor);
         if (metadata == null) {
             return null;

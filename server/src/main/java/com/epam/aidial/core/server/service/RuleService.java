@@ -5,11 +5,11 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.RuleMatcher;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.lang3.tuple.Pair;
@@ -30,8 +30,8 @@ public class RuleService {
     private static final TypeReference<Map<String, List<Rule>>> RULES_TYPE = new TypeReference<>() {
     };
 
-    private static final ResourceDescription PUBLIC_RULES = ResourceDescription.fromDecoded(
-            ResourceType.RULES, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, RULES_NAME);
+    private static final ResourceDescriptor PUBLIC_RULES = ResourceDescriptorFactory.fromDecoded(
+            ResourceTypes.RULES, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, RULES_NAME);
 
     /**
      * Key is updated time from the metadata. Value is decoded map (folder path, list of rules).
@@ -59,7 +59,7 @@ public class RuleService {
         });
     }
 
-    public Map<String, List<Rule>> listRules(ResourceDescription resource) {
+    public Map<String, List<Rule>> listRules(ResourceDescriptor resource) {
         if (!resource.isFolder() || !resource.isPublic()) {
             throw new IllegalArgumentException("Bad rule url: " + resource.getUrl());
         }
@@ -81,10 +81,10 @@ public class RuleService {
     }
 
 
-    public Set<ResourceDescription> getAllowedPublicResources(
-            ProxyContext context, Set<ResourceDescription> resources) {
+    public Set<ResourceDescriptor> getAllowedPublicResources(
+            ProxyContext context, Set<ResourceDescriptor> resources) {
         resources = resources.stream()
-                .filter(ResourceDescription::isPublic)
+                .filter(ResourceDescriptor::isPublic)
                 .collect(Collectors.toUnmodifiableSet());
 
         if (resources.isEmpty()) {
@@ -93,7 +93,7 @@ public class RuleService {
 
         Map<String, List<Rule>> rules = getCachedRules();
         Map<String, Boolean> cache = new HashMap<>();
-        for (ResourceDescription resource : resources) {
+        for (ResourceDescriptor resource : resources) {
             evaluate(context, resource, rules, cache);
         }
 
@@ -105,7 +105,7 @@ public class RuleService {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    public void filterForbidden(ProxyContext context, ResourceDescription folder, ResourceFolderMetadata metadata) {
+    public void filterForbidden(ProxyContext context, ResourceDescriptor folder, ResourceFolderMetadata metadata) {
         if (!folder.isPublic() || !folder.isFolder()) {
             return;
         }
@@ -115,7 +115,7 @@ public class RuleService {
         cache.put(ruleUrl(folder), true);
 
         List<? extends MetadataBase> filtered = metadata.getItems().stream().filter(item -> {
-            ResourceDescription resource = ResourceDescription.fromPublicUrl(item.getUrl());
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromPublicUrl(item.getUrl());
             return evaluate(context, resource, rules, cache);
         }).toList();
 
@@ -141,7 +141,7 @@ public class RuleService {
     }
 
     private static boolean evaluate(ProxyContext context,
-                                    ResourceDescription resource,
+                                    ResourceDescriptor resource,
                                     Map<String, List<Rule>> rules,
                                     Map<String, Boolean> cache) {
 
@@ -171,8 +171,8 @@ public class RuleService {
         return evaluated;
     }
 
-    private static String ruleUrl(ResourceDescription resource) {
-        String prefix = resource.getType().getGroup();
+    private static String ruleUrl(ResourceDescriptor resource) {
+        String prefix = resource.getType().group();
         return resource.getUrl().substring(prefix.length() + 1);
     }
 

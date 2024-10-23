@@ -3,9 +3,9 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.MetadataBase;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
@@ -32,7 +32,7 @@ public class FileMetadataController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
+    protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
@@ -55,7 +55,7 @@ public class FileMetadataController extends AccessControlBaseController {
             } catch (Exception ex) {
                 log.error("Failed to list files", ex);
                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Failed to list files by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                        "Failed to list files by path %s".formatted(resource.getUrl()));
             }
 
             return null;

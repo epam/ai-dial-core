@@ -109,7 +109,7 @@ public class AiDial {
             redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            resourceService = new ResourceService(vertx, redis, encryptionService, storage, lockService, settings("resources"), storage.getPrefix());
+            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);

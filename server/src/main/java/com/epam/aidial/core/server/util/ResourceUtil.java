@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResource;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import lombok.experimental.UtilityClass;
 
 import java.util.List;
@@ -22,18 +22,18 @@ public class ResourceUtil {
     // Default ETag for old records
     public static final String DEFAULT_ETAG = "0";
 
-    public ResourceType getResourceType(String url) {
+    public ResourceTypes getResourceType(String url) {
         if (url == null) {
             throw new IllegalStateException("Resource link can not be null");
         }
 
-        String[] paths = url.split(BlobStorageUtil.PATH_SEPARATOR);
+        String[] paths = url.split(ResourceDescriptor.PATH_SEPARATOR);
 
         if (paths.length < 2) {
             throw new IllegalStateException("Invalid resource link provided: " + url);
         }
 
-        return ResourceType.of(paths[0]);
+        return ResourceTypes.of(paths[0]);
     }
 
     public String getBucket(String url) {
@@ -41,7 +41,7 @@ public class ResourceUtil {
             throw new IllegalStateException("Resource link can not be null");
         }
 
-        String[] paths = url.split(BlobStorageUtil.PATH_SEPARATOR);
+        String[] paths = url.split(ResourceDescriptor.PATH_SEPARATOR);
 
         if (paths.length < 2) {
             throw new IllegalStateException("Invalid resource link provided: " + url);
@@ -55,12 +55,12 @@ public class ResourceUtil {
                 .collect(Collectors.toUnmodifiableMap(SharedResource::url, SharedResource::permissions));
     }
 
-    public ResourceDescription resourceFromUrl(String url, EncryptionService encryptionService) {
+    public ResourceDescriptor resourceFromUrl(String url, EncryptionService encryptionService) {
         try {
             if (url.startsWith(ProxyUtil.METADATA_PREFIX)) {
                 url = url.substring(ProxyUtil.METADATA_PREFIX.length());
             }
-            return ResourceDescription.fromPrivateUrl(url, encryptionService);
+            return ResourceDescriptorFactory.fromPrivateUrl(url, encryptionService);
         } catch (Exception e) {
             throw new IllegalArgumentException("Incorrect resource link provided " + url);
         }

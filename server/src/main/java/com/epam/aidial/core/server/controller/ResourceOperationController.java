@@ -5,8 +5,10 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceEvent;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.HeartbeatService;
@@ -14,7 +16,6 @@ import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResourceTopic;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -34,8 +35,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ResourceOperationController {
 
-    private static final Set<ResourceType> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
-            ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT, ResourceType.APPLICATION);
+    private static final Set<ResourceTypes> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
+            ResourceTypes.FILE, ResourceTypes.CONVERSATION, ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
     private final ProxyContext context;
     private final Vertx vertx;
@@ -77,8 +78,8 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("destinationUrl must be provided");
                     }
 
-                    ResourceDescription source = ResourceDescription.fromAnyUrl(sourceUrl, encryptionService);
-                    ResourceDescription destination = ResourceDescription.fromAnyUrl(destinationUrl, encryptionService);
+                    ResourceDescriptor source = ResourceDescriptorFactory.fromAnyUrl(sourceUrl, encryptionService);
+                    ResourceDescriptor destination = ResourceDescriptorFactory.fromAnyUrl(destinationUrl, encryptionService);
 
                     if (!source.getType().equals(destination.getType())) {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
@@ -88,8 +89,8 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("source and destination resources cannot be the same");
                     }
 
-                    Set<ResourceDescription> resources = Set.of(source, destination);
-                    Map<ResourceDescription, Set<ResourceAccessType>> permissions =
+                    Set<ResourceDescriptor> resources = Set.of(source, destination);
+                    Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
                             accessService.lookupPermissions(resources, context);
 
                     if (!permissions.get(source).containsAll(ResourceAccessType.ALL)) {
@@ -120,7 +121,7 @@ public class ResourceOperationController {
         context.getRequest()
                 .body()
                 .compose(buffer -> {
-                    Set<ResourceDescription> resources = parseAndVerifySubscriptionRequest(buffer);
+                    Set<ResourceDescriptor> resources = parseAndVerifySubscriptionRequest(buffer);
 
                     response.setChunked(true)
                             .setStatusCode(200)
@@ -143,7 +144,7 @@ public class ResourceOperationController {
         return Future.succeededFuture();
     }
 
-    private Set<ResourceDescription> parseAndVerifySubscriptionRequest(Buffer buffer) {
+    private Set<ResourceDescriptor> parseAndVerifySubscriptionRequest(Buffer buffer) {
         SubscribeResourcesRequest request;
         try {
             request = ProxyUtil.convertToObject(buffer, SubscribeResourcesRequest.class);
@@ -155,8 +156,8 @@ public class ResourceOperationController {
             throw new IllegalArgumentException("resources list must be provided");
         }
 
-        Set<ResourceDescription> resources = request.getResources().stream()
-                .map(link -> ResourceDescription.fromAnyUrl(link.url(), encryptionService))
+        Set<ResourceDescriptor> resources = request.getResources().stream()
+                .map(link -> ResourceDescriptorFactory.fromAnyUrl(link.url(), encryptionService))
                 .peek(resource -> {
                     if (resource.isFolder()) {
                         throw new IllegalArgumentException("resource folder is not supported: " + resource.getUrl());
@@ -181,7 +182,7 @@ public class ResourceOperationController {
         HttpServerResponse response = context.getResponse();
 
         try {
-            ResourceDescription resource = ResourceDescription.fromAnyUrl(event.getUrl(), encryptionService);
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(event.getUrl(), encryptionService);
 
             if (accessService.hasReadAccess(resource, context)) {
                 String json = ProxyUtil.convertToString(event);

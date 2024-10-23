@@ -2,8 +2,8 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceEvent;
-import com.epam.aidial.core.server.data.ResourceType;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -16,20 +16,20 @@ import java.util.function.Consumer;
 
 @AllArgsConstructor
 public class ResourceOperationService {
-    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceType.FILE, ResourceType.CONVERSATION,
-            ResourceType.PROMPT, ResourceType.APPLICATION);
+    private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
+            ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
     private final ApplicationService applicationService;
     private final ResourceService resourceService;
     private final InvitationService invitationService;
     private final ShareService shareService;
 
-    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
+    public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
         return resourceService.subscribeResources(resources, subscriber);
     }
 
-    public void moveResource(ResourceDescription source, ResourceDescription destination, boolean overwriteIfExists) {
+    public void moveResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -45,7 +45,7 @@ public class ResourceOperationService {
             throw new IllegalStateException("Unsupported type: " + source.getType());
         }
 
-        if (destination.getType() == ResourceType.APPLICATION) {
+        if (destination.getType() == ResourceTypes.APPLICATION) {
             applicationService.copyApplication(source, destination, overwriteIfExists, app -> {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
@@ -68,13 +68,13 @@ public class ResourceOperationService {
                 invitationService.moveResource(bucketName, bucketLocation, source, destination);
                 shareService.moveSharedAccess(bucketName, bucketLocation, source, destination);
             } else {
-                Map<ResourceDescription, Set<ResourceAccessType>> resources = Map.of(source, ResourceAccessType.ALL);
+                Map<ResourceDescriptor, Set<ResourceAccessType>> resources = Map.of(source, ResourceAccessType.ALL);
                 invitationService.cleanUpPermissions(bucketName, bucketLocation, resources);
                 shareService.revokeSharedAccess(bucketName, bucketLocation, resources);
             }
         }
 
-        if (destination.getType() == ResourceType.APPLICATION) {
+        if (destination.getType() == ResourceTypes.APPLICATION) {
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);

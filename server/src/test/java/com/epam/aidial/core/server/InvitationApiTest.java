@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.InvitationLink;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
@@ -33,7 +33,7 @@ public class InvitationApiTest extends ResourceBaseTest {
         InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
         assertNotNull(invitationLink);
 
-        String[] elements = invitationLink.invitationLink().split(BlobStorageUtil.PATH_SEPARATOR);
+        String[] elements = invitationLink.invitationLink().split(ResourceDescriptor.PATH_SEPARATOR);
         String invitationId = elements[elements.length - 1];
 
         // verify invitation can be listed
@@ -84,7 +84,7 @@ public class InvitationApiTest extends ResourceBaseTest {
         InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
         assertNotNull(invitationLink);
 
-        String[] elements = invitationLink.invitationLink().split(BlobStorageUtil.PATH_SEPARATOR);
+        String[] elements = invitationLink.invitationLink().split(ResourceDescriptor.PATH_SEPARATOR);
         String invitationId = elements[elements.length - 1];
 
         // verify invitation can be listed
