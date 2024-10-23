@@ -1,4 +1,4 @@
 allprojects {
     group = 'com.epam.aidial'
-    version = "0.18.0-rc"
+    version = "0.18.0"
 }
