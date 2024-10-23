@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,9 @@ public class IdentityProvider {
 
     // path to the claim of user roles in JWT
     private final String[] rolePath;
+
+    // Delimiter to split the roles if they are set as a single String
+    private final String rolesDelimiter;
 
     private JwkProvider jwkProvider;
 
@@ -113,6 +117,7 @@ public class IdentityProvider {
         String rolePathStr = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed");
         getUserRoleFn = factory.getUserRoleFn(rolePathStr);
         rolePath = rolePathStr.split("\\.");
+        rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
         if (loggingKey != null) {
@@ -153,6 +158,12 @@ public class IdentityProvider {
                 if (next instanceof List) {
                     return (List<String>) next;
                 } else if (next instanceof String) {
+                    if (rolesDelimiter != null) {
+                        return Arrays.stream(((String) next)
+                                .split(rolesDelimiter))
+                                .filter(s -> !s.isBlank())
+                                .toList();
+                    }
                     return List.of((String) next);
                 }
             } else {
