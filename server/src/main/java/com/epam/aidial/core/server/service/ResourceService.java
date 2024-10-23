@@ -5,8 +5,9 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.ResourceEvent;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceType;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.storage.BlobWriteStream;
@@ -171,8 +172,8 @@ public class ResourceService implements AutoCloseable {
                 String sourceFileUrl = item.getUrl();
                 String targetFileUrl = targetFolder + sourceFileUrl.substring(sourceFolder.getUrl().length());
 
-                ResourceDescriptor sourceFile = sourceFolder.resolveByUrl(sourceFileUrl);
-                ResourceDescriptor targetFile = targetFolder.resolveByUrl(targetFileUrl);
+                ResourceDescriptor sourceFile = sourceFolder.resolveEncryptedUrl(sourceFileUrl);
+                ResourceDescriptor targetFile = targetFolder.resolveEncryptedUrl(targetFileUrl);
 
                 if (!copyResource(sourceFile, targetFile, overwrite)) {
                     throw new IllegalArgumentException("Can't copy source file: " + sourceFileUrl
@@ -193,7 +194,7 @@ public class ResourceService implements AutoCloseable {
             }
 
             for (MetadataBase item : metadata.getItems()) {
-                ResourceDescriptor file = folder.resolveByUrl(item.getUrl());
+                ResourceDescriptor file = folder.resolveEncryptedUrl(item.getUrl());
                 deleteResource(file, EtagHeader.ANY);
             }
 
@@ -221,7 +222,7 @@ public class ResourceService implements AutoCloseable {
         List<MetadataBase> resources = set.stream().map(meta -> {
             Map<String, String> metadata = meta.getUserMetadata();
             String path = meta.getName();
-            ResourceDescriptor description = descriptor.resolveByPath(path);
+            ResourceDescriptor description = descriptor.resolveDecryptedUrl(path);
 
             if (meta.getType() != StorageType.BLOB) {
                 return new ResourceFolderMetadata(description);
@@ -243,7 +244,7 @@ public class ResourceService implements AutoCloseable {
                 updatedAt = meta.getLastModified().getTime();
             }
 
-            if (description.getType() == ResourceType.FILE) {
+            if (description.getType() == ResourceTypes.FILE) {
                 return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
                         .setCreatedAt(createdAt)
                         .setUpdatedAt(updatedAt);
@@ -273,7 +274,7 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        return descriptor.getType() == ResourceType.FILE
+        return descriptor.getType() == ResourceTypes.FILE
                 ? toFileMetadata(descriptor, result)
                 : toResourceItemMetadata(descriptor, result);
     }
@@ -349,7 +350,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceStream getResourceStream(ResourceDescriptor resource) throws IOException {
-        if (resource.getType() != ResourceType.FILE) {
+        if (resource.getType() != ResourceTypes.FILE) {
             throw new IllegalArgumentException("Streaming is supported for files only");
         }
 
@@ -426,21 +427,21 @@ public class ResourceService implements AutoCloseable {
             } else {
                 flushToBlobStore(redisKey);
                 String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result, descriptor.getType() != ResourceType.FILE);
+                blobPut(blobKey, result, descriptor.getType() != ResourceTypes.FILE);
             }
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
             publishEvent(descriptor, action, updatedAt, newEtag);
-            return descriptor.getType() == ResourceType.FILE
+            return descriptor.getType() == ResourceTypes.FILE
                     ? toFileMetadata(descriptor, result)
                     : toResourceItemMetadata(descriptor, result);
         }
     }
 
     public FileMetadata putFile(ResourceDescriptor descriptor, byte[] body, EtagHeader etag, String contentType) {
-        if (descriptor.getType() != ResourceType.FILE) {
+        if (descriptor.getType() != ResourceTypes.FILE) {
             throw new IllegalArgumentException("Expected a file, got %s".formatted(descriptor.getType()));
         }
 
@@ -675,8 +676,8 @@ public class ResourceService implements AutoCloseable {
         Long updatedAt = meta.getUserMetadata().containsKey(ResourceUtil.UPDATED_AT_ATTRIBUTE)
                 ? Long.parseLong(meta.getUserMetadata().get(ResourceUtil.UPDATED_AT_ATTRIBUTE))
                 : null;
-        ResourceType resourceType = Optional.ofNullable(meta.getUserMetadata().get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE))
-                .map(ResourceType::valueOf)
+        ResourceTypes resourceType = Optional.ofNullable(meta.getUserMetadata().get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE))
+                .map(ResourceTypes::valueOf)
                 .orElse(null);
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
@@ -752,8 +753,8 @@ public class ResourceService implements AutoCloseable {
         Long createdAt = RedisUtil.redisToLong(fields.get(ResourceUtil.CREATED_AT_ATTRIBUTE));
         Long updatedAt = RedisUtil.redisToLong(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
 
-        ResourceType resourceType = Optional.ofNullable(RedisUtil.redisToString(fields.get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE), null))
-                .map(ResourceType::valueOf)
+        ResourceTypes resourceType = Optional.ofNullable(RedisUtil.redisToString(fields.get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE), null))
+                .map(ResourceTypes::valueOf)
                 .orElse(null);
 
         return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, resourceType, synced);

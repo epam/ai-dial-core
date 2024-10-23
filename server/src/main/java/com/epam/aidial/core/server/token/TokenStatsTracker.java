@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ResourceService;
@@ -144,6 +144,6 @@ public class TokenStatsTracker {
 
     private static ResourceDescriptor toResource(String traceId) {
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceType.DEPLOYMENT_COST_STATS, DEPLOYMENT_COST_STATS_BUCKET, DEPLOYMENT_COST_STATS_LOCATION, traceId);
+                ResourceTypes.DEPLOYMENT_COST_STATS, DEPLOYMENT_COST_STATS_BUCKET, DEPLOYMENT_COST_STATS_LOCATION, traceId);
     }
 }

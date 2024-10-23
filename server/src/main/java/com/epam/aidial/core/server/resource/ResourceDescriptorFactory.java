@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.resource;
 
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
@@ -23,7 +23,7 @@ public class ResourceDescriptorFactory {
      * @param bucketLocation bucket location on blob storage; bucket location must end with /
      * @param path           url encoded relative path; if url path is null or empty we treat it as user home
      */
-    public static ResourceDescriptor fromEncoded(ResourceType type, String bucketName, String bucketLocation, String path) {
+    public static ResourceDescriptor fromEncoded(ResourceTypes type, String bucketName, String bucketLocation, String path) {
         // in case empty path - treat it as a home folder
         String urlEncodedRelativePath = StringUtils.isBlank(path) ? ResourceDescriptor.PATH_SEPARATOR : path;
         verify(bucketLocation.endsWith(ResourceDescriptor.PATH_SEPARATOR), "Bucket location must end with /");
@@ -34,7 +34,7 @@ public class ResourceDescriptorFactory {
                 verify(isValidFilename(element), "Invalid path provided " + urlEncodedRelativePath)
         );
 
-        ResourceDescriptor resource = from(type, bucketName, bucketLocation, urlEncodedRelativePath, elements, BlobStorageUtil.isFolder(urlEncodedRelativePath));
+        ResourceDescriptor resource = from(type, bucketName, bucketLocation, elements, BlobStorageUtil.isFolder(urlEncodedRelativePath));
         verify(resource.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_SIZE,
                 "Resource path exceeds max allowed size: " + MAX_PATH_SIZE);
 
@@ -53,29 +53,11 @@ public class ResourceDescriptorFactory {
         verify(bucketLocation.endsWith(ResourceDescriptor.PATH_SEPARATOR), "Bucket location must end with /");
 
         List<String> elements = Arrays.asList(path.split(ResourceDescriptor.PATH_SEPARATOR));
-        return from(type, bucketName, bucketLocation, path, elements, BlobStorageUtil.isFolder(path));
-    }
-
-    public static ResourceDescriptor fromDecoded(ResourceDescriptor description, String absolutePath) {
-        String prefix = description.getBucketLocation() + description.getType().getGroup() + "/";
-        if (!absolutePath.startsWith(prefix)) {
-            throw new IllegalArgumentException("Incompatible description and absolute path");
-        }
-
-        String relativePath = absolutePath.substring(prefix.length());
-        return fromDecoded(description.getType(), description.getBucketName(), description.getBucketLocation(), relativePath);
+        return from(type, bucketName, bucketLocation, elements, BlobStorageUtil.isFolder(path));
     }
 
     public static ResourceDescriptor fromPublicUrl(String url) {
-        return fromUrl(url, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
-    }
-
-    /**
-     * @param url      must contain the same bucket and location as resource.
-     * @param resource to take bucket and location from.
-     */
-    public static ResourceDescriptor fromPrivateUrl(String url, ResourceDescriptor resource) {
-        return fromUrl(url, resource.getBucketName(), resource.getBucketLocation(), null);
+        return fromUrl(url, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
     }
 
     public static ResourceDescriptor fromPrivateUrl(String url, EncryptionService encryption) {
@@ -117,12 +99,12 @@ public class ResourceDescriptorFactory {
             throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
         }
 
-        ResourceType resourceType = ResourceType.of(UrlUtil.decodePath(parts[0]));
+        ResourceTypes resourceType = ResourceTypes.of(UrlUtil.decodePath(parts[0]));
         String bucket = UrlUtil.decodePath(parts[1]);
         String location = null;
 
-        if (bucket.equals(BlobStorageUtil.PUBLIC_BUCKET)) {
-            location = BlobStorageUtil.PUBLIC_LOCATION;
+        if (bucket.equals(ResourceDescriptor.PUBLIC_BUCKET)) {
+            location = ResourceDescriptor.PUBLIC_LOCATION;
         } else if (expectedBucket != null) {
             location = expectedLocation;
         } else if (encryptionService != null) {
@@ -165,11 +147,11 @@ public class ResourceDescriptorFactory {
     }
 
     private static ResourceDescriptor from(ResourceType type, String bucketName, String bucketLocation,
-                                           String originalPath, List<String> paths, boolean isFolder) {
+                                           List<String> paths, boolean isFolder) {
         boolean isEmptyElements = paths.isEmpty();
         String name = isEmptyElements ? null : paths.get(paths.size() - 1);
         List<String> parentFolders = isEmptyElements ? List.of() : paths.subList(0, paths.size() - 1);
-        return new ResourceDescriptor(type, name, parentFolders, originalPath, bucketName, bucketLocation, isFolder);
+        return new ResourceDescriptor(type, name, parentFolders, bucketName, bucketLocation, isFolder);
     }
 
     private static boolean isValidFilename(String value) {

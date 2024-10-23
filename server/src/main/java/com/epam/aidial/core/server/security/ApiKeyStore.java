@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ResourceService;
@@ -152,7 +152,7 @@ public class ApiKeyStore {
 
     private static ResourceDescriptor toResource(String apiKey) {
         return ResourceDescriptorFactory.fromDecoded(
-                ResourceType.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
+                ResourceTypes.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
     }
 
 }

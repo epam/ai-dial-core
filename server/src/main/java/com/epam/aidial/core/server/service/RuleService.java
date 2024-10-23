@@ -5,12 +5,11 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.RuleMatcher;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.lang3.tuple.Pair;
@@ -32,7 +31,7 @@ public class RuleService {
     };
 
     private static final ResourceDescriptor PUBLIC_RULES = ResourceDescriptorFactory.fromDecoded(
-            ResourceType.RULES, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, RULES_NAME);
+            ResourceTypes.RULES, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, RULES_NAME);
 
     /**
      * Key is updated time from the metadata. Value is decoded map (folder path, list of rules).
@@ -173,7 +172,7 @@ public class RuleService {
     }
 
     private static String ruleUrl(ResourceDescriptor resource) {
-        String prefix = resource.getType().getGroup();
+        String prefix = resource.getType().group();
         return resource.getUrl().substring(prefix.length() + 1);
     }
 

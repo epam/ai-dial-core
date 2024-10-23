@@ -86,7 +86,7 @@ public class PublicationUtil {
         JsonObject conversation = new JsonObject(conversationBody);
         ResourceDescriptor folderLink = targetResource.getParent();
         String folderUrl = folderLink == null
-                ? targetResource.getType().getGroup() + ResourceDescriptor.PATH_SEPARATOR + targetResource.getBucketName()
+                ? targetResource.getType().group() + ResourceDescriptor.PATH_SEPARATOR + targetResource.getBucketName()
                 : folderLink.getDecodedUrl();
         if (folderUrl.charAt(folderUrl.length() - 1) == '/') {
             folderUrl = folderUrl.substring(0, folderUrl.length() - 1);

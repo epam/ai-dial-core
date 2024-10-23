@@ -5,7 +5,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceEvent;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
@@ -35,8 +35,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ResourceOperationController {
 
-    private static final Set<ResourceType> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
-            ResourceType.FILE, ResourceType.CONVERSATION, ResourceType.PROMPT, ResourceType.APPLICATION);
+    private static final Set<ResourceTypes> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
+            ResourceTypes.FILE, ResourceTypes.CONVERSATION, ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
     private final ProxyContext context;
     private final Vertx vertx;

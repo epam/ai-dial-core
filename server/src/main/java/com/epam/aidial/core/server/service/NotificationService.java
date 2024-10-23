@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notification;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -73,7 +73,7 @@ public class NotificationService {
     }
 
     private static ResourceDescriptor getNotificationResource(String bucketName, String bucketLocation) {
-        return ResourceDescriptorFactory.fromDecoded(ResourceType.NOTIFICATION, bucketName, bucketLocation, NOTIFICATION_RESOURCE_FILENAME);
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.NOTIFICATION, bucketName, bucketLocation, NOTIFICATION_RESOURCE_FILENAME);
     }
 
     private static Map<String, Notification> decodeNotifications(String json) {

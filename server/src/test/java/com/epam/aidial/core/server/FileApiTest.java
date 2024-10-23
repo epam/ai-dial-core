@@ -7,7 +7,7 @@ import com.epam.aidial.core.server.data.FileMetadata;
 import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.storage.BlobWriteStream;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -122,17 +122,25 @@ public class FileApiTest extends ResourceBaseTest {
     public void testEmptyFilesList(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
-        MetadataBase emptyBucketResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                        null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of())
-                .setPermissions(ResourceAccessType.ALL);
         client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                 .putHeader("Api-key", "proxyKey2")
-                .as(BodyCodec.json(ResourceFolderMetadata.class))
+                .as(BodyCodec.string())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
                         assertEquals(200, response.statusCode());
                         assertEquals("application/json", response.getHeader(HttpHeaders.CONTENT_TYPE));
-                        assertEquals(emptyBucketResponse, response.body());
+                        verifyJsonNotExact("""
+                                    {
+                                      "name":null,
+                                      "parentPath":null,
+                                      "bucket":"7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType":"FOLDER",
+                                      "resourceType":"FILE",
+                                      "permissions" : [ "READ", "WRITE" ],
+                                      "items":[]
+                                    }
+                                    """, response.body());
                         context.completeNow();
                     });
                 }));
@@ -142,19 +150,26 @@ public class FileApiTest extends ResourceBaseTest {
     public void testMetadataContentType(Vertx vertx, VertxTestContext context) {
         WebClient client = WebClient.create(vertx);
 
-        MetadataBase emptyBucketResponse = new ResourceFolderMetadata(ResourceType.FILE, "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
-                        null, null, "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/", List.of())
-                .setPermissions(ResourceAccessType.ALL);
-
         client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
                 .putHeader("Api-key", "proxyKey2")
                 .putHeader(HttpHeaders.ACCEPT, MetadataBase.MIME_TYPE)
-                .as(BodyCodec.json(ResourceFolderMetadata.class))
+                .as(BodyCodec.string())
                 .send(context.succeeding(response -> {
                     context.verify(() -> {
                         assertEquals(200, response.statusCode());
                         assertEquals(MetadataBase.MIME_TYPE, response.getHeader(HttpHeaders.CONTENT_TYPE));
-                        assertEquals(emptyBucketResponse, response.body());
+                        verifyJsonNotExact("""
+                                    {
+                                      "name":null,
+                                      "parentPath":null,
+                                      "bucket":"7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType":"FOLDER",
+                                      "resourceType":"FILE",
+                                      "permissions" : [ "READ", "WRITE" ],
+                                      "items":[]
+                                    }
+                                    """, response.body());
                         context.completeNow();
                     });
                 }));
@@ -452,11 +467,21 @@ public class FileApiTest extends ResourceBaseTest {
             // verify no files
             client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(ResourceFolderMetadata.class))
+                    .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertEquals(List.of(), response.body().getItems());
+                            verifyJsonNotExact("""
+                                    {
+                                      "name":null,
+                                      "parentPath":null,
+                                      "bucket":"7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType":"FOLDER",
+                                      "resourceType":"FILE",
+                                      "items":[]
+                                    }
+                                    """, response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
@@ -575,11 +600,21 @@ public class FileApiTest extends ResourceBaseTest {
             // verify no files
             client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(ResourceFolderMetadata.class))
+                    .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertEquals(List.of(), response.body().getItems());
+                            verifyJsonNotExact("""
+                                    {
+                                      "name":null,
+                                      "parentPath":null,
+                                      "bucket":"7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType":"FOLDER",
+                                      "resourceType":"FILE",
+                                      "items":[]
+                                    }
+                                    """, response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
@@ -591,7 +626,7 @@ public class FileApiTest extends ResourceBaseTest {
             // upload test file
             client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FileMetadata.class))
+                    .as(BodyCodec.string())
                     .sendMultipartForm(generateMultipartForm("file.bin", content1, "application/x-binary"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
@@ -609,7 +644,7 @@ public class FileApiTest extends ResourceBaseTest {
             // update test file
             client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FileMetadata.class))
+                    .as(BodyCodec.string())
                     .sendMultipartForm(generateMultipartForm("file.bin", content2, "application/x-binary"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
@@ -1312,11 +1347,21 @@ public class FileApiTest extends ResourceBaseTest {
             // verify no files
             client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(ResourceFolderMetadata.class))
+                    .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertTrue(response.body().getItems().isEmpty());
+                            verifyJsonNotExact("""
+                                    {
+                                      "name":null,
+                                      "parentPath":null,
+                                      "bucket":"7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType":"FOLDER",
+                                      "resourceType":"FILE",
+                                      "items":[]
+                                    }
+                                    """, response.body());
                             checkpoint.flag();
                             promise.complete();
                         });
@@ -1328,7 +1373,7 @@ public class FileApiTest extends ResourceBaseTest {
             // upload a test file
             client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FileMetadata.class))
+                    .as(BodyCodec.string())
                     .sendMultipartForm(generateMultipartForm("test_file.txt", TEST_FILE_CONTENT, "text/custom"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
@@ -1384,7 +1429,7 @@ public class FileApiTest extends ResourceBaseTest {
             client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
                     .putHeader(HttpHeaders.IF_MATCH, TEST_FILE_ETAG)
-                    .as(BodyCodec.json(FileMetadata.class))
+                    .as(BodyCodec.string())
                     .sendMultipartForm(generateMultipartForm("test_file.txt", newContent, "text/custom"),
                             context.succeeding(response -> {
                                 context.verify(() -> {
@@ -1402,11 +1447,25 @@ public class FileApiTest extends ResourceBaseTest {
             // verify uploaded file is listed with new etag
             client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
                     .putHeader("Api-key", "proxyKey2")
-                    .as(BodyCodec.json(FileMetadata.class))
+                    .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
-                            assertEquals(newEtag, response.body().getEtag());
+                            verifyJsonNotExact("""
+                                    {
+                                      "name":"test_file.txt",
+                                      "parentPath":null,
+                                      "bucket":"7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt",
+                                      "nodeType":"ITEM",
+                                      "resourceType":"FILE",
+                                      "createdAt":"@ignore",
+                                      "updatedAt":"@ignore",
+                                      "etag":"bb6ed8b95d44dba4f8e4a99ebaca9a00",
+                                      "contentLength":11,
+                                      "contentType":"text/custom"
+                                    }
+                                    """, response.body());
                             checkpoint.flag();
                             promise.complete();
                         });

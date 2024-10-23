@@ -1,9 +1,8 @@
 package com.epam.aidial.core.server.data;
 
-import lombok.Getter;
+import com.epam.aidial.core.server.resource.ResourceType;
 
-@Getter
-public enum ResourceType {
+public enum ResourceTypes implements ResourceType {
     FILE("files"), CONVERSATION("conversations"), PROMPT("prompts"), LIMIT("limits"),
     SHARED_WITH_ME("shared_with_me"), SHARED_BY_ME("shared_by_me"), INVITATION("invitations"),
     PUBLICATION("publications"), RULES("rules"), API_KEY_DATA("api_key_data"), NOTIFICATION("notifications"),
@@ -11,11 +10,13 @@ public enum ResourceType {
 
     private final String group;
 
-    ResourceType(String group) {
+    ResourceTypes(String group) {
         this.group = group;
     }
 
-    public static ResourceType of(String group) {
+
+
+    public static ResourceTypes of(String group) {
         return switch (group) {
             case "files" -> FILE;
             case "conversations" -> CONVERSATION;
@@ -25,5 +26,10 @@ public enum ResourceType {
             case "applications" -> APPLICATION;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
+    }
+
+    @Override
+    public String group() {
+        return group;
     }
 }

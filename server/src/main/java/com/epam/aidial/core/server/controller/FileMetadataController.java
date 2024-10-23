@@ -55,7 +55,7 @@ public class FileMetadataController extends AccessControlBaseController {
             } catch (Exception ex) {
                 log.error("Failed to list files", ex);
                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Failed to list files by path %s/%s".formatted(resource.getBucketName(), resource.getOriginalPath()));
+                        "Failed to list files by path %s".formatted(resource.getUrl()));
             }
 
             return null;

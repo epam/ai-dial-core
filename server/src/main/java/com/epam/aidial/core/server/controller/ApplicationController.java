@@ -6,7 +6,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
@@ -138,7 +138,7 @@ public class ApplicationController {
             throw new IllegalArgumentException("Invalid application: " + url, e);
         }
 
-        if (resource.getType() != ResourceType.APPLICATION) {
+        if (resource.getType() != ResourceTypes.APPLICATION) {
             throw new IllegalArgumentException("Invalid application: " + url);
         }
 

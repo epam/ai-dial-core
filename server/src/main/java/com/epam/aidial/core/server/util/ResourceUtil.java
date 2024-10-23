@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
@@ -22,7 +22,7 @@ public class ResourceUtil {
     // Default ETag for old records
     public static final String DEFAULT_ETAG = "0";
 
-    public ResourceType getResourceType(String url) {
+    public ResourceTypes getResourceType(String url) {
         if (url == null) {
             throw new IllegalStateException("Resource link can not be null");
         }
@@ -33,7 +33,7 @@ public class ResourceUtil {
             throw new IllegalStateException("Invalid resource link provided: " + url);
         }
 
-        return ResourceType.of(paths[0]);
+        return ResourceTypes.of(paths[0]);
     }
 
     public String getBucket(String url) {

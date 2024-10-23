@@ -48,7 +48,7 @@ public class DeleteFileController extends AccessControlBaseController {
         }, false)
                 .onSuccess(success -> context.respond(HttpStatus.OK))
                 .onFailure(error -> {
-                    log.error("Failed to delete file  {}/{}", resource.getBucketName(), resource.getOriginalPath(), error);
+                    log.error("Failed to delete file  {}", resource.getUrl(), error);
                     context.respond(error, error.getMessage());
                 });
 

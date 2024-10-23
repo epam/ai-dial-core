@@ -9,7 +9,7 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.NodeType;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
@@ -107,7 +107,7 @@ public class ApplicationService {
         String location = BlobStorageUtil.buildInitiatorBucket(context);
         String bucket = encryptionService.encrypt(location);
 
-        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceType.APPLICATION, bucket, location, null);
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, bucket, location, null);
         return getApplications(folder);
     }
 
@@ -116,7 +116,7 @@ public class ApplicationService {
         String bucket = encryptionService.encrypt(location);
 
         ListSharedResourcesRequest request = new ListSharedResourcesRequest();
-        request.setResourceTypes(Set.of(ResourceType.APPLICATION));
+        request.setResourceTypes(Set.of(ResourceTypes.APPLICATION));
 
         ShareService shares = context.getProxy().getShareService();
         SharedResourcesResponse response = shares.listSharedWithMe(bucket, location, request);
@@ -138,7 +138,7 @@ public class ApplicationService {
     }
 
     public List<Application> getPublicApplications(ProxyContext context) {
-        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceType.APPLICATION, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
         AccessService accessService = context.getProxy().getAccessService();
         return getApplications(folder, page -> accessService.filterForbidden(context, folder, page));
     }
@@ -168,7 +168,7 @@ public class ApplicationService {
     }
 
     public List<Application> getApplications(ResourceDescriptor resource, Consumer<ResourceFolderMetadata> filter) {
-        if (!resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
+        if (!resource.isFolder() || resource.getType() != ResourceTypes.APPLICATION) {
             throw new IllegalArgumentException("Invalid application folder: " + resource.getUrl());
         }
 
@@ -184,7 +184,7 @@ public class ApplicationService {
             filter.accept(folder);
 
             for (MetadataBase meta : folder.getItems()) {
-                if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceType.APPLICATION) {
+                if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceTypes.APPLICATION) {
                     try {
                         ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = getApplication(item).getValue();
@@ -461,7 +461,7 @@ public class ApplicationService {
             try {
                 ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(function.getSourceFolder(), encryptionService);
 
-                if (!folder.isFolder() || folder.getType() != ResourceType.FILE || !folder.getBucketName().equals(resource.getBucketName())) {
+                if (!folder.isFolder() || folder.getType() != ResourceTypes.FILE || !folder.getBucketName().equals(resource.getBucketName())) {
                     throw new IllegalArgumentException();
                 }
 
@@ -610,7 +610,7 @@ public class ApplicationService {
                           + id + ResourceDescriptor.PATH_SEPARATOR;
 
         String name = encryptionService.encrypt(location);
-        return ResourceDescriptorFactory.fromDecoded(ResourceType.FILE, name, location, null).getUrl();
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, name, location, null).getUrl();
     }
 
     public static boolean isActive(Application application) {
@@ -622,7 +622,7 @@ public class ApplicationService {
     }
 
     private static void verifyApplication(ResourceDescriptor resource) {
-        if (resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
+        if (resource.isFolder() || resource.getType() != ResourceTypes.APPLICATION) {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
         }
     }

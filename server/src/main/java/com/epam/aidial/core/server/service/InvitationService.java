@@ -4,7 +4,7 @@ import com.epam.aidial.core.server.data.Invitation;
 import com.epam.aidial.core.server.data.InvitationCollection;
 import com.epam.aidial.core.server.data.InvitationsMap;
 import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
@@ -46,7 +46,7 @@ public class InvitationService {
     }
 
     public Invitation createInvitation(String bucket, String location, List<SharedResource> resources) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
         Instant expirationTime = Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS);
@@ -105,7 +105,7 @@ public class InvitationService {
     }
 
     public InvitationCollection getMyInvitations(String bucket, String location) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String state = resourceService.getResource(resource);
         InvitationsMap invitationMap = ProxyUtil.convertToObject(state, InvitationsMap.class);
         if (invitationMap == null || invitationMap.getInvitations().isEmpty()) {
@@ -133,7 +133,7 @@ public class InvitationService {
 
     public void cleanUpPermissions(
             String bucket, String location, Map<ResourceDescriptor, Set<ResourceAccessType>> permissionsToCleanUp) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
@@ -171,7 +171,7 @@ public class InvitationService {
     }
 
     public void moveResource(String bucket, String location, ResourceDescriptor source, ResourceDescriptor destination) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceType.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
             if (invitations == null) {
@@ -221,7 +221,7 @@ public class InvitationService {
         }
         String location = parts[0] + ResourceDescriptor.PATH_SEPARATOR + parts[1] + ResourceDescriptor.PATH_SEPARATOR;
         String bucket = encryptionService.encrypt(location);
-        ResourceType resourceType = ResourceType.of(parts[2]);
+        ResourceTypes resourceType = ResourceTypes.of(parts[2]);
         return ResourceDescriptorFactory.fromDecoded(resourceType, bucket, location, INVITATION_RESOURCE_FILENAME);
     }
 

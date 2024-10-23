@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ResourceBaseTest;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -16,7 +16,7 @@ public class PublicationUtilTest {
 
     @Test
     void testConversationIdReplacement() {
-        ResourceDescriptor targetResource1 = ResourceDescriptorFactory.fromDecoded(ResourceType.CONVERSATION, "bucketName", "bucket/location/", "conversation");
+        ResourceDescriptor targetResource1 = ResourceDescriptorFactory.fromDecoded(ResourceTypes.CONVERSATION, "bucketName", "bucket/location/", "conversation");
         verifyJson("""
                 {
                 "id": "conversations/bucketName/conversation",
@@ -32,7 +32,7 @@ public class PublicationUtilTest {
                 }
                 """, PublicationUtil.replaceConversationLinks(ResourceBaseTest.CONVERSATION_BODY_1, targetResource1, Map.of()));
 
-        ResourceDescriptor targetResource2 = ResourceDescriptorFactory.fromDecoded(ResourceType.CONVERSATION, "bucketName", "bucket/location/", "folder1/conversation");
+        ResourceDescriptor targetResource2 = ResourceDescriptorFactory.fromDecoded(ResourceTypes.CONVERSATION, "bucketName", "bucket/location/", "folder1/conversation");
         verifyJson("""
                 {
                 "id": "conversations/bucketName/folder1/conversation",
@@ -51,7 +51,7 @@ public class PublicationUtilTest {
 
     @Test
     void testAttachmentLinksReplacement() {
-        ResourceDescriptor targetResource = ResourceDescriptorFactory.fromDecoded(ResourceType.CONVERSATION, "bucketName", "bucket/location/", "conversation");
+        ResourceDescriptor targetResource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.CONVERSATION, "bucketName", "bucket/location/", "conversation");
         String conversationBody = """
                 {
                     "id": "conversations/bucketName2/folder1/conversation",

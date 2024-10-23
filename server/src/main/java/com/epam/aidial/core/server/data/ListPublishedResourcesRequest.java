@@ -6,5 +6,5 @@ import java.util.Set;
 
 @Data
 public class ListPublishedResourcesRequest {
-    Set<ResourceType> resourceTypes;
+    Set<ResourceTypes> resourceTypes;
 }

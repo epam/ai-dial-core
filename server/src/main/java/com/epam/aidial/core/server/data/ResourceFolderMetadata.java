@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,7 +25,7 @@ public class ResourceFolderMetadata extends MetadataBase {
         this.items = items;
     }
 
-    public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url) {
+    public ResourceFolderMetadata(ResourceTypes type, String bucket, String name, String path, String url) {
         this(type, bucket, name, path, url, null);
     }
 

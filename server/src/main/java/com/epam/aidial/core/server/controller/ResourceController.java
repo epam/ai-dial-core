@@ -7,7 +7,7 @@ import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
@@ -123,7 +123,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        Future<Pair<ResourceItemMetadata, String>> responseFuture = (descriptor.getType() == ResourceType.APPLICATION)
+        Future<Pair<ResourceItemMetadata, String>> responseFuture = (descriptor.getType() == ResourceTypes.APPLICATION)
                 ? getApplicationData(descriptor, hasWriteAccess) : getResourceData(descriptor);
 
         responseFuture.onSuccess(pair -> {
@@ -194,7 +194,7 @@ public class ResourceController extends AccessControlBaseController {
 
         Future<ResourceItemMetadata> responseFuture;
 
-        if (descriptor.getType() == ResourceType.APPLICATION) {
+        if (descriptor.getType() == ResourceTypes.APPLICATION) {
             responseFuture =  requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class);
@@ -235,7 +235,7 @@ public class ResourceController extends AccessControlBaseController {
 
                         boolean deleted = true;
 
-                        if (descriptor.getType() == ResourceType.APPLICATION) {
+                        if (descriptor.getType() == ResourceTypes.APPLICATION) {
                             applicationService.deleteApplication(descriptor, etag);
                         } else {
                            deleted = service.deleteResource(descriptor, etag);
@@ -270,7 +270,7 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private static void validateRequestBody(ResourceDescriptor descriptor, String body) {
-        switch (descriptor.getType()) {
+        switch ((ResourceTypes) descriptor.getType()) {
             case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
             case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
             default -> throw new IllegalArgumentException("Unsupported resource type " + descriptor.getType());

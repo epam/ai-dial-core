@@ -8,7 +8,7 @@ import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.Publications;
 import com.epam.aidial.core.server.data.RejectPublicationRequest;
 import com.epam.aidial.core.server.data.ResourceLink;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rules;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
@@ -118,7 +118,7 @@ public class PublicationController {
                     ResourceDescriptor resource = decodePublication(url, false);
                     checkAccess(resource, false);
                     return vertx.executeBlocking(() ->
-                            lockService.underBucketLock(BlobStorageUtil.PUBLIC_LOCATION,
+                            lockService.underBucketLock(ResourceDescriptor.PUBLIC_LOCATION,
                                     () -> publicationService.approvePublication(resource)), false);
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
@@ -211,7 +211,7 @@ public class PublicationController {
             throw new IllegalArgumentException("Invalid resource: " + path, e);
         }
 
-        if (resource.getType() != ResourceType.PUBLICATION) {
+        if (resource.getType() != ResourceTypes.PUBLICATION) {
             throw new IllegalArgumentException("Invalid resource: " + path);
         }
 
@@ -224,12 +224,12 @@ public class PublicationController {
 
     private ResourceDescriptor decodeRule(String path) {
         try {
-            if (!path.startsWith(BlobStorageUtil.PUBLIC_LOCATION)) {
+            if (!path.startsWith(ResourceDescriptor.PUBLIC_LOCATION)) {
                 throw new IllegalArgumentException();
             }
 
-            String folder = path.substring(BlobStorageUtil.PUBLIC_LOCATION.length());
-            ResourceDescriptor resource = ResourceDescriptorFactory.fromEncoded(ResourceType.RULES, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, folder);
+            String folder = path.substring(ResourceDescriptor.PUBLIC_LOCATION.length());
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromEncoded(ResourceTypes.RULES, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, folder);
 
             if (!resource.isFolder()) {
                 throw new IllegalArgumentException();

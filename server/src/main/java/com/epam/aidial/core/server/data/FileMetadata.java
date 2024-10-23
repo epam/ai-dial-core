@@ -13,7 +13,7 @@ public class FileMetadata extends ResourceItemMetadata {
     String contentType;
 
     public FileMetadata(String bucket, String name, String path, String url, long contentLength, String contentType) {
-        super(ResourceType.FILE, bucket, name, path, url);
+        super(ResourceTypes.FILE, bucket, name, path, url);
         this.contentLength = contentLength;
         this.contentType = contentType;
     }
