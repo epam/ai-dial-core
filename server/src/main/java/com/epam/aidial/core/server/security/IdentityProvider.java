@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -158,7 +159,10 @@ public class IdentityProvider {
                     return (List<String>) next;
                 } else if (next instanceof String) {
                     if (rolesDelimiter != null) {
-                        return List.of(((String) next).split(rolesDelimiter));
+                        return Arrays.stream(((String) next)
+                                .split(rolesDelimiter))
+                                .filter(s -> !s.isBlank())
+                                .toList();
                     }
                     return List.of((String) next);
                 }
