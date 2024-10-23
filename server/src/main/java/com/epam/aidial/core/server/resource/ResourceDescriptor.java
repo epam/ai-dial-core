@@ -160,22 +160,8 @@ public class ResourceDescriptor {
      *
      * @param url - to the resource with encrypted bucket
      */
-    public ResourceDescriptor resolveEncryptedUrl(String url) {
+    public ResourceDescriptor resolveByUrl(String url) {
         String prefix = type.group() + PATH_SEPARATOR + bucketName  + PATH_SEPARATOR;
-        return resolve(prefix, url);
-    }
-
-    /**
-     * If the current resource is a folder the method tries to resolve the given URL to a new resource.
-     *
-     * @param url - to the resource with decrypted bucket
-     */
-    public ResourceDescriptor resolveDecryptedUrl(String url) {
-        String prefix = bucketLocation + type.group() + PATH_SEPARATOR;
-        return resolve(prefix, url);
-    }
-
-    private ResourceDescriptor resolve(String prefix, String url) {
         if (!isFolder) {
             throw new IllegalStateException("Resource must be a folder");
         }
@@ -193,6 +179,32 @@ public class ResourceDescriptor {
         List<String> parentFolders = isEmptySegments ? List.of() : segments.subList(0, segments.size() - 1);
 
         boolean isFolder = UrlUtil.isFolder(url);
+        return new ResourceDescriptor(type, name, parentFolders, bucketName, bucketLocation, isFolder);
+    }
+
+    /**
+     * If the current resource is a folder the method tries to resolve the given URL to a new resource.
+     *
+     * @param path - to the resource with decrypted bucket
+     */
+    public ResourceDescriptor resolveByPath(String path) {
+        String prefix = bucketLocation + type.group() + PATH_SEPARATOR;
+        if (!isFolder) {
+            throw new IllegalStateException("Resource must be a folder");
+        }
+        if (!path.startsWith(prefix)) {
+            throw new IllegalArgumentException("Incompatible description and absolute path");
+        }
+
+        String relativePath = path.substring(prefix.length());
+
+        List<String> segments = Arrays.asList(relativePath.split(ResourceDescriptor.PATH_SEPARATOR));
+
+        boolean isEmptySegments = segments.isEmpty();
+        String name = isEmptySegments ? null : segments.get(segments.size() - 1);
+        List<String> parentFolders = isEmptySegments ? List.of() : segments.subList(0, segments.size() - 1);
+
+        boolean isFolder = UrlUtil.isFolder(path);
         return new ResourceDescriptor(type, name, parentFolders, bucketName, bucketLocation, isFolder);
     }
 

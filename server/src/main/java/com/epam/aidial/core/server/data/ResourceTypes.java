@@ -3,15 +3,18 @@ package com.epam.aidial.core.server.data;
 import com.epam.aidial.core.server.resource.ResourceType;
 
 public enum ResourceTypes implements ResourceType {
-    FILE("files"), CONVERSATION("conversations"), PROMPT("prompts"), LIMIT("limits"),
-    SHARED_WITH_ME("shared_with_me"), SHARED_BY_ME("shared_by_me"), INVITATION("invitations"),
-    PUBLICATION("publications"), RULES("rules"), API_KEY_DATA("api_key_data"), NOTIFICATION("notifications"),
-    APPLICATION("applications"), DEPLOYMENT_COST_STATS("deployment_cost_stats");
+    FILE("files", false), CONVERSATION("conversations", true),
+    PROMPT("prompts", true), LIMIT("limits", true),
+    SHARED_WITH_ME("shared_with_me", true), SHARED_BY_ME("shared_by_me", true), INVITATION("invitations", true),
+    PUBLICATION("publications", true), RULES("rules", true), API_KEY_DATA("api_key_data", true), NOTIFICATION("notifications", true),
+    APPLICATION("applications", true), DEPLOYMENT_COST_STATS("deployment_cost_stats", true);
 
     private final String group;
+    private final boolean requireCompression;
 
-    ResourceTypes(String group) {
+    ResourceTypes(String group, boolean requireCompression) {
         this.group = group;
+        this.requireCompression = requireCompression;
     }
 
 
@@ -32,4 +35,10 @@ public enum ResourceTypes implements ResourceType {
     public String group() {
         return group;
     }
+
+    @Override
+    public boolean requireCompression() {
+        return requireCompression;
+    }
+
 }

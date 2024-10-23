@@ -4,4 +4,6 @@ public interface ResourceType {
     String name();
 
     String group();
+
+    boolean requireCompression();
 }
