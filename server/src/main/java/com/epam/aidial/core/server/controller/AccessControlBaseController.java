@@ -4,7 +4,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.AllArgsConstructor;

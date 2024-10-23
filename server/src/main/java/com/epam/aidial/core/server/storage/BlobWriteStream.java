@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.storage;
 
 import com.epam.aidial.core.server.data.FileMetadata;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;

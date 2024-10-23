@@ -9,15 +9,16 @@ import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.data.ResourceLinkCollection;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.ShareResourcesRequest;
 import com.epam.aidial.core.server.data.SharedByMeDto;
 import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.data.SharedResources;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
+import com.epam.aidial.core.server.resource.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceType;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceUtil;
 import com.google.common.collect.Sets;
@@ -53,11 +54,11 @@ public class ShareService {
      * @return list of shared with user resources
      */
     public SharedResourcesResponse listSharedWithMe(String bucket, String location, ListSharedResourcesRequest request) {
-        Set<ResourceType> requestedResourceType = request.getResourceTypes();
+        Set<ResourceTypes> requestedResourceType = request.getResourceTypes();
 
         Set<ResourceDescription> shareResources = new HashSet<>();
-        for (ResourceType resourceType : requestedResourceType) {
-            ResourceDescription sharedResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
+        for (ResourceTypes resourceType : requestedResourceType) {
+            ResourceDescription sharedResource = getShareResource(ResourceTypes.SHARED_WITH_ME, resourceType, bucket, location);
             shareResources.add(sharedResource);
         }
 
@@ -83,11 +84,11 @@ public class ShareService {
      * @return list of shared with user resources
      */
     public SharedResourcesResponse listSharedByMe(String bucket, String location, ListSharedResourcesRequest request) {
-        Set<ResourceType> requestedResourceTypes = request.getResourceTypes();
+        Set<ResourceTypes> requestedResourceTypes = request.getResourceTypes();
 
         Set<ResourceDescription> shareResources = new HashSet<>();
-        for (ResourceType resourceType : requestedResourceTypes) {
-            ResourceDescription shareResource = getShareResource(ResourceType.SHARED_BY_ME, resourceType, bucket, location);
+        for (ResourceTypes resourceType : requestedResourceTypes) {
+            ResourceDescription shareResource = getShareResource(ResourceTypes.SHARED_BY_ME, resourceType, bucket, location);
             shareResources.add(shareResource);
         }
 
@@ -159,7 +160,7 @@ public class ShareService {
         }
 
         // group resources with the same type to reduce resource transformations
-        Map<ResourceType, List<SharedResource>> resourceGroups = resourceLinks.stream()
+        Map<ResourceTypes, List<SharedResource>> resourceGroups = resourceLinks.stream()
                 .collect(Collectors.groupingBy(sharedResource -> ResourceUtil.getResourceType(sharedResource.url())));
 
         resourceGroups.forEach((resourceType, links) -> {
@@ -167,7 +168,7 @@ public class ShareService {
             String ownerLocation = encryptionService.decrypt(ownerBucket);
 
             // write user location to the resource owner
-            ResourceDescription sharedByMe = getShareResource(ResourceType.SHARED_BY_ME, resourceType, ownerBucket, ownerLocation);
+            ResourceDescription sharedByMe = getShareResource(ResourceTypes.SHARED_BY_ME, resourceType, ownerBucket, ownerLocation);
             resourceService.computeResource(sharedByMe, state -> {
                 SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
                 if (dto == null) {
@@ -182,7 +183,7 @@ public class ShareService {
                 return ProxyUtil.convertToString(dto);
             });
 
-            ResourceDescription sharedWithMe = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
+            ResourceDescription sharedWithMe = getShareResource(ResourceTypes.SHARED_WITH_ME, resourceType, bucket, location);
             resourceService.computeResource(sharedWithMe, state -> {
                 SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
                 if (sharedResources == null) {
@@ -204,7 +205,7 @@ public class ShareService {
                 .collect(Collectors.groupingBy(ResourceDescription::getType));
         Map<ResourceDescription, Set<ResourceAccessType>> result = new HashMap<>();
         privateResourcesByTypes.forEach((type, resources) -> {
-            ResourceDescription shareResource = getShareResource(ResourceType.SHARED_WITH_ME, type, bucket, location);
+            ResourceDescription shareResource = getShareResource(ResourceTypes.SHARED_WITH_ME, ResourceTypes.valueOf(type.name()), bucket, location);
 
             String state = resourceService.getResource(shareResource);
             SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
@@ -275,9 +276,9 @@ public class ShareService {
         });
 
         permissionsToRevoke.forEach((resource, permissionsToRemove) -> {
-            ResourceType resourceType = resource.getType();
+            ResourceTypes resourceType = ResourceTypes.valueOf(resource.getType().name());
             String resourceUrl = resource.getUrl();
-            ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, resourceType, bucket, location);
+            ResourceDescription sharedByMeResource = getShareResource(ResourceTypes.SHARED_BY_ME, resourceType, bucket, location);
             String state = resourceService.getResource(sharedByMeResource);
             SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
             if (dto != null) {
@@ -317,14 +318,14 @@ public class ShareService {
         }
 
         for (ResourceDescription resource : resources) {
-            ResourceType resourceType = resource.getType();
+            ResourceTypes resourceType = ResourceTypes.valueOf(resource.getType().name());
             String resourceUrl = resource.getUrl();
             removeSharedResourcePermissions(bucket, location, resourceUrl, resourceType, ResourceAccessType.ALL);
 
             String ownerBucket = resource.getBucketName();
             String ownerLocation = encryptionService.decrypt(ownerBucket);
 
-            ResourceDescription sharedWithMe = getShareResource(ResourceType.SHARED_BY_ME, resourceType, ownerBucket, ownerLocation);
+            ResourceDescription sharedWithMe = getShareResource(ResourceTypes.SHARED_BY_ME, resourceType, ownerBucket, ownerLocation);
             resourceService.computeResource(sharedWithMe, ownerState -> {
                 SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(ownerState, SharedByMeDto.class);
                 if (sharedByMeDto != null) {
@@ -345,8 +346,8 @@ public class ShareService {
             throw new IllegalArgumentException("destination resource %s dos not exists".formatted(destination.getUrl()));
         }
 
-        ResourceType sourceResourceType = source.getType();
-        ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, sourceResourceType, bucket, location);
+        ResourceTypes sourceResourceType = ResourceTypes.valueOf(source.getType().name());
+        ResourceDescription sharedByMeResource = getShareResource(ResourceTypes.SHARED_BY_ME, sourceResourceType, bucket, location);
         SharedByMeDto sharedByMeDto = ProxyUtil.convertToObject(resourceService.getResource(sharedByMeResource), SharedByMeDto.class);
         if (sharedByMeDto == null) {
             return;
@@ -354,10 +355,10 @@ public class ShareService {
 
         Map<String, Set<ResourceAccessType>> userPermissions = sharedByMeDto.getUserPermissions(source.getUrl());
 
-        ResourceType destinationResourceType = destination.getType();
+        ResourceTypes destinationResourceType = ResourceTypes.valueOf(destination.getType().name());
         String destinationResourceLink = destination.getUrl();
         // source and destination resource type might be different
-        sharedByMeResource = getShareResource(ResourceType.SHARED_BY_ME, destinationResourceType, bucket, location);
+        sharedByMeResource = getShareResource(ResourceTypes.SHARED_BY_ME, destinationResourceType, bucket, location);
 
         // copy user locations from source to destination
         resourceService.computeResource(sharedByMeResource, state -> {
@@ -387,8 +388,8 @@ public class ShareService {
     }
 
     private void removeSharedResourcePermissions(
-            String bucket, String location, String link, ResourceType resourceType, Set<ResourceAccessType> permissionsToRemove) {
-        ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
+            String bucket, String location, String link, ResourceTypes resourceType, Set<ResourceAccessType> permissionsToRemove) {
+        ResourceDescription sharedByMeResource = getShareResource(ResourceTypes.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe != null) {
@@ -409,9 +410,9 @@ public class ShareService {
             String bucket,
             String location,
             String link,
-            ResourceType resourceType,
+            ResourceTypes resourceType,
             Set<ResourceAccessType> permissionsToAdd) {
-        ResourceDescription sharedByMeResource = getShareResource(ResourceType.SHARED_WITH_ME, resourceType, bucket, location);
+        ResourceDescription sharedByMeResource = getShareResource(ResourceTypes.SHARED_WITH_ME, resourceType, bucket, location);
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe == null) {
@@ -445,8 +446,8 @@ public class ShareService {
         return ResourceUtil.resourceFromUrl(url, encryptionService);
     }
 
-    private ResourceDescription getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {
-        return ResourceDescription.fromDecoded(shareResourceType, bucket, location,
+    private ResourceDescription getShareResource(ResourceTypes shareResourceType, ResourceTypes requestedResourceType, String bucket, String location) {
+        return ResourceDescription.fromDecoded(shareResourceType.getResourceType(), bucket, location,
                 requestedResourceType.getGroup() + BlobStorageUtil.PATH_SEPARATOR + SHARE_RESOURCE_FILENAME);
     }
 }

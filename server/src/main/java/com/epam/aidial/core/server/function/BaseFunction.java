@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.UrlUtil;
 import lombok.SneakyThrows;
 

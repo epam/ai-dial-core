@@ -58,7 +58,8 @@
     "syncBatch": 4096,
     "cacheExpiration": 300000,
     "compressionMinSize": 256,
-    "heartbeatPeriod": 60000
+    "heartbeatPeriod": 60000,
+    "redisPrefix": "resource"
   },
   "applications": {
     "includeCustomApps": false

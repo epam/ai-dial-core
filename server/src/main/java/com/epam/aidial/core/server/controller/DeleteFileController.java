@@ -6,7 +6,7 @@ import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;

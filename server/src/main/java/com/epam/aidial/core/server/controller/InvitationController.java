@@ -9,7 +9,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 

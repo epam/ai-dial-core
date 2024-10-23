@@ -9,7 +9,7 @@ public class ListSharedResourcesRequest {
     /**
      * Collection of resource types that user want to list
      */
-    Set<ResourceType> resourceTypes;
+    Set<ResourceTypes> resourceTypes;
     /**
      * Sorting order. Not implemented yet
      */

@@ -3,9 +3,11 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.cache.CacheClientFactory;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -19,11 +21,15 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.service.ScheduledService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.VertxScheduledService;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.storage.Storage;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -44,6 +50,7 @@ import io.vertx.micrometer.MicrometerMetricsOptions;
 import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
@@ -85,6 +92,7 @@ public class AiDial {
     void start() throws Exception {
         System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
+            registerResourceTypes();
             settings = (settings == null) ? settings() : settings;
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
@@ -109,7 +117,8 @@ public class AiDial {
             redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            resourceService = new ResourceService(vertx, redis, encryptionService, storage, lockService, settings("resources"), storage.getPrefix());
+            ScheduledService scheduledService = new VertxScheduledService(vertx);
+            resourceService = new ResourceService(scheduledService, redis, encryptionService, storage, lockService, to(settings("resources")), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);
@@ -165,6 +174,17 @@ public class AiDial {
         return defaultSettings()
                 .mergeIn(fileSettings(), true)
                 .mergeIn(envSettings(), true);
+    }
+
+    @SneakyThrows
+    private static JsonNode to(JsonObject jsonObject) {
+        return ProxyUtil.MAPPER.readTree(jsonObject.encode());
+    }
+
+    private void registerResourceTypes() {
+        for (ResourceTypes customType : ResourceTypes.values()) {
+            customType.setResourceType(ResourceTypeRegistry.register(customType.name(), customType.getGroup(), customType.isExternal()));
+        }
     }
 
     private JsonObject settings(String key) {

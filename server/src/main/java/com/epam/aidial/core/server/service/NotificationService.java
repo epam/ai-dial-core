@@ -3,10 +3,12 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notification;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.resource.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.AllArgsConstructor;
@@ -72,7 +74,8 @@ public class NotificationService {
     }
 
     private static ResourceDescription getNotificationResource(String bucketName, String bucketLocation) {
-        return ResourceDescription.fromDecoded(ResourceType.NOTIFICATION, bucketName, bucketLocation, NOTIFICATION_RESOURCE_FILENAME);
+        ResourceType resourceType = ResourceTypeRegistry.getByType(ResourceTypes.NOTIFICATION.name());
+        return ResourceDescription.fromDecoded(resourceType, bucketName, bucketLocation, NOTIFICATION_RESOURCE_FILENAME);
     }
 
     private static Map<String, Notification> decodeNotifications(String json) {

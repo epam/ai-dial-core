@@ -5,20 +5,19 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.ResourceEvent;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.BlobWriteStream;
-import com.epam.aidial.core.server.storage.ResourceDescription;
 import com.epam.aidial.core.server.util.Compression;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.RedisUtil;
 import com.epam.aidial.core.server.util.ResourceUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
-import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonObject;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -82,7 +81,6 @@ public class ResourceService implements AutoCloseable {
             StringCodec.INSTANCE,
             ByteArrayCodec.INSTANCE);
 
-    private final Vertx vertx;
     private final RedissonClient redis;
     private final EncryptionService encryptionService;
     private final BlobStorage blobStore;
@@ -90,7 +88,7 @@ public class ResourceService implements AutoCloseable {
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
-    private final long syncTimer;
+    private final ScheduledService.Timer syncTimer;
     private final long syncDelay;
     private final int syncBatch;
     private final Duration cacheExpiration;
@@ -98,21 +96,22 @@ public class ResourceService implements AutoCloseable {
     private final String prefix;
     private final String resourceQueue;
 
-    public ResourceService(Vertx vertx,
+    public ResourceService(ScheduledService scheduledService,
                            RedissonClient redis,
                            EncryptionService encryptionService,
                            BlobStorage blobStore,
                            LockService lockService,
-                           JsonObject settings,
+                           JsonNode settings,
                            String prefix) {
-        this(vertx, redis, encryptionService, blobStore, lockService,
-                settings.getInteger("maxSize"),
-                settings.getLong("syncPeriod"),
-                settings.getLong("syncDelay"),
-                settings.getInteger("syncBatch"),
-                settings.getLong("cacheExpiration"),
-                settings.getInteger("compressionMinSize"),
-                prefix
+        this(scheduledService, redis, encryptionService, blobStore, lockService,
+                settings.get("maxSize").asInt(),
+                settings.get("syncPeriod").asLong(),
+                settings.get("syncDelay").asLong(),
+                settings.get("syncBatch").asInt(),
+                settings.get("cacheExpiration").asLong(),
+                settings.get("compressionMinSize").asInt(),
+                prefix,
+                settings.get("redisPrefix").asText()
         );
     }
 
@@ -124,7 +123,7 @@ public class ResourceService implements AutoCloseable {
      * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
      * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
      */
-    public ResourceService(Vertx vertx,
+    public ResourceService(ScheduledService scheduledService,
                            RedissonClient redis,
                            EncryptionService encryptionService,
                            BlobStorage blobStore,
@@ -135,28 +134,28 @@ public class ResourceService implements AutoCloseable {
                            int syncBatch,
                            long cacheExpiration,
                            int compressionMinSize,
-                           String prefix) {
-        this.vertx = vertx;
+                           String storagePrefix,
+                           String redisPrefix) {
         this.redis = redis;
         this.encryptionService = encryptionService;
         this.blobStore = blobStore;
         this.lockService = lockService;
-        this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
+        this.topic = new ResourceTopic(redis, redisPrefix + ":" + BlobStorageUtil.toStoragePath(storagePrefix, "topic"));
         this.maxSize = maxSize;
         this.syncDelay = syncDelay;
         this.syncBatch = syncBatch;
         this.cacheExpiration = Duration.ofMillis(cacheExpiration);
         this.compressionMinSize = compressionMinSize;
-        this.prefix = prefix;
-        this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
+        this.prefix = storagePrefix;
+        this.resourceQueue = redisPrefix + ":" + BlobStorageUtil.toStoragePath(storagePrefix, "queue");
 
-        // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
-        this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
+        this.syncTimer = scheduledService.scheduleWithFixedDelay(syncPeriod, syncPeriod, this::sync);
     }
 
     @Override
+    @SneakyThrows
     public void close() {
-        vertx.cancelTimer(syncTimer);
+        syncTimer.close();
     }
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescription> resources,
@@ -183,7 +182,7 @@ public class ResourceService implements AutoCloseable {
                 String targetFileUrl = targetFolder + sourceFileUrl.substring(sourceFolder.getUrl().length());
 
                 ResourceDescription sourceFile = ResourceDescription.fromAnyUrl(sourceFileUrl, encryptionService);
-                ResourceDescription targetFile = ResourceDescription.fromAnyUrl(targetFileUrl, encryptionService);
+                ResourceDescription targetFile = ResourceDescription .fromAnyUrl(targetFileUrl, encryptionService);
 
                 if (!copyResource(sourceFile, targetFile, overwrite)) {
                     throw new IllegalArgumentException("Can't copy source file: " + sourceFileUrl
@@ -196,7 +195,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean deleteFolder(String folderUrl) {
-        ResourceDescription folder = ResourceDescription.fromAnyUrl(folderUrl, encryptionService);
+        ResourceDescription folder = ResourceDescription .fromAnyUrl(folderUrl, encryptionService);
         return deleteFolder(folder);
     }
 
@@ -209,7 +208,7 @@ public class ResourceService implements AutoCloseable {
             }
 
             for (MetadataBase item : metadata.getItems()) {
-                ResourceDescription file = ResourceDescription.fromAnyUrl(item.getUrl(), encryptionService);
+                ResourceDescription file = ResourceDescription .fromAnyUrl(item.getUrl(), encryptionService);
                 deleteResource(file, EtagHeader.ANY);
             }
 
@@ -259,7 +258,7 @@ public class ResourceService implements AutoCloseable {
                 updatedAt = meta.getLastModified().getTime();
             }
 
-            if (description.getType() == ResourceType.FILE) {
+            if (!description.isFolder()) {
                 return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
                         .setCreatedAt(createdAt)
                         .setUpdatedAt(updatedAt);
@@ -289,9 +288,9 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        return descriptor.getType() == ResourceType.FILE
-                ? toFileMetadata(descriptor, result)
-                : toResourceItemMetadata(descriptor, result);
+        return descriptor.isFolder()
+                ? toResourceItemMetadata(descriptor, result)
+                : toFileMetadata(descriptor, result);
     }
 
     private static ResourceItemMetadata toResourceItemMetadata(
@@ -365,7 +364,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceStream getResourceStream(ResourceDescription resource) throws IOException {
-        if (resource.getType() != ResourceType.FILE) {
+        if (resource.isFolder()) {
             throw new IllegalArgumentException("Streaming is supported for files only");
         }
 
@@ -442,29 +441,21 @@ public class ResourceService implements AutoCloseable {
             } else {
                 flushToBlobStore(redisKey);
                 String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result, descriptor.getType() != ResourceType.FILE);
+                blobPut(blobKey, result, true);
             }
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
             publishEvent(descriptor, action, updatedAt, newEtag);
-            return descriptor.getType() == ResourceType.FILE
-                    ? toFileMetadata(descriptor, result)
-                    : toResourceItemMetadata(descriptor, result);
+            return descriptor.isFolder()
+                    ? toResourceItemMetadata(descriptor, result)
+                    : toFileMetadata(descriptor, result);
         }
     }
 
     public FileMetadata putFile(ResourceDescription descriptor, byte[] body, EtagHeader etag, String contentType) {
-        if (descriptor.getType() != ResourceType.FILE) {
-            throw new IllegalArgumentException("Expected a file, got %s".formatted(descriptor.getType()));
-        }
-
         return (FileMetadata) putResource(descriptor, body, etag, contentType, true);
-    }
-
-    public BlobWriteStream beginFileUpload(ResourceDescription descriptor, EtagHeader etag, String contentType) {
-        return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
     }
 
     public FileMetadata finishFileUpload(
@@ -692,7 +683,7 @@ public class ResourceService implements AutoCloseable {
                 ? Long.parseLong(meta.getUserMetadata().get(ResourceUtil.UPDATED_AT_ATTRIBUTE))
                 : null;
         ResourceType resourceType = Optional.ofNullable(meta.getUserMetadata().get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE))
-                .map(ResourceType::valueOf)
+                .map(ResourceTypeRegistry::getByType)
                 .orElse(null);
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
@@ -769,7 +760,7 @@ public class ResourceService implements AutoCloseable {
         Long updatedAt = RedisUtil.redisToLong(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
 
         ResourceType resourceType = Optional.ofNullable(RedisUtil.redisToString(fields.get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE), null))
-                .map(ResourceType::valueOf)
+                .map(ResourceTypeRegistry::getByType)
                 .orElse(null);
 
         return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, resourceType, synced);

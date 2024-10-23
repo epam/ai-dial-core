@@ -9,10 +9,10 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.UrlUtil;
 import io.vertx.core.Future;
@@ -83,7 +83,7 @@ public class DeploymentController {
                 throw new ResourceNotFoundException("Unknown application: " + id);
             }
 
-            if (resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
+            if (resource.isFolder() || resource.getType() != ResourceTypes.APPLICATION.getResourceType()) {
                 throw new ResourceNotFoundException("Invalid application url: " + url);
             }
 

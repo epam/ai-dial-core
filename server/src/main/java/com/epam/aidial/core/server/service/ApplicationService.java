@@ -9,12 +9,12 @@ import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.NodeType;
 import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.ResourceItemMetadata;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -106,7 +106,7 @@ public class ApplicationService {
         String location = BlobStorageUtil.buildInitiatorBucket(context);
         String bucket = encryptionService.encrypt(location);
 
-        ResourceDescription folder = ResourceDescription.fromDecoded(ResourceType.APPLICATION, bucket, location, null);
+        ResourceDescription folder = ResourceDescription.fromDecoded(ResourceTypes.APPLICATION.getResourceType(), bucket, location, null);
         return getApplications(folder);
     }
 
@@ -115,7 +115,7 @@ public class ApplicationService {
         String bucket = encryptionService.encrypt(location);
 
         ListSharedResourcesRequest request = new ListSharedResourcesRequest();
-        request.setResourceTypes(Set.of(ResourceType.APPLICATION));
+        request.setResourceTypes(Set.of(ResourceTypes.APPLICATION));
 
         ShareService shares = context.getProxy().getShareService();
         SharedResourcesResponse response = shares.listSharedWithMe(bucket, location, request);
@@ -137,7 +137,7 @@ public class ApplicationService {
     }
 
     public List<Application> getPublicApplications(ProxyContext context) {
-        ResourceDescription folder = ResourceDescription.fromDecoded(ResourceType.APPLICATION, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
+        ResourceDescription folder = ResourceDescription.fromDecoded(ResourceTypes.APPLICATION.getResourceType(), BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, null);
         AccessService accessService = context.getProxy().getAccessService();
         return getApplications(folder, page -> accessService.filterForbidden(context, folder, page));
     }
@@ -167,7 +167,7 @@ public class ApplicationService {
     }
 
     public List<Application> getApplications(ResourceDescription resource, Consumer<ResourceFolderMetadata> filter) {
-        if (!resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
+        if (!resource.isFolder() || resource.getType() != ResourceTypes.APPLICATION.getResourceType()) {
             throw new IllegalArgumentException("Invalid application folder: " + resource.getUrl());
         }
 
@@ -183,7 +183,7 @@ public class ApplicationService {
             filter.accept(folder);
 
             for (MetadataBase meta : folder.getItems()) {
-                if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceType.APPLICATION) {
+                if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceTypes.APPLICATION.getResourceType()) {
                     try {
                         ResourceDescription item = ResourceDescription.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = getApplication(item).getValue();
@@ -460,7 +460,7 @@ public class ApplicationService {
             try {
                 ResourceDescription folder = ResourceDescription.fromAnyUrl(function.getSourceFolder(), encryptionService);
 
-                if (!folder.isFolder() || folder.getType() != ResourceType.FILE || !folder.getBucketName().equals(resource.getBucketName())) {
+                if (!folder.isFolder() || folder.getType() != ResourceTypes.FILE.getResourceType() || !folder.getBucketName().equals(resource.getBucketName())) {
                     throw new IllegalArgumentException();
                 }
 
@@ -609,7 +609,7 @@ public class ApplicationService {
                           + id + BlobStorageUtil.PATH_SEPARATOR;
 
         String name = encryptionService.encrypt(location);
-        return ResourceDescription.fromDecoded(ResourceType.FILE, name, location, null).getUrl();
+        return ResourceDescription.fromDecoded(ResourceTypes.FILE.getResourceType(), name, location, null).getUrl();
     }
 
     public static boolean isActive(Application application) {
@@ -621,7 +621,7 @@ public class ApplicationService {
     }
 
     private static void verifyApplication(ResourceDescription resource) {
-        if (resource.isFolder() || resource.getType() != ResourceType.APPLICATION) {
+        if (resource.isFolder() || resource.getType() != ResourceTypes.APPLICATION.getResourceType()) {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
         }
     }

@@ -1,11 +1,13 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResource;
+import com.epam.aidial.core.server.resource.ResourceType;
+import com.epam.aidial.core.server.resource.ResourceTypeRegistry;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import lombok.experimental.UtilityClass;
 
 import java.util.List;
@@ -22,7 +24,15 @@ public class ResourceUtil {
     // Default ETag for old records
     public static final String DEFAULT_ETAG = "0";
 
-    public ResourceType getResourceType(String url) {
+    public ResourceType toExternal(String group) {
+        ResourceType resourceType = ResourceTypeRegistry.getByGroup(group);
+        if (resourceType == null || !resourceType.external()) {
+            throw new IllegalArgumentException("Unsupported resource type: " + group);
+        }
+        return resourceType;
+    }
+
+    public ResourceTypes getResourceType(String url) {
         if (url == null) {
             throw new IllegalStateException("Resource link can not be null");
         }
@@ -33,7 +43,7 @@ public class ResourceUtil {
             throw new IllegalStateException("Invalid resource link provided: " + url);
         }
 
-        return ResourceType.of(paths[0]);
+        return ResourceTypes.of(paths[0]);
     }
 
     public String getBucket(String url) {

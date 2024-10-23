@@ -8,7 +8,7 @@ import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.Publications;
 import com.epam.aidial.core.server.data.RejectPublicationRequest;
 import com.epam.aidial.core.server.data.ResourceLink;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rules;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -18,7 +18,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.resource.ResourceDescription;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -210,7 +210,7 @@ public class PublicationController {
             throw new IllegalArgumentException("Invalid resource: " + path, e);
         }
 
-        if (resource.getType() != ResourceType.PUBLICATION) {
+        if (resource.getType() != ResourceTypes.PUBLICATION.getResourceType()) {
             throw new IllegalArgumentException("Invalid resource: " + path);
         }
 
@@ -228,7 +228,7 @@ public class PublicationController {
             }
 
             String folder = path.substring(BlobStorageUtil.PUBLIC_LOCATION.length());
-            ResourceDescription resource = ResourceDescription.fromEncoded(ResourceType.RULES, BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, folder);
+            ResourceDescription resource = ResourceDescription.fromEncoded(ResourceTypes.RULES.getResourceType(), BlobStorageUtil.PUBLIC_BUCKET, BlobStorageUtil.PUBLIC_LOCATION, folder);
 
             if (!resource.isFolder()) {
                 throw new IllegalArgumentException();
