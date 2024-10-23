@@ -557,7 +557,7 @@ public class IdentityProviderTest {
             assertTrue(res.succeeded());
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
-            assertEquals(List.of("r1","r2","r3","r4"), claims.userRoles());
+            assertEquals(List.of("r1", "r2", "r3", "r4"), claims.userRoles());
         });
     }
 
