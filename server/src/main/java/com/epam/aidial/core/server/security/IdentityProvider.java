@@ -41,7 +41,7 @@ public class IdentityProvider {
     // path to the claim of user roles in JWT
     private final String[] rolePath;
 
-    // Delimiter to split the roles is they are set as a single String
+    // Delimiter to split the roles if they are set as a single String
     private final String rolesDelimiter;
 
     private JwkProvider jwkProvider;
