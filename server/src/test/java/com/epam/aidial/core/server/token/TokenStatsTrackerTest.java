@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.TimerService;
 import com.epam.aidial.core.server.storage.BlobStorage;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -87,7 +88,7 @@ public class TokenStatsTrackerTest {
     }
 
     @BeforeEach
-    public void beforeEach() {
+    public void beforeEach() throws Exception {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
@@ -104,7 +105,7 @@ public class TokenStatsTrackerTest {
                   }
                 """;
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
-                lockService, new JsonObject(resourceConfig), null);
+                lockService, ProxyUtil.MAPPER.readTree(resourceConfig), null);
         tracker = new TokenStatsTracker(vertx, resourceService);
     }
 

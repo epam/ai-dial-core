@@ -12,8 +12,8 @@ import com.epam.aidial.core.server.util.Compression;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.RedisUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
-import io.vertx.core.json.JsonObject;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -102,15 +102,15 @@ public class ResourceService implements AutoCloseable {
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
-                           JsonObject settings,
+                           JsonNode settings,
                            String prefix) {
         this(timerService, redis, blobStore, lockService,
-                settings.getInteger("maxSize"),
-                settings.getLong("syncPeriod"),
-                settings.getLong("syncDelay"),
-                settings.getInteger("syncBatch"),
-                settings.getLong("cacheExpiration"),
-                settings.getInteger("compressionMinSize"),
+                settings.get("maxSize").asInt(),
+                settings.get("syncPeriod").asLong(),
+                settings.get("syncDelay").asLong(),
+                settings.get("syncBatch").asInt(),
+                settings.get("cacheExpiration").asLong(),
+                settings.get("compressionMinSize").asInt(),
                 prefix
         );
     }

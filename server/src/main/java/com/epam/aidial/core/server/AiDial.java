@@ -26,6 +26,8 @@ import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.storage.Storage;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -46,6 +48,7 @@ import io.vertx.micrometer.MicrometerMetricsOptions;
 import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
@@ -112,7 +115,7 @@ public class AiDial {
 
             LockService lockService = new LockService(redis, storage.getPrefix());
             TimerService timerService = new VertxTimerService(vertx);
-            resourceService = new ResourceService(timerService, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            resourceService = new ResourceService(timerService, redis, storage, lockService, toJsonNode(settings("resources")), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);
@@ -182,6 +185,11 @@ public class AiDial {
             String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             return new JsonObject(json);
         }
+    }
+
+    @SneakyThrows
+    private static JsonNode toJsonNode(JsonObject jsonObject) {
+        return ProxyUtil.MAPPER.readTree(jsonObject.encode());
     }
 
     private static String version() {

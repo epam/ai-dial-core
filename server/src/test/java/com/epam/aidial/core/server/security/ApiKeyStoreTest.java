@@ -89,7 +89,7 @@ public class ApiKeyStoreTest {
     }
 
     @BeforeEach
-    public void beforeEach() {
+    public void beforeEach() throws Exception {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
@@ -105,7 +105,8 @@ public class ApiKeyStoreTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+                lockService, ProxyUtil.MAPPER.readTree(resourceConfig), null);
         store = new ApiKeyStore(resourceService, vertx);
     }
 
