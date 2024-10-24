@@ -6,8 +6,8 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.resource.ResourceUtil;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -48,7 +48,7 @@ public class CollectResponseAttachmentsFn extends BaseResponseFunction {
             throw new IllegalArgumentException(errorMsg);
         }
         for (String url : collectedUrls) {
-            if (BlobStorageUtil.isFolder(url)) {
+            if (ResourceUtil.isFolder(url)) {
                 apiKeyData.getAttachedFolders().put(url, new AutoSharedData(ResourceAccessType.ALL));
             } else {
                 apiKeyData.getAttachedFiles().put(url, new AutoSharedData(ResourceAccessType.ALL));

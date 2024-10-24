@@ -1,8 +1,10 @@
-package com.epam.aidial.core.server.storage;
+package com.epam.aidial.core.server.vertx.stream;
 
 import com.epam.aidial.core.server.data.FileMetadata;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.service.ResourceService;
+import com.epam.aidial.core.server.storage.BlobStorage;
+import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
 import io.netty.buffer.ByteBuf;

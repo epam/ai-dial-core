@@ -9,7 +9,7 @@ import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 
@@ -34,7 +34,7 @@ public class InvitationController {
     public Future<?> getInvitations() {
         proxy.getVertx()
                 .executeBlocking(() -> {
-                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return invitationService.getMyInvitations(bucket, bucketLocation);
                 }, false)
@@ -48,7 +48,7 @@ public class InvitationController {
         if (accept) {
             proxy.getVertx()
                     .executeBlocking(() -> {
-                        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                         String bucket = encryptionService.encrypt(bucketLocation);
                         ResourceDescriptor invitationResource = invitationService.getInvitationResource(invitationId);
                         if (invitationResource == null) {
@@ -86,7 +86,7 @@ public class InvitationController {
     public Future<?> deleteInvitation(String invitationId) {
         proxy.getVertx()
                 .executeBlocking(() -> {
-                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.deleteInvitation(bucket, invitationId);

@@ -1,6 +1,7 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.vertx.stream;
 
 import com.epam.aidial.core.server.function.BaseResponseFunction;
+import com.epam.aidial.core.server.util.EventStreamParser;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;

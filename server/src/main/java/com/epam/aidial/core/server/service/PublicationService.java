@@ -17,7 +17,7 @@ import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
@@ -66,7 +66,7 @@ public class PublicationService {
 
     public static boolean hasReviewAccess(ProxyContext context, ResourceDescriptor resource) {
         if (isReviewBucket(resource)) {
-            String location = BlobStorageUtil.buildInitiatorBucket(context);
+            String location = BucketBuilder.buildInitiatorBucket(context);
             String reviewLocation = location + PUBLICATIONS_NAME + ResourceDescriptor.PATH_SEPARATOR;
             return resource.getBucketLocation().startsWith(reviewLocation);
         }
@@ -139,7 +139,7 @@ public class PublicationService {
     }
 
     public Publication createPublication(ProxyContext context, Publication publication) {
-        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         String bucket = encryption.encrypt(bucketLocation);
         boolean isAdmin = accessService.hasAdminAccess(context);
 
