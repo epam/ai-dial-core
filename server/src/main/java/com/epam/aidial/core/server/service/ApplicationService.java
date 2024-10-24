@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -87,7 +88,7 @@ public class ApplicationService {
 
     public static boolean hasDeploymentAccess(ProxyContext context, ResourceDescriptor resource) {
         if (resource.getBucketLocation().contains(DEPLOYMENTS_NAME)) {
-            String location = BlobStorageUtil.buildInitiatorBucket(context);
+            String location = BucketBuilder.buildInitiatorBucket(context);
             String reviewLocation = location + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR;
             return resource.getBucketLocation().startsWith(reviewLocation);
         }
@@ -104,7 +105,7 @@ public class ApplicationService {
     }
 
     public List<Application> getPrivateApplications(ProxyContext context) {
-        String location = BlobStorageUtil.buildInitiatorBucket(context);
+        String location = BucketBuilder.buildInitiatorBucket(context);
         String bucket = encryptionService.encrypt(location);
 
         ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, bucket, location, null);
@@ -112,7 +113,7 @@ public class ApplicationService {
     }
 
     public List<Application> getSharedApplications(ProxyContext context) {
-        String location = BlobStorageUtil.buildInitiatorBucket(context);
+        String location = BucketBuilder.buildInitiatorBucket(context);
         String bucket = encryptionService.encrypt(location);
 
         ListSharedResourcesRequest request = new ListSharedResourcesRequest();

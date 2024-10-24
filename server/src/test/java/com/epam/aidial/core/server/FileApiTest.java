@@ -3,12 +3,9 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
-import com.epam.aidial.core.server.data.FileMetadata;
 import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceFolderMetadata;
-import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.storage.BlobWriteStream;
+import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -24,7 +21,6 @@ import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 

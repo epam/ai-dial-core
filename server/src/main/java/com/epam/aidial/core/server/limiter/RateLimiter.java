@@ -10,8 +10,8 @@ import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
@@ -148,7 +148,7 @@ public class RateLimiter {
         // use bucket location of request's initiator,
         // e.g. user -> core -> application -> core -> model, limits must be applied to the user by JWT
         // e.g. service -> core -> application -> core -> model, limits must be applied to service by API key
-        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         return ResourceDescriptorFactory.fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 

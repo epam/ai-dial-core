@@ -14,7 +14,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -149,7 +149,7 @@ public class ApplicationController {
         boolean hasAccess = accessService.hasAdminAccess(context);
 
         if (!hasAccess && resource.isPrivate()) {
-            String bucket = BlobStorageUtil.buildInitiatorBucket(context);
+            String bucket = BucketBuilder.buildInitiatorBucket(context);
             hasAccess = resource.getBucketLocation().equals(bucket);
         }
 

@@ -19,7 +19,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.RuleService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -163,7 +163,7 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     ListPublishedResourcesRequest request = ProxyUtil.convertToObject(body, ListPublishedResourcesRequest.class);
-                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptService.encrypt(bucketLocation);
                     return vertx.executeBlocking(() -> {
                         Collection<MetadataBase> metadata =
@@ -245,7 +245,7 @@ public class PublicationController {
         boolean hasAccess = isAdmin();
 
         if (!hasAccess && allowUser) {
-            String bucket = BlobStorageUtil.buildInitiatorBucket(context);
+            String bucket = BucketBuilder.buildInitiatorBucket(context);
             hasAccess = resource.getBucketLocation().equals(bucket);
         }
 

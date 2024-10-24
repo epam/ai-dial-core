@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.resource;
 
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
 import org.apache.commons.lang3.StringUtils;
 
@@ -34,7 +33,7 @@ public class ResourceDescriptorFactory {
                 verify(isValidFilename(element), "Invalid path provided " + urlEncodedRelativePath)
         );
 
-        ResourceDescriptor resource = from(type, bucketName, bucketLocation, elements, BlobStorageUtil.isFolder(urlEncodedRelativePath));
+        ResourceDescriptor resource = from(type, bucketName, bucketLocation, elements, ResourceUtil.isFolder(urlEncodedRelativePath));
         verify(resource.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_SIZE,
                 "Resource path exceeds max allowed size: " + MAX_PATH_SIZE);
 
@@ -53,7 +52,7 @@ public class ResourceDescriptorFactory {
         verify(bucketLocation.endsWith(ResourceDescriptor.PATH_SEPARATOR), "Bucket location must end with /");
 
         List<String> elements = Arrays.asList(path.split(ResourceDescriptor.PATH_SEPARATOR));
-        return from(type, bucketName, bucketLocation, elements, BlobStorageUtil.isFolder(path));
+        return from(type, bucketName, bucketLocation, elements, ResourceUtil.isFolder(path));
     }
 
     public static ResourceDescriptor fromPublicUrl(String url) {

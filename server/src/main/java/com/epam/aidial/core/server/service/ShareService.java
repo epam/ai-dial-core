@@ -20,7 +20,6 @@ import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.resource.ResourceType;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.ResourceUtil;
 import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,7 +66,7 @@ public class ShareService {
             String sharedResource = resourceService.getResource(resource);
             SharedResources sharedResources = ProxyUtil.convertToObject(sharedResource, SharedResources.class);
             if (sharedResources != null) {
-                Map<String, Set<ResourceAccessType>> links = ResourceUtil.sharedResourcesToMap(sharedResources.getResources());
+                Map<String, Set<ResourceAccessType>> links = sharedResourcesToMap(sharedResources.getResources());
                 resultMetadata.addAll(linksToMetadata(links));
             }
         }
@@ -161,10 +160,10 @@ public class ShareService {
 
         // group resources with the same type to reduce resource transformations
         Map<ResourceTypes, List<SharedResource>> resourceGroups = resourceLinks.stream()
-                .collect(Collectors.groupingBy(sharedResource -> ResourceUtil.getResourceType(sharedResource.url())));
+                .collect(Collectors.groupingBy(sharedResource -> getResourceType(sharedResource.url())));
 
         resourceGroups.forEach((resourceType, links) -> {
-            String ownerBucket = ResourceUtil.getBucket(links.get(0).url());
+            String ownerBucket = getBucket(links.get(0).url());
             String ownerLocation = encryptionService.decrypt(ownerBucket);
 
             // write user location to the resource owner
@@ -191,7 +190,7 @@ public class ShareService {
                 }
 
                 // add all links to the user
-                sharedResources.addSharedResources(ResourceUtil.sharedResourcesToMap(links));
+                sharedResources.addSharedResources(sharedResourcesToMap(links));
 
                 return ProxyUtil.convertToString(sharedResources);
             });
@@ -215,7 +214,7 @@ public class ShareService {
             }
 
             Map<String, Set<ResourceAccessType>> resourcePermissions =
-                    ResourceUtil.sharedResourcesToMap(sharedResources.getResources());
+                    sharedResourcesToMap(sharedResources.getResources());
             for (ResourceDescriptor resource : resources) {
                 result.put(resource, lookupPermissions(resource, resourcePermissions, new HashMap<>()));
             }
@@ -443,11 +442,55 @@ public class ShareService {
     }
 
     private ResourceDescriptor getResourceFromLink(String url) {
-        return ResourceUtil.resourceFromUrl(url, encryptionService);
+        return resourceFromUrl(url, encryptionService);
     }
 
     private ResourceDescriptor getShareResource(ResourceType shareResourceType, ResourceType requestedResourceType, String bucket, String location) {
         return ResourceDescriptorFactory.fromDecoded(shareResourceType, bucket, location,
                 requestedResourceType.group() + ResourceDescriptor.PATH_SEPARATOR + SHARE_RESOURCE_FILENAME);
+    }
+
+    private ResourceTypes getResourceType(String url) {
+        if (url == null) {
+            throw new IllegalStateException("Resource link can not be null");
+        }
+
+        String[] paths = url.split(ResourceDescriptor.PATH_SEPARATOR);
+
+        if (paths.length < 2) {
+            throw new IllegalStateException("Invalid resource link provided: " + url);
+        }
+
+        return ResourceTypes.of(paths[0]);
+    }
+
+    private String getBucket(String url) {
+        if (url == null) {
+            throw new IllegalStateException("Resource link can not be null");
+        }
+
+        String[] paths = url.split(ResourceDescriptor.PATH_SEPARATOR);
+
+        if (paths.length < 2) {
+            throw new IllegalStateException("Invalid resource link provided: " + url);
+        }
+
+        return paths[1];
+    }
+
+    public static Map<String, Set<ResourceAccessType>> sharedResourcesToMap(List<SharedResource> sharedResources) {
+        return sharedResources.stream()
+                .collect(Collectors.toUnmodifiableMap(SharedResource::url, SharedResource::permissions));
+    }
+
+    public static ResourceDescriptor resourceFromUrl(String url, EncryptionService encryptionService) {
+        try {
+            if (url.startsWith(ProxyUtil.METADATA_PREFIX)) {
+                url = url.substring(ProxyUtil.METADATA_PREFIX.length());
+            }
+            return ResourceDescriptorFactory.fromPrivateUrl(url, encryptionService);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Incorrect resource link provided " + url);
+        }
     }
 }

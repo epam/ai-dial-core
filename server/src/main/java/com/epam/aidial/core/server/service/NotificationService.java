@@ -7,7 +7,7 @@ import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.AllArgsConstructor;
@@ -67,7 +67,7 @@ public class NotificationService {
     }
 
     private static ResourceDescriptor getNotificationResource(ProxyContext context, EncryptionService encryptionService) {
-        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         String bucketName = encryptionService.encrypt(bucketLocation);
         return getNotificationResource(bucketName, bucketLocation);
     }

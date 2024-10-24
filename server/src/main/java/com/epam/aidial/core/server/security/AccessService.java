@@ -12,7 +12,7 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UrlUtil;
 import com.google.common.collect.Sets;
@@ -175,7 +175,7 @@ public class AccessService {
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        String location = BlobStorageUtil.buildUserBucket(context);
+        String location = BucketBuilder.buildUserBucket(context);
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
             if (resource.getBucketLocation().equals(location)) {
@@ -199,7 +199,7 @@ public class AccessService {
             Set<ResourceDescriptor> resources, ProxyContext context, String deployment) {
 
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
-        String location = BlobStorageUtil.buildAppDataBucket(context);
+        String location = BucketBuilder.buildAppDataBucket(context);
         for (ResourceDescriptor resource : resources) {
             if (!resource.getBucketLocation().equals(location)) {
                 continue;
@@ -210,7 +210,7 @@ public class AccessService {
                     ? resource.getName()
                     : parentPath + ResourceDescriptor.PATH_SEPARATOR + resource.getName();
 
-            if (filePath.startsWith(BlobStorageUtil.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment)))) {
+            if (filePath.startsWith(BucketBuilder.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment)))) {
                 result.put(resource, ResourceAccessType.ALL);
             }
         }
@@ -220,7 +220,7 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getSharedAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        String actualUserLocation = BlobStorageUtil.buildInitiatorBucket(context);
+        String actualUserLocation = BucketBuilder.buildInitiatorBucket(context);
         String actualUserBucket = encryptionService.encrypt(actualUserLocation);
         return shareService.getPermissions(actualUserBucket, actualUserLocation, resources);
     }
