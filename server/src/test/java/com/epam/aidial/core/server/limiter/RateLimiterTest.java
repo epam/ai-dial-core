@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.service.TimerService;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
@@ -99,24 +100,15 @@ public class RateLimiterTest {
     }
 
     @BeforeEach
-    public void beforeEach() {
+    public void beforeEach() throws Exception {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
         LockService lockService = new LockService(redissonClient, null);
-        String resourceConfig = """
-                  {
-                    "maxSize" : 1048576,
-                    "syncPeriod": 60000,
-                    "syncDelay": 120000,
-                    "syncBatch": 4096,
-                    "cacheExpiration": 300000,
-                    "compressionMinSize": 256
-                  }
-                """;
+        ResourceService.Settings settings = new ResourceService.Settings(1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
-                lockService, new JsonObject(resourceConfig), null);
+                lockService, settings, null);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 

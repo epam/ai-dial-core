@@ -89,23 +89,15 @@ public class ApiKeyStoreTest {
     }
 
     @BeforeEach
-    public void beforeEach() {
+    public void beforeEach() throws Exception {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
         LockService lockService = new LockService(redissonClient, null);
-        String resourceConfig = """
-                  {
-                    "maxSize" : 1048576,
-                    "syncPeriod": 60000,
-                    "syncDelay": 120000,
-                    "syncBatch": 4096,
-                    "cacheExpiration": 300000,
-                    "compressionMinSize": 256
-                  }
-                """;
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService.Settings settings = new ResourceService.Settings(1048576, 60000, 120000, 4096, 300000, 256);
+        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+                lockService, settings, null);
         store = new ApiKeyStore(resourceService, vertx);
     }
 

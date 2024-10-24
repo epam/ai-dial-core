@@ -12,8 +12,8 @@ import com.epam.aidial.core.server.util.Compression;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.RedisUtil;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.Sets;
-import io.vertx.core.json.JsonObject;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.SneakyThrows;
@@ -102,51 +102,21 @@ public class ResourceService implements AutoCloseable {
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
-                           JsonObject settings,
-                           String prefix) {
-        this(timerService, redis, blobStore, lockService,
-                settings.getInteger("maxSize"),
-                settings.getLong("syncPeriod"),
-                settings.getLong("syncDelay"),
-                settings.getInteger("syncBatch"),
-                settings.getLong("cacheExpiration"),
-                settings.getInteger("compressionMinSize"),
-                prefix
-        );
-    }
-
-    /**
-     * @param maxSize            - max allowed size in bytes for a resource.
-     * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
-     * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
-     * @param syncBatch          - how many resources to sync in one go.
-     * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
-     * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
-     */
-    public ResourceService(TimerService timerService,
-                           RedissonClient redis,
-                           BlobStorage blobStore,
-                           LockService lockService,
-                           int maxSize,
-                           long syncPeriod,
-                           long syncDelay,
-                           int syncBatch,
-                           long cacheExpiration,
-                           int compressionMinSize,
+                           Settings settings,
                            String prefix) {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
-        this.maxSize = maxSize;
-        this.syncDelay = syncDelay;
-        this.syncBatch = syncBatch;
-        this.cacheExpiration = Duration.ofMillis(cacheExpiration);
-        this.compressionMinSize = compressionMinSize;
+        this.maxSize = settings.maxSize;
+        this.syncDelay = settings.syncDelay;
+        this.syncBatch = settings.syncBatch;
+        this.cacheExpiration = Duration.ofMillis(settings.cacheExpiration);
+        this.compressionMinSize = settings.compressionMinSize;
         this.prefix = prefix;
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
 
-        this.syncTimer = timerService.scheduleWithFixedDelay(syncPeriod, syncPeriod, this::sync);
+        this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
     }
 
     @SneakyThrows
@@ -892,5 +862,23 @@ public class ResourceService implements AutoCloseable {
             String contentType,
             long contentLength,
             String etag) {
+    }
+
+    /**
+     * @param maxSize            - max allowed size in bytes for a resource.
+     * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
+     * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
+     * @param syncBatch          - how many resources to sync in one go.
+     * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
+     * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Settings(
+            int maxSize,
+            long syncPeriod,
+            long syncDelay,
+            int syncBatch,
+            long cacheExpiration,
+            int compressionMinSize) {
     }
 }

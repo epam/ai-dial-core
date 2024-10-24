@@ -112,7 +112,8 @@ public class AiDial {
 
             LockService lockService = new LockService(redis, storage.getPrefix());
             TimerService timerService = new VertxTimerService(vertx);
-            resourceService = new ResourceService(timerService, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
+            resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);
