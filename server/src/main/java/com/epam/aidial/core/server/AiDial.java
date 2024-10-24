@@ -20,6 +20,8 @@ import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.TimerService;
+import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.storage.Storage;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -109,7 +111,8 @@ public class AiDial {
             redis = CacheClientFactory.create(settings("redis"));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            resourceService = new ResourceService(vertx, redis, storage, lockService, settings("resources"), storage.getPrefix());
+            TimerService timerService = new VertxTimerService(vertx);
+            resourceService = new ResourceService(timerService, redis, storage, lockService, settings("resources"), storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);

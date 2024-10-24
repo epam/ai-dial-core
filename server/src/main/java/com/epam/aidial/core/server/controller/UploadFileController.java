@@ -5,10 +5,10 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.FileMetadata;
 import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
-import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.storage.BlobWriteStream;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
@@ -18,11 +18,9 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UploadFileController extends AccessControlBaseController {
-    private final ResourceService resourceService;
 
     public UploadFileController(Proxy proxy, ProxyContext context) {
         super(proxy, context, true);
-        this.resourceService = proxy.getResourceService();
     }
 
     @Override
@@ -36,14 +34,15 @@ public class UploadFileController extends AccessControlBaseController {
         }
 
         return proxy.getVertx().executeBlocking(() -> {
-            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+            EtagHeader etag = ProxyUtil.fromRequest(context.getRequest());
             etag.validate(() -> proxy.getResourceService().getEtag(resource));
             context.getRequest()
                     .setExpectMultipart(true)
                     .uploadHandler(upload -> {
                         String contentType = upload.contentType();
                         Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                        BlobWriteStream writeStream = resourceService.beginFileUpload(resource, etag, contentType);
+                        BlobWriteStream writeStream = new BlobWriteStream(proxy.getVertx(), proxy.getResourceService(),
+                                proxy.getStorage(), resource, etag, contentType);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
                                     FileMetadata metadata = writeStream.getMetadata();

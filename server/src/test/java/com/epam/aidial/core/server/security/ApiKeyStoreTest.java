@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ResourceService;
+import com.epam.aidial.core.server.service.TimerService;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -103,7 +105,7 @@ public class ApiKeyStoreTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
         store = new ApiKeyStore(resourceService, vertx);
     }
 

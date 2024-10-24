@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,7 +36,7 @@ public class DeleteFileController extends AccessControlBaseController {
         }
 
         proxy.getVertx().executeBlocking(() -> {
-            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+            EtagHeader etag = ProxyUtil.fromRequest(context.getRequest());
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
             return lockService.underBucketLock(bucketLocation, () -> {

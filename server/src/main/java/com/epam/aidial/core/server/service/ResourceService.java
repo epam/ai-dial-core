@@ -9,14 +9,11 @@ import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.resource.ResourceType;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.BlobWriteStream;
 import com.epam.aidial.core.server.util.Compression;
 import com.epam.aidial.core.server.util.EtagBuilder;
 import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.RedisUtil;
-import com.epam.aidial.core.server.util.ResourceUtil;
 import com.google.common.collect.Sets;
-import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Builder;
 import lombok.Getter;
@@ -60,16 +57,22 @@ import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
+    // Default ETag for old records
+    public static final String DEFAULT_ETAG = "0";
     private static final String BODY_ATTRIBUTE = "body";
     private static final String CONTENT_TYPE_ATTRIBUTE = "content_type";
     private static final String CONTENT_LENGTH_ATTRIBUTE = "content_length";
     private static final String SYNCED_ATTRIBUTE = "synced";
     private static final String EXISTS_ATTRIBUTE = "exists";
+    public static final String RESOURCE_TYPE_ATTRIBUTE = "resource_type";
+    public static final String UPDATED_AT_ATTRIBUTE = "updated_at";
+    public static final String CREATED_AT_ATTRIBUTE = "created_at";
+    public static final String ETAG_ATTRIBUTE = "etag";
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of(
-            ResourceUtil.ETAG_ATTRIBUTE,
-            ResourceUtil.CREATED_AT_ATTRIBUTE,
-            ResourceUtil.UPDATED_AT_ATTRIBUTE,
-            ResourceUtil.RESOURCE_TYPE_ATTRIBUTE,
+            ETAG_ATTRIBUTE,
+            CREATED_AT_ATTRIBUTE,
+            UPDATED_AT_ATTRIBUTE,
+            RESOURCE_TYPE_ATTRIBUTE,
             CONTENT_TYPE_ATTRIBUTE,
             CONTENT_LENGTH_ATTRIBUTE,
             SYNCED_ATTRIBUTE,
@@ -81,14 +84,13 @@ public class ResourceService implements AutoCloseable {
             StringCodec.INSTANCE,
             ByteArrayCodec.INSTANCE);
 
-    private final Vertx vertx;
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
-    private final long syncTimer;
+    private final TimerService.Timer syncTimer;
     private final long syncDelay;
     private final int syncBatch;
     private final Duration cacheExpiration;
@@ -96,13 +98,13 @@ public class ResourceService implements AutoCloseable {
     private final String prefix;
     private final String resourceQueue;
 
-    public ResourceService(Vertx vertx,
+    public ResourceService(TimerService timerService,
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
                            JsonObject settings,
                            String prefix) {
-        this(vertx, redis, blobStore, lockService,
+        this(timerService, redis, blobStore, lockService,
                 settings.getInteger("maxSize"),
                 settings.getLong("syncPeriod"),
                 settings.getLong("syncDelay"),
@@ -121,7 +123,7 @@ public class ResourceService implements AutoCloseable {
      * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
      * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
      */
-    public ResourceService(Vertx vertx,
+    public ResourceService(TimerService timerService,
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
@@ -132,7 +134,6 @@ public class ResourceService implements AutoCloseable {
                            long cacheExpiration,
                            int compressionMinSize,
                            String prefix) {
-        this.vertx = vertx;
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
@@ -145,13 +146,13 @@ public class ResourceService implements AutoCloseable {
         this.prefix = prefix;
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
 
-        // vertex timer is called from event loop, so sync is done in worker thread to not block event loop
-        this.syncTimer = vertx.setPeriodic(syncPeriod, syncPeriod, ignore -> vertx.executeBlocking(() -> sync()));
+        this.syncTimer = timerService.scheduleWithFixedDelay(syncPeriod, syncPeriod, this::sync);
     }
 
+    @SneakyThrows
     @Override
     public void close() {
-        vertx.cancelTimer(syncTimer);
+        syncTimer.close();
     }
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
@@ -231,8 +232,8 @@ public class ResourceService implements AutoCloseable {
             Long updatedAt = null;
 
             if (metadata != null) {
-                createdAt = metadata.containsKey(ResourceUtil.CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(ResourceUtil.CREATED_AT_ATTRIBUTE)) : null;
-                updatedAt = metadata.containsKey(ResourceUtil.UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(ResourceUtil.UPDATED_AT_ATTRIBUTE)) : null;
+                createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
+                updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
             }
 
             if (createdAt == null && meta.getCreationDate() != null) {
@@ -373,7 +374,7 @@ public class ResourceService implements AutoCloseable {
 
             Payload payload = blob.getPayload();
             BlobMetadata metadata = blob.getMetadata();
-            String etag = ResourceUtil.extractEtag(metadata.getUserMetadata());
+            String etag = extractEtag(metadata.getUserMetadata());
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
@@ -445,10 +446,6 @@ public class ResourceService implements AutoCloseable {
         }
 
         return (FileMetadata) putResource(descriptor, body, etag, contentType, true);
-    }
-
-    public BlobWriteStream beginFileUpload(ResourceDescriptor descriptor, EtagHeader etag, String contentType) {
-        return new BlobWriteStream(vertx, this, blobStore, descriptor, etag, contentType);
     }
 
     public FileMetadata finishFileUpload(
@@ -666,14 +663,14 @@ public class ResourceService implements AutoCloseable {
 
     @SneakyThrows
     private Result blobToResult(Blob blob, BlobMetadata meta) {
-        String etag = ResourceUtil.extractEtag(meta.getUserMetadata());
+        String etag = extractEtag(meta.getUserMetadata());
         String contentType = meta.getContentMetadata().getContentType();
         Long contentLength = meta.getContentMetadata().getContentLength();
-        Long createdAt = meta.getUserMetadata().containsKey(ResourceUtil.CREATED_AT_ATTRIBUTE)
-                ? Long.parseLong(meta.getUserMetadata().get(ResourceUtil.CREATED_AT_ATTRIBUTE))
+        Long createdAt = meta.getUserMetadata().containsKey(CREATED_AT_ATTRIBUTE)
+                ? Long.parseLong(meta.getUserMetadata().get(CREATED_AT_ATTRIBUTE))
                 : null;
-        Long updatedAt = meta.getUserMetadata().containsKey(ResourceUtil.UPDATED_AT_ATTRIBUTE)
-                ? Long.parseLong(meta.getUserMetadata().get(ResourceUtil.UPDATED_AT_ATTRIBUTE))
+        Long updatedAt = meta.getUserMetadata().containsKey(UPDATED_AT_ATTRIBUTE)
+                ? Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE))
                 : null;
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
@@ -743,11 +740,11 @@ public class ResourceService implements AutoCloseable {
         }
 
         byte[] body = fields.getOrDefault(BODY_ATTRIBUTE, ArrayUtils.EMPTY_BYTE_ARRAY);
-        String etag = RedisUtil.redisToString(fields.get(ResourceUtil.ETAG_ATTRIBUTE), ResourceUtil.DEFAULT_ETAG);
+        String etag = RedisUtil.redisToString(fields.get(ETAG_ATTRIBUTE), DEFAULT_ETAG);
         String contentType = RedisUtil.redisToString(fields.get(CONTENT_TYPE_ATTRIBUTE), null);
         Long contentLength = RedisUtil.redisToLong(fields.get(CONTENT_LENGTH_ATTRIBUTE));
-        Long createdAt = RedisUtil.redisToLong(fields.get(ResourceUtil.CREATED_AT_ATTRIBUTE));
-        Long updatedAt = RedisUtil.redisToLong(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
+        Long createdAt = RedisUtil.redisToLong(fields.get(CREATED_AT_ATTRIBUTE));
+        Long updatedAt = RedisUtil.redisToLong(fields.get(UPDATED_AT_ATTRIBUTE));
 
         return new Result(body, etag, createdAt, updatedAt, contentType, contentLength, null, synced);
     }
@@ -765,10 +762,10 @@ public class ResourceService implements AutoCloseable {
         Map<String, byte[]> fields = new HashMap<>();
         if (result.exists()) {
             fields.put(BODY_ATTRIBUTE, result.body);
-            fields.put(ResourceUtil.ETAG_ATTRIBUTE, RedisUtil.stringToRedis(result.etag));
-            fields.put(ResourceUtil.CREATED_AT_ATTRIBUTE, RedisUtil.longToRedis(result.createdAt));
-            fields.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, RedisUtil.longToRedis(result.updatedAt));
-            fields.put(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE, RedisUtil.stringToRedis(Optional.ofNullable(result.resourceType)
+            fields.put(ETAG_ATTRIBUTE, RedisUtil.stringToRedis(result.etag));
+            fields.put(CREATED_AT_ATTRIBUTE, RedisUtil.longToRedis(result.createdAt));
+            fields.put(UPDATED_AT_ATTRIBUTE, RedisUtil.longToRedis(result.updatedAt));
+            fields.put(RESOURCE_TYPE_ATTRIBUTE, RedisUtil.stringToRedis(Optional.ofNullable(result.resourceType)
                     .map(ResourceType::name)
                     .orElse(null)));
             fields.put(CONTENT_TYPE_ATTRIBUTE, RedisUtil.stringToRedis(result.contentType));
@@ -823,18 +820,22 @@ public class ResourceService implements AutoCloseable {
 
     private static Map<String, String> toUserMetadata(String etag, Long createdAt, Long updatedAt, ResourceType resourceType) {
         Map<String, String> metadata = new HashMap<>();
-        metadata.put(ResourceUtil.ETAG_ATTRIBUTE, etag);
+        metadata.put(ETAG_ATTRIBUTE, etag);
         if (createdAt != null) {
-            metadata.put(ResourceUtil.CREATED_AT_ATTRIBUTE, Long.toString(createdAt));
+            metadata.put(CREATED_AT_ATTRIBUTE, Long.toString(createdAt));
         }
         if (updatedAt != null) {
-            metadata.put(ResourceUtil.UPDATED_AT_ATTRIBUTE, Long.toString(updatedAt));
+            metadata.put(UPDATED_AT_ATTRIBUTE, Long.toString(updatedAt));
         }
         if (resourceType != null) {
-            metadata.put(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE, resourceType.name());
+            metadata.put(RESOURCE_TYPE_ATTRIBUTE, resourceType.name());
         }
 
         return metadata;
+    }
+
+    public String extractEtag(Map<String, String> attributes) {
+        return attributes.getOrDefault(ETAG_ATTRIBUTE, DEFAULT_ETAG);
     }
 
     @Builder

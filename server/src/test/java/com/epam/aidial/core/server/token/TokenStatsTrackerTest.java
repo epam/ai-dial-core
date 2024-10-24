@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ResourceService;
+import com.epam.aidial.core.server.service.TimerService;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -102,7 +103,8 @@ public class TokenStatsTrackerTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+                lockService, new JsonObject(resourceConfig), null);
         tracker = new TokenStatsTracker(vertx, resourceService);
     }
 
