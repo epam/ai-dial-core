@@ -752,7 +752,8 @@ public class ResourceService implements AutoCloseable {
         Long createdAt = RedisUtil.redisToLong(fields.get(ResourceUtil.CREATED_AT_ATTRIBUTE));
         Long updatedAt = RedisUtil.redisToLong(fields.get(ResourceUtil.UPDATED_AT_ATTRIBUTE));
         String resourceType = RedisUtil.redisToString(fields.get(ResourceUtil.RESOURCE_TYPE_ATTRIBUTE), null);
-        Boolean compress = RedisUtil.redisToBoolean(fields.get(COMPRESS_ATTRIBUTE));
+        // we have to maintain historical data which are already in the cache, but they don't have the field
+        Boolean compress = RedisUtil.redisToBoolean(fields.get(COMPRESS_ATTRIBUTE), !key.startsWith("file:"));
 
         return new Result(body, etag, createdAt, updatedAt, contentType, compress, contentLength, resourceType, synced);
     }
