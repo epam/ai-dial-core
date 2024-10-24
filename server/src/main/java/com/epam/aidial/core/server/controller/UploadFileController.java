@@ -34,7 +34,7 @@ public class UploadFileController extends AccessControlBaseController {
         }
 
         return proxy.getVertx().executeBlocking(() -> {
-            EtagHeader etag = ProxyUtil.fromRequest(context.getRequest());
+            EtagHeader etag = ProxyUtil.etag(context.getRequest());
             etag.validate(() -> proxy.getResourceService().getEtag(resource));
             context.getRequest()
                     .setExpectMultipart(true)

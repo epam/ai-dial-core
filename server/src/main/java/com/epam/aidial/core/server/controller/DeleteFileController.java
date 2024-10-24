@@ -36,7 +36,7 @@ public class DeleteFileController extends AccessControlBaseController {
         }
 
         proxy.getVertx().executeBlocking(() -> {
-            EtagHeader etag = ProxyUtil.fromRequest(context.getRequest());
+            EtagHeader etag = ProxyUtil.etag(context.getRequest());
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
             return lockService.underBucketLock(bucketLocation, () -> {

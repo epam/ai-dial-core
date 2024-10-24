@@ -307,7 +307,7 @@ public class ProxyUtil {
         return null;
     }
 
-    public static EtagHeader fromRequest(HttpServerRequest request) {
+    public static EtagHeader etag(HttpServerRequest request) {
         return EtagHeader.fromHeader(request.getHeader(HttpHeaders.IF_MATCH), request.getHeader(HttpHeaders.IF_NONE_MATCH));
     }
 }

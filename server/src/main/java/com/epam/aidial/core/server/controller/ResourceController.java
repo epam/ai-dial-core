@@ -186,7 +186,7 @@ public class ResourceController extends AccessControlBaseController {
                 throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE, message);
             }
 
-            EtagHeader etag = ProxyUtil.fromRequest(context.getRequest());
+            EtagHeader etag = ProxyUtil.etag(context.getRequest());
             String body = bytes.toString(StandardCharsets.UTF_8);
 
             return Pair.of(etag, body);
@@ -225,7 +225,7 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         vertx.executeBlocking(() -> {
-                    EtagHeader etag = ProxyUtil.fromRequest(context.getRequest());
+                    EtagHeader etag = ProxyUtil.etag(context.getRequest());
                     String bucketName = descriptor.getBucketName();
                     String bucketLocation = descriptor.getBucketLocation();
 
