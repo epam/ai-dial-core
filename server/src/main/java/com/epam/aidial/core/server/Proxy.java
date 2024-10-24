@@ -28,6 +28,7 @@ import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.HttpException;
 import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.SpanUtil;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Future;
@@ -280,6 +281,11 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void respond(HttpServerRequest request, HttpStatus status, String body) {
+        if (status == HttpStatus.OK) {
+            SpanUtil.updateName(request.method().name(), request.path());
+        } else if (status.is4xx() || status.is5xx()) {
+            SpanUtil.updateName("Failed to process %s request: %s".formatted(request.method().name(), status));
+        }
         request.response().setStatusCode(status.getCode()).end(body == null ? "" : body);
     }
 }

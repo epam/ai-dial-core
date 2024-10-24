@@ -12,7 +12,15 @@ public class SpanUtil {
     private static final List<String> GROUPS = List.of("id", "bucket", "path");
 
     public static void updateName(Pattern pathPattern, String path, String httpMethod) {
-        String spanName = RegexUtil.replaceNamedGroups(pathPattern, path, GROUPS);
-        Span.current().updateName(httpMethod + " " + spanName);
+        String httpPath = RegexUtil.replaceNamedGroups(pathPattern, path, GROUPS);
+        updateName(httpMethod, httpPath);
+    }
+
+    public static void updateName(String httpMethod, String httpPath) {
+        updateName(httpMethod + " " + httpPath);
+    }
+
+    public static void updateName(String name) {
+        Span.current().updateName(name);
     }
 }

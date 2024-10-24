@@ -182,7 +182,8 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        return cache.computeIfAbsent(kid, key -> vertx.executeBlocking(() -> {
+        Promise<JwkResult> promise = Promise.promise();
+        cache.computeIfAbsent(kid, key -> vertx.executeBlocking(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();
             try {
@@ -192,7 +193,8 @@ public class IdentityProvider {
                 jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
             }
             return jwkResult;
-        }, false));
+        }, false)).onSuccess(promise::complete).onFailure(promise::fail);
+        return promise.future();
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {
