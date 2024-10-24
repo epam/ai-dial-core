@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.util;
 
-import io.vertx.core.http.HttpHeaders;
-import io.vertx.core.http.HttpServerRequest;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
@@ -11,7 +10,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-@AllArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class EtagHeader {
     public static final String ANY_TAG = "*";
     public static final EtagHeader ANY = new EtagHeader(Set.of(), "", true);
@@ -45,11 +44,13 @@ public class EtagHeader {
         }
     }
 
-    public static EtagHeader fromRequest(HttpServerRequest request) {
-        return fromHeader(request.getHeader(HttpHeaders.IF_MATCH), request.getHeader(HttpHeaders.IF_NONE_MATCH));
-    }
-
-    static EtagHeader fromHeader(String ifMatch, String ifNoneMatch) {
+    /**
+     * Constructs etag header instance.
+     *
+     * @param ifMatch HTTP header
+     * @param ifNoneMatch HTTP header
+     */
+    public static EtagHeader fromHeader(String ifMatch, String ifNoneMatch) {
         Set<String> tags = parseIfMatch(StringUtils.strip(ifMatch));
         boolean overwrite = parseOverwrite(StringUtils.strip(ifNoneMatch));
         return new EtagHeader(tags, ifMatch, overwrite);

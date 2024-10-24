@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.ResourceService;
+import com.epam.aidial.core.server.service.TimerService;
 import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.HttpStatus;
@@ -42,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -113,7 +115,8 @@ public class RateLimiterTest {
                     "compressionMinSize": 256
                   }
                 """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+                lockService, new JsonObject(resourceConfig), null);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 

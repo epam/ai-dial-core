@@ -15,12 +15,6 @@ import java.util.stream.Collectors;
 
 @UtilityClass
 public class ResourceUtil {
-    public static final String ETAG_ATTRIBUTE = "etag";
-    public static final String CREATED_AT_ATTRIBUTE = "created_at";
-    public static final String UPDATED_AT_ATTRIBUTE = "updated_at";
-    public static final String RESOURCE_TYPE_ATTRIBUTE = "resource_type";
-    // Default ETag for old records
-    public static final String DEFAULT_ETAG = "0";
 
     public ResourceTypes getResourceType(String url) {
         if (url == null) {
@@ -66,7 +60,4 @@ public class ResourceUtil {
         }
     }
 
-    public String extractEtag(Map<String, String> attributes) {
-        return attributes.getOrDefault(ETAG_ATTRIBUTE, DEFAULT_ETAG);
-    }
 }
