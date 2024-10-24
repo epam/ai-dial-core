@@ -30,6 +30,11 @@ public class RedisUtil {
         return redisToJava(data, null, d -> Boolean.parseBoolean(toString(d)));
     }
 
+    public Boolean redisToBoolean(byte[] data, boolean defaultValue) {
+        Boolean result = redisToJava(data, null, d -> Boolean.parseBoolean(toString(d)));
+        return result == null ? defaultValue : result;
+    }
+
     public String redisToString(byte[] data, String defaultValue) {
         return redisToJava(data, defaultValue, RedisUtil::toString);
     }
