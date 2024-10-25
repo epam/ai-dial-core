@@ -103,7 +103,7 @@ public class RateLimiter {
     private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
         String tokensPath = getPathToTokens(deploymentName);
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
-        String json = resourceService.getResource(resourceDescription, true);
+        String json = resourceService.getResource(resourceDescription);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(json, TokenRateLimit.class);
         if (rateLimit == null) {
             return;
@@ -114,7 +114,7 @@ public class RateLimiter {
     private void collectRequestLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
         String requestsPath = getPathToRequests(deploymentName);
         ResourceDescriptor resourceDescription = getResourceDescription(context, requestsPath);
-        String json = resourceService.getResource(resourceDescription, true);
+        String json = resourceService.getResource(resourceDescription);
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
         if (rateLimit == null) {
             return;

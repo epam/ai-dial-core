@@ -62,7 +62,7 @@ public class ApiKeyStore {
         data.setPerRequestKey(perRequestKey);
         String json = ProxyUtil.convertToString(data);
         try {
-            resourceService.putResource(resource, json, EtagHeader.NEW_ONLY, false);
+            resourceService.putResource(resource, json, EtagHeader.NEW_ONLY);
         } catch (HttpException exception) {
             throw exception.getStatus() == HttpStatus.PRECONDITION_FAILED
                     ? new IllegalStateException(String.format("API key %s already exists in the storage", perRequestKey))

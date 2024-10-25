@@ -283,7 +283,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescriptor descriptor, boolean lock) {
+    private Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescriptor descriptor, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
@@ -314,7 +314,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    public String getResource(ResourceDescriptor descriptor, boolean lock) {
+    private String getResource(ResourceDescriptor descriptor, boolean lock) {
         Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, lock);
         return (result == null) ? null : result.getRight();
     }
@@ -363,7 +363,7 @@ public class ResourceService implements AutoCloseable {
         return putResource(descriptor, body, etag, true);
     }
 
-    public ResourceItemMetadata putResource(
+    private ResourceItemMetadata putResource(
             ResourceDescriptor descriptor, String body, EtagHeader etag, boolean lock) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         return putResource(descriptor, bytes, etag, "application/json", lock);
