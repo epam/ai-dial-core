@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.log;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.MergeChunks;
@@ -67,9 +68,13 @@ public class GfLogStore implements LogStore {
     private void append(ProxyContext context, LogEntry entry) throws JsonProcessingException {
         HttpServerRequest request = context.getRequest();
         HttpServerResponse response = context.getResponse();
+        ApiKeyData apiKeyData = Optional.ofNullable(context.getProxyApiKeyData())
+                .orElse(context.getApiKeyData());
 
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
-        append(entry, request.getHeader(Proxy.HEADER_CONVERSATION_ID), true);
+        String conversationId = Optional.ofNullable(request.getHeader(Proxy.HEADER_CONVERSATION_ID))
+                .orElse(apiKeyData.getHttpHeaders().get(Proxy.HEADER_CONVERSATION_ID));
+        append(entry, conversationId, true);
 
         append(entry, "\"},\"project\":{\"id\":\"", false);
         append(entry, context.getProject(), true);
@@ -78,7 +83,9 @@ public class GfLogStore implements LogStore {
         append(entry, context.getUserHash(), true);
 
         append(entry, "\",\"title\":\"", false);
-        append(entry, request.getHeader(Proxy.HEADER_JOB_TITLE), true);
+        String jobTitle = Optional.ofNullable(request.getHeader(Proxy.HEADER_JOB_TITLE))
+                .orElse(apiKeyData.getHttpHeaders().get(Proxy.HEADER_JOB_TITLE));
+        append(entry, jobTitle, true);
         append(entry, "\"}", false);
 
         TokenUsage tokenUsage = context.getTokenUsage();
