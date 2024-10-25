@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import lombok.AllArgsConstructor;

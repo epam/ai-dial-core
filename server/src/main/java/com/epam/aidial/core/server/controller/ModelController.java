@@ -5,12 +5,12 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.TokenLimits;
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.data.PricingData;
 import com.epam.aidial.core.server.data.TokenLimitsData;
-import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 

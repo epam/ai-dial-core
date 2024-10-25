@@ -27,6 +27,7 @@ configurations.all {
 
 dependencies {
     implementation project(':config')
+    implementation project(':resource-service')
 
     implementation 'com.google.protobuf:protobuf-java:3.25.5'
     implementation 'org.slf4j:slf4j-api:1.7.32'

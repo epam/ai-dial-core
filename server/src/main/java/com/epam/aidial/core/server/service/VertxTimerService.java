@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.resourceservice.service.TimerService;
 import io.vertx.core.Vertx;
 
 public class VertxTimerService implements TimerService {

@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.resourceservice.data.MetadataBase;
+import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
-import com.epam.aidial.core.server.data.MetadataBase;
-import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -27,7 +27,6 @@ import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(VertxExtension.class)
 @Slf4j

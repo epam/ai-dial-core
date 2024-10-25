@@ -1,26 +1,28 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.resourceservice.data.MetadataBase;
+import com.epam.aidial.core.resourceservice.data.ResourceFolderMetadata;
+import com.epam.aidial.core.resourceservice.data.ResourceItemMetadata;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.resource.ResourceType;
+import com.epam.aidial.core.resourceservice.service.ResourceService;
+import com.epam.aidial.core.resourceservice.util.EtagHeader;
+import com.epam.aidial.core.resourceservice.util.UrlUtil;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ApplicationUtil;
 import com.epam.aidial.core.server.data.ListPublishedResourcesRequest;
-import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.data.Notification;
 import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.RejectPublicationRequest;
-import com.epam.aidial.core.server.data.ResourceFolderMetadata;
-import com.epam.aidial.core.server.data.ResourceItemMetadata;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.ResourceUrl;
 import com.epam.aidial.core.server.data.Rule;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
-import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
-import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.UrlUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -48,7 +50,7 @@ public class PublicationService {
     private static final ResourceDescriptor PUBLIC_PUBLICATIONS = ResourceDescriptorFactory.fromDecoded(
             ResourceTypes.PUBLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
-    private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
+    private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
             ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
     private final EncryptionService encryption;
@@ -102,7 +104,7 @@ public class PublicationService {
         Set<Publication.Resource> resourceSet = approvedPublications.stream()
                 .flatMap(publication -> publication.getResources().stream())
                 .collect(Collectors.toSet());
-        Set<ResourceTypes> requestedResourceTypes = request.getResourceTypes();
+        Set<? extends ResourceType> requestedResourceTypes = request.getResourceTypes();
 
         Set<MetadataBase> metadata = new HashSet<>();
         for (Publication.Resource resource : resourceSet) {

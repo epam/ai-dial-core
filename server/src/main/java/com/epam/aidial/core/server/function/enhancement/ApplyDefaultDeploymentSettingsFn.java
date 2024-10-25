@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.function.enhancement;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;

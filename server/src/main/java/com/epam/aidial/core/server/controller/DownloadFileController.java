@@ -1,9 +1,9 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
-import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;

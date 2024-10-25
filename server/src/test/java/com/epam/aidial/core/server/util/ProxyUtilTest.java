@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
-import com.epam.aidial.core.server.data.ResourceAccessType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;

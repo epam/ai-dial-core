@@ -1,16 +1,16 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.service.LockService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
-import com.epam.aidial.core.server.util.HttpStatus;
 import io.vertx.core.Future;
 
 public class InvitationController {

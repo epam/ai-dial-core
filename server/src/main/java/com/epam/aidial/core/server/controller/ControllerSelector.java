@@ -2,10 +2,10 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.resourceservice.util.UrlUtil;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.SpanUtil;
-import com.epam.aidial.core.server.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import lombok.experimental.UtilityClass;
 

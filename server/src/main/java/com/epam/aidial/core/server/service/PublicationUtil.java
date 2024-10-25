@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.util.UrlUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.UrlUtil;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.experimental.UtilityClass;

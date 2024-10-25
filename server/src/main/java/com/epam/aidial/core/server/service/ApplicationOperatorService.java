@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.resourceservice.http.HttpException;
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.util.HttpException;
-import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.http.HttpClient;

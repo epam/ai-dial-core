@@ -1,14 +1,14 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.service.LockService;
+import com.epam.aidial.core.resourceservice.service.ResourceService;
+import com.epam.aidial.core.resourceservice.util.EtagHeader;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.LockService;
-import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.util.EtagHeader;
-import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;

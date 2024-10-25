@@ -1,12 +1,12 @@
 package com.epam.aidial.core.server.vertx.stream;
 
-import com.epam.aidial.core.server.data.FileMetadata;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
-import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.BlobStorage;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.util.EtagBuilder;
-import com.epam.aidial.core.server.util.EtagHeader;
+import com.epam.aidial.core.resourceservice.data.FileMetadata;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.service.ResourceService;
+import com.epam.aidial.core.resourceservice.storage.BlobStorage;
+import com.epam.aidial.core.resourceservice.storage.BlobStorageUtil;
+import com.epam.aidial.core.resourceservice.util.EtagBuilder;
+import com.epam.aidial.core.resourceservice.util.EtagHeader;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.AsyncResult;

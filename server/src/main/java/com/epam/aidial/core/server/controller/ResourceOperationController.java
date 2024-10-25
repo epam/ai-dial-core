@@ -1,24 +1,25 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
+import com.epam.aidial.core.resourceservice.data.ResourceEvent;
+import com.epam.aidial.core.resourceservice.http.HttpException;
+import com.epam.aidial.core.resourceservice.http.HttpStatus;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.resource.ResourceType;
+import com.epam.aidial.core.resourceservice.service.LockService;
+import com.epam.aidial.core.resourceservice.service.ResourceTopic;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
-import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceEvent;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
-import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.HeartbeatService;
-import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceOperationService;
-import com.epam.aidial.core.server.service.ResourceTopic;
-import com.epam.aidial.core.server.util.HttpException;
-import com.epam.aidial.core.server.util.HttpStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -35,7 +36,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ResourceOperationController {
 
-    private static final Set<ResourceTypes> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
+    private static final Set<ResourceType> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
             ResourceTypes.FILE, ResourceTypes.CONVERSATION, ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
     private final ProxyContext context;

@@ -1,20 +1,20 @@
 package com.epam.aidial.core.server.security;
 
+import com.epam.aidial.core.resourceservice.data.MetadataBase;
+import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
+import com.epam.aidial.core.resourceservice.data.ResourceFolderMetadata;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.util.UrlUtil;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.data.MetadataBase;
-import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.data.ResourceFolderMetadata;
 import com.epam.aidial.core.server.data.Rule;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
-import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.UrlUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonObject;
 

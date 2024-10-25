@@ -1,13 +1,13 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.service.ResourceService;
+import com.epam.aidial.core.resourceservice.util.EtagHeader;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
-import com.epam.aidial.core.server.resource.ResourceDescriptorFactory;
-import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.util.EtagHeader;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.Data;
@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.epam.aidial.core.server.resource.ResourceDescriptor.PATH_SEPARATOR;
+import static com.epam.aidial.core.resourceservice.resource.ResourceDescriptor.PATH_SEPARATOR;
 
 @Slf4j
 @RequiredArgsConstructor

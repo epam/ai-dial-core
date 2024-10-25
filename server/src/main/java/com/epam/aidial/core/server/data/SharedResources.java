@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
 import com.epam.aidial.core.server.service.ShareService;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;

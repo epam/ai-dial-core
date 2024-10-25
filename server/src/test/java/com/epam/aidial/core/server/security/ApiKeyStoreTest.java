@@ -1,17 +1,16 @@
 package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
+import com.epam.aidial.core.resourceservice.service.LockService;
+import com.epam.aidial.core.resourceservice.service.ResourceService;
+import com.epam.aidial.core.resourceservice.service.TimerService;
+import com.epam.aidial.core.resourceservice.storage.BlobStorage;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.data.ResourceAccessType;
-import com.epam.aidial.core.server.service.LockService;
-import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.service.TimerService;
-import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonObject;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;

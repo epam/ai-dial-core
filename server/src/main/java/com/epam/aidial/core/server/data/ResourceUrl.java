@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.server.resource.ResourceDescriptor;
-import com.epam.aidial.core.server.util.UrlUtil;
+import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
+import com.epam.aidial.core.resourceservice.util.UrlUtil;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
