@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 

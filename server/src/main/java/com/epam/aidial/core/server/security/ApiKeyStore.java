@@ -1,16 +1,16 @@
 package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.config.Key;
-import com.epam.aidial.core.resourceservice.http.HttpException;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
-import com.epam.aidial.core.resourceservice.util.EtagHeader;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
@@ -20,8 +20,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
-import static com.epam.aidial.core.resourceservice.resource.ResourceDescriptor.PATH_SEPARATOR;
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
+import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPARATOR;
 
 /**
  * The store keeps per request and project API key data.

@@ -1,13 +1,5 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
-import com.epam.aidial.core.resourceservice.data.ResourceEvent;
-import com.epam.aidial.core.resourceservice.http.HttpException;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.resource.ResourceType;
-import com.epam.aidial.core.resourceservice.service.LockService;
-import com.epam.aidial.core.resourceservice.service.ResourceTopic;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
@@ -20,6 +12,14 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.storage.data.ResourceEvent;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceTopic;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;

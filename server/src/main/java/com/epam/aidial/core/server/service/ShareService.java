@@ -1,12 +1,5 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.resourceservice.data.MetadataBase;
-import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
-import com.epam.aidial.core.resourceservice.data.ResourceFolderMetadata;
-import com.epam.aidial.core.resourceservice.data.ResourceItemMetadata;
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.resource.ResourceType;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
 import com.epam.aidial.core.server.data.Invitation;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
@@ -21,6 +14,13 @@ import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

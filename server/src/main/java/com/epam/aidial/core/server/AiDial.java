@@ -1,11 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.resourceservice.cache.CacheClientFactory;
-import com.epam.aidial.core.resourceservice.service.LockService;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
-import com.epam.aidial.core.resourceservice.service.TimerService;
-import com.epam.aidial.core.resourceservice.storage.BlobStorage;
-import com.epam.aidial.core.resourceservice.storage.Storage;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.limiter.RateLimiter;
@@ -27,6 +21,12 @@ import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.blobstore.Storage;
+import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.TimerService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;

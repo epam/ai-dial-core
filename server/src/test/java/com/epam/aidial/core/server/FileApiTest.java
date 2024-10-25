@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.resourceservice.data.MetadataBase;
-import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.ResourceAccessType;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;

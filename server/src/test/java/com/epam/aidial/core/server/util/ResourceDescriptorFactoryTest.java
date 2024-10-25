@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.util;
 
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 

@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -11,6 +10,7 @@ import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;

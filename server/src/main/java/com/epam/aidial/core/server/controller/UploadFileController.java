@@ -1,14 +1,14 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.resourceservice.data.FileMetadata;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.util.EtagHeader;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
+import com.epam.aidial.core.storage.data.FileMetadata;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;

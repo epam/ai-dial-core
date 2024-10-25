@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.resourceservice.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceType;
 
 public enum ResourceTypes implements ResourceType {
     FILE("files", false), CONVERSATION("conversations", true),

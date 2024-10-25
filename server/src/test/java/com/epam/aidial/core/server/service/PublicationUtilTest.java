@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.ResourceBaseTest;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Test;
 

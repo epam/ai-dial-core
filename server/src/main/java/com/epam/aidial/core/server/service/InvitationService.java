@@ -1,8 +1,5 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
 import com.epam.aidial.core.server.data.Invitation;
 import com.epam.aidial.core.server.data.InvitationCollection;
 import com.epam.aidial.core.server.data.InvitationsMap;
@@ -12,6 +9,9 @@ import com.epam.aidial.core.server.security.ApiKeyGenerator;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 

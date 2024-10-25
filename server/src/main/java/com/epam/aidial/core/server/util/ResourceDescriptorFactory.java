@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server.util;
 
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.resource.ResourceType;
-import com.epam.aidial.core.resourceservice.resource.ResourceUtil;
-import com.epam.aidial.core.resourceservice.util.UrlUtil;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceUtil;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;

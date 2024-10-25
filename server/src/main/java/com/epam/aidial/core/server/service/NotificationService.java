@@ -1,7 +1,5 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notification;
@@ -10,6 +8,8 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

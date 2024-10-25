@@ -1,11 +1,6 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.resourceservice.http.HttpException;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
-import com.epam.aidial.core.resourceservice.service.LockService;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
-import com.epam.aidial.core.resourceservice.storage.BlobStorage;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.controller.ControllerSelector;
@@ -28,6 +23,11 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceService;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Future;

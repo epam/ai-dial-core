@@ -1,9 +1,9 @@
 package com.epam.aidial.core.server.util;
 
-import com.epam.aidial.core.resourceservice.data.MetadataBase;
-import com.epam.aidial.core.resourceservice.util.EtagHeader;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;

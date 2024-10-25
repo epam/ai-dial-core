@@ -1,14 +1,14 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.resourceservice.data.ResourceAccessType;
-import com.epam.aidial.core.resourceservice.data.ResourceEvent;
-import com.epam.aidial.core.resourceservice.http.HttpException;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
-import com.epam.aidial.core.resourceservice.service.ResourceTopic;
-import com.epam.aidial.core.resourceservice.util.EtagHeader;
 import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.storage.data.ResourceEvent;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.ResourceTopic;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
 
 import java.util.Collection;

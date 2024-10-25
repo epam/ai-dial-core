@@ -1,4 +1,30 @@
+plugins {
+    id "java"
+    id 'checkstyle'
+    id 'application'
+    id 'io.freefair.lombok' version '8.0.1'
+}
+
 allprojects {
     group = 'com.epam.aidial'
     version = "0.18.0-rc"
+
+    apply plugin: 'java'
+    apply plugin: 'checkstyle'
+    apply plugin: 'application'
+    apply plugin: 'io.freefair.lombok'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+
+    checkstyle {
+        configDirectory = file("$rootProject.projectDir/checkstyle")
+    }
+
+    repositories {
+        mavenCentral()
+    }
 }

@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server.function;
 
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.util.UrlUtil;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.SneakyThrows;
 
 import java.util.function.Function;

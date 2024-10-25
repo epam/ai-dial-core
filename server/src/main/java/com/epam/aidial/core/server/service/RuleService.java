@@ -1,10 +1,5 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.resourceservice.data.MetadataBase;
-import com.epam.aidial.core.resourceservice.data.ResourceFolderMetadata;
-import com.epam.aidial.core.resourceservice.data.ResourceItemMetadata;
-import com.epam.aidial.core.resourceservice.resource.ResourceDescriptor;
-import com.epam.aidial.core.resourceservice.service.ResourceService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -12,6 +7,11 @@ import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.RuleMatcher;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.lang3.tuple.Pair;
 

@@ -2,11 +2,11 @@ package com.epam.aidial.core.server.function.enhancement;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;

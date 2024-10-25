@@ -2,10 +2,10 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AssistantData;
 import com.epam.aidial.core.server.data.ListData;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 

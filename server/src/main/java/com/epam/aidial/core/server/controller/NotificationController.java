@@ -1,13 +1,13 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.resourceservice.http.HttpException;
-import com.epam.aidial.core.resourceservice.http.HttpStatus;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notifications;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
