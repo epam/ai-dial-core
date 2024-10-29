@@ -27,10 +27,10 @@ import java.util.stream.Stream;
  */
 @Data
 public class ApiKeyData {
-    private static final List<String> HTTP_HEADERS_TO_STORE = Stream.of(
+    private static final List<String> HTTP_HEADERS_TO_STORE = List.of(
             Proxy.HEADER_JOB_TITLE,
             Proxy.HEADER_CONVERSATION_ID
-    ).map(String::toLowerCase).toList();
+    );
     // per request key is available with during the request lifetime. It's generated in runtime
     private String perRequestKey;
     // the key of root request initiator
@@ -55,7 +55,7 @@ public class ApiKeyData {
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
-    // HTTP headers to store during an interceptor invocation chain
+    // Original HTTP headers to be stored during an interceptor invocation chain
     private Map<String, String> httpHeaders = new HashMap<>();
 
     public ApiKeyData() {
@@ -97,7 +97,7 @@ public class ApiKeyData {
             return context.getApiKeyData().getHttpHeaders();
         }
         return context.getRequest().headers().entries().stream()
-                .filter(h -> HTTP_HEADERS_TO_STORE.contains(h.getKey().toLowerCase()))
+                .filter(h -> HTTP_HEADERS_TO_STORE.contains(h.getKey()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 }
