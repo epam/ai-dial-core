@@ -504,6 +504,11 @@ public class PublicationService {
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
 
+            if (!exists && descriptor.getType() == ResourceTypes.FILE) {
+                // skip if file to add already exists
+                continue;
+            }
+
             if (resourceService.hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
                 throw new IllegalArgumentException(errorMessage);
@@ -581,7 +586,8 @@ public class PublicationService {
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
-            } else if (!resourceService.copyResource(from, to)) {
+            } else if (!resourceService.copyResource(from, to, false)
+                    && to.getType() != ResourceTypes.FILE) { // skip if file to add already exists
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
 
