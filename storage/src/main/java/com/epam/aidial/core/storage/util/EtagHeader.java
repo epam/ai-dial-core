@@ -46,12 +46,12 @@ public class EtagHeader {
 
         // if-match is not any and doesn't match the etag
         if (ifMatchTags != null && !ifMatchTags.contains(etag)) {
-            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "If-match condition failed for etag: " + etag);
+            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "If-match condition is failed for etag: " + etag);
         }
 
         // if-non-match matches the etag
         if (ifNoneMatchTags.contains(etag)) {
-            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "if-none-match condition failed for etag: " + etag);
+            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "if-none-match condition is failed for etag: " + etag);
         }
     }
 
