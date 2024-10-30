@@ -50,7 +50,7 @@ public class Publication {
     }
 
     public enum ResourceAction {
-        ADD, DELETE
+        ADD, DELETE, ADD_IF_ABSENT
     }
 
     public Set<ResourceTypes> getResourceTypes() {

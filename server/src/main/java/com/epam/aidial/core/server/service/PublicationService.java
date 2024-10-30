@@ -349,7 +349,7 @@ public class PublicationService {
                 throw new IllegalArgumentException("Resource \"action\" is missing");
             }
 
-            if (action == Publication.ResourceAction.ADD) {
+            if (action == Publication.ResourceAction.ADD || action == Publication.ResourceAction.ADD_IF_ABSENT) {
                 validateResourceForAddition(context, resource, targetFolder, reviewBucket, urls);
             } else if (action == Publication.ResourceAction.DELETE) {
                 validateResourceForDeletion(resource, targetFolder, urls, bucketName, isAdmin);
@@ -408,7 +408,7 @@ public class PublicationService {
             throw new IllegalArgumentException("Source resource does not exists: " + sourceUrl);
         }
 
-        if (resourceService.hasResource(target)) {
+        if (resource.getAction() == Publication.ResourceAction.ADD && resourceService.hasResource(target)) {
             throw new IllegalArgumentException("Target resource already exists: " + targetUrl);
         }
 
@@ -504,11 +504,6 @@ public class PublicationService {
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
 
-            if (!exists && descriptor.getType() == ResourceTypes.FILE) {
-                // skip if file to add already exists
-                continue;
-            }
-
             if (resourceService.hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
                 throw new IllegalArgumentException(errorMessage);
@@ -587,7 +582,7 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (!resourceService.copyResource(from, to, false)
-                    && to.getType() != ResourceTypes.FILE) { // skip if file to add already exists
+                    && resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
 
