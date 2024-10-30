@@ -410,7 +410,7 @@ public class ApplicationService {
         return controller.getApplicationLogs(application.getFunction());
     }
 
-    private void prepareApplication(ResourceDescription resource, Application application) {
+    private void prepareApplication(ResourceDescriptor resource, Application application) {
         verifyApplication(resource);
 
         if (application.getEndpoint() == null && application.getFunction() == null) {
@@ -451,7 +451,7 @@ public class ApplicationService {
                 throw new IllegalArgumentException("Application function mapping must be provided");
             }
 
-            verifyMapping(function.getMapping().getChatCompletion(), true, "Application completion mapping is missing/invalid");
+            verifyMapping(function.getMapping().getChatCompletion(), true, "Application chat_completion mapping is missing/invalid");
             verifyMapping(function.getMapping().getRate(), false, "Application rate mapping is invalid");
             verifyMapping(function.getMapping().getTokenize(), false, "Application tokenize mapping is invalid");
             verifyMapping(function.getMapping().getTruncatePrompt(), false, "Application truncate_prompt mapping is invalid");

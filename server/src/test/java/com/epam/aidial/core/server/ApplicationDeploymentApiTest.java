@@ -777,9 +777,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                       "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                      "status" : "STARTED",
+                      "status" : "DEPLOYED",
                       "mapping" : {
-                        "completion" : "/application"
+                        "chat_completion" : "/application"
                       },
                       "env" : {
                         "VAR" : "VAL"
@@ -852,9 +852,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                       "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                      "status" : "STARTED",
+                      "status" : "DEPLOYED",
                       "mapping" : {
-                        "completion" : "/application"
+                        "chat_completion" : "/application"
                       },
                       "env" : {
                         "VAR" : "VAL"
