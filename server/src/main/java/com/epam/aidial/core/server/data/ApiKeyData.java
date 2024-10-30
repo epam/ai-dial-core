@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -10,6 +11,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The container keeps data associated with API key.
@@ -23,6 +27,10 @@ import java.util.Map;
  */
 @Data
 public class ApiKeyData {
+    private static final List<String> HTTP_HEADERS_TO_STORE = List.of(
+            Proxy.HEADER_JOB_TITLE,
+            Proxy.HEADER_CONVERSATION_ID
+    );
     // per request key is available with during the request lifetime. It's generated in runtime
     private String perRequestKey;
     // the key of root request initiator
@@ -47,6 +55,8 @@ public class ApiKeyData {
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
+    // Original HTTP headers to be stored during an interceptor invocation chain
+    private Map<String, String> httpHeaders = new HashMap<>();
 
     public ApiKeyData() {
     }
@@ -57,6 +67,7 @@ public class ApiKeyData {
         proxyApiKeyData.setInterceptors(context.getInterceptors());
         proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
         proxyApiKeyData.setInitialDeploymentApi(context.getInitialDeploymentApi());
+        proxyApiKeyData.setHttpHeaders(collectHttpHeaders(context));
 
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
@@ -79,5 +90,14 @@ public class ApiKeyData {
     @JsonIgnore
     public boolean isInterceptor() {
         return perRequestKey != null && interceptors != null && interceptorIndex >= 0 && interceptorIndex < interceptors.size();
+    }
+
+    private static Map<String, String> collectHttpHeaders(ProxyContext context) {
+        if (!context.getApiKeyData().getHttpHeaders().isEmpty()) {
+            return context.getApiKeyData().getHttpHeaders();
+        }
+        return context.getRequest().headers().entries().stream()
+                .filter(h -> HTTP_HEADERS_TO_STORE.contains(h.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 }

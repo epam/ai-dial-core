@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -216,5 +217,16 @@ public class ProxyContext {
         }
 
         return this;
+    }
+
+    public String getRequestHeader(String name) {
+        String value = request.getHeader(name);
+        if (value != null) {
+            return value;
+        }
+        return Optional.ofNullable(apiKeyData)
+                .map(ApiKeyData::getHttpHeaders)
+                .map(h -> h.get(name))
+                .orElse(null);
     }
 }
