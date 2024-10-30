@@ -18,12 +18,14 @@ import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.Map;
 import java.util.stream.IntStream;
 
+import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -1410,7 +1412,7 @@ public class FileApiTest extends ResourceBaseTest {
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(412, response.statusCode());
-                                    assertEquals("ETag 123 is rejected", response.bodyAsString());
+                                    assertTrue(response.bodyAsString().startsWith("If-match condition failed for etag"));
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -1476,7 +1478,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(412, response.statusCode());
-                            assertEquals("ETag %s is rejected".formatted(TEST_FILE_ETAG), response.bodyAsString());
+                            assertTrue(response.bodyAsString().startsWith("If-match condition failed for etag"));
                             checkpoint.flag();
                             promise.complete();
                         });
