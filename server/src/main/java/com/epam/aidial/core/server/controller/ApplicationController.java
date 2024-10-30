@@ -84,14 +84,14 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-    public Future<?> startApplication() {
+    public Future<?> deployApplication() {
         context.getRequest()
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.startApplication(context, resource), false);
+                    return vertx.executeBlocking(() -> applicationService.deployApplication(context, resource), false);
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
@@ -99,14 +99,14 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-    public Future<?> stopApplication() {
+    public Future<?> undeployApplication() {
         context.getRequest()
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescription resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.stopApplication(resource), false);
+                    return vertx.executeBlocking(() -> applicationService.undeployApplication(resource), false);
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);

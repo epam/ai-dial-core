@@ -215,7 +215,7 @@ public class ApplicationService {
 
                     function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
                     function.setAuthorBucket(resource.getBucketName());
-                    function.setStatus(Application.Function.Status.CREATED);
+                    function.setStatus(Application.Function.Status.UNDEPLOYED);
                     function.setTargetFolder(encodeTargetFolder(resource, function.getId()));
                 } else {
                     if (isPublicOrReview(resource) && !function.getSourceFolder().equals(existing.getFunction().getSourceFolder())) {
@@ -287,7 +287,7 @@ public class ApplicationService {
             if (function != null) {
                 if (existing == null || existing.getFunction() == null) {
                     function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
-                    function.setStatus(Application.Function.Status.CREATED);
+                    function.setStatus(Application.Function.Status.UNDEPLOYED);
                     function.setTargetFolder(encodeTargetFolder(destination, function.getId()));
 
                     if (isPublicOrReview) {
@@ -323,7 +323,7 @@ public class ApplicationService {
         }
     }
 
-    public Application startApplication(ProxyContext context, ResourceDescription resource) {
+    public Application deployApplication(ProxyContext context, ResourceDescription resource) {
         verifyApplication(resource);
         controller.verifyActive();
 
@@ -342,7 +342,7 @@ public class ApplicationService {
                 throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + resource.getUrl());
             }
 
-            application.getFunction().setStatus(Application.Function.Status.STARTING);
+            application.getFunction().setStatus(Application.Function.Status.DEPLOYING);
             application.getFunction().setError(null);
 
             result.setValue(application);
@@ -357,7 +357,7 @@ public class ApplicationService {
         return result.getValue();
     }
 
-    public Application stopApplication(ResourceDescription resource) {
+    public Application undeployApplication(ResourceDescription resource) {
         verifyApplication(resource);
         controller.verifyActive();
 
@@ -372,7 +372,7 @@ public class ApplicationService {
                 throw new HttpException(HttpStatus.CONFLICT, "Application does not have function: " + resource.getUrl());
             }
 
-            if (application.getFunction().getStatus() != Application.Function.Status.STARTED) {
+            if (application.getFunction().getStatus() != Application.Function.Status.DEPLOYED) {
                 throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
             }
 
@@ -381,7 +381,7 @@ public class ApplicationService {
             application.getFeatures().setTokenizeEndpoint(null);
             application.getFeatures().setTruncatePromptEndpoint(null);
             application.getFeatures().setConfigurationEndpoint(null);
-            application.getFunction().setStatus(Application.Function.Status.STOPPING);
+            application.getFunction().setStatus(Application.Function.Status.UNDEPLOYING);
 
             result.setValue(application);
             pendingApplications.add(System.currentTimeMillis() + checkDelay, resource.getUrl());
@@ -399,7 +399,7 @@ public class ApplicationService {
 
         Application application = getApplication(resource).getValue();
 
-        if (application.getFunction() == null || application.getFunction().getStatus() != Application.Function.Status.STARTED) {
+        if (application.getFunction() == null || application.getFunction().getStatus() != Application.Function.Status.DEPLOYED) {
             throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
         }
 
@@ -447,7 +447,7 @@ public class ApplicationService {
                 throw new IllegalArgumentException("Application function mapping must be provided");
             }
 
-            verifyMapping(function.getMapping().getCompletion(), true, "Application completion mapping is missing/invalid");
+            verifyMapping(function.getMapping().getChatCompletion(), true, "Application completion mapping is missing/invalid");
             verifyMapping(function.getMapping().getRate(), false, "Application rate mapping is invalid");
             verifyMapping(function.getMapping().getTokenize(), false, "Application tokenize mapping is invalid");
             verifyMapping(function.getMapping().getTruncatePrompt(), false, "Application truncate_prompt mapping is invalid");
@@ -509,7 +509,7 @@ public class ApplicationService {
                 throw new IllegalStateException("Application has no function");
             }
 
-            if (function.getStatus() != Application.Function.Status.STARTING) {
+            if (function.getStatus() != Application.Function.Status.DEPLOYING) {
                 throw new IllegalStateException("Application is not starting");
             }
 
@@ -528,9 +528,9 @@ public class ApplicationService {
                     throw new IllegalStateException("Application function has been updated");
                 }
 
-                function.setStatus(Application.Function.Status.STARTED);
+                function.setStatus(Application.Function.Status.DEPLOYED);
                 existing.setFunction(function);
-                existing.setEndpoint(buildMapping(endpoint, function.getMapping().getCompletion()));
+                existing.setEndpoint(buildMapping(endpoint, function.getMapping().getChatCompletion()));
                 existing.getFeatures().setRateEndpoint(buildMapping(endpoint, function.getMapping().getRate()));
                 existing.getFeatures().setTokenizeEndpoint(buildMapping(endpoint, function.getMapping().getTokenize()));
                 existing.getFeatures().setTruncatePromptEndpoint(buildMapping(endpoint, function.getMapping().getTruncatePrompt()));
@@ -579,8 +579,8 @@ public class ApplicationService {
                         throw new IllegalStateException("Application function has been updated");
                     }
 
-                    Application.Function.Status status = (function.getStatus() == Application.Function.Status.STOPPING)
-                            ? Application.Function.Status.STOPPED
+                    Application.Function.Status status = (function.getStatus() == Application.Function.Status.UNDEPLOYING)
+                            ? Application.Function.Status.UNDEPLOYED
                             : Application.Function.Status.FAILED;
 
                     function.setStatus(status);

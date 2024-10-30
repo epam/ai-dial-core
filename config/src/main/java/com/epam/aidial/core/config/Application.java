@@ -36,19 +36,19 @@ public class Application extends Deployment {
         private Map<String, String> env;
 
         public enum Status {
-            CREATED, STARTING, STOPPING, STARTED, STOPPED, FAILED;
+            DEPLOYING, UNDEPLOYING, DEPLOYED, UNDEPLOYED, FAILED;
 
             public boolean isPending() {
                 return switch (this) {
-                    case CREATED, STARTED, FAILED, STOPPED -> false;
-                    case STARTING, STOPPING -> true;
+                    case DEPLOYED, FAILED, UNDEPLOYED -> false;
+                    case DEPLOYING, UNDEPLOYING -> true;
                 };
             }
 
             public boolean isActive() {
                 return switch (this) {
-                    case CREATED, FAILED, STOPPED -> false;
-                    case STARTING, STARTED, STOPPING -> true;
+                    case FAILED, UNDEPLOYED -> false;
+                    case DEPLOYING, DEPLOYED, UNDEPLOYING -> true;
                 };
             }
         }
@@ -58,7 +58,7 @@ public class Application extends Deployment {
         @JsonInclude(JsonInclude.Include.NON_NULL)
         @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
         public static class Mapping {
-            private String completion;
+            private String chatCompletion;
             private String rate;
             private String tokenize;
             private String truncatePrompt;
