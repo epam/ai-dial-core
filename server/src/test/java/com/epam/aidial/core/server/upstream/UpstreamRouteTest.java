@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

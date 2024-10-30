@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.server.cache.CacheClientFactory;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.limiter.RateLimiter;
@@ -13,17 +12,22 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
-import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.BlobStorage;
-import com.epam.aidial.core.server.storage.Storage;
+import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.blobstore.Storage;
+import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.TimerService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -44,6 +48,7 @@ import io.vertx.micrometer.MicrometerMetricsOptions;
 import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
@@ -106,10 +111,12 @@ public class AiDial {
             }
             EncryptionService encryptionService = new EncryptionService(settings("encryption"));
 
-            redis = CacheClientFactory.create(settings("redis"));
+            redis = CacheClientFactory.create(toJsonNode(settings("redis")));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            resourceService = new ResourceService(vertx, redis, encryptionService, storage, lockService, settings("resources"), storage.getPrefix());
+            TimerService timerService = new VertxTimerService(vertx);
+            ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
+            resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService);
             RuleService ruleService = new RuleService(resourceService);
@@ -159,6 +166,11 @@ public class AiDial {
             log.warn("Proxy failed to stop:", e);
             throw e;
         }
+    }
+
+    @SneakyThrows
+    private static JsonNode toJsonNode(JsonObject jsonObject) {
+        return ProxyUtil.MAPPER.readTree(jsonObject.encode());
     }
 
     public static JsonObject settings() throws Exception {

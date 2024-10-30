@@ -1,4 +1,5 @@
 rootProject.name = "aidial-core"
 include 'config'
 include 'server'
+include 'storage'
 

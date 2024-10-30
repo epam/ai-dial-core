@@ -568,7 +568,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "FAILED");;
+        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "FAILED");
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
@@ -733,6 +733,135 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "instance" : "instance2",
                     "content" : "Log message #2"
                   } ]
+                }
+                """);
+    }
+
+    @Test
+    void testOpenAiApi() {
+        testApplicationStarted();
+
+        Response response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app");
+        verifyJsonNotExact(response, 200, """
+                  {
+                    "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                    "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                    "display_name" : "My App",
+                    "display_version" : "1.0",
+                    "icon_url" : "http://application1/icon.svg",
+                    "description" : "My App Description",
+                    "reference" : "@ignore",
+                    "owner" : "organization-owner",
+                    "object" : "application",
+                    "status" : "succeeded",
+                    "created_at" : 1672534800,
+                    "updated_at" : 1672534800,
+                    "features" : {
+                      "rate" : false,
+                      "tokenize" : false,
+                      "truncate_prompt" : false,
+                      "configuration" : false,
+                      "system_prompt" : true,
+                      "tools" : false,
+                      "seed" : false,
+                      "url_attachments" : false,
+                      "folder_attachments" : false,
+                      "allow_resume" : true,
+                      "accessible_by_per_request_key" : true
+                    },
+                    "defaults" : { },
+                    "description_keywords" : [ ],
+                    "function" : {
+                      "id" : "0123",
+                      "runtime" : "python3.11",
+                      "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                      "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                      "status" : "STARTED",
+                      "mapping" : {
+                        "completion" : "/application"
+                      },
+                      "env" : {
+                        "VAR" : "VAL"
+                      }
+                    }
+                }
+                """);
+
+        response = send(HttpMethod.GET, "/openai/applications");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "data" : [ {
+                    "id" : "app",
+                    "application" : "app",
+                    "display_name" : "10k",
+                    "icon_url" : "http://localhost:7001/logo10k.png",
+                    "description" : "Some description of the application for testing",
+                    "reference" : "app",
+                    "owner" : "organization-owner",
+                    "object" : "application",
+                    "status" : "succeeded",
+                    "created_at" : 1672534800,
+                    "updated_at" : 1672534800,
+                    "features" : {
+                      "rate" : true,
+                      "tokenize" : false,
+                      "truncate_prompt" : false,
+                      "configuration" : true,
+                      "system_prompt" : false,
+                      "tools" : false,
+                      "seed" : false,
+                      "url_attachments" : false,
+                      "folder_attachments" : false,
+                      "allow_resume" : true,
+                      "accessible_by_per_request_key" : true
+                    },
+                    "defaults" : { },
+                    "description_keywords" : [ ]
+                  }, {
+                    "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                    "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                    "display_name" : "My App",
+                    "display_version" : "1.0",
+                    "icon_url" : "http://application1/icon.svg",
+                    "description" : "My App Description",
+                    "reference" : "@ignore",
+                    "owner" : "organization-owner",
+                    "object" : "application",
+                    "status" : "succeeded",
+                    "created_at" : 1672534800,
+                    "updated_at" : 1672534800,
+                    "features" : {
+                      "rate" : false,
+                      "tokenize" : false,
+                      "truncate_prompt" : false,
+                      "configuration" : false,
+                      "system_prompt" : true,
+                      "tools" : false,
+                      "seed" : false,
+                      "url_attachments" : false,
+                      "folder_attachments" : false,
+                      "allow_resume" : true,
+                      "accessible_by_per_request_key" : true
+                    },
+                    "defaults" : { },
+                    "description_keywords" : [ ],
+                    "function" : {
+                      "id" : "0123",
+                      "runtime" : "python3.11",
+                      "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                      "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                      "status" : "STARTED",
+                      "mapping" : {
+                        "completion" : "/application"
+                      },
+                      "env" : {
+                        "VAR" : "VAL"
+                      }
+                    }
+                  } ],
+                  "object" : "list"
                 }
                 """);
     }

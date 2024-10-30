@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.server.util.ResourceUtil;
+import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -28,7 +29,7 @@ public class SharedResources {
     }
 
     public void addSharedResources(Map<String, Set<ResourceAccessType>> sharedResources) {
-        Map<String, Set<ResourceAccessType>> resourcesMap = ResourceUtil.sharedResourcesToMap(resources);
+        Map<String, Set<ResourceAccessType>> resourcesMap = ShareService.sharedResourcesToMap(resources);
         sharedResources.forEach((url, permissions) -> {
             Set<ResourceAccessType> existingPermissions = resourcesMap.get(url);
             if (existingPermissions == null) {

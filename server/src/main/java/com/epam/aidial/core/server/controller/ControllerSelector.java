@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.SpanUtil;
-import com.epam.aidial.core.server.util.UrlUtil;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import lombok.experimental.UtilityClass;
 

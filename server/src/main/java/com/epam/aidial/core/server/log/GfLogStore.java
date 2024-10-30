@@ -69,7 +69,7 @@ public class GfLogStore implements LogStore {
         HttpServerResponse response = context.getResponse();
 
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
-        append(entry, request.getHeader(Proxy.HEADER_CONVERSATION_ID), true);
+        append(entry, context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID), true);
 
         append(entry, "\"},\"project\":{\"id\":\"", false);
         append(entry, context.getProject(), true);
@@ -78,7 +78,7 @@ public class GfLogStore implements LogStore {
         append(entry, context.getUserHash(), true);
 
         append(entry, "\",\"title\":\"", false);
-        append(entry, request.getHeader(Proxy.HEADER_JOB_TITLE), true);
+        append(entry, context.getRequestHeader(Proxy.HEADER_JOB_TITLE), true);
         append(entry, "\"}", false);
 
         TokenUsage tokenUsage = context.getTokenUsage();

@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServer;
 

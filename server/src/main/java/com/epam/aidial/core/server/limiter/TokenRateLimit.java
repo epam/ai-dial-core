@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.server.data.LimitStats;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.Data;
 
 @Data

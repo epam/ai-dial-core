@@ -3,12 +3,13 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.LockService;
-import com.epam.aidial.core.server.service.ResourceService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.ResourceDescription;
-import com.epam.aidial.core.server.util.EtagHeader;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
@@ -29,13 +30,13 @@ public class DeleteFileController extends AccessControlBaseController {
     }
 
     @Override
-    protected Future<?> handle(ResourceDescription resource, boolean hasWriteAccess) {
+    protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't delete a folder");
         }
 
         proxy.getVertx().executeBlocking(() -> {
-            EtagHeader etag = EtagHeader.fromRequest(context.getRequest());
+            EtagHeader etag = ProxyUtil.etag(context.getRequest());
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
             return lockService.underBucketLock(bucketLocation, () -> {
@@ -48,7 +49,7 @@ public class DeleteFileController extends AccessControlBaseController {
         }, false)
                 .onSuccess(success -> context.respond(HttpStatus.OK))
                 .onFailure(error -> {
-                    log.error("Failed to delete file  {}/{}", resource.getBucketName(), resource.getOriginalPath(), error);
+                    log.error("Failed to delete file  {}", resource.getUrl(), error);
                     context.respond(error, error.getMessage());
                 });
 

@@ -1,8 +1,9 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.server.Proxy;
-import com.epam.aidial.core.server.data.MetadataBase;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -305,5 +306,9 @@ public class ProxyUtil {
             }
         }
         return null;
+    }
+
+    public static EtagHeader etag(HttpServerRequest request) {
+        return EtagHeader.fromHeader(request.getHeader(HttpHeaders.IF_MATCH), request.getHeader(HttpHeaders.IF_NONE_MATCH));
     }
 }

@@ -3,11 +3,13 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notification;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +34,7 @@ public class NotificationService {
 
 
     public Notification createNotification(String bucketName, String bucketLocation, Notification notification) {
-        ResourceDescription notificationResource = getNotificationResource(bucketName, bucketLocation);
+        ResourceDescriptor notificationResource = getNotificationResource(bucketName, bucketLocation);
 
         resourceService.computeResource(notificationResource, body -> {
             Map<String, Notification> notifications = decodeNotifications(body);
@@ -45,7 +47,7 @@ public class NotificationService {
     }
 
     public Set<Notification> listNotification(ProxyContext context) {
-        ResourceDescription notificationResource = getNotificationResource(context, encryptionService);
+        ResourceDescriptor notificationResource = getNotificationResource(context, encryptionService);
         Map<String, Notification> notifications = decodeNotifications(resourceService.getResource(notificationResource));
 
         return new TreeSet<>(notifications.values());
@@ -56,7 +58,7 @@ public class NotificationService {
         if (ids.isEmpty()) {
             throw new IllegalArgumentException("Notification IDs cannot be empty");
         }
-        ResourceDescription notificationResource = getNotificationResource(context, encryptionService);
+        ResourceDescriptor notificationResource = getNotificationResource(context, encryptionService);
         resourceService.computeResource(notificationResource, state -> {
             Map<String, Notification> notifications = decodeNotifications(state);
             ids.forEach(notifications::remove);
@@ -65,14 +67,14 @@ public class NotificationService {
         });
     }
 
-    private static ResourceDescription getNotificationResource(ProxyContext context, EncryptionService encryptionService) {
-        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+    private static ResourceDescriptor getNotificationResource(ProxyContext context, EncryptionService encryptionService) {
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         String bucketName = encryptionService.encrypt(bucketLocation);
         return getNotificationResource(bucketName, bucketLocation);
     }
 
-    private static ResourceDescription getNotificationResource(String bucketName, String bucketLocation) {
-        return ResourceDescription.fromDecoded(ResourceType.NOTIFICATION, bucketName, bucketLocation, NOTIFICATION_RESOURCE_FILENAME);
+    private static ResourceDescriptor getNotificationResource(String bucketName, String bucketLocation) {
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.NOTIFICATION, bucketName, bucketLocation, NOTIFICATION_RESOURCE_FILENAME);
     }
 
     private static Map<String, Notification> decodeNotifications(String json) {

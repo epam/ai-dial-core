@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AddonData;
 import com.epam.aidial.core.server.data.ListData;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 

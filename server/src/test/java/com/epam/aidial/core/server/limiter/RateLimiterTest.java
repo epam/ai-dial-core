@@ -10,15 +10,15 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
-import com.epam.aidial.core.server.service.LockService;
-import com.epam.aidial.core.server.service.ResourceService;
-import com.epam.aidial.core.server.storage.BlobStorage;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.TimerService;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -97,23 +98,15 @@ public class RateLimiterTest {
     }
 
     @BeforeEach
-    public void beforeEach() {
+    public void beforeEach() throws Exception {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
         LockService lockService = new LockService(redissonClient, null);
-        String resourceConfig = """
-                  {
-                    "maxSize" : 1048576,
-                    "syncPeriod": 60000,
-                    "syncDelay": 120000,
-                    "syncBatch": 4096,
-                    "cacheExpiration": 300000,
-                    "compressionMinSize": 256
-                  }
-                """;
-        ResourceService resourceService = new ResourceService(vertx, redissonClient, encryptionService, blobStorage, lockService, new JsonObject(resourceConfig), null);
+        ResourceService.Settings settings = new ResourceService.Settings(1048576, 60000, 120000, 4096, 300000, 256);
+        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+                lockService, settings, null);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 

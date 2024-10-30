@@ -4,13 +4,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.LockService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.LockService;
 import io.vertx.core.Future;
 
 public class InvitationController {
@@ -34,7 +34,7 @@ public class InvitationController {
     public Future<?> getInvitations() {
         proxy.getVertx()
                 .executeBlocking(() -> {
-                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return invitationService.getMyInvitations(bucket, bucketLocation);
                 }, false)
@@ -48,9 +48,9 @@ public class InvitationController {
         if (accept) {
             proxy.getVertx()
                     .executeBlocking(() -> {
-                        String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                         String bucket = encryptionService.encrypt(bucketLocation);
-                        ResourceDescription invitationResource = invitationService.getInvitationResource(invitationId);
+                        ResourceDescriptor invitationResource = invitationService.getInvitationResource(invitationId);
                         if (invitationResource == null) {
                             throw new ResourceNotFoundException();
                         }
@@ -86,7 +86,7 @@ public class InvitationController {
     public Future<?> deleteInvitation(String invitationId) {
         proxy.getVertx()
                 .executeBlocking(() -> {
-                    String bucketLocation = BlobStorageUtil.buildInitiatorBucket(context);
+                    String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.deleteInvitation(bucket, invitationId);

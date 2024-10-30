@@ -6,17 +6,18 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
-import com.epam.aidial.core.server.data.ResourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.storage.BlobStorageUtil;
-import com.epam.aidial.core.server.storage.ResourceDescription;
-import com.epam.aidial.core.server.util.HttpException;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
@@ -89,7 +90,7 @@ public class ApplicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodeUrl(url);
+                    ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
                     return vertx.executeBlocking(() -> applicationService.deployApplication(context, resource), false);
                 })
@@ -104,7 +105,7 @@ public class ApplicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodeUrl(url);
+                    ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
                     return vertx.executeBlocking(() -> applicationService.undeployApplication(resource), false);
                 })
@@ -119,7 +120,7 @@ public class ApplicationController {
                 .body()
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
-                    ResourceDescription resource = decodeUrl(url);
+                    ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
                     return vertx.executeBlocking(() -> applicationService.getApplicationLogs(resource), false);
                 })
@@ -129,26 +130,26 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-    private ResourceDescription decodeUrl(String url) {
-        ResourceDescription resource;
+    private ResourceDescriptor decodeUrl(String url) {
+        ResourceDescriptor resource;
         try {
-            resource = ResourceDescription.fromAnyUrl(url, encryptionService);
+            resource = ResourceDescriptorFactory.fromAnyUrl(url, encryptionService);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid application: " + url, e);
         }
 
-        if (resource.getType() != ResourceType.APPLICATION) {
+        if (resource.getType() != ResourceTypes.APPLICATION) {
             throw new IllegalArgumentException("Invalid application: " + url);
         }
 
         return resource;
     }
 
-    private void checkAccess(ResourceDescription resource) {
+    private void checkAccess(ResourceDescriptor resource) {
         boolean hasAccess = accessService.hasAdminAccess(context);
 
         if (!hasAccess && resource.isPrivate()) {
-            String bucket = BlobStorageUtil.buildInitiatorBucket(context);
+            String bucket = BucketBuilder.buildInitiatorBucket(context);
             hasAccess = resource.getBucketLocation().equals(bucket);
         }
 

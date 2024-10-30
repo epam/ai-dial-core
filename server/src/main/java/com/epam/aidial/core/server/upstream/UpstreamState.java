@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Upstream;
-import com.epam.aidial.core.server.util.HttpStatus;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
