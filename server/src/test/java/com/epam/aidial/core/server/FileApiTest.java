@@ -1412,7 +1412,7 @@ public class FileApiTest extends ResourceBaseTest {
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(412, response.statusCode());
-                                    assertTrue(response.bodyAsString().startsWith("If-match condition failed for etag"));
+                                    assertTrue(response.bodyAsString().startsWith("If-match condition is failed for etag"));
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -1478,7 +1478,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(412, response.statusCode());
-                            assertTrue(response.bodyAsString().startsWith("If-match condition failed for etag"));
+                            assertTrue(response.bodyAsString().startsWith("If-match condition is failed for etag"));
                             checkpoint.flag();
                             promise.complete();
                         });

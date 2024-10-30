@@ -12,6 +12,7 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -129,7 +130,7 @@ public class RuleService {
         Pair<Long, Map<String, List<Rule>>> current = cachedRules.get();
 
         if (current == null || current.getKey() != key) {
-            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES);
+            Pair<ResourceItemMetadata, String> resource = resources.getResourceWithMetadata(PUBLIC_RULES, EtagHeader.ANY);
             Pair<Long, Map<String, List<Rule>>> next = (resource == null)
                     ? Pair.of(Long.MIN_VALUE, decodeRules(null))
                     : Pair.of(resource.getKey().getUpdatedAt(), decodeRules(resource.getValue()));

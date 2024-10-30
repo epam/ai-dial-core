@@ -121,7 +121,7 @@ class ResourceApiTest extends ResourceBaseTest {
         verifyNotExact(response, 200, "\"etag\":\"70edd26b3686de5efcdae93fcc87c2bb\"");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "123");
-        verifyNotExact(response, 412, "If-match condition failed for etag");
+        verifyNotExact(response, 412, "If-match condition is failed for etag");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "70edd26b3686de5efcdae93fcc87c2bb");
         verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
@@ -132,7 +132,7 @@ class ResourceApiTest extends ResourceBaseTest {
         verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
 
         response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "123");
-        verifyNotExact(response, 412, "If-match condition failed for etag");
+        verifyNotExact(response, 412, "If-match condition is failed for etag");
 
         response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "82833ed7a10a4f99253fccdef4091ad9");
         verify(response, 200, "");

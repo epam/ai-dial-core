@@ -147,8 +147,12 @@ public class ApplicationService {
     }
 
     public Pair<ResourceItemMetadata, Application> getApplication(ResourceDescriptor resource) {
+        return getApplication(resource, EtagHeader.ANY);
+    }
+
+    public Pair<ResourceItemMetadata, Application> getApplication(ResourceDescriptor resource, EtagHeader etagHeader) {
         verifyApplication(resource);
-        Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource);
+        Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource, etagHeader);
 
         if (result == null) {
             throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
