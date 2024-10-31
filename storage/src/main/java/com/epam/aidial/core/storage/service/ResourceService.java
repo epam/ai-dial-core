@@ -321,15 +321,6 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceStream getResourceStream(ResourceDescriptor resource, EtagHeader etagHeader) throws IOException {
-        ResourceStream resourceStream = getResourceStream(resource);
-        if (resourceStream != null) {
-            etagHeader.validate(resourceStream.etag);
-        }
-        return resourceStream;
-    }
-
-    @Nullable
-    private ResourceStream getResourceStream(ResourceDescriptor resource) throws IOException {
         if (resource.getType().requireCompression()) {
             throw new IllegalArgumentException("Streaming is supported for uncompressed resources only");
         }
@@ -337,13 +328,13 @@ public class ResourceService implements AutoCloseable {
         String key = redisKey(resource);
         Result result = redisGet(key, true);
         if (result != null) {
-            return ResourceStream.fromResult(result);
+            return ResourceStream.fromResult(result, etagHeader);
         }
 
         try (LockService.Lock ignored = lockService.lock(key)) {
             result = redisGet(key, true);
             if (result != null) {
-                return ResourceStream.fromResult(result);
+                return ResourceStream.fromResult(result, etagHeader);
             }
 
             Blob blob = blobStore.load(resource.getAbsoluteFilePath());
@@ -361,9 +352,10 @@ public class ResourceService implements AutoCloseable {
             if (length <= maxSize) {
                 result = blobToResult(blob, metadata);
                 redisPut(key, result);
-                return ResourceStream.fromResult(result);
+                return ResourceStream.fromResult(result, etagHeader);
             }
 
+            etagHeader.validate(etag);
             return new ResourceStream(payload.openStream(), etag, contentType, length);
         }
     }
@@ -468,10 +460,6 @@ public class ResourceService implements AutoCloseable {
 
         try (var ignore = lockService.lock(redisKey)) {
             Pair<ResourceItemMetadata, String> oldResult = getResourceWithMetadata(descriptor, etag, false);
-
-            if (oldResult != null) {
-                etag.validate(oldResult.getKey().getEtag());
-            }
 
             String oldBody = oldResult == null ? null : oldResult.getValue();
             String newBody = fn.apply(oldBody);
@@ -853,10 +841,12 @@ public class ResourceService implements AutoCloseable {
         }
 
         @Nullable
-        private static ResourceStream fromResult(Result item) {
+        private static ResourceStream fromResult(Result item, EtagHeader etagHeader) {
             if (!item.exists()) {
                 return null;
             }
+
+            etagHeader.validate(item.etag);
 
             return new ResourceStream(
                     new ByteArrayInputStream(item.body),
