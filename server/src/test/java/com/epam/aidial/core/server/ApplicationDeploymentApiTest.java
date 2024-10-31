@@ -35,7 +35,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "runtime": "python3.11",
                     "source_folder": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env": {
                       "VAR": "VAL"
@@ -67,7 +67,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 data: {"url":"http://localhost:17321"}
                 """);
 
-        response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
+        response = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
                 {
                   "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
                 }
@@ -91,9 +91,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTING",
+                    "status" : "DEPLOYING",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -102,7 +102,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STARTED");
+        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "DEPLOYED");
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
@@ -123,9 +123,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTED",
+                    "status" : "DEPLOYED",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -150,7 +150,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 data: {"deleted":true}
                 """);
 
-        Response response = send(HttpMethod.POST, "/v1/ops/application/stop", null, """
+        Response response = send(HttpMethod.POST, "/v1/ops/application/undeploy", null, """
                 {
                   "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
                 }
@@ -174,9 +174,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STOPPING",
+                    "status" : "UNDEPLOYING",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -185,7 +185,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPED");
+        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "UNDEPLOYED");
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
@@ -205,9 +205,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STOPPED",
+                    "status" : "UNDEPLOYED",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -232,7 +232,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 data: {"deleted":true}
                 """);
 
-        Response response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
+        Response response = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
                 {
                   "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
                 }
@@ -256,9 +256,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTING",
+                    "status" : "DEPLOYING",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -290,7 +290,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "status" : "FAILED",
                     "error" : "Source folder is empty",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -311,7 +311,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testRecoverApplicationAfterFailedStart() throws Exception {
         testApplicationCreated();
 
-        Response response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
+        Response response = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
                 {
                   "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
                 }
@@ -335,9 +335,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STARTING",
+                    "status" : "DEPLOYING",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -348,7 +348,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
 
         Thread.sleep(300); // does not cause tests to be fluky
 
-        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STARTING");
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "DEPLOYING");
         webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
                 """
                 event: result
@@ -366,7 +366,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testRecoverApplicationAfterFailedStop() throws Exception {
         testApplicationStarted();
 
-        Response response = send(HttpMethod.POST, "/v1/ops/application/stop", null, """
+        Response response = send(HttpMethod.POST, "/v1/ops/application/undeploy", null, """
                 {
                   "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
                 }
@@ -390,9 +390,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                     "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                    "status" : "STOPPING",
+                    "status" : "UNDEPLOYING",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -403,7 +403,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
 
         Thread.sleep(300); // does not cause tests to be fluky
 
-        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPING");
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "UNDEPLOYING");
         webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
                 """
                 event: result
@@ -414,7 +414,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 event: result
                 data: {"deleted":true}
                 """);
-        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "STOPPED");
+        awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "UNDEPLOYED");
     }
 
     @Test
@@ -561,7 +561,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 data: {"deleted":true}
                 """);
 
-        response = send(HttpMethod.POST, "/v1/ops/application/start", null, """
+        response = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
                 {
                   "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
                 }
@@ -591,7 +591,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "status" : "FAILED",
                     "error" : "@ignore",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -665,9 +665,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                     "source_folder" : "files/BHSYDZdoJ31Kxh6XahLj91R6sRAnZtraHCQmDeK3uajc/",
                     "target_folder" : "files/BHSYDZdoJ31Kxh6XahLj91R6sRAnZtraHCQmDeK3uajc/",
-                    "status" : "CREATED",
+                    "status" : "UNDEPLOYED",
                     "mapping" : {
-                      "completion" : "/application"
+                      "chat_completion" : "/application"
                     },
                     "env" : {
                       "VAR" : "VAL"
@@ -777,9 +777,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                       "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                      "status" : "STARTED",
+                      "status" : "DEPLOYED",
                       "mapping" : {
-                        "completion" : "/application"
+                        "chat_completion" : "/application"
                       },
                       "env" : {
                         "VAR" : "VAL"
@@ -852,9 +852,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
                       "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
                       "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                      "status" : "STARTED",
+                      "status" : "DEPLOYED",
                       "mapping" : {
-                        "completion" : "/application"
+                        "chat_completion" : "/application"
                       },
                       "env" : {
                         "VAR" : "VAL"
@@ -880,7 +880,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 Assertions.fail("Application has not reached the status: " + status + ". Body: " + response.body());
             }
 
-            Thread.sleep(128);
+            Thread.sleep(32);
         }
     }
 }
