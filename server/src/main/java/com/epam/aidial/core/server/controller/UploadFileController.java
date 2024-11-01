@@ -6,12 +6,16 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import com.epam.aidial.core.storage.data.FileMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.impl.HttpUtils;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.impl.PipeImpl;
 import lombok.extern.slf4j.Slf4j;
@@ -34,8 +38,7 @@ public class UploadFileController extends AccessControlBaseController {
         }
 
         return proxy.getVertx().executeBlocking(() -> {
-            EtagHeader etag = ProxyUtil.etag(context.getRequest());
-            etag.validate(() -> proxy.getResourceService().getEtag(resource));
+            EtagHeader etag = validateRequest(context.getRequest(), resource);
             context.getRequest()
                     .setExpectMultipart(true)
                     .uploadHandler(upload -> {
@@ -64,5 +67,18 @@ public class UploadFileController extends AccessControlBaseController {
                     context.respond(error, "Failed to upload file: " + resource.getUrl());
                     return null;
                 });
+    }
+
+    private EtagHeader validateRequest(HttpServerRequest request, ResourceDescriptor resource) {
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        String contentType = request.headers().get(HttpHeaderNames.CONTENT_TYPE);
+        etag.validate(() -> proxy.getResourceService().getEtag(resource));
+        if (contentType == null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Request must have a content-type header to decode a multipart request");
+        }
+        if (!HttpUtils.isValidMultipartContentType(contentType)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Request must have a valid content-type header to decode a multipart request");
+        }
+        return etag;
     }
 }

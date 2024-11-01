@@ -333,6 +333,60 @@ public class FileApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testUploadFileWithWrongContentType(Vertx vertx, VertxTestContext context) {
+        Checkpoint checkpoint = context.checkpoint(2);
+        WebClient client = WebClient.create(vertx);
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // verify no files
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/?permissions=true")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            verifyJsonNotExact("""
+                                    {
+                                      "name" : null,
+                                      "parentPath" : null,
+                                      "bucket" : "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                      "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
+                                      "nodeType" : "FOLDER",
+                                      "resourceType" : "FILE",
+                                      "permissions" : [ "READ", "WRITE" ],
+                                      "items" : [ ]
+                                    }
+                                    """, response.body());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload test file with wrong content type
+            client.put(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader("content-type", "wrong-multipart/form-data")
+                    .as(BodyCodec.string())
+                    .send(
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(400, response.statusCode());
+                                    assertEquals("Request must have a valid content-type header to decode a multipart request", response.body());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        });
+    }
+
+    @Test
     public void testFileUpload(Vertx vertx, VertxTestContext context) {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
