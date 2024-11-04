@@ -3,6 +3,7 @@ package com.epam.aidial.core.storage.http;
 import lombok.Getter;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 
 @Getter
@@ -11,21 +12,14 @@ public class HttpException extends RuntimeException {
     private final Map<String, String> headers;
 
     public HttpException(HttpStatus status, String message) {
-        this(status, message, null);
+        this(status, message, Map.of());
     }
 
     public HttpException(HttpStatus status, String message, Map<String, String> headers) {
         super(message);
         this.status = status;
-        if (headers == null) {
-            this.headers = null;
-        } else {
-            this.headers = new TreeMap<>(String::compareToIgnoreCase);
-            this.headers.putAll(headers);
-        }
+        this.headers = new TreeMap<>(String::compareToIgnoreCase);
+        this.headers.putAll(Objects.requireNonNull(headers, "HTTP headers must not be null"));
     }
 
-    public String getHeader(String name) {
-        return headers == null ? null : headers.get(name);
-    }
 }

@@ -162,12 +162,7 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpException exception) {
-        Map<String, String> headers = exception.getHeaders();
-        if (headers != null) {
-            for (Map.Entry<String, String> kv : headers.entrySet()) {
-                response.putHeader(kv.getKey(), kv.getValue());
-            }
-        }
+        response.headers().addAll(exception.getHeaders());
         return respond(exception.getStatus(), exception.getMessage());
     }
 

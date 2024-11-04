@@ -52,22 +52,26 @@ public class EtagHeader {
         // If-None-Match used with the * value can be used to save a file not known to exist,
         // guaranteeing that another upload didn't happen before
         if (ifNoneMatchTags == null) {
-            throw new HttpException(HttpStatus.PRECONDITION_FAILED, "Resource already exists");
+            throw createIfNoneMatchException(etag, "Resource already exists");
         }
 
         // if-non-match matches the etag
         if (ifNoneMatchTags.contains(etag)) {
-            HttpStatus statusCode;
-            Map<String, String> headers;
-            if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
-                statusCode = HttpStatus.NOT_MODIFIED;
-                headers = Map.of("etag", etag);
-            } else {
-                statusCode = HttpStatus.PRECONDITION_FAILED;
-                headers = null;
-            }
-            throw new HttpException(statusCode, "if-none-match condition is failed for etag: " + etag, headers);
+            throw createIfNoneMatchException(etag, "if-none-match condition is failed for etag: " + etag);
         }
+    }
+
+    private HttpException createIfNoneMatchException(String etag, String message) {
+        HttpStatus statusCode;
+        Map<String, String> headers;
+        if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
+            statusCode = HttpStatus.NOT_MODIFIED;
+            headers = Map.of("etag", etag);
+        } else {
+            statusCode = HttpStatus.PRECONDITION_FAILED;
+            headers = Map.of();
+        }
+        return new HttpException(statusCode, message, headers);
     }
 
     private void validateIfMatch(String etag) {
