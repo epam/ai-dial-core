@@ -18,7 +18,6 @@ import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -1485,6 +1484,23 @@ public class FileApiTest extends ResourceBaseTest {
                         context.verify(() -> {
                             assertEquals(412, response.statusCode());
                             assertTrue(response.body().startsWith("If-match condition is failed for etag"));
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose(mapper -> {
+            Promise<Void> promise = Promise.promise();
+            // get the test file with incorrect If Non Match ETag
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_NONE_MATCH, TEST_FILE_ETAG)
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(304, response.statusCode());
+                            assertEquals(TEST_FILE_ETAG, response.getHeader(HttpHeaders.ETAG));
                             checkpoint.flag();
                             promise.complete();
                         });

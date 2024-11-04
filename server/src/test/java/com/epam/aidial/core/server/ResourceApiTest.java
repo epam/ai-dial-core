@@ -169,6 +169,16 @@ class ResourceApiTest extends ResourceBaseTest {
     void testIfNoneMatch() {
         Response response = resourceRequest(HttpMethod.PUT, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "unsupported");
         verifyNotExact(response, 200, "big");
+
+        response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "unsupported");
+        verifyNotExact(response, 200, CONVERSATION_BODY_1);
+
+        response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "70edd26b3686de5efcdae93fcc87c2bb");
+        assertEquals(304, response.status());
+        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+
+        response = resourceRequest(HttpMethod.PUT, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "70edd26b3686de5efcdae93fcc87c2bb");
+        assertEquals(412, response.status());
     }
 
     @Test

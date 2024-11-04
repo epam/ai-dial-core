@@ -257,7 +257,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private void handleError(ResourceDescriptor descriptor, Throwable error) {
         if (error instanceof HttpException exception) {
-            context.respond(exception.getStatus(), exception.getMessage());
+            context.respond(exception);
         } else if (error instanceof IllegalArgumentException) {
             context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
