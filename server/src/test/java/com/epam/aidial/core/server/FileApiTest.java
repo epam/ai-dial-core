@@ -18,12 +18,14 @@ import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.Map;
 import java.util.stream.IntStream;
 
+import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -1464,7 +1466,43 @@ public class FileApiTest extends ResourceBaseTest {
                             context.succeeding(response -> {
                                 context.verify(() -> {
                                     assertEquals(412, response.statusCode());
-                                    assertEquals("ETag 123 is rejected", response.bodyAsString());
+                                    assertTrue(response.bodyAsString().startsWith("If-match condition is failed for etag"));
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+
+            return promise.future();
+        }).compose(mapper -> {
+            Promise<Void> promise = Promise.promise();
+            // get the test file with incorrect ETag
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_MATCH, "123")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(412, response.statusCode());
+                            assertTrue(response.body().startsWith("If-match condition is failed for etag"));
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+
+            return promise.future();
+        }).compose(mapper -> {
+            Promise<Void> promise = Promise.promise();
+            // get the test file with correct ETag
+            client.get(serverPort, "localhost", "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/test_file.txt")
+                    .putHeader("Api-key", "proxyKey2")
+                    .putHeader(HttpHeaders.IF_MATCH, TEST_FILE_ETAG)
+                    .as(BodyCodec.string())
+                    .send(
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    assertEquals(TEST_FILE_CONTENT, response.body());
                                     checkpoint.flag();
                                     promise.complete();
                                 });
@@ -1530,7 +1568,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(412, response.statusCode());
-                            assertEquals("ETag %s is rejected".formatted(TEST_FILE_ETAG), response.bodyAsString());
+                            assertTrue(response.bodyAsString().startsWith("If-match condition is failed for etag"));
                             checkpoint.flag();
                             promise.complete();
                         });
