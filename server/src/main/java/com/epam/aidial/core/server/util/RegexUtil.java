@@ -3,16 +3,23 @@ package com.epam.aidial.core.server.util;
 import lombok.experimental.UtilityClass;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @UtilityClass
 public class RegexUtil {
 
-    public String replaceNamedGroups(Pattern pattern, String input, List<String> groups) {
-        if (groups == null || groups.isEmpty()) {
+    public String replaceNamedGroups(Pattern pattern, String input) {
+        return replaceNamedGroups(pattern, input, getNamedGroups(pattern));
+    }
+
+    public String replaceNamedGroups(Pattern pattern, String input, Collection<String> groups) {
+        if (pattern == null || input == null || input.isBlank() || groups == null || groups.isEmpty()) {
             return input;
         }
         List<RegexGroup> regexGroups = collectGroups(pattern, input, groups);
@@ -32,7 +39,7 @@ public class RegexUtil {
         return nameBuilder.toString();
     }
 
-    private List<RegexGroup> collectGroups(Pattern pattern, String input, List<String> groups) {
+    private List<RegexGroup> collectGroups(Pattern pattern, String input, Collection<String> groups) {
         List<RegexGroup> regexGroups = new ArrayList<>();
         Matcher matcher = pattern.matcher(input);
         if (matcher.matches() && matcher.groupCount() > 0) {
@@ -47,6 +54,17 @@ public class RegexUtil {
             }
         }
         return regexGroups;
+    }
+
+    public static Set<String> getNamedGroups(Pattern pattern) {
+        Set<String> namedGroups = new HashSet<>();
+
+        Matcher matcher = Pattern.compile("\\(\\?<(.+?)>").matcher(pattern.pattern());
+        while (matcher.find()) {
+            namedGroups.add(matcher.group(1));
+        }
+
+        return namedGroups;
     }
 
     private record RegexGroup(String group, int start, int end) {
