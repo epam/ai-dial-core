@@ -767,7 +767,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "url_attachments" : false,
                       "folder_attachments" : false,
                       "allow_resume" : true,
-                      "accessible_by_per_request_key" : true
+                      "accessible_by_per_request_key" : true,
+                      "content_parts_supported": false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -814,7 +815,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "url_attachments" : false,
                       "folder_attachments" : false,
                       "allow_resume" : true,
-                      "accessible_by_per_request_key" : true
+                      "accessible_by_per_request_key" : true,
+                      "content_parts_supported": false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ]
@@ -842,7 +844,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "url_attachments" : false,
                       "folder_attachments" : false,
                       "allow_resume" : true,
-                      "accessible_by_per_request_key" : true
+                      "accessible_by_per_request_key" : true,
+                      "content_parts_supported": false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],

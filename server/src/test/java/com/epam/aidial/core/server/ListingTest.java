@@ -51,7 +51,8 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": false, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
-                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true
+                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
+                    "content_parts_supported": false
                     }
                 """));
     }
@@ -62,7 +63,8 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": true, "tokenize": true, "truncate_prompt": true
                     , "system_prompt": true, "tools": true, "seed": true
                     , "url_attachments": true, "folder_attachments": false
-                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true
+                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
+                    "content_parts_supported": false
                     }
                 """));
     }
@@ -73,7 +75,8 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": false, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
-                    , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true
+                    , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true,
+                    "content_parts_supported": false
                     }
                 """));
     }
@@ -84,7 +87,8 @@ public class ListingTest extends ResourceBaseTest {
                     { "rate": true, "tokenize": false, "truncate_prompt": false
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false,  "folder_attachments": false
-                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true
+                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
+                    "content_parts_supported": false
                     }
                 """));
     }

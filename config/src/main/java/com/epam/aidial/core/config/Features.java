@@ -33,4 +33,5 @@ public class Features {
     @JsonAlias({"allowResume", "allow_resume"})
     private Boolean allowResume;
     private Boolean accessibleByPerRequestKey;
+    private Boolean contentPartsSupported;
 }

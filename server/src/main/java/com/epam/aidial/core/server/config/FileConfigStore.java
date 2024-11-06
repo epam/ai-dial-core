@@ -194,5 +194,8 @@ public final class FileConfigStore implements ConfigStore {
         if (modelFeatures.getAccessibleByPerRequestKey() == null) {
             modelFeatures.setAccessibleByPerRequestKey(features.getAccessibleByPerRequestKey());
         }
+        if (modelFeatures.getContentPartsSupported() == null) {
+            modelFeatures.setContentPartsSupported(features.getContentPartsSupported());
+        }
     }
 }
