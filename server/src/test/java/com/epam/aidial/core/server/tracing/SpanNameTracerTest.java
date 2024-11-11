@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.tracing;
 
+import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.impl.HttpRequestHead;
 import io.vertx.core.http.impl.HttpServerRequestInternal;
 import io.vertx.core.spi.tracing.SpanKind;
 import io.vertx.core.spi.tracing.VertxTracer;
@@ -16,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.only;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,14 +29,13 @@ class SpanNameTracerTest {
 
     @Mock
     private VertxTracer<?, ?> delegate;
-    @Mock
-    private HttpServerRequestInternal request;
     @InjectMocks
     private SpanNameTracer<?, ?> tracer;
 
     @ParameterizedTest
-    @MethodSource("datasource")
+    @MethodSource("receiveRequestDatasource")
     void receiveRequest(HttpMethod method, String path, String expectedName, Vertx vertx) {
+        HttpServerRequestInternal request = mock(HttpServerRequestInternal.class);
         when(request.context()).thenReturn(vertx.getOrCreateContext());
         when(request.path()).thenReturn(path);
         when(request.method()).thenReturn(method);
@@ -42,7 +44,18 @@ class SpanNameTracerTest {
         verify(delegate, only()).receiveRequest(request.context(), SpanKind.RPC, null, request, expectedName, null, null);
     }
 
-    public static List<Arguments> datasource() {
+    @ParameterizedTest
+    @MethodSource("sendRequestDatasource")
+    void sendRequest(HttpMethod method, String path, String traceOperation, String expectedName, Vertx vertx) {
+        HttpRequestHead request = new HttpRequestHead(
+                method, path, null, null, null, traceOperation);
+
+        Context context = vertx.getOrCreateContext();
+        tracer.sendRequest(context, SpanKind.RPC, null, request, request.method().name(), null, null);
+        verify(delegate, only()).sendRequest(context, SpanKind.RPC, null, request, expectedName, null, null);
+    }
+
+    public static List<Arguments> receiveRequestDatasource() {
         return List.of(
                 Arguments.of(HttpMethod.POST, "/openai/deployments/llm/chat/completions", "POST /openai/deployments/{id}/chat/completions"),
                 Arguments.of(HttpMethod.GET, "/v1/bucket", "GET /v1/bucket"),
@@ -51,6 +64,13 @@ class SpanNameTracerTest {
                 Arguments.of(HttpMethod.POST, "/route/path", "POST /{path}"),
                 Arguments.of(HttpMethod.OPTIONS, "/openai/deployments/llm", "OPTIONS /openai/deployments/{id}"),
                 Arguments.of(HttpMethod.OPTIONS, "/openai/deployments/llm/chat/completions", "OPTIONS /openai/deployments/{id}/chat/completions")
+        );
+    }
+
+    public static List<Arguments> sendRequestDatasource() {
+        return List.of(
+                Arguments.of(HttpMethod.GET, "/v1/bucket", null, "GET /v1/bucket"),
+                Arguments.of(HttpMethod.GET, "/v1/bucket", "op", "op")
         );
     }
 }

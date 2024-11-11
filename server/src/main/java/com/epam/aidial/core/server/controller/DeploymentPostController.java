@@ -102,6 +102,7 @@ public class DeploymentPostController {
                         throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
                     }
 
+                    context.setTraceOperation("Send request to %s deployment".formatted(dep.getName()));
                     context.setDeployment(dep);
                     return dep;
                 })
@@ -145,6 +146,7 @@ public class DeploymentPostController {
                 log.warn("Interceptor is not found for the given name: {}", interceptorName);
                 return respond(HttpStatus.NOT_FOUND, "Interceptor is not found");
             }
+            context.setTraceOperation("Send request to %s interceptor".formatted(interceptorName));
             context.setDeployment(interceptor);
             ApiKeyData proxyApiKeyData = new ApiKeyData();
             proxyApiKeyData.setInterceptorIndex(interceptorIndex);
@@ -245,7 +247,8 @@ public class DeploymentPostController {
         String uri = buildUri(context);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
-                .setMethod(request.method());
+                .setMethod(request.method())
+                .setTraceOperation(context.getTraceOperation());
 
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)

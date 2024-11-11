@@ -90,6 +90,7 @@ public class ProxyContext {
     // List of interceptors copied from the deployment config
     private List<String> interceptors;
     private boolean isStreamingRequest;
+    private String traceOperation;
 
     public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.proxy = proxy;

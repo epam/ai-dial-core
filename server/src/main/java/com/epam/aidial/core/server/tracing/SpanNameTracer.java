@@ -6,6 +6,8 @@ import com.epam.aidial.core.server.controller.ControllerSelector;
 import io.vertx.core.Context;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.impl.HttpRequestHead;
+import io.vertx.core.spi.observability.HttpRequest;
 import io.vertx.core.spi.tracing.SpanKind;
 import io.vertx.core.spi.tracing.TagExtractor;
 import io.vertx.core.spi.tracing.VertxTracer;
@@ -49,7 +51,8 @@ public class SpanNameTracer<I, O> implements VertxTracer<I, O> {
             Context context, SpanKind kind, TracingPolicy policy, R request, String operation,
             BiConsumer<String, String> headers, TagExtractor<R> tagExtractor) {
 
-        return delegate.sendRequest(context, kind, policy, request, operation, headers, tagExtractor);
+        String spanName = request instanceof HttpRequest req ? getClientSpanName(req) : operation;
+        return delegate.sendRequest(context, kind, policy, request, spanName, headers, tagExtractor);
     }
 
     @Override
@@ -69,5 +72,12 @@ public class SpanNameTracer<I, O> implements VertxTracer<I, O> {
         ControllerSelection selection = HttpMethod.OPTIONS.equals(method)
                 ? ControllerSelector.select(path) : ControllerSelector.select(request);
         return "%s %s".formatted(method, selection.pathTemplate());
+    }
+
+    private String getClientSpanName(HttpRequest request) {
+        if (request instanceof HttpRequestHead req && req.traceOperation != null) {
+            return req.traceOperation;
+        }
+        return "%s %s".formatted(request.method(), request.uri());
     }
 }
