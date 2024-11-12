@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.tracing;
 
 import com.epam.aidial.core.server.Proxy;
-import com.epam.aidial.core.server.controller.ControllerSelection;
 import com.epam.aidial.core.server.controller.ControllerSelector;
+import com.epam.aidial.core.server.controller.ControllerTemplate;
 import io.vertx.core.Context;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
-public class SpanNameTracer<I, O> implements VertxTracer<I, O> {
+public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
 
     private static final List<String> PATHS = List.of(
             Proxy.HEALTH_CHECK_PATH,
@@ -26,7 +26,7 @@ public class SpanNameTracer<I, O> implements VertxTracer<I, O> {
 
     private final VertxTracer<I, O> delegate;
 
-    public SpanNameTracer(VertxTracer<I, O> delegate) {
+    public DialVertxTracer(VertxTracer<I, O> delegate) {
         this.delegate = delegate;
     }
 
@@ -69,7 +69,7 @@ public class SpanNameTracer<I, O> implements VertxTracer<I, O> {
         if (HttpMethod.GET.equals(method) && PATHS.contains(path)) {
             return "%s %s".formatted(method, path);
         }
-        ControllerSelection selection = HttpMethod.OPTIONS.equals(method)
+        ControllerTemplate selection = HttpMethod.OPTIONS.equals(method)
                 ? ControllerSelector.select(path) : ControllerSelector.select(request);
         return "%s %s".formatted(method, selection.pathTemplate());
     }

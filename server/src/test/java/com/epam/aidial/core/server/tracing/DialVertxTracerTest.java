@@ -25,12 +25,12 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @ExtendWith(VertxExtension.class)
-class SpanNameTracerTest {
+class DialVertxTracerTest {
 
     @Mock
     private VertxTracer<?, ?> delegate;
     @InjectMocks
-    private SpanNameTracer<?, ?> tracer;
+    private DialVertxTracer<?, ?> tracer;
 
     @ParameterizedTest
     @MethodSource("receiveRequestDatasource")

@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.util.RegexUtil;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -23,11 +22,11 @@ import java.util.regex.Pattern;
 @UtilityClass
 public class ControllerSelector {
 
-    private static final Object CTX_KEY = new Object();
+    private static final Object CONTROLLER_TEMPLATE_KEY = new Object();
 
     private static final List<ControllerRoute> ROUTES = new ArrayList<>();
 
-    private static final ControllerSelection DEFAULT_SELECTION = new ControllerSelection(
+    private static final ControllerTemplate DEFAULT_CONTROLLER_TEMPLATE = new ControllerTemplate(
             "/{path}", RouteController::new);
 
     private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(?<id>.+?)/(completions|chat/completions|embeddings)$");
@@ -301,30 +300,30 @@ public class ControllerSelector {
         });
     }
 
-    public ControllerSelection select(HttpServerRequest request) {
+    public ControllerTemplate select(HttpServerRequest request) {
         HttpMethod method = request.method();
         String path = request.path();
         if (request instanceof HttpServerRequestInternal req) {
-            ControllerSelection selection = req.context().getLocal(CTX_KEY);
+            ControllerTemplate selection = req.context().getLocal(CONTROLLER_TEMPLATE_KEY);
             if (selection == null) {
                 selection = select(method, path);
-                req.context().putLocal(CTX_KEY, selection);
+                req.context().putLocal(CONTROLLER_TEMPLATE_KEY, selection);
             }
             return selection;
         }
         return select(method, path);
     }
 
-    public ControllerSelection select(String path) {
+    public ControllerTemplate select(String path) {
         return select(null, path);
     }
 
-    private ControllerSelection select(HttpMethod method, String path) {
+    private ControllerTemplate select(HttpMethod method, String path) {
         return ROUTES.stream()
                 .map(r -> r.select(method, path))
                 .filter(Objects::nonNull)
-                .max(Comparator.comparing(ControllerSelection::pathTemplate))
-                .orElse(DEFAULT_SELECTION);
+                .max(Comparator.comparing(ControllerTemplate::pathTemplate))
+                .orElse(DEFAULT_CONTROLLER_TEMPLATE);
     }
 
     private void get(Pattern pathPattern, ControllerRoute.Initializer initializer) {
@@ -358,12 +357,12 @@ public class ControllerSelector {
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {
-        public ControllerSelection select(HttpMethod method, String path) {
+        public ControllerTemplate select(HttpMethod method, String path) {
             if (method == null || this.method.equals(method)) {
                 Matcher matcher = this.pathPattern.matcher(path);
                 if (matcher.find()) {
                     String pathTemplate = RegexUtil.replaceNamedGroups(this.pathPattern, path);
-                    return new ControllerSelection(pathTemplate,
+                    return new ControllerTemplate(pathTemplate,
                             (proxy, context) -> this.initializer.init(proxy, context, matcher));
                 }
             }

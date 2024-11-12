@@ -1,9 +1,8 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.controller;
 
 import lombok.experimental.UtilityClass;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -14,34 +13,34 @@ import java.util.regex.Pattern;
 @UtilityClass
 public class RegexUtil {
 
-    public String replaceNamedGroups(Pattern pattern, String input) {
-        return replaceNamedGroups(pattern, input, getNamedGroups(pattern));
-    }
-
-    public String replaceNamedGroups(Pattern pattern, String input, Collection<String> groups) {
-        if (pattern == null || input == null || input.isBlank() || groups == null || groups.isEmpty()) {
-            return input;
+    String replaceNamedGroups(Pattern pattern, String path) {
+        if (pattern == null || path == null || path.isBlank()) {
+            return path;
         }
-        List<RegexGroup> regexGroups = collectGroups(pattern, input, groups);
+        List<RegexGroup> regexGroups = collectGroups(pattern, path);
         if (regexGroups.isEmpty()) {
-            return input;
+            return path;
         }
         regexGroups.sort(Comparator.comparingInt(RegexGroup::start));
         StringBuilder nameBuilder = new StringBuilder();
         int prev = 0;
         for (RegexGroup rg : regexGroups) {
             nameBuilder
-                    .append(input, prev, rg.start())
+                    .append(path, prev, rg.start())
                     .append('{').append(rg.group()).append('}');
             prev = rg.end();
         }
-        nameBuilder.append(input, prev, input.length());
+        nameBuilder.append(path, prev, path.length());
         return nameBuilder.toString();
     }
 
-    private List<RegexGroup> collectGroups(Pattern pattern, String input, Collection<String> groups) {
+    private List<RegexGroup> collectGroups(Pattern pattern, String path) {
         List<RegexGroup> regexGroups = new ArrayList<>();
-        Matcher matcher = pattern.matcher(input);
+        Set<String> groups = getNamedGroups(pattern);
+        if (groups.isEmpty()) {
+            return regexGroups;
+        }
+        Matcher matcher = pattern.matcher(path);
         if (matcher.matches() && matcher.groupCount() > 0) {
             for (String group : groups) {
                 try {
@@ -56,7 +55,7 @@ public class RegexUtil {
         return regexGroups;
     }
 
-    public static Set<String> getNamedGroups(Pattern pattern) {
+    private static Set<String> getNamedGroups(Pattern pattern) {
         Set<String> namedGroups = new HashSet<>();
 
         Matcher matcher = Pattern.compile("\\(\\?<(.+?)>").matcher(pattern.pattern());

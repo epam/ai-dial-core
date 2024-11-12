@@ -3,8 +3,8 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.Controller;
-import com.epam.aidial.core.server.controller.ControllerSelection;
 import com.epam.aidial.core.server.controller.ControllerSelector;
+import com.epam.aidial.core.server.controller.ControllerTemplate;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -268,8 +268,8 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId);
-            ControllerSelection controllerSelection = ControllerSelector.select(request);
-            Controller controller = controllerSelection.controller(this, context);
+            ControllerTemplate controllerTemplate = ControllerSelector.select(request);
+            Controller controller = controllerTemplate.build(this, context);
             future = controller.handle();
         } catch (Exception t) {
             future = Future.failedFuture(t);

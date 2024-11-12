@@ -19,7 +19,7 @@ import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
-import com.epam.aidial.core.server.tracing.OpenTelemetryTracingFactoryProxy;
+import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -323,7 +323,7 @@ public class AiDial {
         }
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder().build().getOpenTelemetrySdk();
         OpenTelemetryOptions otelOpts = new OpenTelemetryOptions(openTelemetry);
-        otelOpts.setFactory(new OpenTelemetryTracingFactoryProxy(otelOpts.getFactory()));
+        otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
         vertxOptions.setTracingOptions(otelOpts);
     }
 

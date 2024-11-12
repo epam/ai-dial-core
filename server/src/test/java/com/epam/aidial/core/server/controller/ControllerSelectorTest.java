@@ -45,7 +45,7 @@ public class ControllerSelectorTest {
     public void testSelectGetDeploymentController() {
         when(request.path()).thenReturn("/openai/deployments/deployment1");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -59,7 +59,7 @@ public class ControllerSelectorTest {
     public void testSelectGetDeploymentsController() {
         when(request.path()).thenReturn("/openai/deployments");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -73,7 +73,7 @@ public class ControllerSelectorTest {
     public void testSelectGetModelController() {
         when(request.path()).thenReturn("/openai/models/model1");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -87,7 +87,7 @@ public class ControllerSelectorTest {
     public void testSelectGetModelsController() {
         when(request.path()).thenReturn("/openai/models");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -101,7 +101,7 @@ public class ControllerSelectorTest {
     public void testSelectGetAddonController() {
         when(request.path()).thenReturn("/openai/addons/addon1");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -115,7 +115,7 @@ public class ControllerSelectorTest {
     public void testSelectGetAddonsController() {
         when(request.path()).thenReturn("/openai/addons");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -129,7 +129,7 @@ public class ControllerSelectorTest {
     public void testSelectGetAssistantController() {
         when(request.path()).thenReturn("/openai/assistants/as1");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -143,7 +143,7 @@ public class ControllerSelectorTest {
     public void testSelectGetAssistantsController() {
         when(request.path()).thenReturn("/openai/assistants");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -160,7 +160,7 @@ public class ControllerSelectorTest {
         ApplicationService customApplicationServiceMock = mock(ApplicationService.class);
         when(proxy.getApplicationService()).thenReturn(customApplicationServiceMock);
         when(context.getProxy()).thenReturn(proxy);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -177,7 +177,7 @@ public class ControllerSelectorTest {
         ApplicationService customApplicationServiceMock = mock(ApplicationService.class);
         when(proxy.getApplicationService()).thenReturn(customApplicationServiceMock);
         when(context.getProxy()).thenReturn(proxy);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -192,7 +192,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/metadata/files/bucket/file1");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -208,7 +208,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/metadata/files/bucket/fol%2Fder%201/");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -224,7 +224,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/files/bucket/folder1/file1.txt");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -240,7 +240,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/files/bucket/fol%2Fder%201/file1%23.txt");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -255,7 +255,7 @@ public class ControllerSelectorTest {
     public void testSelectPostDeploymentController() {
         when(request.path()).thenReturn("/openai/deployments/app1/completions");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -272,7 +272,7 @@ public class ControllerSelectorTest {
     public void testSelectPostDeploymentControllerWithCustomApplication() {
         when(request.path()).thenReturn("/openai/deployments/applications/bucket/my-application/chat/completions");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -290,7 +290,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/files/bucket/folder1/file1.txt");
         when(request.method()).thenReturn(HttpMethod.PUT);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -306,7 +306,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/files/bucket/fol%2Fder%201/file1%23.txt");
         when(request.method()).thenReturn(HttpMethod.PUT);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -322,7 +322,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/files/bucket/folder1/file1.txt");
         when(request.method()).thenReturn(HttpMethod.DELETE);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -338,7 +338,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/files/bucket/fol%2Fder%201/file1%23.txt");
         when(request.method()).thenReturn(HttpMethod.DELETE);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -353,7 +353,7 @@ public class ControllerSelectorTest {
     public void testSelectRateResponseController() {
         when(request.path()).thenReturn("/v1/app/rate");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -367,7 +367,7 @@ public class ControllerSelectorTest {
     public void testSelectTokenizeController() {
         when(request.path()).thenReturn("/v1/deployments/app/tokenize");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -381,7 +381,7 @@ public class ControllerSelectorTest {
     public void testSelectTruncatePromptController() {
         when(request.path()).thenReturn("/v1/deployments/app/truncate_prompt");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -395,7 +395,7 @@ public class ControllerSelectorTest {
     public void testSelectRouteController() {
         when(request.path()).thenReturn("/route/request");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         assertInstanceOf(RouteController.class, controller);
     }
@@ -404,7 +404,7 @@ public class ControllerSelectorTest {
     void testSelectDeploymentWithSpecialName() {
         when(request.path()).thenReturn("/openai/deployments/deployment_x-y%2B%2F");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -418,7 +418,7 @@ public class ControllerSelectorTest {
     void testSelectDeploymentWithSlash() {
         when(request.path()).thenReturn("/openai/deployments/deployment/xy");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -433,7 +433,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/conversations/bucket/path");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -448,7 +448,7 @@ public class ControllerSelectorTest {
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/v1/metadata/conversations/bucket/path");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -462,7 +462,7 @@ public class ControllerSelectorTest {
     public void testSelectGetBucketController() {
         when(request.path()).thenReturn("/v1/bucket");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -474,7 +474,7 @@ public class ControllerSelectorTest {
     public void testSelectGetInvitationController() {
         when(request.path()).thenReturn("/v1/invitations/1");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -488,7 +488,7 @@ public class ControllerSelectorTest {
     public void testSelectGetInvitationsController() {
         when(request.path()).thenReturn("/v1/invitations");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -500,7 +500,7 @@ public class ControllerSelectorTest {
     public void testSelectGetLimitsController() {
         when(request.path()).thenReturn("/v1/deployments/name/limits");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -514,7 +514,7 @@ public class ControllerSelectorTest {
     public void testSelectGetFeatureController() {
         when(request.path()).thenReturn("/v1/deployments/name/configuration");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -528,7 +528,7 @@ public class ControllerSelectorTest {
     public void testSelectPostShareController() {
         when(request.path()).thenReturn("/v1/ops/resource/share/list");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -542,7 +542,7 @@ public class ControllerSelectorTest {
     public void testSelectPostPublicationController() {
         when(request.path()).thenReturn("/v1/ops/publication/list");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -554,7 +554,7 @@ public class ControllerSelectorTest {
     public void testSelectPostPublicationRulesController() {
         when(request.path()).thenReturn("/v1/ops/publication/rule/list");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -566,7 +566,7 @@ public class ControllerSelectorTest {
     public void testSelectPostResourceOperationController() {
         when(request.path()).thenReturn("/v1/ops/resource/move");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -578,7 +578,7 @@ public class ControllerSelectorTest {
     public void testSelectPostPublishedResourcesController() {
         when(request.path()).thenReturn("/v1/ops/publication/resource/list");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -590,7 +590,7 @@ public class ControllerSelectorTest {
     public void testSelectPostNotificationController() {
         when(request.path()).thenReturn("/v1/ops/notification/list");
         when(request.method()).thenReturn(HttpMethod.POST);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -603,7 +603,7 @@ public class ControllerSelectorTest {
         when(request.path()).thenReturn("/v1/ops/application/logs");
         when(request.method()).thenReturn(HttpMethod.POST);
         when(context.getProxy()).thenReturn(proxy);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -616,7 +616,7 @@ public class ControllerSelectorTest {
         when(request.path()).thenReturn("/v1/conversations/bucket/path");
         when(request.method()).thenReturn(HttpMethod.DELETE);
         when(context.getRequest()).thenReturn(request);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -630,7 +630,7 @@ public class ControllerSelectorTest {
     public void testSelectDeleteInvitationController() {
         when(request.path()).thenReturn("/v1/invitations/id");
         when(request.method()).thenReturn(HttpMethod.DELETE);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -645,7 +645,7 @@ public class ControllerSelectorTest {
         when(request.path()).thenReturn("/v1/conversations/bucket/path");
         when(request.method()).thenReturn(HttpMethod.PUT);
         when(context.getRequest()).thenReturn(request);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -658,7 +658,7 @@ public class ControllerSelectorTest {
     @Test
     public void testSelectBucketController() {
         when(request.path()).thenReturn("/v1/bucket");
-        Controller controller = ControllerSelector.select(request.path()).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request.path()).build(proxy, context);
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
@@ -670,7 +670,7 @@ public class ControllerSelectorTest {
     void testFailDeploymentWithBadPrefix() {
         when(request.path()).thenReturn("/prefix/openai/deployments/deployment");
         when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).controller(proxy, context);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertInstanceOf(RouteController.class, controller);
     }
 
@@ -684,7 +684,7 @@ public class ControllerSelectorTest {
         assertNotNull(ControllerSelector.select(request));
         assertNotNull(ControllerSelector.select(request));
         verify(ctx, times(2)).getLocal(any());
-        verify(ctx, times(1)).putLocal(any(), any(ControllerSelection.class));
+        verify(ctx, times(1)).putLocal(any(), any(ControllerTemplate.class));
     }
 
     @Nullable
