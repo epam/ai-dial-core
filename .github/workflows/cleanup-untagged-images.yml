@@ -1,0 +1,21 @@
+name: Cleanup untagged images
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  clean:
+    name: Delete untagged images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: snok/container-retention-policy@4f22ef80902ad409ed55a99dc5133cc1250a0d03 # v3.0.0
+        with:
+          account: "epam"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: "ai-dial-core"
+          tag-selection: "untagged"
+          cut-off: "1d"
+          dry-run: false
