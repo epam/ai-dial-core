@@ -656,17 +656,6 @@ public class ControllerSelectorTest {
     }
 
     @Test
-    public void testSelectBucketController() {
-        when(request.path()).thenReturn("/v1/bucket");
-        Controller controller = ControllerSelector.select(request.path()).build(proxy, context);
-        assertNotNull(controller);
-        SerializedLambda lambda = getSerializedLambda(controller);
-        assertNotNull(lambda);
-        Object arg1 = lambda.getCapturedArg(0);
-        assertInstanceOf(BucketController.class, arg1);
-    }
-
-    @Test
     void testFailDeploymentWithBadPrefix() {
         when(request.path()).thenReturn("/prefix/openai/deployments/deployment");
         when(request.method()).thenReturn(HttpMethod.GET);

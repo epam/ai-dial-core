@@ -69,8 +69,10 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
         if (HttpMethod.GET.equals(method) && PATHS.contains(path)) {
             return "%s %s".formatted(method, path);
         }
-        ControllerTemplate selection = HttpMethod.OPTIONS.equals(method)
-                ? ControllerSelector.select(path) : ControllerSelector.select(request);
+        if (HttpMethod.OPTIONS.equals(method)) {
+            return method.name();
+        }
+        ControllerTemplate selection = ControllerSelector.select(request);
         return "%s %s".formatted(method, selection.pathTemplate());
     }
 

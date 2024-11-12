@@ -314,15 +314,11 @@ public class ControllerSelector {
         return select(method, path);
     }
 
-    public ControllerTemplate select(String path) {
-        return select(null, path);
-    }
-
     private ControllerTemplate select(HttpMethod method, String path) {
         return ROUTES.stream()
                 .map(r -> r.select(method, path))
                 .filter(Objects::nonNull)
-                .max(Comparator.comparing(ControllerTemplate::pathTemplate))
+                .findAny()
                 .orElse(DEFAULT_CONTROLLER_TEMPLATE);
     }
 
@@ -358,7 +354,7 @@ public class ControllerSelector {
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {
         public ControllerTemplate select(HttpMethod method, String path) {
-            if (method == null || this.method.equals(method)) {
+            if (this.method.equals(method)) {
                 Matcher matcher = this.pathPattern.matcher(path);
                 if (matcher.find()) {
                     String pathTemplate = RegexUtil.replaceNamedGroups(this.pathPattern, path);

@@ -62,8 +62,7 @@ class DialVertxTracerTest {
                 Arguments.of(HttpMethod.GET, "/health", "GET /health"),
                 Arguments.of(HttpMethod.GET, "/version", "GET /version"),
                 Arguments.of(HttpMethod.POST, "/route/path", "POST /{path}"),
-                Arguments.of(HttpMethod.OPTIONS, "/openai/deployments/llm", "OPTIONS /openai/deployments/{id}"),
-                Arguments.of(HttpMethod.OPTIONS, "/openai/deployments/llm/chat/completions", "OPTIONS /openai/deployments/{id}/chat/completions")
+                Arguments.of(HttpMethod.OPTIONS, "/openai/deployments/llm/chat/completions", "OPTIONS")
         );
     }
 
