@@ -33,7 +33,9 @@
                 "toolsSupported": false,
                 "seedSupported":false,
                 "urlAttachmentsSupported": false,
-                "folderAttachmentsSupported": false
+                "folderAttachmentsSupported": false,
+                "accessibleByPerRequestKey": true,
+                "contentPartsSupported": false
             },
             "maxInputAttachments": 10,
             "inputAttachmentTypes": ["type1", "type2"]
@@ -66,7 +68,9 @@
                     "toolsSupported": false,
                     "seedSupported":false,
                     "urlAttachmentsSupported": false,
-                    "folderAttachmentsSupported": false
+                    "folderAttachmentsSupported": false,
+                    "accessibleByPerRequestKey": true,
+                    "contentPartsSupported": false
                 },
                 "maxInputAttachments": 10,
                 "inputAttachmentTypes": ["type1", "type2"],
@@ -85,6 +89,7 @@
             "displayName": "Forecast",
             "iconUrl": "https://host/app.svg",
             "description": "Addon that provides forecast",
+            "descriptionKeywords": ["code-gen"],
             "userRoles": [
                 "Forecast"
             ],
@@ -98,7 +103,9 @@
                 "toolsSupported": false,
                 "seedSupported":false,
                 "urlAttachmentsSupported": false,
-                "folderAttachmentsSupported": false
+                "folderAttachmentsSupported": false,
+                "accessibleByPerRequestKey": true,
+                "contentPartsSupported": false
             },
             "maxInputAttachments": 10,
             "inputAttachmentTypes": ["type1", "type2"],
@@ -154,7 +161,9 @@
                 "toolsSupported": false,
                 "seedSupported":false,
                 "urlAttachmentsSupported": false,
-                "folderAttachmentsSupported": false
+                "folderAttachmentsSupported": false,
+                "accessibleByPerRequestKey": true,
+                "contentPartsSupported": false
             },
             "maxInputAttachments": 10,
             "inputAttachmentTypes": ["type1", "type2"],
