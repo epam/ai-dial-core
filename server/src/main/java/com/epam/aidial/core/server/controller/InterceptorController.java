@@ -96,7 +96,8 @@ public class InterceptorController {
         String uri = buildUri(context);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
-                .setMethod(context.getRequest().method());
+                .setMethod(context.getRequest().method())
+                .setTraceOperation(context.getTraceOperation());
 
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)

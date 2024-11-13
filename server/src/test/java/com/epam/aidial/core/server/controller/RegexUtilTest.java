@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.controller;
 
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -15,8 +15,7 @@ class RegexUtilTest {
     @MethodSource("datasource")
     void getName(String pathPattern, String path, String expectedName) {
         var pattern = Pattern.compile(pathPattern);
-        var groups = List.of("id", "bucket", "path");
-        assertEquals(expectedName, RegexUtil.replaceNamedGroups(pattern, path, groups));
+        assertEquals(expectedName, RegexUtil.replaceNamedGroups(pattern, path));
     }
 
     public static List<Arguments> datasource() {
@@ -74,7 +73,7 @@ class RegexUtilTest {
                 Arguments.of(
                         "^/api/(?<somethingElse>.+?)$",
                         "/api/123",
-                        "/api/123"
+                        "/api/{somethingElse}"
                 ),
                 Arguments.of(
                         "^/v1/(?<somethingElse>.+?)$",

@@ -63,6 +63,7 @@ public class RouteController implements Controller {
                 return Future.succeededFuture();
             }
 
+            context.setTraceOperation("Send request to %s route".formatted(route.getName()));
             context.setRewritePath(route.isRewritePath());
             context.setUpstreamRoute(upstreamRoute);
         } else {
@@ -95,7 +96,8 @@ public class RouteController implements Controller {
         Objects.requireNonNull(upstream);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(getEndpointUri(upstream))
-                .setMethod(request.method());
+                .setMethod(request.method())
+                .setTraceOperation(context.getTraceOperation());
 
         return proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)
