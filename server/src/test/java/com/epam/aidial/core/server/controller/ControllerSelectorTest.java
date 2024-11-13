@@ -664,6 +664,15 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testDefaultSelectRouteController() {
+        when(request.path()).thenReturn("/fake");
+        when(request.method()).thenReturn(HttpMethod.POST);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        assertInstanceOf(RouteController.class, controller);
+    }
+
+    @Test
     void testSelectOnce(Vertx vertx) {
         HttpServerRequestInternal request = mock(HttpServerRequestInternal.class);
         Context ctx = spy(vertx.getOrCreateContext());
