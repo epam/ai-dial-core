@@ -221,11 +221,7 @@ public class PublicationService {
         }
 
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
-                .toList();
-
-        List<Publication.Resource> resourcesToAddIfAbsent = publication.getResources().stream()
-                .filter(i -> i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
+                .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
 
         List<Publication.Resource> resourcesToDelete = publication.getResources().stream()
@@ -256,10 +252,7 @@ public class PublicationService {
 
         ruleService.storeRules(publication);
 
-        List<Publication.Resource> allResourcesToAdd = new ArrayList<>();
-        allResourcesToAdd.addAll(resourcesToAddIfAbsent);
-        allResourcesToAdd.addAll(resourcesToAdd);
-        copyReviewToTargetResources(allResourcesToAdd);
+        copyReviewToTargetResources(resourcesToAdd);
         deleteReviewResources(resourcesToAdd);
         deletePublicResources(resourcesToDelete);
 
@@ -512,7 +505,7 @@ public class PublicationService {
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
 
-            if (resourceService.hasResource(descriptor) != exists) {
+            if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && resourceService.hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
                 throw new IllegalArgumentException(errorMessage);
             }
