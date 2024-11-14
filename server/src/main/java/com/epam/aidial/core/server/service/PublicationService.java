@@ -205,7 +205,7 @@ public class PublicationService {
 
         if (publication.getStatus() == Publication.Status.PENDING) {
             List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                    .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                    .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                     .toList();
             deleteReviewResources(resourcesToAdd);
         }
@@ -302,7 +302,7 @@ public class PublicationService {
 
         Publication publication = reference.getValue();
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
         deleteReviewResources(resourcesToAdd);
 
