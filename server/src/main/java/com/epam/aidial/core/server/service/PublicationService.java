@@ -27,6 +27,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.mutable.MutableObject;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -148,7 +149,7 @@ public class PublicationService {
         prepareAndValidatePublicationRequest(context, publication, bucket, bucketLocation, isAdmin);
 
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                .filter(resource -> resource.getAction() == Publication.ResourceAction.ADD)
+                .filter(resource -> resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
 
         copySourceToReviewResources(resourcesToAdd);
@@ -223,6 +224,10 @@ public class PublicationService {
                 .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
                 .toList();
 
+        List<Publication.Resource> resourcesToAddIfAbsent = publication.getResources().stream()
+                .filter(i -> i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
+                .toList();
+
         List<Publication.Resource> resourcesToDelete = publication.getResources().stream()
                 .filter(i -> i.getAction() == Publication.ResourceAction.DELETE)
                 .toList();
@@ -251,7 +256,10 @@ public class PublicationService {
 
         ruleService.storeRules(publication);
 
-        copyReviewToTargetResources(resourcesToAdd);
+        List<Publication.Resource> allResourcesToAdd = new ArrayList<>();
+        allResourcesToAdd.addAll(resourcesToAddIfAbsent);
+        allResourcesToAdd.addAll(resourcesToAdd);
+        copyReviewToTargetResources(allResourcesToAdd);
         deleteReviewResources(resourcesToAdd);
         deletePublicResources(resourcesToDelete);
 
