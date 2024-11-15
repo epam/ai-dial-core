@@ -36,6 +36,9 @@ public class ProxyUtil {
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
             .build();
 
+    private static final MultiMap TRACE_HEADERS = MultiMap.caseInsensitiveMultiMap()
+            .add("traceparent", "whatever")
+            .add("tracestate", "whatever");
     private static final MultiMap HOP_BY_HOP_HEADERS = MultiMap.caseInsensitiveMultiMap()
             .add(HttpHeaders.CONNECTION, "whatever")
             .add(HttpHeaders.KEEP_ALIVE, "whatever")
@@ -60,7 +63,7 @@ public class ProxyUtil {
             String key = entry.getKey();
             String value = entry.getValue();
 
-            if (!HOP_BY_HOP_HEADERS.contains(key) && !excludeHeaders.contains(key)) {
+            if (!HOP_BY_HOP_HEADERS.contains(key) && !TRACE_HEADERS.contains(key) && !excludeHeaders.contains(key)) {
                 to.add(key, value);
             }
         }
