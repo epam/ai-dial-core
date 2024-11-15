@@ -27,6 +27,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.mutable.MutableObject;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -148,7 +149,7 @@ public class PublicationService {
         prepareAndValidatePublicationRequest(context, publication, bucket, bucketLocation, isAdmin);
 
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                .filter(resource -> resource.getAction() == Publication.ResourceAction.ADD)
+                .filter(resource -> resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
 
         copySourceToReviewResources(resourcesToAdd);
@@ -204,7 +205,7 @@ public class PublicationService {
 
         if (publication.getStatus() == Publication.Status.PENDING) {
             List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                    .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                    .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                     .toList();
             deleteReviewResources(resourcesToAdd);
         }
@@ -220,7 +221,7 @@ public class PublicationService {
         }
 
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
 
         List<Publication.Resource> resourcesToDelete = publication.getResources().stream()
@@ -294,7 +295,7 @@ public class PublicationService {
 
         Publication publication = reference.getValue();
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
-                .filter(i -> i.getAction() == Publication.ResourceAction.ADD)
+                .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
         deleteReviewResources(resourcesToAdd);
 
@@ -504,7 +505,7 @@ public class PublicationService {
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
 
-            if (resourceService.hasResource(descriptor) != exists) {
+            if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && resourceService.hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
                 throw new IllegalArgumentException(errorMessage);
             }

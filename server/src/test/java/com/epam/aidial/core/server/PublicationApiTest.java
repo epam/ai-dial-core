@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,25 @@ class PublicationApiTest extends ResourceBaseTest {
                   "source": "roles",
                   "function": "EQUAL",
                   "targets": ["user"]
+                }
+              ]
+            }
+            """;
+
+    private static final String PUBLICATION_REQUEST_WITH_FILE = """
+            {
+              "name": "Publication name",
+              "targetFolder": "public/folder/",
+              "resources": [
+                {
+                  "action": "ADD",
+                  "sourceUrl": "conversations/%s/my/folder/conversation%s",
+                  "targetUrl": "conversations/public/folder/conversation%s"
+                },
+                {
+                  "action": "%s",
+                  "sourceUrl": "files/%s/file",
+                  "targetUrl": "files/public/folder/file"
                 }
               ]
             }
@@ -544,6 +565,113 @@ class PublicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation",
                 null, null, "authorization", "user");
         verify(response, 200);
+    }
+
+    @Test
+    void testPublicationWithAddIfAbsent() throws Exception {
+        Response response = upload(HttpMethod.PUT, "/v1/files/" + bucket + "/file", null, "text data");
+        verify(response, 200);
+        String conversationTemplate = """
+                {
+                "id": "%s",
+                "name": "display_name",
+                "model": {"id": "model_id"},
+                "prompt": "system prompt",
+                "temperature": 1,
+                "folderId": "%s",
+                "messages": [{
+                    "role": "user",
+                    "content": "what's the file?",
+                    "custom_content": {
+                        "attachments": [
+                          {
+                            "type": "text/markdown",
+                            "title": "title",
+                            "url": "%s"
+                          }
+                        ]
+                    }
+                }],
+                "selectedAddons": ["R", "T", "G"],
+                "assistantModelId": "assistantId",
+                "lastActivityDate": 4848683153
+                }
+                """;
+        JsonNode fileResponse = ProxyUtil.MAPPER.readTree(response.body());
+        String conversation = conversationTemplate.formatted("conversation_id", "folder1", fileResponse.get("url").asText());
+
+        response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation1", conversation);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST_WITH_FILE.formatted(bucket, "1", "1", "ADD_IF_ABSENT", bucket));
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name" : "Publication name",
+                  "targetFolder" : "public/folder/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "action": "ADD",
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation1",
+                    "targetUrl" : "conversations/public/folder/conversation1",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation1"
+                    },
+                    {
+                    "action": "ADD_IF_ABSENT",
+                    "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/file",
+                    "targetUrl" : "files/public/folder/file",
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/file"
+                    }
+                   ],
+                   "resourceTypes" : [ "@ignore", "@ignore" ]
+                }
+                """);
+
+
+        response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation2", conversation);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST_WITH_FILE.formatted(bucket, "2", "2", "ADD_IF_ABSENT", bucket));
+        verify(response, 200);
+
+        String publication = """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+                }
+                """;
+        response = operationRequest("/v1/ops/publication/approve", publication, "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
+                  "name" : "Publication name",
+                  "targetFolder" : "public/folder/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "action": "ADD",
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation2",
+                    "targetUrl" : "conversations/public/folder/conversation2",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhQHmtD7fN295EFSG4HiW8Zi/conversation2"
+                    },
+                    {
+                    "action": "ADD_IF_ABSENT",
+                    "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/file",
+                    "targetUrl" : "files/public/folder/file",
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhQHmtD7fN295EFSG4HiW8Zi/file"
+                    }
+                   ],
+                   "resourceTypes" : [ "@ignore", "@ignore" ]
+                }
+                """);
+
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation2");
+        verifyJsonNotExact(response, 200, conversationTemplate.formatted("conversations/public/folder/conversation2",
+                "conversations/public/folder", "files/public/folder/file"));
+
     }
 
     @Test
