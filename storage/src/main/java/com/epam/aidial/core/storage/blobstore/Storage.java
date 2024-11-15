@@ -7,6 +7,9 @@ import javax.annotation.Nullable;
 
 @Data
 public class Storage {
+
+    public static final long DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES = 512 * 1024 * 1024;
+
     /**
      * Specifies storage provider. Supported providers: s3, aws-s3, azureblob, google-cloud-storage, filesystem
      */
@@ -47,4 +50,6 @@ public class Storage {
      */
     @Nullable
     String prefix;
+
+    long maxUploadedFileSize = DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES;
 }

@@ -53,6 +53,9 @@ public class BlobStorage implements Closeable {
     @Nullable
     private final String prefix;
 
+    @Getter
+    private final long maxUploadedFileSize;
+
     public BlobStorage(Storage config) {
         String provider = config.getProvider();
         ContextBuilder builder = ContextBuilder.newBuilder(provider);
@@ -69,6 +72,7 @@ public class BlobStorage implements Closeable {
         this.blobStore = storeContext.getBlobStore();
         this.bucketName = config.getBucket();
         this.prefix = config.getPrefix();
+        this.maxUploadedFileSize = config.getMaxUploadedFileSize();
         createBucketIfNeeded(config);
     }
 

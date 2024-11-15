@@ -36,9 +36,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import static com.epam.aidial.core.server.Proxy.FILES_REQUEST_BODY_MAX_SIZE_BYTES;
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.server.Proxy.HEALTH_CHECK_PATH;
+import static com.epam.aidial.core.storage.blobstore.Storage.DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.HTTP_VERSION_NOT_SUPPORTED;
 import static com.epam.aidial.core.storage.http.HttpStatus.METHOD_NOT_ALLOWED;
@@ -121,7 +121,7 @@ public class ProxyTest {
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("multipart/form-data");
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
-        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(FILES_REQUEST_BODY_MAX_SIZE_BYTES + 1));
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Long.toString(DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES + 1));
 
         proxy.handle(request);
 
@@ -134,7 +134,7 @@ public class ProxyTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
-        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(FILES_REQUEST_BODY_MAX_SIZE_BYTES + 1));
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Long.toString(DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES + 1));
 
         proxy.handle(request);
 
