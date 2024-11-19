@@ -562,6 +562,151 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testExtractClaims_21() throws JwkException {
+        settings.put("rolePath", List.of("roles", "roles2"));
+        settings.put("rolesDelimiter", " ");
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", "r1 r2 r3")
+                .withClaim("roles2", "r4 r5 r6")
+                .sign(algorithm);
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("r1", "r2", "r3", "r4", "r5", "r6"), claims.userRoles());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_22() throws JwkException {
+        settings.put("rolePath", List.of("roles", "roles2"));
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", "r1")
+                .withClaim("roles2", "r2")
+                .sign(algorithm);
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("r1", "r2"), claims.userRoles());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_23() throws JwkException {
+        settings.put("rolePath", List.of("roles", "roles2"));
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("r1", "r2", "r3"))
+                .sign(algorithm);
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("r1", "r2", "r3"), claims.userRoles());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_24() throws JwkException {
+        settings.put("rolePath", List.of("roles", "roles2"));
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("r1", "r2", "r3"))
+                .withClaim("roles2", "r4")
+                .sign(algorithm);
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("r1", "r2", "r3", "r4"), claims.userRoles());
+        });
+    }
+
+    @Test
+    public void testExtractClaims_25() throws JwkException {
+        settings.put("rolePath", List.of("p0.p1.p2.p3", "p0.p1.p2.p4"));
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, client, url -> jwkProvider, factory);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        Map<String, Object> claim = Map.of("some", "val", "k1", 12, "p1",
+                Map.of("p2", Map.of("p3", List.of("r1", "r2"), "p4", List.of("r3", "r4"))));
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("p0", claim).sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals(List.of("r1", "r2", "r3", "r4"), claims.userRoles());
+        });
+    }
+
+    @Test
     public void testExtractClaims_FromUserInfo_01() {
         settings.remove("jwksUrl");
         settings.put("userInfoEndpoint", "http://host/userinfo");

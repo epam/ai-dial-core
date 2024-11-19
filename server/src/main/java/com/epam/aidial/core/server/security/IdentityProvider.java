@@ -13,6 +13,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
@@ -23,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -33,13 +35,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static java.util.Collections.EMPTY_LIST;
-
 @Slf4j
 public class IdentityProvider {
 
-    // path to the claim of user roles in JWT
-    private final String[] rolePath;
+    // path(s) to the claim of user roles in JWT
+    private final List<String[]> rolePaths = new ArrayList<>();
 
     // Delimiter to split the roles if they are set as a single String
     private final String rolesDelimiter;
@@ -114,9 +114,23 @@ public class IdentityProvider {
             }
         }
 
-        String rolePathStr = Objects.requireNonNull(settings.getString("rolePath"), "rolePath is missed");
-        getUserRoleFn = factory.getUserRoleFn(rolePathStr);
-        rolePath = rolePathStr.split("\\.");
+        Object rolePathObj = Objects.requireNonNull(settings.getValue("rolePath"), "rolePath is missed");
+        List<String> rolePathList;
+
+        if (rolePathObj instanceof String rolePathStr) {
+            getUserRoleFn =  factory.getUserRoleFn(rolePathStr);
+            rolePathList = List.of(rolePathStr);
+        } else if (rolePathObj instanceof JsonArray rolePathArray) {
+            getUserRoleFn = null;
+            rolePathList = rolePathArray.stream().map(o -> (String) o).toList();
+        } else {
+            throw new IllegalArgumentException("rolePath should be either String or Array");
+        }
+
+        for (String rolePath : rolePathList) {
+            rolePaths.add(rolePath.split("\\."));
+        }
+
         rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
@@ -149,32 +163,37 @@ public class IdentityProvider {
 
     @SuppressWarnings("unchecked")
     private List<String> extractUserRoles(Map<String, Object> map) {
-        for (int i = 0; i < rolePath.length; i++) {
-            Object next = map.get(rolePath[i]);
-            if (next == null) {
-                return EMPTY_LIST;
-            }
-            if (i == rolePath.length - 1) {
-                if (next instanceof List) {
-                    return (List<String>) next;
-                } else if (next instanceof String) {
-                    if (rolesDelimiter != null) {
-                        return Arrays.stream(((String) next)
-                                .split(rolesDelimiter))
-                                .filter(s -> !s.isBlank())
-                                .toList();
-                    }
-                    return List.of((String) next);
+        List<String> result = new ArrayList<>();
+        for (String[] rolePath : rolePaths) {
+            Map<String, Object> mapPointer = map;
+            for (int i = 0; i < rolePath.length; i++) {
+                Object next = mapPointer.get(rolePath[i]);
+                if (next == null) {
+                    break;
                 }
-            } else {
-                if (next instanceof Map) {
-                    map = (Map<String, Object>) next;
+                if (i == rolePath.length - 1) {
+                    if (next instanceof List) {
+                        result.addAll((List<String>) next);
+                    } else if (next instanceof String) {
+                        if (rolesDelimiter != null) {
+                            result.addAll(Arrays.stream(((String) next)
+                                            .split(rolesDelimiter))
+                                    .filter(s -> !s.isBlank())
+                                    .toList());
+                        } else {
+                            result.add((String) next);
+                        }
+                    }
                 } else {
-                    return EMPTY_LIST;
+                    if (next instanceof Map) {
+                        mapPointer = (Map<String, Object>) next;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
-        return EMPTY_LIST;
+        return result;
     }
 
     public static DecodedJWT decodeJwtToken(String encodedToken) {
