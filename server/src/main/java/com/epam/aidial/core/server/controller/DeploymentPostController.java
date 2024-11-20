@@ -272,7 +272,7 @@ public class DeploymentPostController {
             }
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
-                respond(httpException.getStatus(), httpException);
+                respond(httpException.getStatus(), httpException.getMessage());
             } else {
                 respond(HttpStatus.BAD_REQUEST);
             }
