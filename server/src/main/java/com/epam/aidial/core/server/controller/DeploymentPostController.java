@@ -108,7 +108,7 @@ public class DeploymentPostController {
                 })
                 .compose(dep -> {
                     if (dep instanceof Model && !context.hasNextInterceptor()) {
-                        return proxy.getRateLimiter().limit(context);
+                        return proxy.getRateLimiter().limit(context, dep);
                     } else {
                         return Future.succeededFuture(RateLimitResult.SUCCESS);
                     }

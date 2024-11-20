@@ -4,7 +4,8 @@
       "paths": ["/+v1/rate"],
       "methods": ["POST"],
       "response" : {
-        "status": 200
+        "status": 200,
+        "body": "OK"
       }
     },
     "forbidden" : {
@@ -30,6 +31,13 @@
       "rewritePath": true,
       "methods": ["POST", "PUT", "DELETE"],
       "userRoles": ["vstore_admin"],
+      "upstreams": [{"endpoint": "http://localhost:9876"}]
+    },
+    "rate_limited_route": {
+      "paths": ["/rate_limited_route"],
+      "rewritePath": true,
+      "methods": ["GET"],
+      "userRoles": ["vstore_user", "vstore_admin"],
       "upstreams": [{"endpoint": "http://localhost:9876"}]
     }
   },
@@ -147,6 +155,16 @@
         "calculator": {},
         "search-assistant": {},
         "app": {}
+      }
+    },
+    "vstore_user": {
+      "limits": {
+        "rate_limited_route": {"requestHour": "1"}
+      }
+    },
+    "vstore_admin": {
+      "limits": {
+        "rate_limited_route": {}
       }
     }
   }

@@ -27,7 +27,7 @@ public class AssistantController {
             return context.respond(HttpStatus.NOT_FOUND);
         }
 
-        if (!DeploymentController.hasAccess(context, assistant)) {
+        if (!assistant.hasAccess(context.getUserRoles())) {
             return context.respond(HttpStatus.FORBIDDEN);
         }
 
@@ -40,7 +40,7 @@ public class AssistantController {
         List<AssistantData> assistants = new ArrayList<>();
 
         for (Assistant assistant : config.getAssistant().getAssistants().values()) {
-            if (!ASSISTANT.equals(assistant.getName()) && DeploymentController.hasAccess(context, assistant)) {
+            if (!ASSISTANT.equals(assistant.getName()) && assistant.hasAccess(context.getUserRoles())) {
                 AssistantData data = createAssistant(assistant);
                 assistants.add(data);
             }

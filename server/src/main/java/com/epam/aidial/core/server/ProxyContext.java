@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -69,7 +70,7 @@ public class ProxyContext {
     private List<String> userRoles;
     private String userHash;
     private TokenUsage tokenUsage;
-    private boolean rewritePath;
+    private Route route;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;
     private Map<String, String> requestHeaders = Map.of();

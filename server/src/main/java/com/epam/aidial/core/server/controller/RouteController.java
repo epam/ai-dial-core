@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.upstream.RouteEndpointProvider;
 import com.epam.aidial.core.server.upstream.UpstreamProvider;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -45,7 +47,7 @@ public class RouteController implements Controller {
             return Future.succeededFuture();
         }
 
-        if (!hasAccess(route)) {
+        if (!route.hasAccess(context.getUserRoles())) {
             log.error("Forbidden route {}. Trace: {}. Span: {}. Key: {}. User sub: {}.",
                     route.getName(), context.getTraceId(), context.getSpanId(), context.getProject(), context.getUserSub());
             context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
@@ -64,12 +66,12 @@ public class RouteController implements Controller {
             }
 
             context.setTraceOperation("Send request to %s route".formatted(route.getName()));
-            context.setRewritePath(route.isRewritePath());
             context.setUpstreamRoute(upstreamRoute);
         } else {
             context.getResponse().setStatusCode(response.getStatus());
             context.setResponseBody(Buffer.buffer(response.getBody()));
         }
+        context.setRoute(route);
 
         context.getRequest().body()
                 .onSuccess(this::handleRequestBody)
@@ -108,7 +110,15 @@ public class RouteController implements Controller {
         context.setRequestBody(requestBody);
 
         if (context.getResponseBody() == null) {
-            sendRequest();
+            proxy.getRateLimiter().limit(context, context.getRoute())
+                    .compose(rateLimitResult -> {
+                        if (rateLimitResult.status() == HttpStatus.OK) {
+                            return sendRequest();
+                        } else {
+                            handleRateLimitHit(rateLimitResult);
+                            return Future.succeededFuture();
+                        }
+                    });
         } else {
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(context);
@@ -183,6 +193,16 @@ public class RouteController implements Controller {
         proxy.getLogStore().save(context);
     }
 
+    private void handleRateLimitHit(RateLimitResult result) {
+        ErrorData rateLimitError = new ErrorData();
+        rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
+        rateLimitError.getError().setMessage(result.errorMessage());
+        log.error("Rate limit error {}. Key: {}. User sub: {}. Route: {}. Trace: {}. Span: {}", result.errorMessage(),
+                context.getProject(), context.getUserSub(), context.getRoute().getName(), context.getTraceId(),
+                context.getSpanId());
+        context.respond(result.status(), rateLimitError);
+    }
+
     /**
      * Called when proxy failed to receive request body from the client.
      */
@@ -254,20 +274,9 @@ public class RouteController implements Controller {
     @SneakyThrows
     private String getEndpointUri(Upstream upstream) {
         URIBuilder uriBuilder = new URIBuilder(upstream.getEndpoint());
-        if (context.isRewritePath()) {
+        if (context.getRoute() != null && context.getRoute().isRewritePath()) {
             uriBuilder.setPath(context.getRequest().path());
         }
         return uriBuilder.toString();
-    }
-
-    private boolean hasAccess(Route route) {
-        Set<String> allowedRoles = route.getUserRoles();
-        List<String> actualRoles = context.getUserRoles();
-
-        if (allowedRoles == null) {
-            return true;
-        }
-
-        return !allowedRoles.isEmpty() && actualRoles.stream().anyMatch(allowedRoles::contains);
     }
 }

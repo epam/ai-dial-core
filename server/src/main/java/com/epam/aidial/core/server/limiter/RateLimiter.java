@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.limiter;
 
-import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.AccessControlled;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.ProxyContext;
@@ -55,53 +55,53 @@ public class RateLimiter {
         }
     }
 
-    public Future<RateLimitResult> limit(ProxyContext context) {
+    public Future<RateLimitResult> limit(ProxyContext context, AccessControlled accessControlled) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
-            String deploymentName = context.getDeployment().getName();
-            Limit limit = getLimitByUser(context, context.getDeployment());
+            String name = accessControlled.getName();
+            Limit limit = getLimitByUser(context, accessControlled);
 
             if (limit == null || !limit.isPositive()) {
                 if (limit == null) {
-                    log.warn("Limit is not found for deployment: {}", deploymentName);
+                    log.warn("Limit is not found for {}", name);
                 } else {
-                    log.warn("Limit must be positive for deployment: {}", deploymentName);
+                    log.warn("Limit must be positive for {}", name);
                 }
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
             }
 
-            return vertx.executeBlocking(() -> checkLimit(context, limit), false);
+            return vertx.executeBlocking(() -> checkLimit(context, limit, accessControlled), false);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
     }
 
-    public Future<LimitStats> getLimitStats(Deployment deployment, ProxyContext context) {
+    public Future<LimitStats> getLimitStats(AccessControlled accessControlled, ProxyContext context) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
-            Limit limit = getLimitByUser(context, deployment);
-            return vertx.executeBlocking(() -> getLimitStats(context, limit, deployment.getName()), false);
+            Limit limit = getLimitByUser(context, accessControlled);
+            return vertx.executeBlocking(() -> getLimitStats(context, limit, accessControlled.getName()), false);
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
     }
 
-    private LimitStats getLimitStats(ProxyContext context, Limit limit, String deploymentName) {
+    private LimitStats getLimitStats(ProxyContext context, Limit limit, String name) {
         LimitStats limitStats = create(limit);
         long timestamp = System.currentTimeMillis();
-        collectTokenLimitStats(context, limitStats, timestamp, deploymentName);
-        collectRequestLimitStats(context, limitStats, timestamp, deploymentName);
+        collectTokenLimitStats(context, limitStats, timestamp, name);
+        collectRequestLimitStats(context, limitStats, timestamp, name);
         return limitStats;
     }
 
-    private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
-        String tokensPath = getPathToTokens(deploymentName);
+    private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String name) {
+        String tokensPath = getPathToTokens(name);
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         String json = resourceService.getResource(resourceDescription);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(json, TokenRateLimit.class);
@@ -111,8 +111,8 @@ public class RateLimiter {
         rateLimit.update(timestamp, limitStats);
     }
 
-    private void collectRequestLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String deploymentName) {
-        String requestsPath = getPathToRequests(deploymentName);
+    private void collectRequestLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String name) {
+        String requestsPath = getPathToRequests(name);
         ResourceDescriptor resourceDescription = getResourceDescription(context, requestsPath);
         String json = resourceService.getResource(resourceDescription);
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
@@ -152,17 +152,17 @@ public class RateLimiter {
         return ResourceDescriptorFactory.fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
-    private RateLimitResult checkLimit(ProxyContext context, Limit limit) {
+    private RateLimitResult checkLimit(ProxyContext context, Limit limit, AccessControlled accessControlled) {
         long timestamp = System.currentTimeMillis();
-        RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp);
+        RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, accessControlled);
         if (tokenResult.status() != HttpStatus.OK) {
             return tokenResult;
         }
-        return checkRequestLimit(context, limit, timestamp);
+        return checkRequestLimit(context, limit, timestamp, accessControlled);
     }
 
-    private RateLimitResult checkTokenLimit(ProxyContext context, Limit limit, long timestamp) {
-        String tokensPath = getPathToTokens(context.getDeployment().getName());
+    private RateLimitResult checkTokenLimit(ProxyContext context, Limit limit, long timestamp, AccessControlled accessControlled) {
+        String tokensPath = getPathToTokens(accessControlled.getName());
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         String prevValue = resourceService.getResource(resourceDescription);
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, TokenRateLimit.class);
@@ -172,8 +172,8 @@ public class RateLimiter {
         return rateLimit.update(timestamp, limit);
     }
 
-    private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp) {
-        String tokensPath = getPathToRequests(context.getDeployment().getName());
+    private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, long timestamp, AccessControlled accessControlled) {
+        String tokensPath = getPathToRequests(accessControlled.getName());
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
@@ -205,24 +205,24 @@ public class RateLimiter {
         return ProxyUtil.convertToString(rateLimit);
     }
 
-    private Limit getLimitByUser(ProxyContext context, Deployment deployment) {
-        String deploymentName = deployment.getName();
+    private Limit getLimitByUser(ProxyContext context, AccessControlled accessControlled) {
+        String name = accessControlled.getName();
         List<String> userRoles;
-        if (deployment.getUserRoles() == null) {
+        if (accessControlled.getUserRoles() == null) {
             // find limits for all user roles
             userRoles = context.getUserRoles();
         } else {
-            // find limits for user roles which match to deployment required roles
-            userRoles = context.getUserRoles().stream().filter(role -> deployment.getUserRoles().contains(role)).toList();
+            // find limits for user roles which match to required roles
+            userRoles = context.getUserRoles().stream().filter(role -> accessControlled.getUserRoles().contains(role)).toList();
         }
         Map<String, Role> roles = context.getConfig().getRoles();
-        Limit defaultUserLimit = getLimit(roles, DEFAULT_USER_ROLE, deploymentName, DEFAULT_LIMIT);
+        Limit defaultUserLimit = getLimit(roles, DEFAULT_USER_ROLE, name, DEFAULT_LIMIT);
         if (userRoles.isEmpty()) {
             return defaultUserLimit;
         }
         Limit limit = null;
         for (String userRole : userRoles) {
-            Limit candidate = getLimit(roles, userRole, deploymentName, null);
+            Limit candidate = getLimit(roles, userRole, name, null);
             if (candidate != null) {
                 if (limit == null) {
                     limit = new Limit();
@@ -241,17 +241,17 @@ public class RateLimiter {
         return limit == null ? defaultUserLimit : limit;
     }
 
-    private static String getPathToTokens(String deploymentName) {
-        return String.format("%s/tokens", deploymentName);
+    private static String getPathToTokens(String name) {
+        return String.format("%s/tokens", name);
     }
 
-    private static String getPathToRequests(String deploymentName) {
-        return String.format("%s/requests", deploymentName);
+    private static String getPathToRequests(String name) {
+        return String.format("%s/requests", name);
     }
 
-    private static Limit getLimit(Map<String, Role> roles, String userRole, String deploymentName, Limit defaultLimit) {
+    private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {
         return Optional.ofNullable(roles.get(userRole))
-                .map(role -> role.getLimits().get(deploymentName))
+                .map(role -> role.getLimits().get(name))
                 .orElse(defaultLimit);
     }
 

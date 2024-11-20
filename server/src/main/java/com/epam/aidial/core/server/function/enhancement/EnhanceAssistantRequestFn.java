@@ -69,7 +69,7 @@ public class EnhanceAssistantRequestFn extends BaseRequestFunction<ObjectNode> {
                 throw new HttpException(HttpStatus.NOT_FOUND, "No addon: " + name);
             }
 
-            if (!DeploymentController.hasAccess(context, addon)) {
+            if (!addon.hasAccess(context.getUserRoles())) {
                 throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden addon: " + name);
             }
 
@@ -88,7 +88,7 @@ public class EnhanceAssistantRequestFn extends BaseRequestFunction<ObjectNode> {
             throw new HttpException(HttpStatus.NOT_FOUND, "No model: " + name);
         }
 
-        if (!DeploymentController.hasAccess(context, model)) {
+        if (!model.hasAccess(context.getUserRoles())) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden model: " + name);
         }
 

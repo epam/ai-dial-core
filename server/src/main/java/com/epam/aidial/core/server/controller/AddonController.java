@@ -25,7 +25,7 @@ public class AddonController {
             return context.respond(HttpStatus.NOT_FOUND);
         }
 
-        if (!DeploymentController.hasAccess(context, addon)) {
+        if (!addon.hasAccess(context.getUserRoles())) {
             return context.respond(HttpStatus.FORBIDDEN);
         }
 
@@ -38,7 +38,7 @@ public class AddonController {
         List<AddonData> addons = new ArrayList<>();
 
         for (Addon addon : config.getAddons().values()) {
-            if (DeploymentController.hasAccess(context, addon)) {
+            if (addon.hasAccess(context.getUserRoles())) {
                 AddonData data = createAddon(addon);
                 addons.add(data);
             }

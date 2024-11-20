@@ -63,7 +63,7 @@ public class ApplicationController {
         List<ApplicationData> list = new ArrayList<>();
 
         for (Application application : config.getApplications().values()) {
-            if (DeploymentController.hasAccess(context, application)) {
+            if (application.hasAccess(context.getUserRoles())) {
                 ApplicationData data = ApplicationUtil.mapApplication(application);
                 list.add(data);
             }

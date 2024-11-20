@@ -2,14 +2,14 @@ package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @Data
-public abstract class Deployment {
-    private String name;
+@EqualsAndHashCode(callSuper = true)
+public abstract class Deployment extends AccessControlled {
     private String endpoint;
     @JsonAlias({"displayName", "display_name"})
     private String displayName;
@@ -19,8 +19,6 @@ public abstract class Deployment {
     private String iconUrl;
     private String description;
     private String reference;
-    @JsonAlias({"userRoles", "user_roles"})
-    private Set<String> userRoles;
     /**
      * Forward Http header with authorization token when request is sent to deployment.
      * Authorization token is NOT forwarded by default.

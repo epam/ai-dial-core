@@ -30,7 +30,7 @@ public class ModelController {
             return context.respond(HttpStatus.NOT_FOUND);
         }
 
-        if (!DeploymentController.hasAccess(context, model)) {
+        if (!model.hasAccess(context.getUserRoles())) {
             return context.respond(HttpStatus.FORBIDDEN);
         }
 
@@ -43,7 +43,7 @@ public class ModelController {
         List<ModelData> models = new ArrayList<>();
 
         for (Model model : config.getModels().values()) {
-            if (DeploymentController.hasAccess(context, model)) {
+            if (model.hasAccess(context.getUserRoles())) {
                 ModelData data = createModel(model);
                 models.add(data);
             }
