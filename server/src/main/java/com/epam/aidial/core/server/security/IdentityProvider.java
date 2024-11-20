@@ -35,6 +35,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
+import static java.util.Collections.EMPTY_LIST;
+
 @Slf4j
 public class IdentityProvider {
 
@@ -43,41 +45,28 @@ public class IdentityProvider {
 
     // Delimiter to split the roles if they are set as a single String
     private final String rolesDelimiter;
-
-    private JwkProvider jwkProvider;
-
-    private URL userInfoUrl;
-
     // in memory cache store results obtained from JWK provider
     private final ConcurrentHashMap<String, Future<JwkResult>> cache = new ConcurrentHashMap<>();
-
     // the name of the claim in JWT to extract user email
     private final String loggingKey;
     // random salt is used to digest user email
     private final String loggingSalt;
-
     private final MessageDigest sha256Digest;
-
     // the flag determines if user email should be obfuscated
     private final boolean obfuscateUserEmail;
-
     private final Vertx vertx;
-
     private final HttpClient client;
-
     // the duration is how many milliseconds success JWK result should be stored in the cache
     private final long positiveCacheExpirationMs;
-
     // the duration is how many milliseconds failed JWK result should be stored in the cache
     private final long negativeCacheExpirationMs;
-
-    // the pattern is used to match if the given JWT can be verified by the current provider
-    private Pattern issuerPattern;
-
     // the flag disables JWT verification
     private final boolean disableJwtVerification;
-
     private final GetUserRoleFn getUserRoleFn;
+    private JwkProvider jwkProvider;
+    private URL userInfoUrl;
+    // the pattern is used to match if the given JWT can be verified by the current provider
+    private Pattern issuerPattern;
 
     public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
@@ -118,7 +107,7 @@ public class IdentityProvider {
         List<String> rolePathList;
 
         if (rolePathObj instanceof String rolePathStr) {
-            getUserRoleFn =  factory.getUserRoleFn(rolePathStr);
+            getUserRoleFn = factory.getUserRoleFn(rolePathStr);
             rolePathList = List.of(rolePathStr);
         } else if (rolePathObj instanceof JsonArray rolePathArray) {
             getUserRoleFn = null;
@@ -151,6 +140,14 @@ public class IdentityProvider {
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
     }
 
+    public static DecodedJWT decodeJwtToken(String encodedToken) {
+        return JWT.decode(encodedToken);
+    }
+
+    private static String extractUserSub(Map<String, Object> userContext) {
+        return (String) userContext.get("sub");
+    }
+
     private void evictExpiredJwks() {
         long currentTime = System.currentTimeMillis();
         for (Map.Entry<String, Future<JwkResult>> entry : cache.entrySet()) {
@@ -161,43 +158,41 @@ public class IdentityProvider {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private List<String> extractUserRoles(Map<String, Object> map) {
         List<String> result = new ArrayList<>();
         for (String[] rolePath : rolePaths) {
-            Map<String, Object> mapPointer = map;
-            for (int i = 0; i < rolePath.length; i++) {
-                Object next = mapPointer.get(rolePath[i]);
-                if (next == null) {
-                    break;
-                }
-                if (i == rolePath.length - 1) {
-                    if (next instanceof List) {
-                        result.addAll((List<String>) next);
-                    } else if (next instanceof String) {
-                        if (rolesDelimiter != null) {
-                            result.addAll(Arrays.stream(((String) next)
-                                            .split(rolesDelimiter))
-                                    .filter(s -> !s.isBlank())
-                                    .toList());
-                        } else {
-                            result.add((String) next);
-                        }
-                    }
-                } else {
-                    if (next instanceof Map) {
-                        mapPointer = (Map<String, Object>) next;
-                    } else {
-                        break;
-                    }
-                }
-            }
+            result.addAll(extractUserRoles(map, rolePath));
         }
         return result;
     }
 
-    public static DecodedJWT decodeJwtToken(String encodedToken) {
-        return JWT.decode(encodedToken);
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<String> extractUserRoles(Map<String, Object> map, String[] rolePath) {
+        for (int i = 0; i < rolePath.length - 1; i++) {
+            if (map.get(rolePath[i]) instanceof Map next) {
+                map = next;
+            } else {
+                return EMPTY_LIST;
+            }
+        }
+        Object field = map.get(rolePath[rolePath.length - 1]);
+
+        if (field instanceof List list) {
+            return list;
+        }
+        if (field instanceof String string) {
+            return getRolesFromString(string);
+        }
+        return EMPTY_LIST;
+    }
+
+    private List<String> getRolesFromString(String rolesString) {
+        if (rolesDelimiter == null) {
+            return List.of(rolesString);
+        }
+        return Arrays.stream(rolesString.split(rolesDelimiter))
+                .filter(s -> !s.isBlank())
+                .toList();
     }
 
     private Future<JwkResult> getJwk(String kid) {
@@ -238,10 +233,6 @@ public class IdentityProvider {
         } catch (JwkException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private static String extractUserSub(Map<String, Object> userContext) {
-        return (String) userContext.get("sub");
     }
 
     private String extractUserHash(String keyClaim) {
