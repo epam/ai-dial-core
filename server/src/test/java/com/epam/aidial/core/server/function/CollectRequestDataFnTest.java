@@ -35,9 +35,9 @@ public class CollectRequestDataFnTest {
         doCallRealMethod().when(context).setStreamingRequest(anyBoolean());
         when(context.isStreamingRequest()).thenCallRealMethod();
 
-        Throwable error = fn.apply((ObjectNode) ProxyUtil.MAPPER.readTree("{\"stream\": true}"));
+        boolean result = fn.apply((ObjectNode) ProxyUtil.MAPPER.readTree("{\"stream\": true}"));
 
-        assertNull(error);
+        assertFalse(result);
         assertTrue(context.isStreamingRequest());
     }
 
@@ -46,9 +46,9 @@ public class CollectRequestDataFnTest {
         doCallRealMethod().when(context).setStreamingRequest(anyBoolean());
         when(context.isStreamingRequest()).thenCallRealMethod();
 
-        Throwable error = fn.apply((ObjectNode) ProxyUtil.MAPPER.readTree("{\"stream\": false}"));
+        boolean result = fn.apply((ObjectNode) ProxyUtil.MAPPER.readTree("{\"stream\": false}"));
 
-        assertNull(error);
+        assertFalse(result);
         assertFalse(context.isStreamingRequest());
     }
 
@@ -57,9 +57,9 @@ public class CollectRequestDataFnTest {
         doCallRealMethod().when(context).setStreamingRequest(anyBoolean());
         when(context.isStreamingRequest()).thenCallRealMethod();
 
-        Throwable error = fn.apply((ObjectNode) ProxyUtil.MAPPER.readTree("{}"));
+        boolean result = fn.apply((ObjectNode) ProxyUtil.MAPPER.readTree("{}"));
 
-        assertNull(error);
+        assertFalse(result);
         assertFalse(context.isStreamingRequest());
     }
 }

@@ -267,14 +267,16 @@ public class DeploymentPostController {
 
         try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            Throwable error = ProxyUtil.processChain(tree, enhancementFunctions);
-            if (error != null) {
-                finalizeRequest();
-                return;
+            if (ProxyUtil.processChain(tree, enhancementFunctions)) {
+                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
             }
-        } catch (IOException e) {
-            respond(HttpStatus.BAD_REQUEST);
-            log.warn("Can't parse JSON request body. Trace: {}. Span: {}. Error:",
+        } catch (Throwable e) {
+            if (e instanceof HttpException httpException) {
+                respond(httpException.getStatus(), httpException);
+            } else {
+                respond(HttpStatus.BAD_REQUEST);
+            }
+            log.warn("Can't process JSON request body. Trace: {}. Span: {}. Error:",
                     context.getTraceId(), context.getSpanId(), e);
             return;
         }

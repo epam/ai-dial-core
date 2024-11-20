@@ -301,14 +301,14 @@ public class ProxyUtil {
         }
     }
 
-    public static <T> Throwable processChain(T item, List<BaseRequestFunction<T>> chain) {
+    public static <T> boolean processChain(T item, List<BaseRequestFunction<T>> chain) {
+        boolean result = false;
         for (BaseRequestFunction<T> fn : chain) {
-            Throwable error = fn.apply(item);
-            if (error != null) {
-                return error;
+            if (fn.apply(item)) {
+                result = true;
             }
         }
-        return null;
+        return result;
     }
 
     public static EtagHeader etag(HttpServerRequest request) {

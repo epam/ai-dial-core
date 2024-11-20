@@ -5,10 +5,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -18,33 +15,25 @@ public class EnhanceModelRequestFn extends BaseRequestFunction<ObjectNode> {
     }
 
     @Override
-    public Throwable apply(ObjectNode tree) {
+    public Boolean apply(ObjectNode tree) {
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Model) {
-            try {
-                context.setRequestBody(enhanceModelRequest(context, tree));
-            } catch (Throwable e) {
-                context.respond(HttpStatus.BAD_REQUEST);
-                log.warn("Can't enhance model request. Trace: {}. Span: {}. Error: {}",
-                        context.getTraceId(), context.getSpanId(), e.getMessage());
-                return e;
-            }
+            return enhanceModelRequest(context, tree);
         }
-        return null;
+        return false;
     }
 
-    private static Buffer enhanceModelRequest(ProxyContext context, ObjectNode tree) throws Exception {
+    private static boolean enhanceModelRequest(ProxyContext context, ObjectNode tree) {
         Model model = (Model) context.getDeployment();
         String overrideName = model.getOverrideName();
-        Buffer requestBody = context.getRequestBody();
 
         if (overrideName == null) {
-            return requestBody;
+            return false;
         }
 
         tree.remove("model");
         tree.put("model", overrideName);
 
-        return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+        return true;
     }
 }

@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
@@ -69,14 +70,16 @@ public class InterceptorController {
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            Throwable error = ProxyUtil.processChain(tree, enhancementFunctions);
-            if (error != null) {
-                finalizeRequest();
-                return;
+            if (ProxyUtil.processChain(tree, enhancementFunctions)) {
+                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
             }
-        } catch (IOException e) {
-            respond(HttpStatus.BAD_REQUEST);
-            log.warn("Can't parse JSON request body. Trace: {}. Span: {}. Error:",
+        } catch (Throwable e) {
+            if (e instanceof HttpException httpException) {
+                respond(httpException.getStatus(), httpException);
+            } else {
+                respond(HttpStatus.BAD_REQUEST);
+            }
+            log.warn("Can't process JSON request body. Trace: {}. Span: {}. Error:",
                     context.getTraceId(), context.getSpanId(), e);
             return;
         }

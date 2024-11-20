@@ -26,24 +26,12 @@ public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode>
     }
 
     @Override
-    public Throwable apply(ObjectNode tree) {
-        try {
-            ProxyUtil.collectAttachedFilesFromRequest(tree, this::processAttachedFile);
-            // assign api key data after processing attachments
-            ApiKeyData destApiKeyData = context.getProxyApiKeyData();
-            proxy.getApiKeyStore().assignPerRequestApiKey(destApiKeyData);
-            return null;
-        } catch (HttpException e) {
-            context.respond(e.getStatus(), e.getMessage());
-            log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
-                    context.getTraceId(), context.getSpanId(), e.getMessage());
-            return e;
-        } catch (Throwable e) {
-            context.respond(HttpStatus.BAD_REQUEST);
-            log.warn("Can't collect attached files. Trace: {}. Span: {}. Error: {}",
-                    context.getTraceId(), context.getSpanId(), e.getMessage());
-            return e;
-        }
+    public Boolean apply(ObjectNode tree) {
+        ProxyUtil.collectAttachedFilesFromRequest(tree, this::processAttachedFile);
+        // assign api key data after processing attachments
+        ApiKeyData destApiKeyData = context.getProxyApiKeyData();
+        proxy.getApiKeyStore().assignPerRequestApiKey(destApiKeyData);
+        return false;
     }
 
     private void processAttachedFile(String url) {

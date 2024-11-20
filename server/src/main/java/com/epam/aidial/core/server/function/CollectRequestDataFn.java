@@ -11,10 +11,10 @@ public class CollectRequestDataFn extends BaseRequestFunction<ObjectNode> {
     }
 
     @Override
-    public Throwable apply(ObjectNode tree) {
+    public Boolean apply(ObjectNode tree) {
         JsonNode stream = tree.get("stream");
         boolean result = stream != null && stream.asBoolean(false);
         context.setStreamingRequest(result);
-        return null;
+        return false;
     }
 }
