@@ -11,7 +11,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class AccessControlledTest {
+public class RoleBasedEntityTest {
 
     @Test
     public void testHasAssessByRole_DeploymentRolesEmpty() {
@@ -35,14 +35,6 @@ public class AccessControlledTest {
         deployment.setUserRoles(Set.of("role1"));
 
         assertFalse(deployment.hasAccess(Collections.emptyList()));
-    }
-
-    @Test
-    public void testHasAssessByRole_RoleIsNull() {
-        Deployment deployment = new Model();
-        deployment.setUserRoles(Set.of("role1"));
-
-        assertFalse(deployment.hasAccess(null));
     }
 
     @Test

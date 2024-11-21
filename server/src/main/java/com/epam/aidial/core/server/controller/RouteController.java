@@ -118,7 +118,8 @@ public class RouteController implements Controller {
                             handleRateLimitHit(rateLimitResult);
                             return Future.succeededFuture();
                         }
-                    });
+                    })
+                    .onFailure(this::handleError);
         } else {
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(context);
@@ -203,6 +204,12 @@ public class RouteController implements Controller {
         context.respond(result.status(), rateLimitError);
     }
 
+    private void handleError(Throwable error) {
+        String route = context.getRoute().getName();
+        log.error("Failed to handle route {}", route, error);
+        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process route request: " + route);
+    }
+
     /**
      * Called when proxy failed to receive request body from the client.
      */
@@ -274,7 +281,7 @@ public class RouteController implements Controller {
     @SneakyThrows
     private String getEndpointUri(Upstream upstream) {
         URIBuilder uriBuilder = new URIBuilder(upstream.getEndpoint());
-        if (context.getRoute() != null && context.getRoute().isRewritePath()) {
+        if (context.getRoute().isRewritePath()) {
             uriBuilder.setPath(context.getRequest().path());
         }
         return uriBuilder.toString();

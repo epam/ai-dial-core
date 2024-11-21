@@ -9,7 +9,7 @@ import java.util.Map;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public abstract class Deployment extends AccessControlled {
+public abstract class Deployment extends RoleBasedEntity {
     private String endpoint;
     @JsonAlias({"displayName", "display_name"})
     private String displayName;

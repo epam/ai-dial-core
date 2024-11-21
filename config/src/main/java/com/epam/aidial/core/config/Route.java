@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class Route extends AccessControlled {
+public class Route extends RoleBasedEntity {
 
     private Response response;
     private boolean rewritePath;
