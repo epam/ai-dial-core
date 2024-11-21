@@ -40,10 +40,10 @@ public class AccessService {
             this::getAdminAccess,
             AccessService::getAutoSharedAccess,
             AccessService::getAppResourceAccess,
-            this::getSharedAccess,
-            this::getPublicAccess,
             this::getReviewAccess,
-            this::getDeploymentAccess);
+            this::getDeploymentAccess,
+            this::getPublicAccess,
+            this::getSharedAccess);
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
