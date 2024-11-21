@@ -112,6 +112,10 @@ public class AccessService {
                     remainingResources.remove(resource);
                 }
             });
+
+            if (remainingResources.isEmpty()) {
+                break;
+            }
         }
         for (ResourceDescriptor resource : resources) {
             result.computeIfAbsent(resource, r -> Set.of());
