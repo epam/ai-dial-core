@@ -1,7 +1,5 @@
-package com.epam.aidial.core.server.controller;
+package com.epam.aidial.core.config;
 
-import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.Model;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
