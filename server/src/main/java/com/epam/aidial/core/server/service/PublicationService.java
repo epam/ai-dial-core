@@ -598,7 +598,7 @@ public class PublicationService {
             String url = resource.getReviewUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
-            resourceService.deleteResource(descriptor, EtagHeader.ANY);
+            deleteResource(descriptor);
         }
     }
 
@@ -607,7 +607,19 @@ public class PublicationService {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
-            resourceService.deleteResource(descriptor, EtagHeader.ANY);
+            deleteResource(descriptor);
+        }
+    }
+
+    private void deleteResource(ResourceDescriptor descriptor) {
+        try {
+            if (descriptor.getType() == ResourceTypes.APPLICATION) {
+                applicationService.deleteApplication(descriptor, EtagHeader.ANY);
+            } else {
+                resourceService.deleteResource(descriptor, EtagHeader.ANY);
+            }
+        } catch (ResourceNotFoundException e) {
+            // ignore
         }
     }
 
