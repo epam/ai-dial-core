@@ -22,9 +22,7 @@ public class FileService {
     private final ShareService shareService;
 
     public Future<Void> deleteFile(ResourceDescriptor resource, EtagHeader etag) {
-        return vertx.executeBlocking(() -> {
-            return deleteFileSync(resource, etag);
-        }, false);
+        return vertx.executeBlocking(() -> deleteFileSync(resource, etag), false);
     }
 
     Void deleteFileSync(ResourceDescriptor resource, EtagHeader etag) {
