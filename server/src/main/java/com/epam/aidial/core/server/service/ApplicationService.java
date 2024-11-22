@@ -249,7 +249,7 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    public void deleteApplication(ResourceDescriptor resource, EtagHeader etag) {
+    public boolean deleteApplication(ResourceDescriptor resource, EtagHeader etag) {
         verifyApplication(resource);
         MutableObject<Application> reference = new MutableObject<>();
 
@@ -270,9 +270,11 @@ public class ApplicationService {
 
         Application application = reference.getValue();
 
+        boolean deleted = true;
         if (isPublicOrReview(resource) && application.getFunction() != null) {
-            deleteFolder(application.getFunction().getSourceFolder());
+            deleted = deleteFolder(application.getFunction().getSourceFolder());
         }
+        return deleted;
     }
 
     public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, boolean overwrite, Consumer<Application> consumer) {

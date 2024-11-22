@@ -89,26 +89,26 @@ public class ResourceOperationService {
     public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag) {
         String bucketName = resource.getBucketName();
         String bucketLocation = resource.getBucketLocation();
-        MutableObject<Boolean> deleted = new MutableObject<>(true);
+        MutableObject<Boolean> deleted = new MutableObject<>();
         if (resource.isPrivate() && !PublicationService.isReviewBucket(resource)) {
             lockService.underBucketLock(bucketLocation, () -> {
                 invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                 shareService.revokeSharedResource(bucketName, bucketLocation, resource);
-                if (resource.getType() == ResourceTypes.APPLICATION) {
-                    applicationService.deleteApplication(resource, etag);
-                } else {
-                    deleted.setValue(resourceService.deleteResource(resource, etag));
-                }
+                deleted.setValue(deleteResourceInternally(resource, etag));
                 return null;
             });
         } else { // review or public
-            if (resource.getType() == ResourceTypes.APPLICATION) {
-                applicationService.deleteApplication(resource, etag);
-            } else {
-                deleted.setValue(resourceService.deleteResource(resource, etag));
-            }
+            deleted.setValue(deleteResourceInternally(resource, etag));
         }
         return deleted.getValue();
+    }
+
+    private boolean deleteResourceInternally(ResourceDescriptor resource, EtagHeader etag) {
+        if (resource.getType() == ResourceTypes.APPLICATION) {
+            return applicationService.deleteApplication(resource, etag);
+        } else {
+            return resourceService.deleteResource(resource, etag);
+        }
     }
 
 }
