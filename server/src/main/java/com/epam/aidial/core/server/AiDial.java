@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
-import com.epam.aidial.core.server.service.FileService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
@@ -126,26 +125,24 @@ public class AiDial {
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             ApplicationService applicationService = new ApplicationService(vertx, client, redis,
                     encryptionService, resourceService, lockService, generator, settings("applications"));
+            ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
+                    resourceService, invitationService, shareService, lockService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, applicationService, generator, clock);
+                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
-            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
+            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, resourceOperationService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
-            ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService, resourceService, invitationService, shareService);
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService, resourceOperationService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, settings("resources").getLong("heartbeatPeriod"));
-
-            FileService fileService = new FileService(vertx, resourceService, lockService, invitationService, shareService);
-
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, applicationService, heartbeatService, fileService, version());
+                    notificationService, applicationService, heartbeatService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

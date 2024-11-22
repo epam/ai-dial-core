@@ -225,31 +225,16 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
         }
 
-        vertx.executeBlocking(() -> {
-                    EtagHeader etag = ProxyUtil.etag(context.getRequest());
-                    String bucketName = descriptor.getBucketName();
-                    String bucketLocation = descriptor.getBucketLocation();
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-                    return lockService.underBucketLock(bucketLocation, () -> {
-                        invitationService.cleanUpResourceLink(bucketName, bucketLocation, descriptor);
-                        shareService.revokeSharedResource(bucketName, bucketLocation, descriptor);
-
-                        boolean deleted = true;
-
-                        if (descriptor.getType() == ResourceTypes.APPLICATION) {
-                            applicationService.deleteApplication(descriptor, etag);
-                        } else {
-                           deleted = service.deleteResource(descriptor, etag);
-                        }
-
-                        if (!deleted) {
-                            throw new ResourceNotFoundException();
-                        }
-
-                        return null;
-                    });
-                }, false)
-                .onSuccess(ignore -> context.respond(HttpStatus.OK))
+        vertx.executeBlocking(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag), false)
+                .onSuccess(deleted -> {
+                    if (deleted) {
+                        context.respond(HttpStatus.OK);
+                    } else {
+                        context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
+                    }
+                })
                 .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();

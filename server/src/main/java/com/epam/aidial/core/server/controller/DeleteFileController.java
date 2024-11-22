@@ -24,7 +24,8 @@ public class DeleteFileController extends AccessControlBaseController {
         }
 
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
-        proxy.getFileService().deleteFile(resource, etag).onSuccess(success -> context.respond(HttpStatus.OK))
+        proxy.getVertx().executeBlocking(() -> proxy.getResourceOperationService().deleteResource(resource, etag), false)
+                .onSuccess(success -> context.respond(HttpStatus.OK))
                 .onFailure(error -> {
                     log.error("Failed to delete file  {}", resource.getUrl(), error);
                     context.respond(error, error.getMessage());

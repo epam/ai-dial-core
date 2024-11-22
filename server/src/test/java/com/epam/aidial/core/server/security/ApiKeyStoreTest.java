@@ -3,12 +3,15 @@ package com.epam.aidial.core.server.security;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -52,7 +55,12 @@ public class ApiKeyStoreTest {
     private EncryptionService encryptionService;
 
     @Mock
+    private ResourceOperationService resourceOperationService;
+
+    @Mock
     private BlobStorage blobStorage;
+
+    private ResourceService resourceService;
 
     private ApiKeyStore store;
 
@@ -88,16 +96,16 @@ public class ApiKeyStoreTest {
     }
 
     @BeforeEach
-    public void beforeEach() throws Exception {
+    public void beforeEach() {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
         LockService lockService = new LockService(redissonClient, null);
         ResourceService.Settings settings = new ResourceService.Settings(1048576, 60000, 120000, 4096, 300000, 256);
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+        resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        store = new ApiKeyStore(resourceService, vertx);
+        store = new ApiKeyStore(resourceService, resourceOperationService, vertx);
     }
 
     @Test
@@ -171,6 +179,9 @@ public class ApiKeyStoreTest {
         store.assignPerRequestApiKey(apiKeyData);
 
         assertNotNull(apiKeyData.getPerRequestKey());
+
+        when(resourceOperationService.deleteResource(any(ResourceDescriptor.class), any(EtagHeader.class)))
+                .thenAnswer(cb -> resourceService.deleteResource(cb.getArgument(0), cb.getArgument(1)));
 
         store.invalidatePerRequestApiKey(apiKeyData);
 

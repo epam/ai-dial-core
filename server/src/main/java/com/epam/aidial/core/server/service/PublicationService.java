@@ -60,6 +60,7 @@ public class PublicationService {
     private final RuleService ruleService;
     private final NotificationService notificationService;
     private final ApplicationService applicationService;
+    private final ResourceOperationService resourceOperationService;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -598,7 +599,7 @@ public class PublicationService {
             String url = resource.getReviewUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
-            resourceService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
         }
     }
 
@@ -607,7 +608,7 @@ public class PublicationService {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
-            resourceService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
         }
     }
 

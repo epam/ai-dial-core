@@ -6,10 +6,12 @@ import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.ResourceTopic;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.util.Collection;
 import java.util.Map;
@@ -25,6 +27,7 @@ public class ResourceOperationService {
     private final ResourceService resourceService;
     private final InvitationService invitationService;
     private final ShareService shareService;
+    private final LockService lockService;
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
@@ -82,4 +85,30 @@ public class ResourceOperationService {
             resourceService.deleteResource(source, EtagHeader.ANY);
         }
     }
+
+    public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag) {
+        String bucketName = resource.getBucketName();
+        String bucketLocation = resource.getBucketLocation();
+        MutableObject<Boolean> deleted = new MutableObject<>(true);
+        if (resource.isPrivate() && !PublicationService.isReviewBucket(resource)) {
+            lockService.underBucketLock(bucketLocation, () -> {
+                invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
+                shareService.revokeSharedResource(bucketName, bucketLocation, resource);
+                if (resource.getType() == ResourceTypes.APPLICATION) {
+                    applicationService.deleteApplication(resource, etag);
+                } else {
+                    deleted.setValue(resourceService.deleteResource(resource, etag));
+                }
+                return null;
+            });
+        } else { // review or public
+            if (resource.getType() == ResourceTypes.APPLICATION) {
+                applicationService.deleteApplication(resource, etag);
+            } else {
+                deleted.setValue(resourceService.deleteResource(resource, etag));
+            }
+        }
+        return deleted.getValue();
+    }
+
 }
