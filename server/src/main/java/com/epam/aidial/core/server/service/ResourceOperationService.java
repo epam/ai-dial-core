@@ -92,10 +92,10 @@ public class ResourceOperationService {
         }
     }
 
-    public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag, boolean cleanupLinks) {
+    public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag) {
         verifyResourceToDelete(resource);
         MutableObject<Boolean> deleted = new MutableObject<>();
-        if (cleanupLinks) {
+        if (resource.isPrivate()) {
             String bucketName = resource.getBucketName();
             String bucketLocation = resource.getBucketLocation();
             // links to dependent resources should be removed under user's bucket lock
@@ -121,7 +121,11 @@ public class ResourceOperationService {
 
     private boolean deleteResourceInternally(ResourceDescriptor resource, EtagHeader etag) {
         if (resource.getType() == APPLICATION) {
-            applicationService.deleteApplication(resource, etag);
+            try {
+                applicationService.deleteApplication(resource, etag);
+            } catch (ResourceNotFoundException e) {
+                return false;
+            }
             return true;
         } else {
             return resourceService.deleteResource(resource, etag);
