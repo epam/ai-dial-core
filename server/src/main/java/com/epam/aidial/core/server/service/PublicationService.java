@@ -599,7 +599,7 @@ public class PublicationService {
             String url = resource.getReviewUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
-            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY, false);
         }
     }
 
@@ -608,7 +608,7 @@ public class PublicationService {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
-            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY, false);
         }
     }
 

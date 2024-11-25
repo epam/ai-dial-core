@@ -329,7 +329,7 @@ public class ControllerSelectorTest {
         assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        assertInstanceOf(DeleteFileController.class, arg1);
+        assertInstanceOf(ResourceController.class, arg1);
         assertEquals("/v1/files/bucket/folder1/file1.txt", arg2);
     }
 
@@ -345,7 +345,7 @@ public class ControllerSelectorTest {
         assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        assertInstanceOf(DeleteFileController.class, arg1);
+        assertInstanceOf(ResourceController.class, arg1);
         assertEquals("/v1/files/bucket/fol%2Fder%201/file1%23.txt", arg2);
     }
 

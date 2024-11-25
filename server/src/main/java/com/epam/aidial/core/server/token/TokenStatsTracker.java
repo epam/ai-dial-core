@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.token;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -28,7 +27,6 @@ public class TokenStatsTracker {
 
     private final Vertx vertx;
     private final ResourceService resourceService;
-    private final ResourceOperationService resourceOperationService;
 
     /**
      * Starts current span.
@@ -71,7 +69,7 @@ public class TokenStatsTracker {
         if (apiKeyData.getPerRequestKey() == null) {
             return vertx.executeBlocking(() -> {
                 ResourceDescriptor resource = toResource(context.getTraceId());
-                resourceOperationService.deleteResource(resource, EtagHeader.ANY);
+                resourceService.deleteResource(resource, EtagHeader.ANY);
                 return null;
             }, false);
         } else {

@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -39,14 +38,11 @@ public class ApiKeyStore {
 
     private final ResourceService resourceService;
 
-    private final ResourceOperationService resourceOperationService;
-
     private final Vertx vertx;
 
-    public ApiKeyStore(ResourceService resourceService, ResourceOperationService resourceOperationService, Vertx vertx) {
+    public ApiKeyStore(ResourceService resourceService, Vertx vertx) {
         this.resourceService = resourceService;
         this.vertx = vertx;
-        this.resourceOperationService = resourceOperationService;
     }
 
     /**
@@ -118,7 +114,7 @@ public class ApiKeyStore {
         String apiKey = apiKeyData.getPerRequestKey();
         if (apiKey != null) {
             ResourceDescriptor resource = toResource(apiKey);
-            return vertx.executeBlocking(() -> resourceOperationService.deleteResource(resource, EtagHeader.ANY), false);
+            return vertx.executeBlocking(() -> resourceService.deleteResource(resource, EtagHeader.ANY), false);
         }
         return Future.succeededFuture(true);
     }

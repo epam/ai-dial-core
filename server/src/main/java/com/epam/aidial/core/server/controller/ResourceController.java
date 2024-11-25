@@ -227,7 +227,7 @@ public class ResourceController extends AccessControlBaseController {
 
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        vertx.executeBlocking(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag), false)
+        vertx.executeBlocking(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag, true), false)
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);

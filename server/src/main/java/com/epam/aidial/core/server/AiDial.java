@@ -131,10 +131,10 @@ public class AiDial {
                     ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
-            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, resourceOperationService, vertx);
+            ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService, resourceOperationService);
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, settings("resources").getLong("heartbeatPeriod"));

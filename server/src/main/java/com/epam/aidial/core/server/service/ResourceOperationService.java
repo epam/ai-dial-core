@@ -6,6 +6,7 @@ import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.ResourceTopic;
@@ -18,10 +19,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import static com.epam.aidial.core.server.data.ResourceTypes.APPLICATION;
+import static com.epam.aidial.core.server.data.ResourceTypes.CONVERSATION;
+import static com.epam.aidial.core.server.data.ResourceTypes.FILE;
+import static com.epam.aidial.core.server.data.ResourceTypes.PROMPT;
+
 @AllArgsConstructor
 public class ResourceOperationService {
-    private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
-            ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
+    private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(FILE, CONVERSATION,
+            PROMPT, APPLICATION);
 
     private final ApplicationService applicationService;
     private final ResourceService resourceService;
@@ -50,7 +56,7 @@ public class ResourceOperationService {
             throw new IllegalStateException("Unsupported type: " + source.getType());
         }
 
-        if (destination.getType() == ResourceTypes.APPLICATION) {
+        if (destination.getType() == APPLICATION) {
             applicationService.copyApplication(source, destination, overwriteIfExists, app -> {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
@@ -79,33 +85,44 @@ public class ResourceOperationService {
             }
         }
 
-        if (destination.getType() == ResourceTypes.APPLICATION) {
+        if (destination.getType() == APPLICATION) {
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);
         }
     }
 
-    public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag) {
-        String bucketName = resource.getBucketName();
-        String bucketLocation = resource.getBucketLocation();
+    public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag, boolean cleanupLinks) {
+        verifyResourceToDelete(resource);
         MutableObject<Boolean> deleted = new MutableObject<>();
-        if (resource.isPrivate() && !PublicationService.isReviewBucket(resource)) {
+        if (cleanupLinks) {
+            String bucketName = resource.getBucketName();
+            String bucketLocation = resource.getBucketLocation();
+            // links to dependent resources should be removed under user's bucket lock
             lockService.underBucketLock(bucketLocation, () -> {
                 invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                 shareService.revokeSharedResource(bucketName, bucketLocation, resource);
                 deleted.setValue(deleteResourceInternally(resource, etag));
                 return null;
             });
-        } else { // review or public
+        } else {
             deleted.setValue(deleteResourceInternally(resource, etag));
         }
         return deleted.getValue();
     }
 
+    private static void verifyResourceToDelete(ResourceDescriptor resource) {
+        ResourceType type = resource.getType();
+        if (!(APPLICATION == type || FILE == type
+                || CONVERSATION == type || type == PROMPT)) {
+            throw new IllegalArgumentException("Unsupported resource type to delete: " + type.name());
+        }
+    }
+
     private boolean deleteResourceInternally(ResourceDescriptor resource, EtagHeader etag) {
-        if (resource.getType() == ResourceTypes.APPLICATION) {
-            return applicationService.deleteApplication(resource, etag);
+        if (resource.getType() == APPLICATION) {
+            applicationService.deleteApplication(resource, etag);
+            return true;
         } else {
             return resourceService.deleteResource(resource, etag);
         }

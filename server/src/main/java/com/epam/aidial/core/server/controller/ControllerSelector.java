@@ -273,7 +273,7 @@ public class ControllerSelector {
         });
         // DELETE routes
         delete(PATTERN_FILES, (proxy, context, pathMatcher) -> {
-            DeleteFileController controller = new DeleteFileController(proxy, context);
+            ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });

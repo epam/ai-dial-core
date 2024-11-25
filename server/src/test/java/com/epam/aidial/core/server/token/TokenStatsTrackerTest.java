@@ -3,13 +3,10 @@ package com.epam.aidial.core.server.token;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
-import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.AfterAll;
@@ -54,11 +51,6 @@ public class TokenStatsTrackerTest {
     @Mock
     private BlobStorage blobStorage;
 
-    @Mock
-    private ResourceOperationService resourceOperationService;
-
-    private ResourceService resourceService;
-
     @InjectMocks
     private TokenStatsTracker tracker;
 
@@ -101,9 +93,9 @@ public class TokenStatsTrackerTest {
         }
         LockService lockService = new LockService(redissonClient, null);
         ResourceService.Settings settings = new ResourceService.Settings(1048576, 60000, 120000, 4096, 300000, 256);
-        resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(vertx, resourceService, resourceOperationService);
+        tracker = new TokenStatsTracker(vertx, resourceService);
     }
 
     /**
@@ -115,9 +107,6 @@ public class TokenStatsTrackerTest {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
-
-        when(resourceOperationService.deleteResource(any(ResourceDescriptor.class), any(EtagHeader.class)))
-                .thenAnswer(cb -> resourceService.deleteResource(cb.getArgument(0), cb.getArgument(1)));
 
         final String traceId = "trace-id";
         ProxyContext chatBackend = mock(ProxyContext.class);
