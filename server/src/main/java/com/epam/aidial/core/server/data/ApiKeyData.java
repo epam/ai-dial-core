@@ -5,15 +5,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.vertx.core.MultiMap;
 import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * The container keeps data associated with API key.
@@ -96,8 +94,13 @@ public class ApiKeyData {
         if (!context.getApiKeyData().getHttpHeaders().isEmpty()) {
             return context.getApiKeyData().getHttpHeaders();
         }
-        return context.getRequest().headers().entries().stream()
-                .filter(h -> HTTP_HEADERS_TO_STORE.contains(h.getKey()))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        Map<String, String> headers = new HashMap<>();
+        MultiMap requestHeaders = context.getRequest().headers();
+        for (String header : HTTP_HEADERS_TO_STORE) {
+            if (requestHeaders.contains(header)) {
+                headers.put(header, requestHeaders.get(header));
+            }
+        }
+        return headers;
     }
 }
