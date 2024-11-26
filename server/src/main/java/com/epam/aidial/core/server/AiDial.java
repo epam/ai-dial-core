@@ -132,7 +132,7 @@ public class AiDial {
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
 
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, upstreamRouteProvider);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
 

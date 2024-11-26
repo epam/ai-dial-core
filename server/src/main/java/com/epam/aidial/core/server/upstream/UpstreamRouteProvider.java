@@ -11,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -54,12 +53,12 @@ public class UpstreamRouteProvider {
     }
 
     private UpstreamRoute get(String key, List<Upstream> upstreams) {
-        TieredBalancer balancer = balancers.merge(key, new TieredBalancer(key, upstreams), (prev, next) -> {
+        TieredBalancer balancer = balancers.compute(key, (k, cur) -> {
             TieredBalancer result;
-            if (isUpstreamsTheSame(prev, next)) {
-                result = prev;
+            if (cur != null && isUpstreamsTheSame(cur.getOriginalUpstreams(), upstreams)) {
+                result = cur;
             } else {
-                result = next;
+                result = new TieredBalancer(key, upstreams);
             }
             result.setLastAccessTime(System.currentTimeMillis());
             return result;
@@ -100,15 +99,17 @@ public class UpstreamRouteProvider {
 
     private void evictExpiredBalancers() {
         long currentTime = System.currentTimeMillis();
-        for (Map.Entry<String, TieredBalancer> entry : balancers.entrySet()) {
-            TieredBalancer balancer = entry.getValue();
-            if (currentTime - balancer.getLastAccessTime() > IDLE_PERIOD_IN_MS) {
-                balancers.remove(entry.getKey());
-            }
+        for (String key : balancers.keySet()) {
+            balancers.compute(key, (k, balancer) -> {
+                if (balancer != null && currentTime - balancer.getLastAccessTime() > IDLE_PERIOD_IN_MS) {
+                    return null;
+                }
+                return balancer;
+            });
         }
     }
 
-    private static boolean isUpstreamsTheSame(TieredBalancer a, TieredBalancer b) {
-        return new HashSet<>(a.getOriginalUpstreams()).equals(new HashSet<>(b.getOriginalUpstreams()));
+    private static boolean isUpstreamsTheSame(List<Upstream> a, List<Upstream> b) {
+        return new HashSet<>(a).equals(new HashSet<>(b));
     }
 }

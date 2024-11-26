@@ -35,11 +35,9 @@ public final class FileConfigStore implements ConfigStore {
     private final String[] paths;
     private volatile Config config;
     private final ApiKeyStore apiKeyStore;
-    private final UpstreamRouteProvider upstreamRouteProvider;
 
-    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore, UpstreamRouteProvider upstreamRouteProvider) {
+    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore) {
         this.apiKeyStore = apiKeyStore;
-        this.upstreamRouteProvider = upstreamRouteProvider;
         this.paths = settings.getJsonArray("files")
                 .stream().map(path -> (String) path).toArray(String[]::new);
 
