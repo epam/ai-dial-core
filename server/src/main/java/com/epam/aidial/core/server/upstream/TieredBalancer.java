@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Upstream;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -14,16 +15,17 @@ import javax.annotation.Nullable;
  * Tiered load balancer. Each next() call returns an available upstream from the highest tier (lowest tier value in config).
  * If the whole tier (highest) is unavailable, balancer start routing upstreams from next tier (lower) if any.
  */
-public class TieredBalancer implements LoadBalancer<UpstreamState> {
+class TieredBalancer implements LoadBalancer<UpstreamState> {
 
-    @Getter
-    private final String deploymentName;
     @Getter
     private final List<Upstream> originalUpstreams;
     private final List<WeightedRoundRobinBalancer> tiers;
 
+    @Getter
+    @Setter
+    private long lastAccessTime;
+
     public TieredBalancer(String deploymentName, List<Upstream> upstreams) {
-        this.deploymentName = deploymentName;
         this.originalUpstreams = upstreams;
         this.tiers = buildTiers(deploymentName, upstreams);
     }

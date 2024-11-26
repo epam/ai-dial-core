@@ -12,7 +12,7 @@ import java.util.PriorityQueue;
  * Load balancer tracks upstream statistics and guaranty spreading the load according to the upstreams weight
  */
 @Slf4j
-public class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalancer>, LoadBalancer<UpstreamState> {
+class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalancer>, LoadBalancer<UpstreamState> {
 
     private final int tier;
     private final List<UpstreamState> upstreams;

@@ -1,26 +1,23 @@
 package com.epam.aidial.core.server.upstream;
 
-import com.epam.aidial.core.config.Addon;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Assistant;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
+import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Collection;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Provides UpstreamRoute for the given UpstreamProvider.
- * This class caches load balancers for deployments and routes from config,
- * for other deployments (for example: custom applications) each request will build a new load balancer.
+ * This class caches load balancers for deployments and routes.
  * If upstreams configuration for any deployment changed - load balancer state will be invalidated.
  */
 @Slf4j
@@ -30,71 +27,85 @@ public class UpstreamRouteProvider {
      * Indicated max retry attempts (max upstreams from load balancer) to route a single user request
      */
     private static final int MAX_RETRY_COUNT = 5;
+    /**
+     * Maximum idle period while balancers will stay in the local cache.
+     */
+    private static final long IDLE_PERIOD_IN_MS = TimeUnit.HOURS.toMillis(1);
+
 
     /**
      * Cached load balancers
      */
     private final ConcurrentHashMap<String, TieredBalancer> balancers = new ConcurrentHashMap<>();
 
-    /**
-     * Returns UpstreamRoute for the given provider
-     *
-     * @param provider upstream provider for any deployment with actual upstreams
-     * @return upstream route
-     */
-    public UpstreamRoute get(UpstreamProvider provider) {
-        String deploymentName = provider.getName();
-        List<Upstream> upstreams = provider.getUpstreams();
+    public UpstreamRouteProvider(Vertx vertx) {
+        vertx.setPeriodic(0, TimeUnit.MINUTES.toMillis(1), event -> evictExpiredBalancers());
+    }
 
-        TieredBalancer balancer = balancers.computeIfAbsent(deploymentName, k -> new TieredBalancer(deploymentName, upstreams));
+    public UpstreamRoute get(Deployment deployment) {
+        String key = getKey(deployment);
+        List<Upstream> upstreams = getUpstreams(deployment);
+        return get(key, upstreams);
+    }
 
+    public UpstreamRoute get(Route route) {
+        String key = getKey(route);
+        return get(key, route.getUpstreams());
+    }
+
+    private UpstreamRoute get(String key, List<Upstream> upstreams) {
+        TieredBalancer balancer = balancers.merge(key, new TieredBalancer(key, upstreams), (prev, next) -> {
+            TieredBalancer result;
+            if (isUpstreamsTheSame(prev, next)) {
+                result = prev;
+            } else {
+                result = next;
+            }
+            result.setLastAccessTime(System.currentTimeMillis());
+            return result;
+        });
         return new UpstreamRoute(balancer, MAX_RETRY_COUNT);
     }
 
-    public void onUpdate(Config config) {
-        log.debug("Updating load balancers state");
-
-        Map<String, Model> models = config.getModels();
-        updateDeployments(models.values());
-
-        Map<String, Application> applications = config.getApplications();
-        updateDeployments(applications.values());
-
-        Map<String, Addon> addons = config.getAddons();
-        updateDeployments(addons.values());
-
-        Map<String, Assistant> assistants = config.getAssistant().getAssistants();
-        updateDeployments(assistants.values());
-
-        LinkedHashMap<String, Route> routes = config.getRoutes();
-        updateRoutes(routes.values());
-
-    }
-
-    private void updateRoutes(Collection<Route> routes) {
-        for (Route route : routes) {
-            UpstreamProvider endpointProvider = new RouteEndpointProvider(route);
-            updateBalancer(endpointProvider);
+    private List<Upstream> getUpstreams(Deployment deployment) {
+        if (deployment instanceof Model model && !model.getUpstreams().isEmpty()) {
+            return model.getUpstreams();
         }
+
+        Upstream upstream = new Upstream();
+        upstream.setEndpoint(deployment.getEndpoint());
+        upstream.setKey("whatever");
+        return List.of(upstream);
     }
 
-    private void updateDeployments(Collection<? extends Deployment> deployments) {
-        for (Deployment deployment : deployments) {
-            UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
-            updateBalancer(endpointProvider);
+    private String getKey(Route route) {
+        Objects.requireNonNull(route);
+        return "route:" + route.getName();
+    }
+
+    private String getKey(Deployment deployment) {
+        Objects.requireNonNull(deployment);
+        String prefix;
+        if (deployment instanceof Model) {
+            prefix = "model";
+        } else if (deployment instanceof Application) {
+            prefix = "application";
+        } else if (deployment instanceof Assistant) {
+            prefix = "assistant";
+        } else {
+            throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getClass().getName());
         }
+        return prefix + ":" + deployment.getName();
     }
 
-    private void updateBalancer(UpstreamProvider upstreamProvider) {
-        String name = upstreamProvider.getName();
-        TieredBalancer balancer = new TieredBalancer(name, upstreamProvider.getUpstreams());
-        balancers.merge(name, balancer, (prev, next) -> {
-            if (isUpstreamsTheSame(prev, next)) {
-                return prev;
-            } else {
-                return next;
+    private void evictExpiredBalancers() {
+        long currentTime = System.currentTimeMillis();
+        for (Map.Entry<String, TieredBalancer> entry : balancers.entrySet()) {
+            TieredBalancer balancer = entry.getValue();
+            if (currentTime - balancer.getLastAccessTime() > IDLE_PERIOD_IN_MS) {
+                balancers.remove(entry.getKey());
             }
-        });
+        }
     }
 
     private static boolean isUpstreamsTheSame(TieredBalancer a, TieredBalancer b) {

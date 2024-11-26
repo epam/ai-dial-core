@@ -7,8 +7,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
-import com.epam.aidial.core.server.upstream.RouteEndpointProvider;
-import com.epam.aidial.core.server.upstream.UpstreamProvider;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -56,8 +54,7 @@ public class RouteController implements Controller {
 
         Route.Response response = route.getResponse();
         if (response == null) {
-            UpstreamProvider upstreamProvider = new RouteEndpointProvider(route);
-            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(upstreamProvider);
+            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(route);
 
             if (!upstreamRoute.available()) {
                 log.warn("RouteController can't find a upstream route to proceed the request: {}", getRequestUri());

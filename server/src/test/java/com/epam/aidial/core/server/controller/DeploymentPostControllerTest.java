@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
@@ -13,7 +14,6 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.upstream.UpstreamProvider;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -182,7 +182,7 @@ public class DeploymentPostControllerTest {
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancerProvider.get(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
         when(endpointRoute.available()).thenReturn(false);
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
@@ -210,7 +210,7 @@ public class DeploymentPostControllerTest {
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancerProvider.get(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
         when(endpointRoute.available()).thenReturn(true);
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
@@ -432,7 +432,7 @@ public class DeploymentPostControllerTest {
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancerProvider.get(any(UpstreamProvider.class))).thenReturn(endpointRoute);
+        when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
         when(endpointRoute.available()).thenReturn(true);
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);

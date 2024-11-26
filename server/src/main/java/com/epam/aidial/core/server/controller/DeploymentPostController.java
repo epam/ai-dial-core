@@ -23,8 +23,6 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
-import com.epam.aidial.core.server.upstream.DeploymentUpstreamProvider;
-import com.epam.aidial.core.server.upstream.UpstreamProvider;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -181,8 +179,8 @@ public class DeploymentPostController {
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(context.getDeployment());
-        UpstreamRoute endpointRoute = proxy.getUpstreamRouteProvider().get(endpointProvider);
+        Deployment deployment = context.getDeployment();
+        UpstreamRoute endpointRoute = proxy.getUpstreamRouteProvider().get(deployment);
         context.setUpstreamRoute(endpointRoute);
 
         if (!endpointRoute.available()) {

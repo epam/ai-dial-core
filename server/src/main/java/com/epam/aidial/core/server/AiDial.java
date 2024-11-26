@@ -100,7 +100,7 @@ public class AiDial {
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
             LogStore logStore = new GfLogStore(vertx);
-            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx);
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);

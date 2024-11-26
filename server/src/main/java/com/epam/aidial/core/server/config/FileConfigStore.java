@@ -118,7 +118,6 @@ public final class FileConfigStore implements ConfigStore {
             }
 
             this.config = config;
-            upstreamRouteProvider.onUpdate(config);
         } catch (Throwable e) {
             if (fail) {
                 throw e;

@@ -3,7 +3,11 @@ package com.epam.aidial.core.server.upstream;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import io.vertx.core.Vertx;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
@@ -13,9 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@ExtendWith(MockitoExtension.class)
 public class UpstreamRouteTest {
 
-    private final UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
+    @Mock
+    private Vertx vertx;
 
     @Test
     void testUpstreamRouteWithRetry() {
@@ -28,7 +34,8 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint4", null, null, 1, 1)
         ));
 
-        UpstreamRoute route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model));
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx);
+        UpstreamRoute route = upstreamRouteProvider.get(model);
 
         assertTrue(route.available());
         assertNotNull(route.get());
@@ -80,7 +87,8 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRoute route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model));
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx);
+        UpstreamRoute route = upstreamRouteProvider.get(model);
 
         assertTrue(route.available());
         assertNotNull(route.get());

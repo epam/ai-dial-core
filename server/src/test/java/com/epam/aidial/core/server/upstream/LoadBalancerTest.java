@@ -4,8 +4,12 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import io.vertx.core.Vertx;
 import org.apache.commons.lang3.mutable.MutableInt;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
 import java.util.List;
@@ -15,7 +19,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+@ExtendWith(MockitoExtension.class)
 public class LoadBalancerTest {
+
+    @Mock
+    private Vertx vertx;
 
     @Test
     void testWeightedLoadBalancer() {
@@ -188,10 +196,9 @@ public class LoadBalancerTest {
         ));
 
         models.put("model1", model);
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider();
-        upstreamRouteProvider.onUpdate(config);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx);
 
-        UpstreamRoute route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model));
+        UpstreamRoute route = upstreamRouteProvider.get(model);
         Upstream upstream;
 
         // fail 2 upstreams
@@ -213,10 +220,9 @@ public class LoadBalancerTest {
         ));
 
         models.put("model1", model1);
-        upstreamRouteProvider.onUpdate(config);
 
         // upstreams remains the same, state must not be invalidated
-        route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model1));
+        route = upstreamRouteProvider.get(model1);
 
         upstream = route.get();
         assertNull(upstream);
@@ -229,10 +235,9 @@ public class LoadBalancerTest {
         ));
 
         models.put("model1", model2);
-        upstreamRouteProvider.onUpdate(config);
 
         // upstreams updated, current state must be evicted
-        route = upstreamRouteProvider.get(new DeploymentUpstreamProvider(model2));
+        route = upstreamRouteProvider.get(model2);
 
         upstream = route.get();
         assertNotNull(upstream);
