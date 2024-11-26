@@ -349,12 +349,6 @@ public class ResourceService implements AutoCloseable {
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
-//            if (length <= maxSize) {
-//                result = blobToResult(blob, metadata);
-//                redisPut(key, result);
-//                return ResourceStream.fromResult(result, etagHeader);
-//            }
-
             etagHeader.validate(etag);
             return new ResourceStream(payload.openStream(), etag, contentType, length);
         }
@@ -391,17 +385,9 @@ public class ResourceService implements AutoCloseable {
             String newEtag = EtagBuilder.generateEtag(body);
             Result result = new Result(body, newEtag, createdAt, updatedAt, contentType,
                     descriptor.getType().requireCompression(), (long) body.length, descriptor.getType().name(), false);
-//            if (body.length <= maxSize) {
-//                redisPut(redisKey, result);
-//                if (metadata == null) {
-//                    String blobKey = blobKey(descriptor);
-//                    blobPut(blobKey, result.toStub()); // create an empty object for listing
-//                }
-//            } else {
-                flushToBlobStore(redisKey);
-                String blobKey = blobKey(descriptor);
-                blobPut(blobKey, result);
-//            }
+            flushToBlobStore(redisKey);
+            String blobKey = blobKey(descriptor);
+            blobPut(blobKey, result);
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
