@@ -11,11 +11,11 @@ import com.epam.aidial.core.config.Upstream;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Provides UpstreamRoute for the given UpstreamProvider.
@@ -32,9 +32,9 @@ public class UpstreamRouteProvider {
     private static final int MAX_RETRY_COUNT = 5;
 
     /**
-     * Cached load balancers for config deployments
+     * Cached load balancers
      */
-    private volatile Map<String, TieredBalancer> balancers = new HashMap<>();
+    private final ConcurrentHashMap<String, TieredBalancer> balancers = new ConcurrentHashMap<>();
 
     /**
      * Returns UpstreamRoute for the given provider
@@ -46,74 +46,58 @@ public class UpstreamRouteProvider {
         String deploymentName = provider.getName();
         List<Upstream> upstreams = provider.getUpstreams();
 
-        TieredBalancer balancer = balancers.get(deploymentName);
-        if (balancer == null) {
-            // if no state found for upstream, it's probably custom application
-            balancer = new TieredBalancer(deploymentName, upstreams);
-        }
+        TieredBalancer balancer = balancers.computeIfAbsent(deploymentName, k -> new TieredBalancer(deploymentName, upstreams));
 
         return new UpstreamRoute(balancer, MAX_RETRY_COUNT);
     }
 
-    public synchronized void onUpdate(Config config) {
+    public void onUpdate(Config config) {
         log.debug("Updating load balancers state");
-        Map<String, TieredBalancer> oldState = balancers;
-        Map<String, TieredBalancer> newState = new HashMap<>();
 
         Map<String, Model> models = config.getModels();
-        updateDeployments(newState, oldState, models.values());
+        updateDeployments(models.values());
 
         Map<String, Application> applications = config.getApplications();
-        updateDeployments(newState, oldState, applications.values());
+        updateDeployments(applications.values());
 
         Map<String, Addon> addons = config.getAddons();
-        updateDeployments(newState, oldState, addons.values());
+        updateDeployments(addons.values());
 
         Map<String, Assistant> assistants = config.getAssistant().getAssistants();
-        updateDeployments(newState, oldState, assistants.values());
+        updateDeployments(assistants.values());
 
         LinkedHashMap<String, Route> routes = config.getRoutes();
-        updateRoutes(newState, oldState, routes.values());
+        updateRoutes(routes.values());
 
-        balancers = newState;
     }
 
-    private static void updateRoutes(Map<String, TieredBalancer> newState, Map<String, TieredBalancer> oldState, Collection<Route> routes) {
+    private void updateRoutes(Collection<Route> routes) {
         for (Route route : routes) {
-            String name = route.getName();
-
-            RouteEndpointProvider endpointProvider = new RouteEndpointProvider(route);
-            TieredBalancer previous = oldState.get(name);
-            updateDeployment(endpointProvider, previous, newState);
+            UpstreamProvider endpointProvider = new RouteEndpointProvider(route);
+            updateBalancer(endpointProvider);
         }
     }
 
-    private static void updateDeployments(Map<String, TieredBalancer> newState, Map<String, TieredBalancer> oldState,
-                                          Collection<? extends Deployment> deployments) {
+    private void updateDeployments(Collection<? extends Deployment> deployments) {
         for (Deployment deployment : deployments) {
-            String name = deployment.getName();
-
-            DeploymentUpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
-            TieredBalancer previous = oldState.get(name);
-            updateDeployment(endpointProvider, previous, newState);
+            UpstreamProvider endpointProvider = new DeploymentUpstreamProvider(deployment);
+            updateBalancer(endpointProvider);
         }
     }
 
-    private static void updateDeployment(UpstreamProvider upstream, TieredBalancer previous, Map<String, TieredBalancer> newState) {
-        String name = upstream.getName();
-        TieredBalancer balancer;
-        if (previous != null && isUpstreamsTheSame(upstream, previous)) {
-            balancer = previous;
-        } else {
-            balancer = new TieredBalancer(name, upstream.getUpstreams());
-        }
-        TieredBalancer previousBalancer = newState.putIfAbsent(name, balancer);
-        if (previousBalancer != null) {
-            log.warn("Duplicate deployment name: {}", name);
-        }
+    private void updateBalancer(UpstreamProvider upstreamProvider) {
+        String name = upstreamProvider.getName();
+        TieredBalancer balancer = new TieredBalancer(name, upstreamProvider.getUpstreams());
+        balancers.merge(name, balancer, (prev, next) -> {
+            if (isUpstreamsTheSame(prev, next)) {
+                return prev;
+            } else {
+                return next;
+            }
+        });
     }
 
-    private static boolean isUpstreamsTheSame(UpstreamProvider upstreamProvider, TieredBalancer balancer) {
-        return new HashSet<>(upstreamProvider.getUpstreams()).equals(new HashSet<>(balancer.getOriginalUpstreams()));
+    private static boolean isUpstreamsTheSame(TieredBalancer a, TieredBalancer b) {
+        return new HashSet<>(a.getOriginalUpstreams()).equals(new HashSet<>(b.getOriginalUpstreams()));
     }
 }
