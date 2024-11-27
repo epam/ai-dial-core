@@ -43,4 +43,10 @@ public abstract class Deployment extends RoleBasedEntity {
      */
     @JsonAlias({"descriptionKeywords", "description_keywords"})
     private List<String> descriptionKeywords = List.of();
+
+    /**
+     * Indicated max retry attempts to route a single user request.
+     */
+    @JsonAlias({"maxRetryAttempts", "max_retry_attempts"})
+    private int maxRetryAttempts = 1;
 }

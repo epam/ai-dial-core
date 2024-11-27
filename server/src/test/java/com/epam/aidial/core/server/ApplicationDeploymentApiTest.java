@@ -85,6 +85,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -117,6 +118,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -168,6 +170,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -199,6 +202,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -250,6 +254,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -281,6 +286,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -329,6 +335,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -384,6 +391,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -582,6 +590,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -659,6 +668,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
                   "function" : {
                     "id" : "0127",
                     "runtime": "python3.11",
@@ -772,6 +782,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
+                    "max_retry_attempts" : 1,
                     "function" : {
                       "id" : "0123",
                       "runtime" : "python3.11",
@@ -819,7 +830,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "content_parts_supported": false
                     },
                     "defaults" : { },
-                    "description_keywords" : [ ]
+                    "description_keywords" : [ ],
+                    "max_retry_attempts" : 1
                   }, {
                     "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
                     "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
@@ -849,6 +861,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
+                    "max_retry_attempts" : 1,
                     "function" : {
                       "id" : "0123",
                       "runtime" : "python3.11",

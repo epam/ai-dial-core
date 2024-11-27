@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.upstream;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.http.HttpClientResponse;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.annotation.Nullable;
@@ -31,29 +32,26 @@ public class UpstreamRoute {
 
     private final LoadBalancer<UpstreamState> balancer;
     /**
-     * The maximum number of upstreams this route can use due to retries.
+     * The maximum number of attempts the route may retry
      */
-    private final int maxUpstreamsToUse;
+    private final int maxRetryAttempts;
 
     /**
      * Current upstream state
      */
     @Nullable
     private UpstreamState upstreamState;
-    private int used;
-
-    public UpstreamRoute(LoadBalancer<UpstreamState> balancer, int maxUpstreamsToUse) {
-        this.balancer = balancer;
-        this.maxUpstreamsToUse = maxUpstreamsToUse;
-        this.upstreamState = balancer.next();
-        this.used = upstreamState == null ? 0 : 1;
-    }
-
     /**
-     * @return the number of used upstreams.
+     * Attempt counter
      */
-    public int used() {
-        return used;
+    @Getter
+    private int attemptCount;
+
+    public UpstreamRoute(LoadBalancer<UpstreamState> balancer, int maxRetryAttempts) {
+        this.balancer = balancer;
+        this.maxRetryAttempts = maxRetryAttempts;
+        this.upstreamState = balancer.next();
+        this.attemptCount = upstreamState == null ? 0 : 1;
     }
 
     /**
@@ -62,7 +60,7 @@ public class UpstreamRoute {
      * @return true if upstream available, false otherwise
      */
     public boolean available() {
-        return upstreamState != null && used <= maxUpstreamsToUse;
+        return upstreamState != null && attemptCount <= maxRetryAttempts;
     }
 
     /**
@@ -73,11 +71,11 @@ public class UpstreamRoute {
     @Nullable
     public Upstream next() {
         // if max attempts reached - do not call balancer
-        if (used + 1 > maxUpstreamsToUse) {
+        if (attemptCount + 1 > maxRetryAttempts) {
             this.upstreamState = null;
             return null;
         }
-        used++;
+        attemptCount++;
         this.upstreamState = balancer.next();
         return upstreamState == null ? null : upstreamState.getUpstream();
     }

@@ -16,6 +16,10 @@ public class Route extends RoleBasedEntity {
     private List<Pattern> paths = List.of();
     private Set<String> methods = Set.of();
     private List<Upstream> upstreams = List.of();
+    /**
+     * Indicated max retry attempts to route a single user request.
+     */
+    private int maxRetryAttempts = 1;
 
     @Data
     public static class Response {

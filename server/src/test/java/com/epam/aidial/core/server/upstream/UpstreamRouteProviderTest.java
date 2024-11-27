@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
 public class UpstreamRouteProviderTest {
@@ -57,6 +58,6 @@ public class UpstreamRouteProviderTest {
         // change upstreams in the model
         UpstreamRoute route2 = provider.get(model);
         // the upstream is found
-        assertNotNull(route2.next());
+        assertTrue(route2.available());
     }
 }

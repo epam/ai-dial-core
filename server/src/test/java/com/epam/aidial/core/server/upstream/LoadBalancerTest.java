@@ -106,7 +106,7 @@ public class LoadBalancerTest {
                 new Upstream("endpoint1", null, null, 1, 0),
                 new Upstream("endpoint2", null, null, 9, 1)
         );
-        TieredBalancer balancer = new TieredBalancer("model1", upstreams);
+        TieredBalancer balancer = new TieredBalancer("model1", upstreams, 1);
 
         // verify all requests go to the highest tier
         for (int j = 0; j < 50; j++) {
@@ -122,7 +122,7 @@ public class LoadBalancerTest {
                 new Upstream("endpoint1", null, null, 1, 0),
                 new Upstream("endpoint2", null, null, 9, 1)
         );
-        TieredBalancer balancer = new TieredBalancer("model1", upstreams);
+        TieredBalancer balancer = new TieredBalancer("model1", upstreams, 1);
 
         UpstreamState upstream = balancer.next();
         assertNotNull(upstream);
@@ -166,7 +166,7 @@ public class LoadBalancerTest {
                 new Upstream("endpoint1", null, null, 1, 0),
                 new Upstream("endpoint2", null, null, 1, 1)
         );
-        TieredBalancer balancer = new TieredBalancer("model1", upstreams);
+        TieredBalancer balancer = new TieredBalancer("model1", upstreams, 1);
 
         // report upstream failure 3 times
         for (int i = 0; i < 3; i++) {

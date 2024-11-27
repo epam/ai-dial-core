@@ -365,7 +365,7 @@ public class DeploymentPostController {
         response.setStatusCode(proxyResponse.statusCode());
 
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.used()));
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
 
         responseStream.pipe()
                 .endOnFailure(false)

@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.upstream;
 
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import lombok.Getter;
 import lombok.Setter;
@@ -25,9 +27,16 @@ class TieredBalancer implements LoadBalancer<UpstreamState> {
     @Setter
     private long lastAccessTime;
 
-    public TieredBalancer(String deploymentName, List<Upstream> upstreams) {
+    /**
+     * Note. The value is taken from {@link Deployment#getMaxRetryAttempts()} or {@link Route#getMaxRetryAttempts()}
+     */
+    @Getter
+    private final int originalMaxRetryAttempts;
+
+    public TieredBalancer(String deploymentName, List<Upstream> upstreams, int originalMaxRetryAttempts) {
         this.originalUpstreams = upstreams;
         this.tiers = buildTiers(deploymentName, upstreams);
+        this.originalMaxRetryAttempts = originalMaxRetryAttempts;
     }
 
     @Nullable

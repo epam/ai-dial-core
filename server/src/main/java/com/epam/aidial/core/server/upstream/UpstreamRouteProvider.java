@@ -23,10 +23,6 @@ import java.util.concurrent.TimeUnit;
 public class UpstreamRouteProvider {
 
     /**
-     * Indicated max retry attempts (max upstreams from load balancer) to route a single user request
-     */
-    private static final int MAX_RETRY_COUNT = 5;
-    /**
      * Maximum idle period while balancers will stay in the local cache.
      */
     private static final long IDLE_PERIOD_IN_MS = TimeUnit.HOURS.toMillis(1);
@@ -44,26 +40,28 @@ public class UpstreamRouteProvider {
     public UpstreamRoute get(Deployment deployment) {
         String key = getKey(deployment);
         List<Upstream> upstreams = getUpstreams(deployment);
-        return get(key, upstreams);
+        return get(key, upstreams, deployment.getMaxRetryAttempts());
     }
 
     public UpstreamRoute get(Route route) {
         String key = getKey(route);
-        return get(key, route.getUpstreams());
+        return get(key, route.getUpstreams(), route.getMaxRetryAttempts());
     }
 
-    private UpstreamRoute get(String key, List<Upstream> upstreams) {
+    private UpstreamRoute get(String key, List<Upstream> upstreams, int maxRetryAttempts) {
         TieredBalancer balancer = balancers.compute(key, (k, cur) -> {
             TieredBalancer result;
-            if (cur != null && isUpstreamsTheSame(cur.getOriginalUpstreams(), upstreams)) {
+            if (cur != null && isUpstreamsTheSame(cur.getOriginalUpstreams(), upstreams)
+                    && maxRetryAttempts == cur.getOriginalMaxRetryAttempts()) {
                 result = cur;
             } else {
-                result = new TieredBalancer(key, upstreams);
+                result = new TieredBalancer(key, upstreams, maxRetryAttempts);
             }
             result.setLastAccessTime(System.currentTimeMillis());
             return result;
         });
-        return new UpstreamRoute(balancer, MAX_RETRY_COUNT);
+        int result = Math.min(maxRetryAttempts, upstreams.size());
+        return new UpstreamRoute(balancer, result);
     }
 
     private List<Upstream> getUpstreams(Deployment deployment) {

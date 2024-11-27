@@ -50,7 +50,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "forward_auth_token":false,
                 "defaults": {},
                 "interceptors": [],
-                "description_keywords": []
+                "description_keywords": [],
+                "max_retry_attempts" : 1
                 }
                 """);
 
@@ -213,7 +214,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                  },
                 "defaults": {},
                 "interceptors": [],
-                "description_keywords":[]
+                "description_keywords":[],
+                "max_retry_attempts" : 1
                 }
                 """);
 
@@ -338,7 +340,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "content_parts_supported": false
                    },
                    "defaults" : { },
-                   "description_keywords":[]
+                   "description_keywords":[],
+                   "max_retry_attempts" : 1
                 }
                 """);
 
@@ -374,7 +377,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "content_parts_supported": false
                                 },
                             "defaults":{},
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -404,7 +408,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "content_parts_supported": false
                             },
                             "defaults" : { },
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                           }
                     ],
                     "object":"list"
@@ -443,7 +448,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "content_parts_supported": false
                                 },
                             "defaults":{},
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -473,7 +479,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "content_parts_supported": false
                             },
                             "defaults" : { },
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                           }
                     ],
                     "object":"list"
@@ -585,7 +592,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "content_parts_supported": false
                                 },
                             "defaults":{},
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                         },
                         {
                             "id" : "applications/public/folder/my-custom-application",
@@ -615,7 +623,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "content_parts_supported": false
                             },
                             "defaults" : { },
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                           }
                     ],
                     "object":"list"
@@ -657,7 +666,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "content_parts_supported": false
                                 },
                             "defaults":{},
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                         }
                     ],
                     "object":"list"
@@ -711,7 +721,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "content_parts_supported": false
                     },
                     "defaults":{},
-                    "description_keywords":[]
+                    "description_keywords":[],
+                    "max_retry_attempts" : 1
                 }
                 """);
 
@@ -747,7 +758,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "content_parts_supported": false
                                 },
                             "defaults":{},
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -777,7 +789,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "content_parts_supported": false
                             },
                             "defaults" : { },
-                            "description_keywords":[]
+                            "description_keywords":[],
+                            "max_retry_attempts" : 1
                           }
                     ],
                     "object":"list"
@@ -847,7 +860,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "forward_auth_token": false,
                 "defaults": {},
                 "interceptors": [],
-                "description_keywords": []
+                "description_keywords": [],
+                "max_retry_attempts" : 1
                 }
                 """);
         Application application1 = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -867,7 +881,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "forward_auth_token": false,
                 "defaults": {},
                 "interceptors": [],
-                "description_keywords": []
+                "description_keywords": [],
+                "max_retry_attempts" : 1
                 }
                 """);
         Application application2 = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -909,7 +924,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "forward_auth_token": false,
                 "defaults": {},
                 "interceptors": [],
-                "description_keywords": []
+                "description_keywords": [],
+                "max_retry_attempts" : 1
                 }
                 """);
         Application application = ProxyUtil.convertToObject(response.body(), Application.class);

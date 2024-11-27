@@ -17,4 +17,8 @@ public class Model extends Deployment {
     private List<Upstream> upstreams = List.of();
     // if it's set then the model name is overridden with that name in the request body to the model adapter
     private String overrideName;
+
+    public Model() {
+        setMaxRetryAttempts(5);
+    }
 }

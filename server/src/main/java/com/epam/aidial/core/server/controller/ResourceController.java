@@ -8,10 +8,8 @@ import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
-import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -19,7 +17,6 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
@@ -38,10 +35,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private final Vertx vertx;
     private final ResourceService service;
-    private final ShareService shareService;
-    private final LockService lockService;
     private final ApplicationService applicationService;
-    private final InvitationService invitationService;
     private final boolean metadata;
     private final AccessService accessService;
 
@@ -51,10 +45,7 @@ public class ResourceController extends AccessControlBaseController {
         this.vertx = proxy.getVertx();
         this.service = proxy.getResourceService();
         this.applicationService = proxy.getApplicationService();
-        this.shareService = proxy.getShareService();
         this.accessService = proxy.getAccessService();
-        this.lockService = proxy.getLockService();
-        this.invitationService = proxy.getInvitationService();
         this.metadata = metadata;
     }
 

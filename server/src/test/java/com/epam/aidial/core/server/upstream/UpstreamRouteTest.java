@@ -39,35 +39,28 @@ public class UpstreamRouteTest {
 
         assertTrue(route.available());
         assertNotNull(route.get());
-        assertEquals(1, route.used());
+        assertEquals(1, route.getAttemptCount());
 
         route.fail(HttpStatus.BAD_GATEWAY, -1);
         route.next();
 
         assertTrue(route.available());
         assertNotNull(route.get());
-        assertEquals(2, route.used());
+        assertEquals(2, route.getAttemptCount());
 
         route.fail(HttpStatus.BAD_GATEWAY, -1);
         route.next();
 
         assertTrue(route.available());
         assertNotNull(route.get());
-        assertEquals(3, route.used());
+        assertEquals(3, route.getAttemptCount());
 
         route.fail(HttpStatus.BAD_GATEWAY, -1);
         route.next();
 
         assertTrue(route.available());
         assertNotNull(route.get());
-        assertEquals(4, route.used());
-
-        route.fail(HttpStatus.BAD_GATEWAY, -1);
-        route.next();
-
-        assertTrue(route.available());
-        assertNotNull(route.get());
-        assertEquals(5, route.used());
+        assertEquals(4, route.getAttemptCount());
 
         route.fail(HttpStatus.BAD_GATEWAY, -1);
         route.next();
@@ -75,7 +68,7 @@ public class UpstreamRouteTest {
         // verify route reach max attempts
         assertFalse(route.available());
         assertNull(route.get());
-        assertEquals(5, route.used());
+        assertEquals(4, route.getAttemptCount());
     }
 
     @Test
@@ -92,20 +85,20 @@ public class UpstreamRouteTest {
 
         assertTrue(route.available());
         assertNotNull(route.get());
-        assertEquals(1, route.used());
+        assertEquals(1, route.getAttemptCount());
 
         route.fail(HttpStatus.TOO_MANY_REQUESTS, 30);
         route.next();
 
         assertTrue(route.available());
         assertNotNull(route.get());
-        assertEquals(2, route.used());
+        assertEquals(2, route.getAttemptCount());
 
         route.fail(HttpStatus.TOO_MANY_REQUESTS, 30);
         route.next();
 
         assertFalse(route.available());
         assertNull(route.get());
-        assertEquals(3, route.used());
+        assertEquals(2, route.getAttemptCount());
     }
 }
