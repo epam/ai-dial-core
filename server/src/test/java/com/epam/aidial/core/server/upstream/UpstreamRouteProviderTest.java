@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -12,7 +11,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -24,7 +22,7 @@ public class UpstreamRouteProviderTest {
     private Vertx vertx;
 
     @Test
-    public void testGetCustomApp() {
+    public void testGet_UpstreamsNotChanged() {
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx);
         Application application = new Application();
         application.setName("app");
@@ -37,32 +35,27 @@ public class UpstreamRouteProviderTest {
     }
 
     @Test
-    public void testOnUpdate() {
-        Config config = new Config();
-        Model model1 = new Model();
-        model1.setName("model");
+    public void testGet_UpstreamsChanged() {
+        Model model = new Model();
+        model.setName("model");
         Upstream upstream1 = new Upstream();
         upstream1.setEndpoint("test");
         upstream1.setTier(0);
         upstream1.setWeight(2);
-        model1.setUpstreams(List.of(upstream1));
-        config.setModels(Map.of("model", model1));
+        model.setUpstreams(List.of(upstream1));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx);
-        UpstreamRoute route1 = provider.get(model1);
+        UpstreamRoute route1 = provider.get(model);
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
         assertNull(route1.next());
 
-        Model model2 = new Model();
-        model2.setName("model");
         Upstream upstream2 = new Upstream();
-        upstream1.setEndpoint("test2");
-        upstream1.setTier(0);
-        upstream1.setWeight(1);
-        model1.setUpstreams(List.of(upstream2));
-        config.setModels(Map.of("model", model2));
+        upstream2.setEndpoint("test2");
+        upstream2.setTier(0);
+        upstream2.setWeight(1);
+        model.setUpstreams(List.of(upstream2));
         // change upstreams in the model
-        UpstreamRoute route2 = provider.get(model2);
+        UpstreamRoute route2 = provider.get(model);
         // the upstream is found
         assertNotNull(route2.next());
     }
