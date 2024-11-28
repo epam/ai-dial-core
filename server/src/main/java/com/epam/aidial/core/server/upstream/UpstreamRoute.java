@@ -91,19 +91,7 @@ public class UpstreamRoute {
         return upstream;
     }
 
-    /**
-     * Fail current upstream due to error
-     *
-     * @param status - response http status; typically, 5xx or 429
-     * @param retryAfterSeconds - the amount of seconds after which upstream should be available; if status 5xx this value ignored
-     */
-    void fail(HttpStatus status, long retryAfterSeconds) {
-        verifyCurrentUpstream();
-        balancer.fail(upstream, status, retryAfterSeconds);
-    }
-
     public void fail(HttpStatus status) {
-        verifyCurrentUpstream();
         fail(status, -1);
     }
 
@@ -113,12 +101,24 @@ public class UpstreamRoute {
         fail(status, retryAfter);
     }
 
-    private void verifyCurrentUpstream() {
-        Objects.requireNonNull(upstream, "current upstream is undefined");
+    /**
+     * Fail current upstream due to error
+     *
+     * @param status - response http status; typically, 5xx or 429
+     * @param retryAfterSeconds - the amount of seconds after which upstream should be available
+     */
+    void fail(HttpStatus status, long retryAfterSeconds) {
+        verifyCurrentUpstream();
+        balancer.fail(upstream, status, retryAfterSeconds);
     }
 
     public void succeed() {
+        verifyCurrentUpstream();
         balancer.succeed(upstream);
+    }
+
+    private void verifyCurrentUpstream() {
+        Objects.requireNonNull(upstream, "current upstream is undefined");
     }
 
     /**
