@@ -6,17 +6,18 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 class UpstreamState implements Comparable<UpstreamState> {
 
+    static final long DEFAULT_RETRY_AFTER_SECONDS_VALUE = 30;
     @Getter
     private final Upstream upstream;
     private final int errorsThreshold;
 
-    private static final long INITIAL_BACKOFF_DELAY_MS = 1000;
     // max backoff delay - 5 minutes
-    private static final long MAX_BACKOFF_DELAY_MS = 5 * 60 * 1000;
+    private static final long MAX_BACKOFF_DELAY_SEC = 5 * 60;
 
     /**
      * Amount of 5xx errors from upstream
@@ -25,9 +26,16 @@ class UpstreamState implements Comparable<UpstreamState> {
     /**
      * Timestamp in millis when upstream may be available
      */
+    @Getter
     private long retryAfter = -1;
 
-    public UpstreamState(Upstream upstream, int errorsThreshold) {
+    @Getter
+    private RetryAfterSource source;
+
+    @Getter
+    private HttpStatus status;
+
+    UpstreamState(Upstream upstream, int errorsThreshold) {
         this.upstream = upstream;
         this.errorsThreshold = errorsThreshold;
     }
@@ -38,30 +46,45 @@ class UpstreamState implements Comparable<UpstreamState> {
      * @param status response status code from upstream
      * @param retryAfterSeconds time in seconds when upstream may become available; only take into account with 429 status code
      */
-    public synchronized void failed(HttpStatus status, long retryAfterSeconds) {
+    void fail(HttpStatus status, long retryAfterSeconds) {
+        this.source = retryAfterSeconds == -1 ? RetryAfterSource.CORE : RetryAfterSource.UPSTREAM;
+        this.status = status;
         if (status == HttpStatus.TOO_MANY_REQUESTS) {
-            retryAfter = System.currentTimeMillis() + Math.max(retryAfterSeconds, 0) * 1000;
+            retryAfterSeconds = source == RetryAfterSource.CORE ? DEFAULT_RETRY_AFTER_SECONDS_VALUE : retryAfterSeconds;
+            setReplyAfter(retryAfterSeconds);
             log.warn("Upstream {} limit hit: retry after {}", upstream.getEndpoint(), Instant.ofEpochMilli(retryAfter).toString());
-        }
-
-        if (status.is5xx()) {
-            if (++errorCount >= errorsThreshold) {
-                retryAfter = System.currentTimeMillis()
-                             + Math.min(INITIAL_BACKOFF_DELAY_MS * (1L << errorCount), MAX_BACKOFF_DELAY_MS);
+        } else if (status.is5xx()) {
+            if (source == RetryAfterSource.CORE) {
+                errorCount++;
+                if (errorCount >= errorsThreshold) {
+                    // exponential or max backoff in seconds
+                    retryAfterSeconds = Math.min(1L << errorCount, MAX_BACKOFF_DELAY_SEC);
+                    setReplyAfter(retryAfterSeconds);
+                }
+            } else {
+                setReplyAfter(retryAfterSeconds);
             }
+        } else {
+            throw new IllegalArgumentException("Unsupported http status: " + status);
         }
+    }
+
+    private void setReplyAfter(long retryAfterSeconds) {
+        retryAfter = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(retryAfterSeconds);
     }
 
     /**
      * reset errors state
      */
-    public synchronized void succeeded() {
+    void succeeded() {
         // reset errors
         errorCount = 0;
         retryAfter = -1;
+        source = null;
+        status = null;
     }
 
-    public synchronized boolean isUpstreamAvailable() {
+    boolean isUpstreamAvailable() {
         if (retryAfter < 0) {
             return true;
         }
@@ -72,5 +95,9 @@ class UpstreamState implements Comparable<UpstreamState> {
     @Override
     public int compareTo(UpstreamState upstreamState) {
         return Integer.compare(upstream.getWeight(), upstreamState.getUpstream().getWeight());
+    }
+
+    enum RetryAfterSource {
+        UPSTREAM, CORE
     }
 }

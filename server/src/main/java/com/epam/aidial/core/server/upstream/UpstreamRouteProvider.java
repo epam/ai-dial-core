@@ -31,7 +31,7 @@ public class UpstreamRouteProvider {
     /**
      * Cached load balancers
      */
-    private final ConcurrentHashMap<String, TieredBalancer> balancers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, BalancerWrapper> balancers = new ConcurrentHashMap<>();
 
     public UpstreamRouteProvider(Vertx vertx) {
         vertx.setPeriodic(0, TimeUnit.MINUTES.toMillis(1), event -> evictExpiredBalancers());
@@ -49,19 +49,19 @@ public class UpstreamRouteProvider {
     }
 
     private UpstreamRoute get(String key, List<Upstream> upstreams, int maxRetryAttempts) {
-        TieredBalancer balancer = balancers.compute(key, (k, cur) -> {
-            TieredBalancer result;
-            if (cur != null && isUpstreamsTheSame(cur.getOriginalUpstreams(), upstreams)
-                    && maxRetryAttempts == cur.getOriginalMaxRetryAttempts()) {
+        BalancerWrapper wrapper = balancers.compute(key, (k, cur) -> {
+            BalancerWrapper result;
+            if (cur != null && isUpstreamsTheSame(cur.upstreams, upstreams)
+                    && maxRetryAttempts == cur.maxRetryAttempts) {
                 result = cur;
             } else {
-                result = new TieredBalancer(key, upstreams, maxRetryAttempts);
+                result = new BalancerWrapper(new TieredBalancer(key, upstreams), maxRetryAttempts, upstreams);
             }
-            result.setLastAccessTime(System.currentTimeMillis());
+            result.lastAccessTime = System.currentTimeMillis();
             return result;
         });
         int result = Math.min(maxRetryAttempts, upstreams.size());
-        return new UpstreamRoute(balancer, result);
+        return new UpstreamRoute(wrapper.balancer, result);
     }
 
     private List<Upstream> getUpstreams(Deployment deployment) {
@@ -98,16 +98,34 @@ public class UpstreamRouteProvider {
     private void evictExpiredBalancers() {
         long currentTime = System.currentTimeMillis();
         for (String key : balancers.keySet()) {
-            balancers.compute(key, (k, balancer) -> {
-                if (balancer != null && currentTime - balancer.getLastAccessTime() > IDLE_PERIOD_IN_MS) {
+            balancers.compute(key, (k, wrapper) -> {
+                if (wrapper != null && currentTime - wrapper.lastAccessTime > IDLE_PERIOD_IN_MS) {
                     return null;
                 }
-                return balancer;
+                return wrapper;
             });
         }
     }
 
     private static boolean isUpstreamsTheSame(List<Upstream> a, List<Upstream> b) {
         return new HashSet<>(a).equals(new HashSet<>(b));
+    }
+
+    private static class BalancerWrapper {
+        final TieredBalancer balancer;
+        long lastAccessTime;
+
+        /**
+         * Note. The value is taken from {@link Deployment#getMaxRetryAttempts()} or {@link Route#getMaxRetryAttempts()}
+         */
+        final int maxRetryAttempts;
+
+        final List<Upstream> upstreams;
+
+        public BalancerWrapper(TieredBalancer balancer, int maxRetryAttempts, List<Upstream> upstreams) {
+            this.balancer = balancer;
+            this.maxRetryAttempts = maxRetryAttempts;
+            this.upstreams = upstreams;
+        }
     }
 }

@@ -1,15 +1,14 @@
 package com.epam.aidial.core.server.upstream;
 
-import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
-import lombok.Getter;
-import lombok.Setter;
+import com.epam.aidial.core.storage.http.HttpStatus;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -17,39 +16,68 @@ import javax.annotation.Nullable;
  * Tiered load balancer. Each next() call returns an available upstream from the highest tier (lowest tier value in config).
  * If the whole tier (highest) is unavailable, balancer start routing upstreams from next tier (lower) if any.
  */
-class TieredBalancer implements LoadBalancer<UpstreamState> {
+class TieredBalancer {
 
-    @Getter
-    private final List<Upstream> originalUpstreams;
     private final List<WeightedRoundRobinBalancer> tiers;
 
-    @Getter
-    @Setter
-    private long lastAccessTime;
+    private final List<UpstreamState> upstreamStates = new ArrayList<>();
 
-    /**
-     * Note. The value is taken from {@link Deployment#getMaxRetryAttempts()} or {@link Route#getMaxRetryAttempts()}
-     */
-    @Getter
-    private final int originalMaxRetryAttempts;
+    private final List<Predicate<UpstreamState>> predicates = new ArrayList<>();
 
-    public TieredBalancer(String deploymentName, List<Upstream> upstreams, int originalMaxRetryAttempts) {
-        this.originalUpstreams = upstreams;
+    public TieredBalancer(String deploymentName, List<Upstream> upstreams) {
         this.tiers = buildTiers(deploymentName, upstreams);
-        this.originalMaxRetryAttempts = originalMaxRetryAttempts;
+        for (WeightedRoundRobinBalancer tier : tiers) {
+            upstreamStates.addAll(tier.getUpstreams());
+        }
+        predicates.add(state -> state.getStatus().is5xx()
+                && state.getSource() == UpstreamState.RetryAfterSource.CORE);
+        predicates.add(state -> state.getStatus().is5xx()
+                && state.getSource() == UpstreamState.RetryAfterSource.UPSTREAM);
+        predicates.add(state -> state.getStatus() == HttpStatus.TOO_MANY_REQUESTS
+                && state.getSource() == UpstreamState.RetryAfterSource.CORE);
+        predicates.add(state -> state.getStatus() == HttpStatus.TOO_MANY_REQUESTS
+                && state.getSource() == UpstreamState.RetryAfterSource.UPSTREAM);
     }
 
     @Nullable
-    @Override
-    public UpstreamState next() {
+    synchronized Upstream next(Predicate<Upstream> fallbackPredicate) {
         for (WeightedRoundRobinBalancer tier : tiers) {
             UpstreamState upstreamState = tier.next();
             if (upstreamState != null) {
+                return upstreamState.getUpstream();
+            }
+        }
+        // fallback
+        for (Predicate<UpstreamState> p : predicates) {
+            UpstreamState candidate = upstreamStates.stream().filter(p)
+                    .filter(upstreamState -> fallbackPredicate.test(upstreamState.getUpstream()))
+                    .min(Comparator.comparingLong(UpstreamState::getRetryAfter)).orElse(null);
+            if (candidate != null) {
+                return candidate.getUpstream();
+            }
+        }
+        return null;
+    }
+
+    synchronized void fail(Upstream upstream, HttpStatus status, long retryAfterSeconds) {
+        Objects.requireNonNull(upstream);
+        UpstreamState upstreamState = findUpstreamState(upstream);
+        upstreamState.fail(status, retryAfterSeconds);
+    }
+
+    synchronized void succeed(Upstream upstream) {
+        Objects.requireNonNull(upstream);
+        UpstreamState upstreamState = findUpstreamState(upstream);
+        upstreamState.succeeded();
+    }
+
+    private UpstreamState findUpstreamState(Upstream upstream) {
+        for (UpstreamState upstreamState : upstreamStates) {
+            if (upstreamState.getUpstream().equals(upstream)) {
                 return upstreamState;
             }
         }
-
-        return null;
+        throw new IllegalArgumentException("Upstream is not found: " + upstream);
     }
 
     private static List<WeightedRoundRobinBalancer> buildTiers(String deploymentName, List<Upstream> upstreams) {

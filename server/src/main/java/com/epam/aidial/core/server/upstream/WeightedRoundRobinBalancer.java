@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Upstream;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Comparator;
@@ -12,9 +13,10 @@ import java.util.PriorityQueue;
  * Load balancer tracks upstream statistics and guaranty spreading the load according to the upstreams weight
  */
 @Slf4j
-class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalancer>, LoadBalancer<UpstreamState> {
+class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalancer> {
 
     private final int tier;
+    @Getter
     private final List<UpstreamState> upstreams;
     private final long[] upstreamsWeights;
     private final long[] upstreamsUsage;
@@ -22,7 +24,7 @@ class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalance
     private long totalUsage;
     private final PriorityQueue<UpstreamUsage> upstreamPriority = new PriorityQueue<>((a, b) -> Double.compare(b.delta, a.delta));
 
-    public WeightedRoundRobinBalancer(String deploymentName, List<Upstream> upstreams) {
+    WeightedRoundRobinBalancer(String deploymentName, List<Upstream> upstreams) {
         if (upstreams == null || upstreams.isEmpty()) {
             throw new IllegalArgumentException("Upstream list is null or empty for deployment: " + deploymentName);
         }
@@ -35,7 +37,7 @@ class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalance
         this.tier = tier;
         this.upstreams = upstreams.stream()
                 .filter(upstream -> upstream.getWeight() > 0)
-                .map(upstream -> new UpstreamState(upstream, Upstream.ERROR_THRESHOLD))
+                .map(upstream -> new UpstreamState(upstream, Upstream.HTTP_5XX_ERROR_THRESHOLD))
                 .sorted(Comparator.reverseOrder())
                 .toList();
         this.totalWeight = this.upstreams.stream().map(UpstreamState::getUpstream).mapToLong(Upstream::getWeight).sum();
@@ -46,8 +48,7 @@ class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalance
         }
     }
 
-    @Override
-    public synchronized UpstreamState next() {
+    public UpstreamState next() {
         if (upstreams.isEmpty()) {
             return null;
         }
