@@ -7,8 +7,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
-import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 /**
@@ -48,14 +48,12 @@ public class UpstreamRoute {
     @Getter
     private int attemptCount;
 
-    private final Predicate<Upstream> fallbackPredicate;
+    private final Set<Upstream> usedUpstreams = new HashSet<>();
 
     public UpstreamRoute(TieredBalancer balancer, int maxRetryAttempts) {
         this.balancer = balancer;
         this.maxRetryAttempts = maxRetryAttempts;
-        Set<Upstream> usedUpstreams = new HashSet<>();
-        fallbackPredicate = usedUpstreams::add;
-        this.upstream = balancer.next(fallbackPredicate);
+        this.upstream = balancer.next(usedUpstreams);
         this.attemptCount = upstream == null ? 0 : 1;
     }
 
@@ -81,7 +79,7 @@ public class UpstreamRoute {
             return null;
         }
         attemptCount++;
-        this.upstream = balancer.next(fallbackPredicate);
+        this.upstream = balancer.next(usedUpstreams);
         return upstream;
     }
 
@@ -100,10 +98,12 @@ public class UpstreamRoute {
      * @param retryAfterSeconds - the amount of seconds after which upstream should be available; if status 5xx this value ignored
      */
     void fail(HttpStatus status, long retryAfterSeconds) {
+        verifyCurrentUpstream();
         balancer.fail(upstream, status, retryAfterSeconds);
     }
 
     public void fail(HttpStatus status) {
+        verifyCurrentUpstream();
         fail(status, -1);
     }
 
@@ -111,6 +111,10 @@ public class UpstreamRoute {
         long retryAfter = retrieveRetryAfterSeconds(response);
         HttpStatus status = HttpStatus.fromStatusCode(response.statusCode());
         fail(status, retryAfter);
+    }
+
+    private void verifyCurrentUpstream() {
+        Objects.requireNonNull(upstream, "current upstream is undefined");
     }
 
     public void succeed() {

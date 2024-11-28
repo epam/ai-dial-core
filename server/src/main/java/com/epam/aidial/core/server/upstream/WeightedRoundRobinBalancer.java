@@ -37,7 +37,7 @@ class WeightedRoundRobinBalancer implements Comparable<WeightedRoundRobinBalance
         this.tier = tier;
         this.upstreams = upstreams.stream()
                 .filter(upstream -> upstream.getWeight() > 0)
-                .map(upstream -> new UpstreamState(upstream, Upstream.HTTP_5XX_ERROR_THRESHOLD))
+                .map(UpstreamState::new)
                 .sorted(Comparator.reverseOrder())
                 .toList();
         this.totalWeight = this.upstreams.stream().map(UpstreamState::getUpstream).mapToLong(Upstream::getWeight).sum();

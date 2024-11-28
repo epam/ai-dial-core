@@ -11,12 +11,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Predicate;
+import java.util.Set;
 import java.util.stream.Stream;
 
-import static com.epam.aidial.core.config.Upstream.HTTP_5XX_ERROR_THRESHOLD;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -27,8 +27,6 @@ public class LoadBalancerTest {
     @Mock
     private Vertx vertx;
     
-    private final Predicate<Upstream> noop = state -> true;
-
     @Test
     void testWeightedLoadBalancer() {
         List<Upstream> upstreams = List.of(
@@ -114,7 +112,7 @@ public class LoadBalancerTest {
 
         // verify all requests go to the highest tier
         for (int j = 0; j < 50; j++) {
-            Upstream upstream = balancer.next(noop);
+            Upstream upstream = balancer.next(Set.of());
             assertNotNull(upstream);
             assertEquals("endpoint1", upstream.getEndpoint());
         }
@@ -128,7 +126,7 @@ public class LoadBalancerTest {
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
 
-        Upstream upstream = balancer.next(noop);
+        Upstream upstream = balancer.next(Set.of());
         assertNotNull(upstream);
         assertEquals("endpoint1", upstream.getEndpoint());
 
@@ -137,7 +135,7 @@ public class LoadBalancerTest {
 
         // verify only tier 1 available
         for (int i = 0; i < 10; i++) {
-            upstream = balancer.next(noop);
+            upstream = balancer.next(Set.of());
             assertNotNull(upstream);
             assertEquals("endpoint2", upstream.getEndpoint());
         }
@@ -145,7 +143,7 @@ public class LoadBalancerTest {
         // wait once tier 2 become available again
         Thread.sleep(2000);
 
-        upstream = balancer.next(noop);
+        upstream = balancer.next(Set.of());
         assertNotNull(upstream);
         assertEquals("endpoint1", upstream.getEndpoint());
     }
@@ -167,23 +165,23 @@ public class LoadBalancerTest {
     @Test
     void test5xxErrorsHandling() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, null, 1, 0),
-                new Upstream("endpoint2", null, null, 1, 1)
+                new Upstream("endpoint0", null, null, 1, 0),
+                new Upstream("endpoint1", null, null, 1, 1)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams);
 
-        // report upstream failure 3 times
-        for (int i = 0; i < 3; i++) {
-            Upstream upstream = balancer.next(noop);
+        Set<Upstream> used = new HashSet<>();
+        // report upstream failure 4 times
+        for (int i = 0; i < 4; i++) {
+            Upstream upstream = balancer.next(used);
             assertNotNull(upstream);
-            assertEquals("endpoint1", upstream.getEndpoint());
+            assertEquals("endpoint" + i % 2, upstream.getEndpoint());
 
             balancer.fail(upstream, HttpStatus.SERVICE_UNAVAILABLE, -1);
         }
-
-        Upstream upstream = balancer.next(noop);
-        assertNotNull(upstream);
-        assertEquals("endpoint2", upstream.getEndpoint());
+        // there are no more unused upstreams left
+        Upstream upstream = balancer.next(used);
+        assertNull(upstream);
     }
 
     @Test
@@ -200,13 +198,9 @@ public class LoadBalancerTest {
 
         UpstreamRoute route1 = upstreamRouteProvider.get(model);
         assertEquals(upstreams.get(0), route1.get());
-        for (int i = 0; i < HTTP_5XX_ERROR_THRESHOLD; i++) {
-            route1.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);
-        }
+        route1.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);
         assertEquals(upstreams.get(1), route1.next());
-        for (int i = 0; i < HTTP_5XX_ERROR_THRESHOLD; i++) {
-            route1.fail(HttpStatus.SERVICE_UNAVAILABLE, 5);
-        }
+        route1.fail(HttpStatus.SERVICE_UNAVAILABLE, 5);
         assertEquals(upstreams.get(2), route1.next());
         route1.fail(HttpStatus.TOO_MANY_REQUESTS, -1);
         assertEquals(upstreams.get(3), route1.next());

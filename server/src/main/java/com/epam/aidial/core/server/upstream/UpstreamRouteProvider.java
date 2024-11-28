@@ -55,7 +55,7 @@ public class UpstreamRouteProvider {
                     && maxRetryAttempts == cur.maxRetryAttempts) {
                 result = cur;
             } else {
-                result = new BalancerWrapper(new TieredBalancer(key, upstreams), maxRetryAttempts, upstreams);
+                result = new BalancerWrapper(key, maxRetryAttempts, upstreams);
             }
             result.lastAccessTime = System.currentTimeMillis();
             return result;
@@ -122,8 +122,8 @@ public class UpstreamRouteProvider {
 
         final List<Upstream> upstreams;
 
-        public BalancerWrapper(TieredBalancer balancer, int maxRetryAttempts, List<Upstream> upstreams) {
-            this.balancer = balancer;
+        public BalancerWrapper(String key, int maxRetryAttempts, List<Upstream> upstreams) {
+            this.balancer = new TieredBalancer(key, upstreams);
             this.maxRetryAttempts = maxRetryAttempts;
             this.upstreams = upstreams;
         }

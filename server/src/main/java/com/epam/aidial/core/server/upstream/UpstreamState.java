@@ -14,7 +14,6 @@ class UpstreamState implements Comparable<UpstreamState> {
     static final long DEFAULT_RETRY_AFTER_SECONDS_VALUE = 30;
     @Getter
     private final Upstream upstream;
-    private final int errorsThreshold;
 
     // max backoff delay - 5 minutes
     private static final long MAX_BACKOFF_DELAY_SEC = 5 * 60;
@@ -22,7 +21,7 @@ class UpstreamState implements Comparable<UpstreamState> {
     /**
      * Amount of 5xx errors from upstream
      */
-    private int errorCount;
+    private int errorCount = 0;
     /**
      * Timestamp in millis when upstream may be available
      */
@@ -35,9 +34,8 @@ class UpstreamState implements Comparable<UpstreamState> {
     @Getter
     private HttpStatus status;
 
-    UpstreamState(Upstream upstream, int errorsThreshold) {
+    UpstreamState(Upstream upstream) {
         this.upstream = upstream;
-        this.errorsThreshold = errorsThreshold;
     }
 
     /**
@@ -55,12 +53,11 @@ class UpstreamState implements Comparable<UpstreamState> {
             log.warn("Upstream {} limit hit: retry after {}", upstream.getEndpoint(), Instant.ofEpochMilli(retryAfter).toString());
         } else if (status.is5xx()) {
             if (source == RetryAfterSource.CORE) {
-                errorCount++;
-                if (errorCount >= errorsThreshold) {
-                    // exponential or max backoff in seconds
-                    retryAfterSeconds = Math.min(1L << errorCount, MAX_BACKOFF_DELAY_SEC);
-                    setReplyAfter(retryAfterSeconds);
+                if (errorCount != 30) {
+                    errorCount++;
                 }
+                retryAfterSeconds = Math.min(1L << errorCount, MAX_BACKOFF_DELAY_SEC);
+                setReplyAfter(retryAfterSeconds);
             } else {
                 setReplyAfter(retryAfterSeconds);
             }

@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -40,7 +41,7 @@ class TieredBalancer {
     }
 
     @Nullable
-    synchronized Upstream next(Predicate<Upstream> fallbackPredicate) {
+    synchronized Upstream next(Set<Upstream> usedUpstreams) {
         for (WeightedRoundRobinBalancer tier : tiers) {
             UpstreamState upstreamState = tier.next();
             if (upstreamState != null) {
@@ -50,9 +51,10 @@ class TieredBalancer {
         // fallback
         for (Predicate<UpstreamState> p : predicates) {
             UpstreamState candidate = upstreamStates.stream().filter(p)
-                    .filter(upstreamState -> fallbackPredicate.test(upstreamState.getUpstream()))
+                    .filter(upstreamState -> !usedUpstreams.contains(upstreamState.getUpstream()))
                     .min(Comparator.comparingLong(UpstreamState::getRetryAfter)).orElse(null);
             if (candidate != null) {
+                usedUpstreams.add(candidate.getUpstream());
                 return candidate.getUpstream();
             }
         }
