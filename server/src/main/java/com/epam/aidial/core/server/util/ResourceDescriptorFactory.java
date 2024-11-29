@@ -16,7 +16,7 @@ import javax.annotation.Nullable;
 
 public class ResourceDescriptorFactory {
 
-    private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}');
+    private static final Set<Character> INVALID_FILE_NAME_CHARS = Set.of('/', '{', '}', '"');
     private static final int MAX_PATH_SIZE = 900;
 
     /**
