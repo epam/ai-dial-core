@@ -1,3 +1,9 @@
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+apply plugin: 'org.gradle.toolchains.foojay-resolver-convention'
+
 rootProject.name = "aidial-core"
 include 'config'
 include 'server'
