@@ -60,6 +60,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -100,7 +101,7 @@ public class AiDial {
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
             LogStore logStore = new GfLogStore(vertx);
-            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx);
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new);
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);

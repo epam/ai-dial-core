@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,6 +24,9 @@ public class UpstreamRouteTest {
     @Mock
     private Vertx vertx;
 
+    @Mock
+    private Random generator;
+
     @Test
     void testUpstreamRouteWithRetry() {
         Model model = new Model();
@@ -34,7 +38,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint4", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator);
         UpstreamRoute route = upstreamRouteProvider.get(model);
 
         assertTrue(route.available());
@@ -80,7 +84,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator);
         UpstreamRoute route = upstreamRouteProvider.get(model);
 
         assertTrue(route.available());

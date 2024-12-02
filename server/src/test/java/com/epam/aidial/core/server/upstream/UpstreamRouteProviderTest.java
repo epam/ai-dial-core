@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,9 +22,12 @@ public class UpstreamRouteProviderTest {
     @Mock
     private Vertx vertx;
 
+    @Mock
+    private Random generator;
+
     @Test
     public void testGet_UpstreamsNotChanged() {
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
         Application application = new Application();
         application.setName("app");
         UpstreamRoute route1 = provider.get(application);
@@ -44,7 +48,7 @@ public class UpstreamRouteProviderTest {
         upstream1.setWeight(2);
         model.setUpstreams(List.of(upstream1));
 
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
         UpstreamRoute route1 = provider.get(model);
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
         assertNull(route1.next());

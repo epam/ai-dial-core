@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
-class UpstreamState implements Comparable<UpstreamState> {
+class UpstreamState {
 
     static final long DEFAULT_RETRY_AFTER_SECONDS_VALUE = 30;
     @Getter
@@ -87,11 +87,6 @@ class UpstreamState implements Comparable<UpstreamState> {
         }
 
         return System.currentTimeMillis() > retryAfter;
-    }
-
-    @Override
-    public int compareTo(UpstreamState upstreamState) {
-        return Integer.compare(upstream.getWeight(), upstreamState.getUpstream().getWeight());
     }
 
     enum RetryAfterSource {

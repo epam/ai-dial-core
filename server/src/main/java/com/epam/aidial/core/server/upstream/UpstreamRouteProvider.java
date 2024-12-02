@@ -12,8 +12,10 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * This class caches load balancers for deployments and routes.
@@ -33,7 +35,10 @@ public class UpstreamRouteProvider {
      */
     private final ConcurrentHashMap<String, BalancerWrapper> balancers = new ConcurrentHashMap<>();
 
-    public UpstreamRouteProvider(Vertx vertx) {
+    private final Supplier<Random> generatorFactory;
+
+    public UpstreamRouteProvider(Vertx vertx, Supplier<Random> generatorFactory) {
+        this.generatorFactory = generatorFactory;
         vertx.setPeriodic(0, TimeUnit.MINUTES.toMillis(1), event -> evictExpiredBalancers());
     }
 
@@ -55,7 +60,8 @@ public class UpstreamRouteProvider {
                     && maxRetryAttempts == cur.maxRetryAttempts) {
                 result = cur;
             } else {
-                result = new BalancerWrapper(key, maxRetryAttempts, upstreams);
+                TieredBalancer balancer = new TieredBalancer(key, upstreams, generatorFactory.get());
+                result = new BalancerWrapper(balancer, maxRetryAttempts, upstreams);
             }
             result.lastAccessTime = System.currentTimeMillis();
             return result;
@@ -122,8 +128,8 @@ public class UpstreamRouteProvider {
 
         final List<Upstream> upstreams;
 
-        public BalancerWrapper(String key, int maxRetryAttempts, List<Upstream> upstreams) {
-            this.balancer = new TieredBalancer(key, upstreams);
+        public BalancerWrapper(TieredBalancer balancer, int maxRetryAttempts, List<Upstream> upstreams) {
+            this.balancer = balancer;
             this.maxRetryAttempts = maxRetryAttempts;
             this.upstreams = upstreams;
         }

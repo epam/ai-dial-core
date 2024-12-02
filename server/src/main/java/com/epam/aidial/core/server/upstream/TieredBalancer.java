@@ -8,8 +8,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -19,16 +21,16 @@ import javax.annotation.Nullable;
  */
 class TieredBalancer {
 
-    private final List<WeightedRoundRobinBalancer> tiers;
+    private final List<RandomizedWeightedBalancer> tiers;
 
     private final List<UpstreamState> upstreamStates = new ArrayList<>();
 
     private final List<Predicate<UpstreamState>> predicates = new ArrayList<>();
 
-    public TieredBalancer(String deploymentName, List<Upstream> upstreams) {
-        this.tiers = buildTiers(deploymentName, upstreams);
-        for (WeightedRoundRobinBalancer tier : tiers) {
-            upstreamStates.addAll(tier.getUpstreams());
+    public TieredBalancer(String deploymentName, List<Upstream> upstreams, Random random) {
+        this.tiers = buildTiers(deploymentName, upstreams, random);
+        for (RandomizedWeightedBalancer tier : tiers) {
+            upstreamStates.addAll(tier.getUpstreamStates());
         }
         predicates.add(state -> state.getStatus().is5xx()
                 && state.getSource() == UpstreamState.RetryAfterSource.CORE);
@@ -42,10 +44,10 @@ class TieredBalancer {
 
     @Nullable
     synchronized Upstream next(Set<Upstream> usedUpstreams) {
-        for (WeightedRoundRobinBalancer tier : tiers) {
-            UpstreamState upstreamState = tier.next();
-            if (upstreamState != null) {
-                return upstreamState.getUpstream();
+        for (RandomizedWeightedBalancer tier : tiers) {
+            Upstream upstream = tier.next();
+            if (upstream != null) {
+                return upstream;
             }
         }
         // fallback
@@ -82,13 +84,13 @@ class TieredBalancer {
         throw new IllegalArgumentException("Upstream is not found: " + upstream);
     }
 
-    private static List<WeightedRoundRobinBalancer> buildTiers(String deploymentName, List<Upstream> upstreams) {
-        List<WeightedRoundRobinBalancer> balancers = new ArrayList<>();
+    private static List<RandomizedWeightedBalancer> buildTiers(String deploymentName, List<Upstream> upstreams, Random random) {
+        List<RandomizedWeightedBalancer> balancers = new ArrayList<>();
         Map<Integer, List<Upstream>> groups = upstreams.stream()
                 .collect(Collectors.groupingBy(Upstream::getTier));
 
         for (Map.Entry<Integer, List<Upstream>> entry : groups.entrySet()) {
-            balancers.add(new WeightedRoundRobinBalancer(deploymentName, entry.getValue()));
+            balancers.add(new RandomizedWeightedBalancer(deploymentName, entry.getValue(), random));
         }
 
         balancers.sort(Comparator.naturalOrder());
