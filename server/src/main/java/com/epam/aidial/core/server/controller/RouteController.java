@@ -23,7 +23,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.client.utils.URLEncodedUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -280,6 +282,10 @@ public class RouteController implements Controller {
         URIBuilder uriBuilder = new URIBuilder(upstream.getEndpoint());
         if (context.getRoute().isRewritePath()) {
             uriBuilder.setPath(context.getRequest().path());
+            String query = context.getRequest().query();
+            if (query != null) {
+                uriBuilder.setParameters(URLEncodedUtils.parse(query, StandardCharsets.UTF_8));
+            }
         }
         return uriBuilder.toString();
     }

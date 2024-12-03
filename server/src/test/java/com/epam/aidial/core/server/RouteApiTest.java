@@ -62,6 +62,7 @@ class RouteApiTest extends ResourceBaseTest {
                 Arguments.of(HttpMethod.GET, "/v1/plain", "vstore_user_key", 200, "/"),
                 Arguments.of(HttpMethod.GET, "/v1/plain", "vstore_admin_key", 200, "/"),
                 Arguments.of(HttpMethod.GET, "/v1/vector_store/1", "vstore_user_key", 200, "/v1/vector_store/1"),
+                Arguments.of(HttpMethod.GET, "/v1/vector_store/1?q=p", "vstore_user_key", 200, "/v1/vector_store/1?q=p"),
                 Arguments.of(HttpMethod.GET, "/v1/vector_store/1", "vstore_admin_key", 200, "/v1/vector_store/1"),
                 Arguments.of(HttpMethod.HEAD, "/v1/vector_store/1", "vstore_user_key", 200, null),
                 Arguments.of(HttpMethod.HEAD, "/v1/vector_store/1", "vstore_admin_key", 200, null),
