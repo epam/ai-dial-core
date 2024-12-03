@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -55,13 +56,9 @@ public class RouteController implements Controller {
         Route.Response response = route.getResponse();
         if (response == null) {
             UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(route);
-
-            if (!upstreamRoute.available()) {
-                log.warn("RouteController can't find a upstream route to proceed the request: {}", getRequestUri());
-                context.respond(HttpStatus.BAD_GATEWAY, "No route");
+            if (!canRetry(upstreamRoute)) {
                 return Future.succeededFuture();
             }
-
             context.setTraceOperation("Send request to %s route".formatted(route.getName()));
             context.setUpstreamRoute(upstreamRoute);
         } else {
@@ -85,11 +82,6 @@ public class RouteController implements Controller {
     private Future<?> sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
-
-        if (!route.available()) {
-            log.warn("RouteController can't find a upstream route to proceed the request: {}", getRequestUri());
-            return context.respond(HttpStatus.BAD_GATEWAY, "No route");
-        }
 
         Upstream upstream = route.get();
         Objects.requireNonNull(upstream);
@@ -155,8 +147,10 @@ public class RouteController implements Controller {
         if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
             upstreamRoute.fail(proxyResponse);
-            upstreamRoute.next();
-            sendRequest(); // try next
+            // get next upstream
+            if (canRetry(upstreamRoute)) {
+                sendRequest(); // try next
+            }
             return;
         }
 
@@ -180,6 +174,16 @@ public class RouteController implements Controller {
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
                 .onFailure(this::handleResponseError);
+    }
+
+    private boolean canRetry(UpstreamRoute route) {
+        try {
+            route.next();
+        } catch (HttpException e) {
+            context.respond(e);
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -223,8 +227,10 @@ public class RouteController implements Controller {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
-        upstreamRoute.next();
-        sendRequest(); // try next
+        // get next upstream
+        if (canRetry(upstreamRoute)) {
+            sendRequest(); // try next
+        }
     }
 
     /**
@@ -235,8 +241,10 @@ public class RouteController implements Controller {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
-        upstreamRoute.next();
-        sendRequest(); // try next
+        // get next upstream
+        if (canRetry(upstreamRoute)) {
+            sendRequest(); // try next
+        }
     }
 
     /**

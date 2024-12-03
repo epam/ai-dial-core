@@ -120,7 +120,7 @@ public class DeploymentPostController {
                             context.setInterceptors(context.getDeployment().getInterceptors());
                             future = handleInterceptor(0);
                         } else {
-                            future = handleRateLimitSuccess(deploymentId);
+                            future = handleRateLimitSuccess();
                         }
                     } else {
                         handleRateLimitHit(deploymentId, rateLimitResult);
@@ -173,24 +173,18 @@ public class DeploymentPostController {
         }
     }
 
-    private Future<?> handleRateLimitSuccess(String deploymentId) {
+    private Future<?> handleRateLimitSuccess() {
         log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
         Deployment deployment = context.getDeployment();
-        UpstreamRoute endpointRoute = proxy.getUpstreamRouteProvider().get(deployment);
-        context.setUpstreamRoute(endpointRoute);
-
-        if (!endpointRoute.available()) {
-            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
-                    context.getTraceId(), context.getSpanId(),
-                    context.getProject(), deploymentId, context.getUserSub());
-
-            respond(HttpStatus.BAD_GATEWAY, "No route");
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment);
+        if (!canRetry(upstreamRoute)) {
             return Future.succeededFuture();
         }
+        context.setUpstreamRoute(upstreamRoute);
 
         setupProxyApiKeyData(new ApiKeyData());
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
@@ -229,15 +223,6 @@ public class DeploymentPostController {
     private void sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
         HttpServerRequest request = context.getRequest();
-
-        if (!route.available()) {
-            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
-                    context.getTraceId(), context.getSpanId(),
-                    context.getProject(), context.getDeployment().getName(), context.getUserSub());
-
-            respond(HttpStatus.BAD_GATEWAY, "No route");
-            return;
-        }
 
         Upstream upstream = route.get();
         Objects.requireNonNull(upstream);
@@ -339,8 +324,9 @@ public class DeploymentPostController {
         if (isRetriableError(responseStatusCode)) {
             upstreamRoute.fail(proxyResponse);
             // get next upstream
-            upstreamRoute.next();
-            sendRequest(); // try next
+            if (canRetry(upstreamRoute)) {
+                sendRequest(); // try next
+            }
             return;
         }
 
@@ -521,8 +507,9 @@ public class DeploymentPostController {
 
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
-        upstreamRoute.next();
-        sendRequest();
+        if (canRetry(upstreamRoute)) {
+            sendRequest(); // try next
+        }
     }
 
     /**
@@ -566,9 +553,27 @@ public class DeploymentPostController {
         return endpoint + (query == null ? "" : "?" + query);
     }
 
+    private boolean canRetry(UpstreamRoute route) {
+        try {
+            route.next();
+        } catch (HttpException e) {
+            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
+                    context.getTraceId(), context.getSpanId(),
+                    context.getProject(), context.getDeployment().getName(), context.getUserSub());
+            respond(e);
+            return false;
+        }
+        return true;
+    }
+
     private Future<?> respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
         return context.respond(status, errorMessage);
+    }
+
+    private void respond(HttpException exception) {
+        finalizeRequest();
+        context.respond(exception);
     }
 
     private void respond(HttpStatus status) {
