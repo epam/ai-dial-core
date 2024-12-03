@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -18,6 +19,7 @@ import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -183,7 +185,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
         when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
-        when(endpointRoute.available()).thenReturn(false);
+        when(endpointRoute.next()).thenThrow(new HttpException(BAD_GATEWAY, "no route"));
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
@@ -191,7 +193,7 @@ public class DeploymentPostControllerTest {
 
         controller.handle("app1", "chat/completions");
 
-        verify(context).respond(eq(BAD_GATEWAY), anyString());
+        verify(context).respond(any(HttpException.class));
     }
 
     @Test
@@ -211,7 +213,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
         when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
-        when(endpointRoute.available()).thenReturn(true);
+        when(endpointRoute.next()).thenReturn(new Upstream());
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
@@ -261,7 +263,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_OverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.available()).thenReturn(true);
+        when(upstreamRoute.next()).thenReturn(new Upstream());
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -299,7 +301,7 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_NotOverrideModelName() {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.available()).thenReturn(true);
+        when(upstreamRoute.next()).thenReturn(new Upstream());
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
@@ -433,7 +435,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
         when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
-        when(endpointRoute.available()).thenReturn(true);
+        when(endpointRoute.next()).thenReturn(new Upstream());
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);

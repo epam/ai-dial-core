@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import io.vertx.core.http.HttpHeaders;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,8 +12,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -67,6 +69,41 @@ class TieredBalancer {
         Objects.requireNonNull(upstream);
         UpstreamState upstreamState = findUpstreamState(upstream);
         upstreamState.fail(status, retryAfterSeconds);
+    }
+
+    synchronized HttpException createUpstreamUnavailableException() {
+        int busyUpstreamsCount = 0;
+        for (UpstreamState upstreamState : upstreamStates) {
+            if (upstreamState.getStatus() == HttpStatus.TOO_MANY_REQUESTS) {
+                busyUpstreamsCount++;
+            }
+        }
+        if (busyUpstreamsCount == upstreamStates.size()) {
+            long replyAfter = -1;
+            for (UpstreamState upstreamState : upstreamStates) {
+                if (upstreamState.getStatus() == HttpStatus.TOO_MANY_REQUESTS
+                        && upstreamState.getSource() == UpstreamState.RetryAfterSource.UPSTREAM) {
+                    if (replyAfter == -1) {
+                        replyAfter = upstreamState.getRetryAfter();
+                    } else {
+                        replyAfter = Math.min(replyAfter, upstreamState.getRetryAfter());
+                    }
+                }
+            }
+            String errorMessage = "Service is not available";
+            if (replyAfter == -1) {
+                // no upstreams with the requested source
+                // we don't provide reply-after header
+                return new HttpException(HttpStatus.SERVICE_UNAVAILABLE, errorMessage);
+            } else {
+                // according to the spec: A non-negative decimal integer indicating the seconds to delay after the response is received.
+                long replyAfterInSeconds = Math.max(0, TimeUnit.MILLISECONDS.toSeconds(replyAfter - System.currentTimeMillis()));
+                return new HttpException(HttpStatus.SERVICE_UNAVAILABLE, errorMessage,
+                        Map.of(HttpHeaders.RETRY_AFTER.toString(), Long.toString(replyAfterInSeconds)));
+            }
+        }
+        // default error - no route
+        return new HttpException(HttpStatus.BAD_GATEWAY, "No route");
     }
 
     synchronized void succeed(Upstream upstream) {

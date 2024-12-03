@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -115,6 +117,7 @@ public class TieredBalancerTest {
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, factory);
 
         UpstreamRoute route1 = upstreamRouteProvider.get(model);
+        assertNotNull(route1.next());
         assertEquals(upstreams.get(0), route1.get());
         route1.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);
         assertEquals(upstreams.get(1), route1.next());
@@ -125,6 +128,7 @@ public class TieredBalancerTest {
         route1.fail(HttpStatus.TOO_MANY_REQUESTS, 5);
 
         UpstreamRoute route2 = upstreamRouteProvider.get(model);
+        assertNotNull(route2.next());
         assertEquals(upstreams.get(0), route2.get());
         route2.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);
 
@@ -137,6 +141,6 @@ public class TieredBalancerTest {
         assertEquals(upstreams.get(3), route2.next());
         route2.fail(HttpStatus.TOO_MANY_REQUESTS, 5);
 
-        assertNull(route2.next());
+        assertThrows(HttpException.class, route2::next);
     }
 }

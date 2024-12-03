@@ -67,6 +67,9 @@ public class UpstreamRouteProvider {
             return result;
         });
         int result = Math.min(maxRetryAttempts, upstreams.size());
+        if (result <= 0) {
+            throw new IllegalArgumentException("max retry attempts must be positive integer");
+        }
         return new UpstreamRoute(wrapper.balancer, result);
     }
 

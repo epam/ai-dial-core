@@ -53,8 +53,6 @@ public class UpstreamRoute {
     public UpstreamRoute(TieredBalancer balancer, int maxRetryAttempts) {
         this.balancer = balancer;
         this.maxRetryAttempts = maxRetryAttempts;
-        this.upstream = balancer.next(usedUpstreams);
-        this.attemptCount = upstream == null ? 0 : 1;
     }
 
     /**
@@ -70,16 +68,19 @@ public class UpstreamRoute {
      *  Retrieves next available upstream from load balancer; also increase usage count
      *
      * @return next upstream from load balancer
+     * @throws com.epam.aidial.core.storage.http.HttpException if max retry attempts are exceeded or next upstream is unavailable
      */
-    @Nullable
     public Upstream next() {
         // if max attempts reached - do not call balancer
         if (attemptCount + 1 > maxRetryAttempts) {
             this.upstream = null;
-            return null;
+            throw balancer.createUpstreamUnavailableException();
         }
         attemptCount++;
-        this.upstream = balancer.next(usedUpstreams);
+        upstream = balancer.next(usedUpstreams);
+        if (upstream == null) {
+            throw balancer.createUpstreamUnavailableException();
+        }
         return upstream;
     }
 
