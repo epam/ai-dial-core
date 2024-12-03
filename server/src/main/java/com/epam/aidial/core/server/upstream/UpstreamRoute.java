@@ -74,12 +74,12 @@ public class UpstreamRoute {
         // if max attempts reached - do not call balancer
         if (attemptCount + 1 > maxRetryAttempts) {
             this.upstream = null;
-            throw balancer.createAttemptExceededException();
+            throw balancer.createUpstreamUnavailableException();
         }
         attemptCount++;
         upstream = balancer.next(usedUpstreams);
         if (upstream == null) {
-            throw balancer.createAttemptExceededException();
+            throw balancer.createUpstreamUnavailableException();
         }
         return upstream;
     }

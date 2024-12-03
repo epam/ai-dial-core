@@ -71,7 +71,7 @@ class TieredBalancer {
         upstreamState.fail(status, retryAfterSeconds);
     }
 
-    synchronized HttpException createAttemptExceededException() {
+    synchronized HttpException createUpstreamUnavailableException() {
         int busyUpstreamsCount = 0;
         for (UpstreamState upstreamState : upstreamStates) {
             if (upstreamState.getStatus() == HttpStatus.TOO_MANY_REQUESTS) {
