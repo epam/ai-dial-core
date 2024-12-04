@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Data
@@ -32,6 +33,7 @@ public class Conversation {
     ModelId model;
     Set<String> selectedAddons;
     List<Message> messages;
+    Map<String, Object> customViewState;
 
     @JsonCreator
     public Conversation(@JsonProperty(value = "id", required = true) String id,
@@ -42,7 +44,8 @@ public class Conversation {
                         @JsonProperty(value = "lastActivityDate", required = true) long lastActivityDate,
                         @JsonProperty(value = "model", required = true) ModelId model,
                         @JsonProperty(value = "selectedAddons", required = true) Set<String> selectedAddons,
-                        @JsonProperty(value = "messages", required = true) List<Message> messages) {
+                        @JsonProperty(value = "messages", required = true) List<Message> messages,
+                        @JsonProperty(value = "customViewState") Map<String, Object> customViewState) {
         this.id = id;
         this.folderId = folderId;
         this.name = name;
@@ -52,6 +55,7 @@ public class Conversation {
         this.model = model;
         this.selectedAddons = selectedAddons;
         this.messages = messages;
+        this.customViewState = customViewState;
     }
 
     @Data
