@@ -464,46 +464,46 @@ public class ProxyUtilTest {
     @Test
     public void testCustomViewStateValidation() {
         String validConversationJson = """
-            {
-            "id": "conversation_id",
-            "name": "display_name",
-            "model": {
-              "id": "model_id"
-              },
-            "prompt": "system prompt",
-            "temperature": 1,
-            "folderId": "folder1",
-            "messages": [
-              {
-              "role": "user",
-              "content": "content",
-              "custom_content": {"attachment_url": "some_url"},
-              "model": {"id": "model_id"},
-              "settings":
                 {
-                "prompt": "sysPrompt",
-                "temperature": 5,
-                "selectedAddons": ["A", "B", "C"],
-                "assistantModelId": "assistantId"
+                "id": "conversation_id",
+                "name": "display_name",
+                "model": {
+                  "id": "model_id"
+                  },
+                "prompt": "system prompt",
+                "temperature": 1,
+                "folderId": "folder1",
+                "messages": [
+                  {
+                  "role": "user",
+                  "content": "content",
+                  "custom_content": {"attachment_url": "some_url"},
+                  "model": {"id": "model_id"},
+                  "settings":
+                    {
+                    "prompt": "sysPrompt",
+                    "temperature": 5,
+                    "selectedAddons": ["A", "B", "C"],
+                    "assistantModelId": "assistantId"
+                    }
+                  }
+                ],
+                "replay": {
+                  "isReplay": true,
+                  "replayUserMessagesStack": [],
+                  "activeReplayIndex": 0
+                  },
+                "selectedAddons": ["R", "T", "G"],
+                "assistantModelId": "assistantId",
+                "lastActivityDate": 4848683153,
+                "customViewState": {
+                    "a": ["A"],
+                    "b": {
+                        "c": ["C"],
+                        "d": 5.12
+                    }
                 }
-              }
-            ],
-            "replay": {
-              "isReplay": true,
-              "replayUserMessagesStack": [],
-              "activeReplayIndex": 0
-              },
-            "selectedAddons": ["R", "T", "G"],
-            "assistantModelId": "assistantId",
-            "lastActivityDate": 4848683153,
-            "customViewState": {
-                "a": ["A"],
-                "b": {
-                    "c": ["C"],
-                    "d": 5.12
                 }
-            }
-            }
             """;
 
         assertDoesNotThrow(() -> ProxyUtil.convertToObject(validConversationJson, Conversation.class));
