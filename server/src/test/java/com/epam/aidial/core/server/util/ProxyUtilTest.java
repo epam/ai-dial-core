@@ -504,7 +504,7 @@ public class ProxyUtilTest {
                     }
                 }
                 }
-            """;
+                """;
 
         assertDoesNotThrow(() -> ProxyUtil.convertToObject(validConversationJson, Conversation.class));
     }
