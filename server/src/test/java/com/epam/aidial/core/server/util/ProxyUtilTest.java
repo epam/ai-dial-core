@@ -462,7 +462,7 @@ public class ProxyUtilTest {
     }
 
     @Test
-    public void customViewStateValidation() {
+    public void testCustomViewStateValidation() {
         String validConversationJson = """
             {
             "id": "conversation_id",
