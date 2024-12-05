@@ -415,7 +415,7 @@ public class DeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                proxy.getRateLimiter().increase(context).onFailure(error -> log.warn("Failed to increase limit. Trace: {}. Span: {}",
+                proxy.getRateLimiter().increase(context, context.getDeployment()).onFailure(error -> log.warn("Failed to increase limit. Trace: {}. Span: {}",
                         context.getTraceId(), context.getSpanId(), error));
                 try {
                     BigDecimal cost = ModelCostCalculator.calculate(context);

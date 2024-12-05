@@ -158,6 +158,8 @@ public class RouteController implements Controller {
 
         if (responseStatusCode == 200) {
             context.getUpstreamRoute().succeed();
+            proxy.getRateLimiter().increase(context, context.getRoute()).onFailure(error -> log.warn("Failed to increase limit. Trace: {}. Span: {}",
+                    context.getTraceId(), context.getSpanId(), error));
         }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,

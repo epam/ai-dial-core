@@ -34,7 +34,7 @@ public class RateLimiter {
 
     private final ResourceService resourceService;
 
-    public Future<Void> increase(ProxyContext context) {
+    public Future<Void> increase(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -47,7 +47,7 @@ public class RateLimiter {
                 return Future.succeededFuture();
             }
 
-            String tokensPath = getPathToTokens(context.getDeployment().getName());
+            String tokensPath = getPathToTokens(roleBasedEntity.getName());
             ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
             return vertx.executeBlocking(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()), false);
         } catch (Throwable e) {

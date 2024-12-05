@@ -377,13 +377,13 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(ProxyContext.class))).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(ProxyContext.class), eq(model))).thenReturn(Future.succeededFuture());
         when(tokenStatsTracker.updateModelStats(context)).thenReturn(Future.succeededFuture());
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter).increase(eq(context));
+        verify(rateLimiter).increase(eq(context), eq(model));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(tokenStatsTracker).endSpan(eq(context));
@@ -409,7 +409,7 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(eq(context));
+        verify(rateLimiter, never()).increase(eq(context), eq(app));
         verify(tokenStatsTracker).getTokenStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));

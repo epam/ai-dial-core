@@ -196,7 +196,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(90);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -206,7 +206,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -254,7 +254,7 @@ public class RateLimiterTest {
         assertNotNull(resultFuture.result());
         assertEquals(HttpStatus.OK, resultFuture.result().status());
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -272,7 +272,7 @@ public class RateLimiterTest {
         assertEquals(2, limitStats.getHourRequestStats().getTotal());
         assertEquals(1, limitStats.getHourRequestStats().getUsed());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -325,7 +325,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(150);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -335,7 +335,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -367,7 +367,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(90);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -377,7 +377,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -423,7 +423,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(150);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -433,7 +433,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext);
+        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
