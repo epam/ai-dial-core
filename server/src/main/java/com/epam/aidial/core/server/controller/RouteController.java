@@ -158,6 +158,8 @@ public class RouteController implements Controller {
 
         if (responseStatusCode == 200) {
             context.getUpstreamRoute().succeed();
+        } else {
+            context.getUpstreamRoute().fail(proxyResponse);
         }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
