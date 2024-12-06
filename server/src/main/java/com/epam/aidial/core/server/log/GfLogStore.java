@@ -346,7 +346,7 @@ public class GfLogStore implements LogStore {
         if (interceptors == null) {
             return context.getSourceDeployment();
         }
-        // skip interceptors and returns the deployment which called the current one
+        // skip interceptors and return the deployment which called the current one
         List<String> executionPath = context.getExecutionPath();
         int i = executionPath.size() - 2;
         for (int j = interceptors.size() - 1; i >= 0 && j >= 0; i--, j--) {
