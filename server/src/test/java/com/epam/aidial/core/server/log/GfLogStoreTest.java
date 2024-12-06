@@ -1,12 +1,18 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.server.ProxyContext;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("checkstyle:LineLength")
 public class GfLogStoreTest {
@@ -191,5 +197,59 @@ public class GfLogStoreTest {
         System.out.println(res);
 
 
+    }
+
+    @Test
+    public void testGetParentDeployment_NoInterceptors() {
+        ProxyContext context = mock(ProxyContext.class);
+        // app calls model without interceptors
+        when(context.getInterceptors()).thenReturn(null);
+        when(context.getSourceDeployment()).thenReturn("app");
+
+        String result = GfLogStore.getParentDeployment(context);
+
+        assertEquals("app", result);
+    }
+
+    @Test
+    public void testGetParentDeployment_DeploymentWithInterceptors1() {
+        ProxyContext context = mock(ProxyContext.class);
+        // app calls model with interceptors
+        List<String> interceptors = List.of("interceptor1", "interceptor2");
+        when(context.getInterceptors()).thenReturn(interceptors);
+        List<String> executionPath = List.of("app", "interceptor1", "interceptor2", "model");
+        when(context.getExecutionPath()).thenReturn(executionPath);
+
+        String result = GfLogStore.getParentDeployment(context);
+
+        assertEquals("app", result);
+    }
+
+    @Test
+    public void testGetParentDeployment_DeploymentWithInterceptors2() {
+        ProxyContext context = mock(ProxyContext.class);
+        // chat calls model with interceptors
+        List<String> interceptors = List.of("interceptor1", "interceptor2");
+        when(context.getInterceptors()).thenReturn(interceptors);
+        List<String> executionPath = List.of("interceptor1", "interceptor2", "model");
+        when(context.getExecutionPath()).thenReturn(executionPath);
+
+        String result = GfLogStore.getParentDeployment(context);
+
+        assertNull(result);
+    }
+
+    @Test
+    public void testGetParentDeployment_InterceptorPathMismatch() {
+        ProxyContext context = mock(ProxyContext.class);
+        // app calls model with interceptors but interceptor1 calls some dep1 in the middle using the same per request key
+        List<String> interceptors = List.of("interceptor1", "interceptor2");
+        when(context.getInterceptors()).thenReturn(interceptors);
+        List<String> executionPath = List.of("app", "interceptor1", "dep1", "interceptor2", "model");
+        when(context.getExecutionPath()).thenReturn(executionPath);
+
+        String result = GfLogStore.getParentDeployment(context);
+
+        assertNull(result);
     }
 }
