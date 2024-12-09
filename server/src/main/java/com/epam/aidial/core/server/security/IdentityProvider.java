@@ -43,6 +43,9 @@ public class IdentityProvider {
     // path(s) to the claim of user roles in JWT
     private final List<String[]> rolePaths = new ArrayList<>();
 
+    // path to the claim containing Project identity
+    private final String[] projectPath;
+
     // Delimiter to split the roles if they are set as a single String
     private final String rolesDelimiter;
 
@@ -133,6 +136,7 @@ public class IdentityProvider {
             rolePaths.add(rolePath.split("\\."));
         }
 
+        projectPath = settings.containsKey("projectPath") ? settings.getString("projectPath").split("\\.") : null;
         rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
@@ -248,6 +252,25 @@ public class IdentityProvider {
         return (String) userContext.get("sub");
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private String extractProject(Map<String, Object> claims) {
+        if (projectPath == null) {
+            return null;
+        }
+        for (int i = 0; i < projectPath.length - 1; i++) {
+            if (claims.get(projectPath[i]) instanceof Map next) {
+                claims = next;
+            } else {
+                return null;
+            }
+        }
+        Object field = claims.get(projectPath[projectPath.length - 1]);
+        if (field instanceof String project) {
+            return project;
+        }
+        return null;
+    }
+
     private String extractUserHash(String keyClaim) {
         if (keyClaim != null && obfuscateUserEmail) {
             String keyClaimWithSalt = loggingSalt + keyClaim;
@@ -332,7 +355,7 @@ public class IdentityProvider {
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
-        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map));
+        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map), extractProject(map));
     }
 
     private void from(String accessToken, JsonObject userInfo, Promise<ExtractedClaims> promise) {
@@ -340,13 +363,12 @@ public class IdentityProvider {
         Map<String, Object> map = userInfo.getMap();
         if (getUserRoleFn != null) {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
-                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles,
-                        extractUserHash(userKey), extractUserClaims(map));
+                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles, extractUserHash(userKey), extractUserClaims(map), extractProject(map));
                 promise.complete(extractedClaims);
             });
         } else {
-            ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), extractUserRoles(map),
-                    extractUserHash(userKey), extractUserClaims(map));
+            ExtractedClaims extractedClaims =
+                    new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map), extractProject(map));
             promise.complete(extractedClaims);
         }
     }

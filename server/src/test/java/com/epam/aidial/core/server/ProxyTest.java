@@ -382,7 +382,7 @@ public class ProxyTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of());
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), null);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
 
         proxy.handle(request);
@@ -505,7 +505,7 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.load()).thenReturn(config);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of());
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), null);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
 
         proxy.handle(request);

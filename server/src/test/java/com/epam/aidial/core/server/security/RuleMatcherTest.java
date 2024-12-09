@@ -100,7 +100,7 @@ class RuleMatcherTest {
 
     void verify(List<Rule> rules, List<String> userRoles, Map<String, List<String>> userClaims, boolean expected) {
         ProxyContext context = Mockito.mock(ProxyContext.class);
-        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", userClaims);
+        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", userClaims, null);
         Mockito.when(context.getExtractedClaims()).thenReturn(claims);
         boolean actual = RuleMatcher.match(context, rules);
         Assertions.assertEquals(expected, actual);
