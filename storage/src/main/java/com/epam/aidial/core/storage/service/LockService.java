@@ -1,6 +1,8 @@
 package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import io.opencensus.trace.Span;
+import io.opencensus.trace.SpanContext;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RScript;
@@ -40,11 +42,19 @@ public class LockService {
         long owner = ThreadLocalRandom.current().nextLong();
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
+        long startTime = System.currentTimeMillis();
 
         while (ttl > 0) {
             LockSupport.parkNanos(interval);
             interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
             ttl = tryLock(id, owner);
+
+            long currentTime = System.currentTimeMillis();
+            if (ttl > 0 && currentTime - startTime > 5_000) {
+                log.warn("The thread {} is trying to acquire a lock to the resource: {}", Thread.currentThread().getName(), id);
+                startTime = currentTime;
+            }
+
         }
 
         return () -> unlock(id, owner);
