@@ -177,14 +177,7 @@ public class IdentityProvider {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<String> extractUserRoles(Map<String, Object> map, String[] rolePath) {
-        for (int i = 0; i < rolePath.length - 1; i++) {
-            if (map.get(rolePath[i]) instanceof Map next) {
-                map = next;
-            } else {
-                return EMPTY_LIST;
-            }
-        }
-        Object field = map.get(rolePath[rolePath.length - 1]);
+        Object field = extractClaim(map, rolePath);
 
         if (field instanceof List list) {
             return list;
@@ -253,18 +246,24 @@ public class IdentityProvider {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private String extractProject(Map<String, Object> claims) {
-        if (projectPath == null) {
-            return null;
-        }
-        for (int i = 0; i < projectPath.length - 1; i++) {
-            if (claims.get(projectPath[i]) instanceof Map next) {
+    private static Object extractClaim(Map<String, Object> claims, String[] claimPath) {
+        for (int i = 0; i < claimPath.length - 1; i++) {
+            if (claims.get(claimPath[i]) instanceof Map next) {
                 claims = next;
             } else {
                 return null;
             }
         }
-        Object field = claims.get(projectPath[projectPath.length - 1]);
+        return claims.get(claimPath[claimPath.length - 1]);
+    }
+
+
+    private String extractProject(Map<String, Object> claims) {
+        if (projectPath == null) {
+            return null;
+        }
+        Object field = extractClaim(claims, projectPath);
+
         if (field instanceof String project) {
             return project;
         }
