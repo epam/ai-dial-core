@@ -37,8 +37,8 @@ public class LockService {
 
     public Lock lock(String key) {
         String id = id(key);
-        log.info("Thread {} acquires a lock the resource {}", Thread.currentThread().getName(), id);
         long owner = ThreadLocalRandom.current().nextLong();
+        log.info("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
 
@@ -110,7 +110,7 @@ public class LockService {
         if (!ok) {
             log.error("Lock service failed to unlock: {}", id);
         } else {
-            log.info("Thread {} releases a lock to the resource {}", Thread.currentThread().getName(), id);
+            log.info("Thread {} releases a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         }
     }
 
