@@ -39,22 +39,15 @@ public class LockService {
 
     public Lock lock(String key) {
         String id = id(key);
+        log.info("Thread {} acquires a lock the resource {}", Thread.currentThread().getName(), id);
         long owner = ThreadLocalRandom.current().nextLong();
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
-        long startTime = System.currentTimeMillis();
 
         while (ttl > 0) {
             LockSupport.parkNanos(interval);
             interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
             ttl = tryLock(id, owner);
-
-            long currentTime = System.currentTimeMillis();
-            if (ttl > 0 && currentTime - startTime > 5_000) {
-                log.warn("The thread {} is trying to acquire a lock to the resource: {}", Thread.currentThread().getName(), id);
-                startTime = currentTime;
-            }
-
         }
 
         return () -> unlock(id, owner);
@@ -118,6 +111,8 @@ public class LockService {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
             log.error("Lock service failed to unlock: {}", id);
+        } else {
+            log.info("Thread {} releases a lock to the resource {}", Thread.currentThread().getName(), id);
         }
     }
 
