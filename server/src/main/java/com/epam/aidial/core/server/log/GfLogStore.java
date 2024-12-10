@@ -14,6 +14,7 @@ import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -105,13 +106,10 @@ public class GfLogStore implements LogStore {
         append(entry, context.getDeployment().getName(), true);
         append(entry, "\"", false);
 
-        String sourceDeployment = context.getSourceDeployment();
-        if (sourceDeployment != null) {
-            String initialDeployment = context.getInitialDeployment();
+        String parentDeployment = getParentDeployment(context);
+        if (parentDeployment != null) {
             append(entry, ",\"parent_deployment\":\"", false);
-            // if deployment(callee) is configured with interceptors the return initial deployment(which triggers interceptors)
-            // otherwise return source deployment(caller)
-            append(entry, initialDeployment != null ? initialDeployment : sourceDeployment, true);
+            append(entry, parentDeployment, true);
             append(entry, "\"", false);
         }
 
@@ -340,5 +338,25 @@ public class GfLogStore implements LogStore {
             }
         }
         return j == dataToken.length();
+    }
+
+    @VisibleForTesting
+    static String getParentDeployment(ProxyContext context) {
+        List<String> interceptors = context.getInterceptors();
+        if (interceptors == null) {
+            return context.getSourceDeployment();
+        }
+        // skip interceptors and return the deployment which called the current one
+        List<String> executionPath = context.getExecutionPath();
+        int i = executionPath.size() - 2;
+        for (int j = interceptors.size() - 1; i >= 0 && j >= 0; i--, j--) {
+            String deployment = executionPath.get(i);
+            String interceptor = interceptors.get(j);
+            if (!deployment.equals(interceptor)) {
+                log.warn("Can't find parent deployment because interceptor path doesn't match: expected - {}, actual - {}", interceptor, deployment);
+                return null;
+            }
+        }
+        return i < 0 ? null : executionPath.get(i);
     }
 }
