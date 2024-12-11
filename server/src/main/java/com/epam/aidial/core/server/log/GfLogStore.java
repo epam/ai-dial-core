@@ -53,10 +53,22 @@ public class GfLogStore implements LogStore {
     }
 
     private Void doSave(ProxyContext context) {
-        LogEntry entry = LOGGER.log(LogLevel.INFO);
+        // Note. Any logs must be written by slf4j logger:
+        // 1. before the prompt logger starts writing any message OR
+        // 2. after the prompt logger ends writing messages
 
+        // Any new items must be added to the section below
+        // prepare items to be written by the prompt logger
+        Buffer responseBody = context.getResponseBody();
+        String assembledStreamingResponse = null;
+        if (isStreamingResponse(responseBody)) {
+            assembledStreamingResponse = assembleStreamingResponse(responseBody);
+        }
+        // end
+
+        LogEntry entry = LOGGER.log(LogLevel.INFO);
         try {
-            append(context, entry);
+            append(context, entry, assembledStreamingResponse);
             entry.commit();
         } catch (Throwable e) {
             entry.abort();
@@ -65,7 +77,7 @@ public class GfLogStore implements LogStore {
         return null;
     }
 
-    private void append(ProxyContext context, LogEntry entry) throws JsonProcessingException {
+    private void append(ProxyContext context, LogEntry entry, String assembledStreamingResponse) throws JsonProcessingException {
         HttpServerRequest request = context.getRequest();
         HttpServerResponse response = context.getResponse();
 
@@ -121,11 +133,10 @@ public class GfLogStore implements LogStore {
 
         if (!context.isSecuredApiKey()) {
             append(entry, ",\"assembled_response\":\"", false);
-            Buffer responseBody = context.getResponseBody();
-            if (isStreamingResponse(responseBody)) {
-                append(entry, assembleStreamingResponse(responseBody), true);
+            if (assembledStreamingResponse != null) {
+                append(entry, assembledStreamingResponse, true);
             } else {
-                append(entry, responseBody);
+                append(entry, context.getResponseBody());
             }
             append(entry, "\"", false);
         }
