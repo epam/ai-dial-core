@@ -131,9 +131,13 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
-        if (!context.isSecuredApiKey() && assembledStreamingResponse != null) {
+        if (!context.isSecuredApiKey()) {
             append(entry, ",\"assembled_response\":\"", false);
-            append(entry, assembledStreamingResponse, true);
+            if (assembledStreamingResponse != null) {
+                append(entry, assembledStreamingResponse, true);
+            } else {
+                append(entry, context.getResponseBody());
+            }
             append(entry, "\"", false);
         }
 
