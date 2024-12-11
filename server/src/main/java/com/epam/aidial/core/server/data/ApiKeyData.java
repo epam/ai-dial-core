@@ -72,7 +72,6 @@ public class ApiKeyData {
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
             proxyApiKeyData.setTraceId(context.getTraceId());
             currentPath = new ArrayList<>();
-            currentPath.add(context.getProject() == null ? context.getUserHash() : context.getProject());
         } else {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
