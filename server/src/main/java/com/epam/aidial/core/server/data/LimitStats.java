@@ -6,6 +6,8 @@ import lombok.Data;
 public class LimitStats {
     private ItemLimitStats minuteTokenStats;
     private ItemLimitStats dayTokenStats;
+    private ItemLimitStats weekTokenStats;
+    private ItemLimitStats monthTokenStats;
     private ItemLimitStats hourRequestStats;
     private ItemLimitStats dayRequestStats;
 }

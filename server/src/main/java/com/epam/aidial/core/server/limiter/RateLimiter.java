@@ -141,6 +141,14 @@ public class RateLimiter {
         dayRequestStats.setTotal(limit.getRequestDay());
         limitStats.setDayRequestStats(dayRequestStats);
 
+        ItemLimitStats weekTokenStats = new ItemLimitStats();
+        weekTokenStats.setTotal(limit.getWeek());
+        limitStats.setWeekTokenStats(weekTokenStats);
+
+        ItemLimitStats monthTokenStats = new ItemLimitStats();
+        monthTokenStats.setTotal(limit.getMonth());
+        limitStats.setMonthTokenStats(monthTokenStats);
+
         return limitStats;
     }
 
@@ -230,11 +238,15 @@ public class RateLimiter {
                     limit.setRequestHour(candidate.getRequestHour());
                     limit.setRequestDay(candidate.getRequestDay());
                     limit.setDay(candidate.getDay());
+                    limit.setWeek(candidate.getWeek());
+                    limit.setMonth(candidate.getMonth());
                 } else {
                     limit.setMinute(Math.max(candidate.getMinute(), limit.getMinute()));
                     limit.setDay(Math.max(candidate.getDay(), limit.getDay()));
                     limit.setRequestDay(Math.max(candidate.getRequestDay(), limit.getRequestDay()));
                     limit.setRequestHour(Math.max(candidate.getRequestHour(), limit.getRequestHour()));
+                    limit.setWeek(Math.max(candidate.getWeek(), limit.getWeek()));
+                    limit.setMonth(Math.max(candidate.getMonth(), limit.getMonth()));
                 }
             }
         }

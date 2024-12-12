@@ -18,6 +18,14 @@ public class LimitApiTest extends ResourceBaseTest {
                     "total": %d,
                     "used": %d
                   },
+                  "weekTokenStats": {
+                    "total": %d,
+                    "used": %d
+                  },
+                  "monthTokenStats": {
+                    "total": %d,
+                    "used": %d
+                  },
                   "hourRequestStats": {
                     "total": %d,
                     "used": %d
@@ -27,7 +35,7 @@ public class LimitApiTest extends ResourceBaseTest {
                     "used": %d
                   }
                 }
-                """.formatted(Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
+                """.formatted(Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
     }
 
     @Test

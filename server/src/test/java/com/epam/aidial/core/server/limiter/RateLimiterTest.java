@@ -231,6 +231,8 @@ public class RateLimiterTest {
         limit.setMinute(100);
         limit.setRequestDay(10);
         limit.setRequestHour(2);
+        limit.setWeek(1000000);
+        limit.setMonth(10000000);
         role.setLimits(Map.of("model", limit));
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
@@ -271,6 +273,10 @@ public class RateLimiterTest {
         assertEquals(1, limitStats.getDayRequestStats().getUsed());
         assertEquals(2, limitStats.getHourRequestStats().getTotal());
         assertEquals(1, limitStats.getHourRequestStats().getUsed());
+        assertEquals(1000000, limitStats.getWeekTokenStats().getTotal());
+        assertEquals(90, limitStats.getWeekTokenStats().getUsed());
+        assertEquals(10000000, limitStats.getMonthTokenStats().getTotal());
+        assertEquals(90, limitStats.getMonthTokenStats().getUsed());
 
         increaseLimitFuture = rateLimiter.increase(proxyContext, model);
         assertNotNull(increaseLimitFuture);
@@ -285,6 +291,10 @@ public class RateLimiterTest {
         assertEquals(180, limitStats.getDayTokenStats().getUsed());
         assertEquals(100, limitStats.getMinuteTokenStats().getTotal());
         assertEquals(180, limitStats.getMinuteTokenStats().getUsed());
+        assertEquals(1000000, limitStats.getWeekTokenStats().getTotal());
+        assertEquals(180, limitStats.getWeekTokenStats().getUsed());
+        assertEquals(10000000, limitStats.getMonthTokenStats().getTotal());
+        assertEquals(180, limitStats.getMonthTokenStats().getUsed());
 
     }
 
