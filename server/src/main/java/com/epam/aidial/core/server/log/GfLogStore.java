@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -114,9 +115,12 @@ public class GfLogStore implements LogStore {
             append(entry, "}", false);
         }
 
-        append(entry, ",\"deployment\":\"", false);
-        append(entry, context.getDeployment().getName(), true);
-        append(entry, "\"", false);
+        Deployment deployment = context.getDeployment();
+        if (deployment != null) {
+            append(entry, ",\"deployment\":\"", false);
+            append(entry, deployment.getName(), true);
+            append(entry, "\"", false);
+        }
 
         String parentDeployment = getParentDeployment(context);
         if (parentDeployment != null) {
@@ -359,6 +363,9 @@ public class GfLogStore implements LogStore {
         }
         // skip interceptors and return the deployment which called the current one
         List<String> executionPath = context.getExecutionPath();
+        if (executionPath == null) {
+            return null;
+        }
         int i = executionPath.size() - 2;
         for (int j = interceptors.size() - 1; i >= 0 && j >= 0; i--, j--) {
             String deployment = executionPath.get(i);
