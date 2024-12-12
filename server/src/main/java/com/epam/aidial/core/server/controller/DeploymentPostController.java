@@ -159,7 +159,7 @@ public class DeploymentPostController {
 
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
-            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            log.error("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
             log.error("Deployment not found {}", deploymentId, error);
@@ -174,7 +174,7 @@ public class DeploymentPostController {
     }
 
     private Future<?> handleRateLimitSuccess() {
-        log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
+        log.info("Received request from client. Trace: {}. Span: {}. Project: {}. Deployment: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
@@ -208,13 +208,13 @@ public class DeploymentPostController {
         ErrorData rateLimitError = new ErrorData();
         rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
         rateLimitError.getError().setMessage(result.errorMessage());
-        log.error("Rate limit error {}. Key: {}. User sub: {}. Deployment: {}. Trace: {}. Span: {}", result.errorMessage(),
+        log.error("Rate limit error {}. Project: {}. User sub: {}. Deployment: {}. Trace: {}. Span: {}", result.errorMessage(),
                 context.getProject(), context.getUserSub(), deploymentId, context.getTraceId(), context.getSpanId());
         respond(result.status(), rateLimitError);
     }
 
     private void handleError(Throwable error) {
-        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+        log.error("Can't handle request. Project: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
                 context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -241,7 +241,7 @@ public class DeploymentPostController {
     @VisibleForTesting
     void handleRequestBody(Buffer requestBody) {
         Deployment deployment = context.getDeployment();
-        log.info("Received body from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Length: {}",
+        log.info("Received body from client. Trace: {}. Span: {}. Project: {}. Deployment: {}. Length: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), deployment.getName(), requestBody.length());
 
@@ -272,7 +272,7 @@ public class DeploymentPostController {
      */
     @VisibleForTesting
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}",
+        log.info("Connected to origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
@@ -314,7 +314,7 @@ public class DeploymentPostController {
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream currentUpstream = upstreamRoute.get();
-        log.info("Received header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
+        log.info("Received header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(), currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
@@ -404,7 +404,7 @@ public class DeploymentPostController {
                 if (tokenUsage == null) {
                     Pricing pricing = model.getPricing();
                     if (pricing == null || "token".equals(pricing.getUnit())) {
-                        log.warn("Can't find token usage. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                        log.warn("Can't find token usage. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
                                 context.getTraceId(), context.getSpanId(),
                                 context.getProject(), context.getDeployment().getName(),
                                 context.getDeployment().getEndpoint(),
@@ -454,7 +454,7 @@ public class DeploymentPostController {
 
         proxy.getLogStore().save(context);
 
-        log.info("Sent response to client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
+        log.info("Sent response to client. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
@@ -486,7 +486,7 @@ public class DeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        log.warn("Can't connect to origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error: {}",
+        log.warn("Can't connect to origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}. Error: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 buildUri(context), error.getMessage());
@@ -499,7 +499,7 @@ public class DeploymentPostController {
      */
     private void handleProxyResponseError(Throwable error) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-        log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error:",
+        log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}. Error:",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getProxyRequest().connection().remoteAddress(),
@@ -557,7 +557,7 @@ public class DeploymentPostController {
         try {
             route.next();
         } catch (HttpException e) {
-            log.error("No route. Trace: {}. Span: {}. Key: {}. Deployment: {}. User sub: {}",
+            log.error("No route. Trace: {}. Span: {}. Project: {}. Deployment: {}. User sub: {}",
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), context.getDeployment().getName(), context.getUserSub());
             respond(e);

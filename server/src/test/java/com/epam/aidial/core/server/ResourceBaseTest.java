@@ -169,7 +169,7 @@ public class ResourceBaseTest {
                         }
 
                         if (authorization.equals("user") || authorization.equals("admin")) {
-                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization), authorization, Map.of("title", List.of("Manager"))));
+                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization), authorization, Map.of("title", List.of("Manager")), null));
                         }
 
                         return Future.failedFuture("Not authorized");
