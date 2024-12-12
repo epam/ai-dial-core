@@ -195,12 +195,9 @@ public class GfLogStore implements LogStore {
         if (buffer == null) {
             return;
         }
-        boolean largeBuffer;
-        if (exceedLimit(buffer)) {
+        boolean largeBuffer = exceedLimit(buffer);
+        if (largeBuffer) {
             buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
-            largeBuffer = true;
-        } else {
-            largeBuffer = false;
         }
         byte[] bytes = buffer.getBytes();
         String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
