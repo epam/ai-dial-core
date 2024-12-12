@@ -24,7 +24,6 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
@@ -43,7 +42,7 @@ public class InterceptorController {
     }
 
     public Future<?> handle() {
-        log.info("Received request from client. Trace: {}. Span: {}. Key: {}. Deployment: {}. Headers: {}",
+        log.info("Received request from client. Trace: {}. Span: {}. Project: {}. Deployment: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
@@ -60,7 +59,7 @@ public class InterceptorController {
     }
 
     private void handleError(Throwable error) {
-        log.error("Can't handle request. Key: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
+        log.error("Can't handle request. Project: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
                 context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -118,7 +117,7 @@ public class InterceptorController {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        log.warn("Can't connect to origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error: {}",
+        log.warn("Can't connect to origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}. Error: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(), error.getMessage());
@@ -128,7 +127,7 @@ public class InterceptorController {
 
 
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to interceptor. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}",
+        log.info("Connected to interceptor. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
@@ -155,7 +154,7 @@ public class InterceptorController {
      * Called when proxy failed to receive response header from origin.
      */
     private void handleProxyResponseError(Throwable error) {
-        log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Address: {}. Error:",
+        log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}. Error:",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getProxyRequest().connection().remoteAddress(),
@@ -163,7 +162,7 @@ public class InterceptorController {
     }
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received header from origin. Trace: {}. Span: {}. Key: {}. Deployment: {}. Endpoint: {}. Status: {}. Headers: {}",
+        log.info("Received header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Status: {}. Headers: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(),

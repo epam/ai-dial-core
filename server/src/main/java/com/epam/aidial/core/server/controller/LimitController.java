@@ -36,7 +36,7 @@ public class LimitController {
 
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
-            log.error("LimitController. Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            log.error("LimitController. Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
             log.error("LimitController. Deployment not found {}", deploymentId, error);

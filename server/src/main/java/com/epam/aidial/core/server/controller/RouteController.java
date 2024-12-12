@@ -49,7 +49,7 @@ public class RouteController implements Controller {
         }
 
         if (!route.hasAccess(context.getUserRoles())) {
-            log.error("Forbidden route {}. Trace: {}. Span: {}. Key: {}. User sub: {}.",
+            log.error("Forbidden route {}. Trace: {}. Span: {}. Project: {}. User sub: {}.",
                     route.getName(), context.getTraceId(), context.getSpanId(), context.getProject(), context.getUserSub());
             context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
             return Future.succeededFuture();
@@ -205,7 +205,7 @@ public class RouteController implements Controller {
         ErrorData rateLimitError = new ErrorData();
         rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
         rateLimitError.getError().setMessage(result.errorMessage());
-        log.error("Rate limit error {}. Key: {}. User sub: {}. Route: {}. Trace: {}. Span: {}", result.errorMessage(),
+        log.error("Rate limit error {}. Project: {}. User sub: {}. Route: {}. Trace: {}. Span: {}", result.errorMessage(),
                 context.getProject(), context.getUserSub(), context.getRoute().getName(), context.getTraceId(),
                 context.getSpanId());
         context.respond(result.status(), rateLimitError);

@@ -68,6 +68,7 @@ public class ProxyContext {
     private Deployment deployment;
     private String userSub;
     private List<String> userRoles;
+    private String userProject;
     private String userHash;
     private TokenUsage tokenUsage;
     private Route route;
@@ -121,6 +122,7 @@ public class ProxyContext {
             this.userRoles = extractedClaims.userRoles();
             this.userHash = extractedClaims.userHash();
             this.userSub = extractedClaims.sub();
+            this.userProject = extractedClaims.project();
         } else {
             this.userRoles = Objects.requireNonNull(originalKey, "API key must be provided if user claims are missed")
                     .getMergedRoles();
@@ -149,7 +151,7 @@ public class ProxyContext {
         }
 
         if (status != HttpStatus.OK) {
-            log.warn("Responding with error. Key: {}. Trace: {}. Span: {}. Status: {}. Body: {}", getProject(), traceId, spanId, status,
+            log.warn("Responding with error. Project: {}. Trace: {}. Span: {}. Status: {}. Body: {}", getProject(), traceId, spanId, status,
                     body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
         }
 
@@ -169,6 +171,9 @@ public class ProxyContext {
     }
 
     public String getProject() {
+        if (userProject != null) {
+            return userProject;
+        }
         return key == null ? null : key.getProject();
     }
 

@@ -43,6 +43,9 @@ public class IdentityProvider {
     // path(s) to the claim of user roles in JWT
     private final List<String[]> rolePaths = new ArrayList<>();
 
+    // path to the claim containing Project identity
+    private final String[] projectPath;
+
     // Delimiter to split the roles if they are set as a single String
     private final String rolesDelimiter;
 
@@ -133,6 +136,7 @@ public class IdentityProvider {
             rolePaths.add(rolePath.split("\\."));
         }
 
+        projectPath = settings.containsKey("projectPath") ? settings.getString("projectPath").split("\\.") : null;
         rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
@@ -173,14 +177,7 @@ public class IdentityProvider {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<String> extractUserRoles(Map<String, Object> map, String[] rolePath) {
-        for (int i = 0; i < rolePath.length - 1; i++) {
-            if (map.get(rolePath[i]) instanceof Map next) {
-                map = next;
-            } else {
-                return EMPTY_LIST;
-            }
-        }
-        Object field = map.get(rolePath[rolePath.length - 1]);
+        Object field = extractClaim(map, rolePath);
 
         if (field instanceof List list) {
             return list;
@@ -246,6 +243,31 @@ public class IdentityProvider {
 
     private static String extractUserSub(Map<String, Object> userContext) {
         return (String) userContext.get("sub");
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object extractClaim(Map<String, Object> claims, String[] claimPath) {
+        for (int i = 0; i < claimPath.length - 1; i++) {
+            if (claims.get(claimPath[i]) instanceof Map next) {
+                claims = next;
+            } else {
+                return null;
+            }
+        }
+        return claims.get(claimPath[claimPath.length - 1]);
+    }
+
+
+    private String extractProject(Map<String, Object> claims) {
+        if (projectPath == null) {
+            return null;
+        }
+        Object field = extractClaim(claims, projectPath);
+
+        if (field instanceof String project) {
+            return project;
+        }
+        return null;
     }
 
     private String extractUserHash(String keyClaim) {
@@ -332,7 +354,7 @@ public class IdentityProvider {
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
-        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map));
+        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map), extractProject(map));
     }
 
     private void from(String accessToken, JsonObject userInfo, Promise<ExtractedClaims> promise) {
@@ -340,13 +362,12 @@ public class IdentityProvider {
         Map<String, Object> map = userInfo.getMap();
         if (getUserRoleFn != null) {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
-                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles,
-                        extractUserHash(userKey), extractUserClaims(map));
+                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles, extractUserHash(userKey), extractUserClaims(map), extractProject(map));
                 promise.complete(extractedClaims);
             });
         } else {
-            ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), extractUserRoles(map),
-                    extractUserHash(userKey), extractUserClaims(map));
+            ExtractedClaims extractedClaims =
+                    new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map), extractProject(map));
             promise.complete(extractedClaims);
         }
     }

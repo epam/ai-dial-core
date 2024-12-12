@@ -74,7 +74,7 @@ public class DeploymentFeatureController {
 
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
-            log.error("Forbidden deployment {}. Key: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            log.error("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
             log.error("Deployment not found {}", deploymentId, error);
