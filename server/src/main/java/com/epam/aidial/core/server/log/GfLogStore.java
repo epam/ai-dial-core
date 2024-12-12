@@ -37,6 +37,9 @@ import javax.annotation.Nullable;
 public class GfLogStore implements LogStore {
 
     private static final Log LOGGER = LogFactory.getLog("aidial.log");
+    // Max allowed size is 4 mb for request/response body
+    private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
+
     private final Vertx vertx;
 
     public GfLogStore(Vertx vertx) {
@@ -61,7 +64,7 @@ public class GfLogStore implements LogStore {
         // prepare items to be written by the prompt logger
         Buffer responseBody = context.getResponseBody();
         String assembledStreamingResponse = null;
-        if (isStreamingResponse(responseBody)) {
+        if (isStreamingResponse(responseBody) && !exceedLimit(responseBody)) {
             assembledStreamingResponse = assembleStreamingResponse(responseBody);
         }
         // end
@@ -189,10 +192,22 @@ public class GfLogStore implements LogStore {
     }
 
     private static void append(LogEntry entry, Buffer buffer) {
-        if (buffer != null) {
-            byte[] bytes = buffer.getBytes();
-            String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
-            append(entry, chars, true);
+        if (buffer == null) {
+            return;
+        }
+        boolean largeBuffer;
+        if (exceedLimit(buffer)) {
+            buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
+            largeBuffer = true;
+        } else {
+            largeBuffer = false;
+        }
+        byte[] bytes = buffer.getBytes();
+        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
+        append(entry, chars, true);
+        if (largeBuffer) {
+            // append a special marker that entry is cut off due to its large size
+            append(entry, ">>", false);
         }
     }
 
@@ -239,6 +254,10 @@ public class GfLogStore implements LogStore {
     private static String formatTimestamp(long timestamp) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.of("UTC"))
                 .format(DateTimeFormatter.ISO_DATE_TIME);
+    }
+
+    private static boolean exceedLimit(Buffer body) {
+        return body.length() > MAX_BODY_SIZE_BYTES;
     }
 
     /**
