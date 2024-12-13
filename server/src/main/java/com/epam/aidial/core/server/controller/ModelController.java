@@ -55,7 +55,7 @@ public class ModelController {
         return context.respond(HttpStatus.OK, list);
     }
 
-    private static ModelData createModel(Model model) {
+    static ModelData createModel(Model model) {
         ModelData data = new ModelData();
         data.setId(model.getName());
         data.setModel(model.getName());
@@ -68,6 +68,7 @@ public class ModelController {
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         data.setReference(model.getName());
         data.setDescriptionKeywords(model.getDescriptionKeywords());
+        data.setMaxRetryAttempts(model.getMaxRetryAttempts());
 
         if (model.getType() == ModelType.EMBEDDING) {
             data.getCapabilities().setEmbeddings(true);
