@@ -49,6 +49,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -208,9 +209,20 @@ public class DeploymentPostController {
         ErrorData rateLimitError = new ErrorData();
         rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
         rateLimitError.getError().setMessage(result.errorMessage());
+
         log.error("Rate limit error {}. Project: {}. User sub: {}. Deployment: {}. Trace: {}. Span: {}", result.errorMessage(),
                 context.getProject(), context.getUserSub(), deploymentId, context.getTraceId(), context.getSpanId());
-        respond(result.status(), rateLimitError);
+
+        String errorMessage = ProxyUtil.convertToString(rateLimitError);
+        HttpException httpException;
+        if (result.replyAfterSeconds() >= 0) {
+            Map<String, String> headers = Map.of(HttpHeaders.RETRY_AFTER.toString(), Long.toString(result.replyAfterSeconds()));
+            httpException = new HttpException(result.status(), errorMessage, headers);
+        } else {
+            httpException = new HttpException(result.status(), errorMessage);
+        }
+
+        respond(httpException);
     }
 
     private void handleError(Throwable error) {

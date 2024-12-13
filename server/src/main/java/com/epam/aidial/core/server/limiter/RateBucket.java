@@ -3,6 +3,8 @@ package com.epam.aidial.core.server.limiter;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.concurrent.TimeUnit;
+
 @Data
 @NoArgsConstructor
 public class RateBucket {
@@ -50,6 +52,22 @@ public class RateBucket {
         }
 
         return sum;
+    }
+
+    /**
+     * Returns the number of seconds the user agent should wait before making a retry request.
+     *
+     * @param limit - requested limit
+     */
+    long retryAfter(long limit) {
+        long sum = this.sum;
+        long replyAfter = 0;
+        for (long start = this.start;  start < this.end && sum >= limit; start++) {
+            int index = index(start);
+            sum -= sums[index];
+            replyAfter += window.interval();
+        }
+        return TimeUnit.MILLISECONDS.toSeconds(replyAfter);
     }
 
     private long interval(long timestamp) {
