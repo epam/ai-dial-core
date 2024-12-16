@@ -55,7 +55,6 @@ class RateBucketTest {
     }
 
     @Test
-
     public void testRetryAfterMinute() {
         bucket = new RateBucket(RateWindow.MINUTE);
 
@@ -78,6 +77,7 @@ class RateBucketTest {
         assertEquals(15, bucket.retryAfter(30));
     }
 
+    @Test
     void testWeekBucket() {
         bucket = new RateBucket(RateWindow.WEEK);
 

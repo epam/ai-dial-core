@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.Data;
+import org.apache.commons.lang3.math.NumberUtils;
 
 @Data
 public class TokenRateLimit {
@@ -34,7 +35,9 @@ public class TokenRateLimit {
                     minuteTotal, limit.getMinute(), dayTotal, limit.getDay(), weekTotal, limit.getWeek(), monthTotal, limit.getMonth());
             long minuteRetryAfter = minute.retryAfter(limit.getMinute());
             long dayRetryAfter = day.retryAfter(limit.getDay());
-            long retryAfter = Math.max(minuteRetryAfter, dayRetryAfter);
+            long weekRetryAfter = week.retryAfter(limit.getWeek());
+            long monthRetryAfter = month.retryAfter(limit.getMonth());
+            long retryAfter = NumberUtils.max(minuteRetryAfter, dayRetryAfter, weekRetryAfter, monthRetryAfter);
             return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, retryAfter);
         } else {
             return RateLimitResult.SUCCESS;
