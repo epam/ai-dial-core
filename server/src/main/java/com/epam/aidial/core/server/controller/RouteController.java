@@ -28,6 +28,7 @@ import org.apache.http.client.utils.URLEncodedUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -205,10 +206,21 @@ public class RouteController implements Controller {
         ErrorData rateLimitError = new ErrorData();
         rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
         rateLimitError.getError().setMessage(result.errorMessage());
+
         log.error("Rate limit error {}. Project: {}. User sub: {}. Route: {}. Trace: {}. Span: {}", result.errorMessage(),
                 context.getProject(), context.getUserSub(), context.getRoute().getName(), context.getTraceId(),
                 context.getSpanId());
-        context.respond(result.status(), rateLimitError);
+
+        String errorMessage = ProxyUtil.convertToString(rateLimitError);
+        HttpException httpException;
+        if (result.replyAfterSeconds() >= 0) {
+            Map<String, String> headers = Map.of(HttpHeaders.RETRY_AFTER.toString(), Long.toString(result.replyAfterSeconds()));
+            httpException = new HttpException(result.status(), errorMessage, headers);
+        } else {
+            httpException = new HttpException(result.status(), errorMessage);
+        }
+
+        context.respond(httpException);
     }
 
     private void handleError(Throwable error) {

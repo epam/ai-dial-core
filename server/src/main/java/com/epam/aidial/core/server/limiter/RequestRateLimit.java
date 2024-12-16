@@ -18,7 +18,10 @@ public class RequestRateLimit {
         if (result) {
             String errorMsg = String.format("Hit request rate limit. Hour limit: %d / %d requests. Day limit: %d / %d requests.",
                     hourTotal, limit.getRequestHour(), dayTotal, limit.getRequestDay());
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg);
+            long hourRetryAfter = hour.retryAfter(limit.getRequestHour());
+            long dayRetryAfter = day.retryAfter(limit.getRequestDay());
+            long retryAfter = Math.max(hourRetryAfter, dayRetryAfter);
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, retryAfter);
         } else {
             hour.add(timestamp, count);
             day.add(timestamp, count);

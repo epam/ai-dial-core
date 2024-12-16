@@ -24,7 +24,10 @@ public class TokenRateLimit {
         if (result) {
             String errorMsg = String.format("Hit token rate limit. Minute limit: %d / %d tokens. Day limit: %d / %d tokens.",
                     minuteTotal, limit.getMinute(), dayTotal, limit.getDay());
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg);
+            long minuteRetryAfter = minute.retryAfter(limit.getMinute());
+            long dayRetryAfter = day.retryAfter(limit.getDay());
+            long retryAfter = Math.max(minuteRetryAfter, dayRetryAfter);
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, retryAfter);
         } else {
             return RateLimitResult.SUCCESS;
         }

@@ -70,7 +70,7 @@ public class RateLimiter {
                 } else {
                     log.warn("Limit must be positive for {}", name);
                 }
-                return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied"));
+                return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", -1));
             }
 
             return vertx.executeBlocking(() -> checkLimit(context, limit, roleBasedEntity), false);
