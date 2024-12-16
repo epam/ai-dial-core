@@ -29,7 +29,6 @@ public class TokenRateLimit {
         boolean result = minuteTotal >= limit.getMinute() || dayTotal >= limit.getDay()
                 || weekTotal >= limit.getWeek() || monthTotal >= limit.getMonth();
         if (result) {
-
             String errorMsg = String.format(
                     "Hit token rate limit. Minute limit: %d / %d tokens. Day limit: %d / %d tokens. Week limit: %d / %d tokens. Month limit: %d / %d tokens.",
                     minuteTotal, limit.getMinute(), dayTotal, limit.getDay(), weekTotal, limit.getWeek(), monthTotal, limit.getMonth());
