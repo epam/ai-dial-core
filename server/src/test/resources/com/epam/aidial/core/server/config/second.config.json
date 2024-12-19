@@ -1,0 +1,9 @@
+{
+  "models": {
+    "testModel": {
+      "userRoles": [
+        "second_role1"
+      ]
+    }
+  }
+}
