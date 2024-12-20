@@ -1,0 +1,9 @@
+{
+  "models": {
+    "testModel": {
+      "userRoles": [
+        "first_role1"
+      ]
+    }
+  }
+}
