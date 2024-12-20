@@ -344,7 +344,9 @@ public class DeploymentPostController {
 
         if (responseStatusCode == 200) {
             upstreamRoute.succeed();
-        } else if (isFailedStatusCode(responseStatusCode)) {
+        } else {
+            // mark the upstream as failed
+            // and the next time we will select another one
             upstreamRoute.fail(proxyResponse);
         }
 
@@ -375,10 +377,6 @@ public class DeploymentPostController {
 
     private boolean isRetriableError(int statusCode) {
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode) || context.getConfig().getRetriableErrorCodes().contains(statusCode);
-    }
-
-    private static boolean isFailedStatusCode(int statusCode) {
-        return statusCode == 429 || statusCode >= 500;
     }
 
     /**
