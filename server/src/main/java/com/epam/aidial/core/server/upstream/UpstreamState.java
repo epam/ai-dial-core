@@ -39,19 +39,15 @@ class UpstreamState {
     }
 
     /**
-     * Register upstream failure. Supported error codes are 429 and 5xx.
+     * Register upstream failure.
      *
      * @param status response status code from upstream
-     * @param retryAfterSeconds time in seconds when upstream may become available; only take into account with 429 status code
+     * @param retryAfterSeconds time in seconds when upstream may become available
      */
     void fail(HttpStatus status, long retryAfterSeconds) {
         this.source = retryAfterSeconds == -1 ? RetryAfterSource.CORE : RetryAfterSource.UPSTREAM;
         this.status = status;
-        if (status == HttpStatus.TOO_MANY_REQUESTS) {
-            retryAfterSeconds = source == RetryAfterSource.CORE ? DEFAULT_RETRY_AFTER_SECONDS_VALUE : retryAfterSeconds;
-            setReplyAfter(retryAfterSeconds);
-            log.warn("Upstream {} limit hit: retry after {}", upstream.getEndpoint(), Instant.ofEpochMilli(retryAfter).toString());
-        } else if (status.is5xx()) {
+        if (status.is5xx()) {
             if (source == RetryAfterSource.CORE) {
                 if (errorCount != 30) {
                     errorCount++;
@@ -62,7 +58,11 @@ class UpstreamState {
                 setReplyAfter(retryAfterSeconds);
             }
         } else {
-            throw new IllegalArgumentException("Unsupported http status: " + status);
+            retryAfterSeconds = source == RetryAfterSource.CORE ? DEFAULT_RETRY_AFTER_SECONDS_VALUE : retryAfterSeconds;
+            setReplyAfter(retryAfterSeconds);
+            if (status == HttpStatus.TOO_MANY_REQUESTS) {
+                log.warn("Upstream {} limit hit: retry after {}", upstream.getEndpoint(), Instant.ofEpochMilli(retryAfter).toString());
+            }
         }
     }
 

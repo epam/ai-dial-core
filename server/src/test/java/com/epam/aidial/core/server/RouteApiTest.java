@@ -57,6 +57,15 @@ class RouteApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    void route_404() {
+        TestWebServer.Handler handler = request -> new MockResponse().setResponseCode(404);
+        try (TestWebServer server = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/plain", null, null, "api-key", "vstore_user_key");
+            assertEquals(404, resp.status());
+        }
+    }
+
     private static List<Arguments> datasource() {
         return List.of(
                 Arguments.of(HttpMethod.GET, "/v1/plain", "vstore_user_key", 200, "/"),
