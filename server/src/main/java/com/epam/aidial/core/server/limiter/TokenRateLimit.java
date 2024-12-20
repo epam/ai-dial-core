@@ -3,10 +3,12 @@ package com.epam.aidial.core.server.limiter;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import org.apache.commons.lang3.math.NumberUtils;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class TokenRateLimit {
 
     private final RateBucket minute = new RateBucket(RateWindow.MINUTE);
