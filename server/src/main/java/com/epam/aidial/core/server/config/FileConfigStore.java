@@ -12,8 +12,8 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.security.ApiKeyStore;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.Vertx;
@@ -200,7 +200,9 @@ public final class FileConfigStore implements ConfigStore {
     }
 
     private JsonMapper buildJsonMapper(JsonObject settings) {
-        JsonMapper mapper = ProxyUtil.MAPPER.copy();
+        JsonMapper mapper = JsonMapper.builder()
+                .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+                .build();
 
         boolean overwriteArrays = settings
                 .getJsonObject("jsonMergeStrategy", new JsonObject())
