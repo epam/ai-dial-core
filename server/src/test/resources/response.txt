@@ -12,10 +12,5 @@
         "content": "As an AI language model, I do not have emotions like humans. However, I am functioning well and ready to assist you. How can I help you today?"
       }
     }
-  ],
-  "usage": {
-    "completion_tokens": 33,
-    "prompt_tokens": 19,
-    "total_tokens": 52
-  }
+  ]
 }

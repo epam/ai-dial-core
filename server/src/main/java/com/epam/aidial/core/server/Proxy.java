@@ -65,9 +65,6 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_UPSTREAM_EXTRA_DATA = "X-UPSTREAM-EXTRA-DATA";
     public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
-
-    public static final int REQUEST_BODY_MAX_SIZE_BYTES = 16 * 1024 * 1024;
-
     private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.HEAD);
 
     private final Vertx vertx;
@@ -152,7 +149,7 @@ public class Proxy implements Handler<HttpServerRequest> {
             }
         } else {
             // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
-            if (contentLength > REQUEST_BODY_MAX_SIZE_BYTES) {
+            if (contentLength > resourceService.getMaxSize()) {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
                 return;
             }

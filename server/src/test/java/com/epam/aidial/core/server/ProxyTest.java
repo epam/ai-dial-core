@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
@@ -29,6 +30,8 @@ import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +57,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class ProxyTest {
 
     @Mock
@@ -72,6 +76,8 @@ public class ProxyTest {
     private AccessTokenValidator accessTokenValidator;
     @Mock
     private BlobStorage storage;
+    @Mock
+    private ResourceService resourceService;
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private HttpServerRequest request;
@@ -84,6 +90,7 @@ public class ProxyTest {
 
     @BeforeEach
     public void beforeEach() {
+        when(resourceService.getMaxSize()).thenReturn(67108864);
         when(request.response()).thenReturn(response);
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD)).thenReturn(null);
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS)).thenReturn(null);

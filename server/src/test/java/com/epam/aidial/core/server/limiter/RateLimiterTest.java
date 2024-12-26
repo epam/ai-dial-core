@@ -98,13 +98,13 @@ public class RateLimiterTest {
     }
 
     @BeforeEach
-    public void beforeEach() throws Exception {
+    public void beforeEach() {
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
         LockService lockService = new LockService(redissonClient, null);
-        ResourceService.Settings settings = new ResourceService.Settings(1048576, 60000, 120000, 4096, 300000, 256);
+        ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
         rateLimiter = new RateLimiter(vertx, resourceService);

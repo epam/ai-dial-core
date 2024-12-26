@@ -51,7 +51,8 @@
     "key": "salt"
   },
   "resources": {
-    "maxSize" : 1048576,
+    "maxSize" : 67108864,
+    "cacheMaxSize": 1048576,
     "syncPeriod": 60000,
     "syncDelay": 120000,
     "syncBatch": 4096,

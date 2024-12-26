@@ -161,8 +161,46 @@ class ResourceApiTest extends ResourceBaseTest {
 
     @Test
     void testMaxContentSize() {
-        Response response = resourceRequest(HttpMethod.PUT, "/folder/big", "1".repeat(1024 * 1024 + 1));
-        verify(response, 413, "Resource size: 1048577 exceeds max limit: 1048576");
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/big", "1".repeat(64 * 1024 * 1024 + 1));
+        verify(response, 413, "Request body is too large");
+    }
+
+    @Test
+    void testBigContentSize() {
+        String template = """
+                {
+                  "id": "conversation_id",
+                  "name": "display_name",
+                  "model": {"id": "model_id"},
+                  "prompt": "%s",
+                  "temperature": 1,
+                  "folderId": "folder1",
+                  "messages": [],
+                  "selectedAddons": ["R", "T", "G"],
+                  "assistantModelId": "assistantId",
+                  "lastActivityDate": 4848683153
+                 }
+                """;
+        String big = template.formatted("0".repeat(4 * 1024 * 1024));
+        String small = template.formatted("12345");
+
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/big", big);
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.GET, "/folder/big");
+        verifyJson(response, 200, big);
+
+        response = resourceRequest(HttpMethod.PUT, "/folder/big", small);
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.GET, "/folder/big");
+        verifyJson(response, 200, small);
+
+        response = resourceRequest(HttpMethod.DELETE, "/folder/big");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.GET, "/folder/big");
+        verify(response, 404);
     }
 
     @Test

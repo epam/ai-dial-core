@@ -90,6 +90,7 @@ public class ResourceService implements AutoCloseable {
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
+    private final int cacheMaxSize;
     private final TimerService.Timer syncTimer;
     private final long syncDelay;
     private final int syncBatch;
@@ -109,6 +110,7 @@ public class ResourceService implements AutoCloseable {
         this.lockService = lockService;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = settings.maxSize;
+        this.cacheMaxSize = settings.cacheMaxSize();
         this.syncDelay = settings.syncDelay;
         this.syncBatch = settings.syncBatch;
         this.cacheExpiration = Duration.ofMillis(settings.cacheExpiration);
@@ -349,7 +351,7 @@ public class ResourceService implements AutoCloseable {
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
-            if (length <= maxSize) {
+            if (length <= cacheMaxSize) {
                 result = blobToResult(blob, metadata);
                 redisPut(key, result);
                 return ResourceStream.fromResult(result, etagHeader);
@@ -391,7 +393,7 @@ public class ResourceService implements AutoCloseable {
             String newEtag = EtagBuilder.generateEtag(body);
             Result result = new Result(body, newEtag, createdAt, updatedAt, contentType,
                     descriptor.getType().requireCompression(), (long) body.length, descriptor.getType().name(), false);
-            if (body.length <= maxSize) {
+            if (body.length <= cacheMaxSize) {
                 redisPut(redisKey, result);
                 if (metadata == null) {
                     String blobKey = blobKey(descriptor);
@@ -866,6 +868,7 @@ public class ResourceService implements AutoCloseable {
 
     /**
      * @param maxSize            - max allowed size in bytes for a resource.
+     * @param cacheMaxSize       - max size in bytes to cache resource in Redis.
      * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
      * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
      * @param syncBatch          - how many resources to sync in one go.
@@ -875,6 +878,7 @@ public class ResourceService implements AutoCloseable {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Settings(
             int maxSize,
+            int cacheMaxSize,
             long syncPeriod,
             long syncDelay,
             int syncBatch,
