@@ -78,7 +78,7 @@ Priority order:
 | encryption.secret                             |         -          |    No    |Secret is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
 | encryption.key                                |         -          |    No    |Key is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
 | resources.maxSize                             |      67108864      |    No    |Max allowed size in bytes for a resource.
-| resources.cacheMaxSize                        |      1048576       |    No    |Max size in bytes for a resource to cache in Redis.
+| resources.maxSizeToCache                        |      1048576       |    No    |Max size in bytes for a resource to cache in Redis.
 | resources.syncPeriod                          |       60000        |    No    |Period in milliseconds, how frequently check for resources to sync.
 | resources.syncDelay                           |       120000       |    No    |Delay in milliseconds for a resource to be written back in object storage after last modification.
 | resources.syncBatch                           |        4096        |    No    |How many resources to sync in one go.
