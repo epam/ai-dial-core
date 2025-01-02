@@ -36,7 +36,6 @@ class ApplicationOperatorService {
 
     public ApplicationOperatorService(HttpClient client, JsonObject settings) {
         this.client = client;
-//        this.endpoint = settings.getString("controllerEndpoint");
         this.endpoint = "https://ai-dial-app-controller.deltixuat.com";
         this.timeout = settings.getLong("controllerTimeout", 240000L);
     }
