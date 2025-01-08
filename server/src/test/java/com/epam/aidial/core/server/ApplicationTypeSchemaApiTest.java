@@ -53,6 +53,7 @@ public class ApplicationTypeSchemaApiTest extends ResourceBaseTest {
         Assertions.assertTrue(node.isObject());
         Assertions.assertTrue(node.has("$id"));
         Assertions.assertTrue(node.has("$schema"));
+        Assertions.assertTrue(node.has("dial:applicationTypeViewerUrl"));
     }
 
 }
