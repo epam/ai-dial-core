@@ -25,6 +25,7 @@ public class ApplicationTypeSchemaApiTest extends ResourceBaseTest {
             Assertions.assertTrue(node.has("$id"));
             Assertions.assertTrue(node.has("dial:applicationTypeEditorUrl"));
             Assertions.assertTrue(node.has("dial:applicationTypeDisplayName"));
+            Assertions.assertTrue(node.has("dial:applicationTypeViewerUrl"));
         });
     }
 
