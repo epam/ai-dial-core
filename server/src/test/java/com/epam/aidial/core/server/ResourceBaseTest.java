@@ -157,6 +157,9 @@ public class ResourceBaseTest {
                         "controllerEndpoint": "http://localhost:17321",
                         "checkDelay": 1000,
                         "checkPeriod": 1000
+                      },
+                      "codeInterpreter" : {
+                        "sessionImage": "fake.image"
                       }
                     }
                     """.formatted(Json.encode(testDir.toString()));

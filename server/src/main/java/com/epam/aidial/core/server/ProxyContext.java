@@ -146,16 +146,20 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status, String body) {
+        return respond(status.getCode(), body);
+    }
+
+    public Future<?> respond(int status, String body) {
         if (body == null) {
             body = "";
         }
 
-        if (status != HttpStatus.OK) {
+        if (status != HttpStatus.OK.getCode()) {
             log.warn("Responding with error. Project: {}. Trace: {}. Span: {}. Status: {}. Body: {}", getProject(), traceId, spanId, status,
                     body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
         }
 
-        response.setStatusCode(status.getCode()).end(body);
+        response.setStatusCode(status).end(body);
         return Future.succeededFuture();
     }
 
