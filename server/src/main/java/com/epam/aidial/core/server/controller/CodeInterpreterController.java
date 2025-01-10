@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSessionId;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterError;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamAdapter;
@@ -84,9 +83,10 @@ class CodeInterpreterController {
                 .setExpectMultipart(true)
                 .uploadHandler(upload -> {
                     // do not move inside execute blocking, otherwise you can miss the beginning of file
-                    InputStream stream = new InputStreamAdapter(upload);
+                    InputStreamAdapter stream = new InputStreamAdapter(upload);
                     vertx.executeBlocking(() -> uploadFile(upload, stream), false)
                             .onSuccess(this::respondJson)
+                            .onComplete(e -> stream.close())
                             .onFailure(this::respondError);
                 });
 
@@ -182,6 +182,8 @@ class CodeInterpreterController {
     private void respondError(Throwable error) {
         HttpServerResponse response = context.getResponse();
         if (response.headWritten()) {
+            // download request can partially fail, when some data already is sent, it is too late to send response
+            // so the only option is to disconnect client
             response.reset();
         } else if (error instanceof IllegalArgumentException) {
             context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
@@ -190,8 +192,6 @@ class CodeInterpreterController {
         } else if (error instanceof ResourceNotFoundException) {
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else if (error instanceof HttpException e) {
-            context.respond(e.getStatus(), e.getMessage());
-        } else if (error instanceof CodeInterpreterError e) {
             context.respond(e.getStatus(), e.getMessage());
         } else {
             log.error("Failed to handle code interpreter request", error);

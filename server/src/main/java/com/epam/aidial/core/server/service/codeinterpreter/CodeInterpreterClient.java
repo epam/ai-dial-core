@@ -5,6 +5,8 @@ import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -54,7 +56,7 @@ public class CodeInterpreterClient {
             String body = EntityUtils.toString(response.getEntity());
 
             if (status != 200) {
-                throw new CodeInterpreterError(status, body);
+                throw new HttpException(status, body);
             }
 
             return ProxyUtil.convertToObject(body, CodeInterpreterFile.class);
@@ -73,7 +75,7 @@ public class CodeInterpreterClient {
 
             if (status != 200) {
                 String body = EntityUtils.toString(entity);
-                throw new CodeInterpreterError(status, body);
+                throw new HttpException(status, body);
             }
 
             try {
@@ -88,7 +90,7 @@ public class CodeInterpreterClient {
                 return result.get(timeout, TimeUnit.MILLISECONDS);
             } catch (Throwable e) {
                 EntityUtils.consumeQuietly(entity);
-                throw new CodeInterpreterError(500, "Failed to download file: " + path);
+                throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to download file: " + path);
             }
         });
     }
@@ -104,7 +106,7 @@ public class CodeInterpreterClient {
             String body = EntityUtils.toString(response.getEntity());
 
             if (status != 200) {
-                throw new CodeInterpreterError(status, body);
+                throw new HttpException(status, body);
             }
 
             return ProxyUtil.convertToObject(body, responseType);
