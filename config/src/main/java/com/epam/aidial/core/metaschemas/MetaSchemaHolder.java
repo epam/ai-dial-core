@@ -25,6 +25,7 @@ public class MetaSchemaHolder {
     public static JsonMetaSchema.Builder getMetaschemaBuilder() {
         return JsonMetaSchema.builder(MetaSchemaHolder.CUSTOM_APPLICATION_META_SCHEMA_ID,  JsonMetaSchema.getV7())
                 .keyword(new NonValidationKeyword("dial:applicationTypeEditorUrl"))
+                .keyword(new NonValidationKeyword("dial:applicationTypeViewerUrl"))
                 .keyword(new NonValidationKeyword("dial:applicationTypeDisplayName"))
                 .keyword(new NonValidationKeyword("dial:applicationTypeCompletionEndpoint"))
                 .keyword(new NonValidationKeyword("dial:propertyKind"))

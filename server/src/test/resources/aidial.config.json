@@ -173,6 +173,7 @@
       "$schema": "https://dial.epam.com/application_type_schemas/schema#",
       "$id": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
       "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
+      "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
       "dial:applicationTypeDisplayName": "Specific Application Type",
       "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",
       "properties": {

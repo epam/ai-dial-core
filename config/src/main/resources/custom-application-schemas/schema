@@ -18,6 +18,11 @@
           "format": "uri",
           "description": "URL to the editor UI of the custom application of given type"
         },
+        "dial:applicationTypeViewerUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the view UI of the custom application of given type"
+        },
         "dial:applicationTypeCompletionEndpoint": {
           "type": "string",
           "format": "uri",

@@ -26,6 +26,7 @@ public class ApplicationTypeSchemaController {
     private static final String ID_FIELD = "$id";
     private static final String ID_PARAM = "id";
     private static final String EDITOR_URL_FIELD = "dial:applicationTypeEditorUrl";
+    private static final String VIEWER_URL_FIELD = "dial:applicationTypeViewerUrl";
     private static final String DISPLAY_NAME_FIELD = "dial:applicationTypeDisplayName";
     private static final String COMPLETION_ENDPOINT_FIELD = "dial:applicationTypeCompletionEndpoint";
 
@@ -90,6 +91,11 @@ public class ApplicationTypeSchemaController {
                 filteredNode.set(ID_FIELD, schemaNode.get(ID_FIELD));
                 filteredNode.set(EDITOR_URL_FIELD, schemaNode.get(EDITOR_URL_FIELD));
                 filteredNode.set(DISPLAY_NAME_FIELD, schemaNode.get(DISPLAY_NAME_FIELD));
+
+                if (schemaNode.has(VIEWER_URL_FIELD)) {
+                    filteredNode.set(VIEWER_URL_FIELD, schemaNode.get(VIEWER_URL_FIELD));
+                }
+
                 filteredSchemas.add(filteredNode);
             }
         }
