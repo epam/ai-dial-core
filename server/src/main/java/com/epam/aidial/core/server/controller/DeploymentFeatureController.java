@@ -66,6 +66,24 @@ public class DeploymentFeatureController {
             return;
         }
 
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        setupProxyApiKeyData(proxyApiKeyData);
+
+        proxy.getVertx().executeBlocking(() -> {
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+            return null;
+        }, false)
+                .onSuccess(ignore -> sendRequest(endpoint)).onFailure(this::handleError);
+
+    }
+
+    private void handleError(Throwable error) {
+        log.info("Error occurred while processing request", error);
+        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+    }
+
+    @SneakyThrows
+    private void sendRequest(String endpoint) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
                 .setMethod(context.getRequest().method());
@@ -73,6 +91,11 @@ public class DeploymentFeatureController {
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
+    }
+
+    private void setupProxyApiKeyData(ApiKeyData proxyApiKeyData) {
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
     }
 
     private void handleRequestError(String deploymentId, Throwable error) {
@@ -111,13 +134,6 @@ public class DeploymentFeatureController {
 
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
-
-        if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
-            Upstream upstream = context.getUpstreamRoute().get();
-            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
-            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
-            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
-        }
 
         Buffer requestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
