@@ -78,7 +78,7 @@ Priority order:
 | encryption.secret                             |         -          |    No    |Secret is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
 | encryption.key                                |         -          |    No    |Key is used for AES encryption of a prefix to the bucket blob storage. The value should be random generated string.
 | resources.maxSize                             |      67108864      |    No    |Max allowed size in bytes for a resource.
-| resources.maxSizeToCache                        |      1048576       |    No    |Max size in bytes for a resource to cache in Redis.
+| resources.maxSizeToCache                      |      1048576       |    No    |Max size in bytes for a resource to cache in Redis.
 | resources.syncPeriod                          |       60000        |    No    |Period in milliseconds, how frequently check for resources to sync.
 | resources.syncDelay                           |       120000       |    No    |Delay in milliseconds for a resource to be written back in object storage after last modification.
 | resources.syncBatch                           |        4096        |    No    |How many resources to sync in one go.
@@ -97,7 +97,10 @@ Priority order:
 | applications.includeCustomApps                |       false        |    No    |The flag indicates whether custom applications should be included into openai listing
 | applications.controllerEndpoint               |         -          |    No    |The endpoint to Application Controller Web Service that manages deployments for applications with functions 
 | applications.controllerTimeout                |       240000       |    No    |The timeout of operations to Application Controller Web Service
-| applications.checkPeriod                      |       300000       |    No    |The interval at which to check the pending operations for applications with functions
+| codeInterpreter.sessionImage                  |         -          |    No    |The code interpreter session image to use
+| codeInterpreter.sessionTtl                    |       600000       |    No    |The session time to leave after the last API call
+| codeInterpreter.checkPeriod                   |       10000        |    No    |The interval at which to check active sessions for expiration
+| codeInterpreter.checkSize                     |       256          |    No    |The maximum number of active sessions to check in single check
 
 ### Storage requirements
 
