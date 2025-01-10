@@ -241,12 +241,10 @@ public class CodeInterpreterService {
             }
 
             return response;
-        } catch (Throwable e) {
+        } finally {
             if (anonymous) {
                 closeSession(context, session.getSessionId());
             }
-
-            throw e;
         }
     }
 
