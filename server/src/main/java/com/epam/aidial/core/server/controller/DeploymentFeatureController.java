@@ -1,14 +1,18 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -87,18 +91,39 @@ public class DeploymentFeatureController {
     /**
      * Called when proxy connected to the origin.
      */
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin: {}", proxyRequest.connection().remoteAddress());
+    void handleProxyRequest(HttpClientRequest proxyRequest) {
+        log.info("Connected to origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
+        context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        Deployment deployment = context.getDeployment();
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        if (!deployment.isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
 
-        Buffer proxyRequestBody = context.getRequestBody();
-        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
-        proxyRequest.send(proxyRequestBody)
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
+
+        if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
+            Upstream upstream = context.getUpstreamRoute().get();
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
+        }
+
+        Buffer requestBody = context.getRequestBody();
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
+        context.getRequestHeaders().forEach(proxyRequest::putHeader);
+
+        proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
     }

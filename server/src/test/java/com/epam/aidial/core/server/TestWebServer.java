@@ -51,8 +51,8 @@ class TestWebServer implements AutoCloseable {
         map(method, path, status, "");
     }
 
-    public void map(HttpMethod method, String path, int status, String body) {
-        map(method, path, createResponse(status, body));
+    public void map(HttpMethod method, String path, int status, String body, String... headers) {
+        map(method, path, createResponse(status, body, headers));
     }
 
     private MockResponse onRequest(RecordedRequest request) {
@@ -67,10 +67,15 @@ class TestWebServer implements AutoCloseable {
         return response;
     }
 
-    private static MockResponse createResponse(int status, String body) {
+    public static MockResponse createResponse(int status, String body, String... headers) {
         MockResponse response = new MockResponse();
         response.setResponseCode(status);
         response.setBody(body);
+        for (int i = 0; i < headers.length; i += 2) {
+            String key = headers[i];
+            String value = headers[i + 1];
+            response.setHeader(key, value);
+        }
         return response;
     }
 
