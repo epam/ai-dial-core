@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecute;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterOutputFile;
@@ -69,7 +69,7 @@ class CodeInterpreterController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    CodeInterpreterExecute data = convertJson(body, CodeInterpreterExecute.class);
+                    CodeInterpreterExecuteRequest data = convertJson(body, CodeInterpreterExecuteRequest.class);
                     return vertx.executeBlocking(() -> service.executeCode(context, data), false);
                 })
                 .onSuccess(this::respondJson)

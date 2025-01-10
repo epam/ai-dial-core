@@ -5,7 +5,7 @@ import lombok.Data;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class CodeInterpreterExecution {
+public class CodeInterpreterExecuteResponse {
     private String status;
     private String stdout;
     private String stderr;

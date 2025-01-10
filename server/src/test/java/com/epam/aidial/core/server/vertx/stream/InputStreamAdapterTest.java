@@ -1,13 +1,19 @@
 package com.epam.aidial.core.server.vertx.stream;
 
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.file.AsyncFile;
+import io.vertx.core.file.OpenOptions;
 import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 
 
 class InputStreamAdapterTest {
@@ -68,6 +74,30 @@ class InputStreamAdapterTest {
 
         stream.close();
         Assertions.assertThrows(IOException.class, stream::read);
+    }
+
+    @Test
+    void testBigFile() throws Exception {
+        Path file = Files.createTempFile("input-stream-test", ".txt");
+        String text = "1".repeat(64 * 1024 * 1024);
+        Vertx vertx = Vertx.vertx();
+
+        try {
+            Files.writeString(file, text);
+
+            CompletableFuture<AsyncFile> future = new CompletableFuture<>();
+            vertx.fileSystem().open(file.toString(), new OpenOptions())
+                    .onSuccess(future::complete)
+                    .onFailure(future::completeExceptionally);
+
+            AsyncFile source = future.get();
+            InputStreamAdapter stream = new InputStreamAdapter(source);
+
+            Assertions.assertEquals(text, new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+        } finally {
+            Files.deleteIfExists(file);
+            vertx.close();
+        }
     }
 
     @Test

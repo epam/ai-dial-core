@@ -3,8 +3,8 @@ package com.epam.aidial.core.server.service.codeinterpreter;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecute;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecution;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile;
@@ -210,7 +210,7 @@ public class CodeInterpreterService {
         }
     }
 
-    public CodeInterpreterExecution executeCode(ProxyContext context, CodeInterpreterExecute request) {
+    public CodeInterpreterExecuteResponse executeCode(ProxyContext context, CodeInterpreterExecuteRequest request) {
         verifyActive();
         verifyCode(request);
 
@@ -223,27 +223,31 @@ public class CodeInterpreterService {
             session = touchSession(context, request.getSessionId());
         }
 
-        if (request.getInputFiles() != null) {
-            for (CodeInterpreterInputFile input : request.getInputFiles()) {
-                input.setSessionId(session.getSessionId());
-                transferInputFile(context, input);
+        try {
+            if (request.getInputFiles() != null) {
+                for (CodeInterpreterInputFile input : request.getInputFiles()) {
+                    input.setSessionId(session.getSessionId());
+                    transferInputFile(context, input);
+                }
             }
-        }
 
-        CodeInterpreterExecution response = client.executeCode(session, request.getCode());
+            CodeInterpreterExecuteResponse response = client.executeCode(session, request.getCode());
 
-        if (request.getOutputFiles() != null) {
-            for (CodeInterpreterOutputFile output : request.getOutputFiles()) {
-                output.setSessionId(session.getSessionId());
-                transferOutputFile(context, output);
+            if (request.getOutputFiles() != null) {
+                for (CodeInterpreterOutputFile output : request.getOutputFiles()) {
+                    output.setSessionId(session.getSessionId());
+                    transferOutputFile(context, output);
+                }
             }
-        }
 
-        if (anonymous) {
-            closeSession(context, session.getSessionId());
-        }
+            return response;
+        } catch (Throwable e) {
+            if (anonymous) {
+                closeSession(context, session.getSessionId());
+            }
 
-        return response;
+            throw e;
+        }
     }
 
     @SneakyThrows
@@ -364,7 +368,7 @@ public class CodeInterpreterService {
         }
     }
 
-    private static void verifyCode(CodeInterpreterExecute request) {
+    private static void verifyCode(CodeInterpreterExecuteRequest request) {
         if (request.getCode() == null) {
             throw new IllegalArgumentException("Missing code");
         }

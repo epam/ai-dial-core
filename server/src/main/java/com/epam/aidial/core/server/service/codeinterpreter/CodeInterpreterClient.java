@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.service.codeinterpreter;
 
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecution;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
@@ -31,11 +31,11 @@ public class CodeInterpreterClient {
 
     // Vertx HttpClient does not support multipart upload, Vertx WebClient supports only Buffer as body for multipart upload
     private final HttpClient client = HttpClients.createDefault();
-    private final long timeout;
+    private final long responseTimeout;
 
-    CodeInterpreterExecution executeCode(CodeInterpreterSession session, String code) {
+    CodeInterpreterExecuteResponse executeCode(CodeInterpreterSession session, String code) {
         Map<String, String> body = Map.of("code", code);
-        return execute(session, "/execute_code", body, CodeInterpreterExecution.class);
+        return execute(session, "/execute_code", body, CodeInterpreterExecuteResponse.class);
     }
 
     CodeInterpreterFiles listFiles(CodeInterpreterSession session) {
@@ -46,7 +46,7 @@ public class CodeInterpreterClient {
     @SneakyThrows
     CodeInterpreterFile uploadFile(CodeInterpreterSession session, InputStream source, String target) {
         HttpPost post = new HttpPost(session.getDeploymentUrl() + "/upload_file");
-        post.setConfig(RequestConfig.custom().setResponseTimeout(timeout, TimeUnit.MILLISECONDS).build());
+        post.setConfig(createRequestConfig());
         post.setEntity(MultipartEntityBuilder.create()
                 .addBinaryBody("file", source, ContentType.APPLICATION_OCTET_STREAM, target)
                 .build());
@@ -66,7 +66,7 @@ public class CodeInterpreterClient {
     @SneakyThrows
     <R> R downloadFile(CodeInterpreterSession session, String path, DownloadFileFunction<R> consumer) {
         HttpPost post = new HttpPost(session.getDeploymentUrl() + "/download_file");
-        post.setConfig(RequestConfig.custom().setResponseTimeout(timeout, TimeUnit.MILLISECONDS).build());
+        post.setConfig(createRequestConfig());
         post.setEntity(HttpEntities.create(ProxyUtil.convertToString(Map.of("path", path)), ContentType.APPLICATION_JSON));
 
         return client.execute(post, response -> {
@@ -87,7 +87,7 @@ public class CodeInterpreterClient {
                         .onSuccess(result::complete)
                         .onFailure(result::completeExceptionally);
 
-                return result.get(timeout, TimeUnit.MILLISECONDS);
+                return result.get(responseTimeout, TimeUnit.MILLISECONDS);
             } catch (Throwable e) {
                 EntityUtils.consumeQuietly(entity);
                 throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to download file: " + path);
@@ -98,7 +98,7 @@ public class CodeInterpreterClient {
     @SneakyThrows
     private <R> R execute(CodeInterpreterSession session, String path, Object requestPayload, Class<R> responseType) {
         HttpPost post = new HttpPost(session.getDeploymentUrl() + path);
-        post.setConfig(RequestConfig.custom().setResponseTimeout(timeout, TimeUnit.MILLISECONDS).build());
+        post.setConfig(createRequestConfig());
         post.setEntity(HttpEntities.create(ProxyUtil.convertToString(requestPayload), ContentType.APPLICATION_JSON));
 
         return client.execute(post, response -> {
@@ -111,6 +111,10 @@ public class CodeInterpreterClient {
 
             return ProxyUtil.convertToObject(body, responseType);
         });
+    }
+
+    private RequestConfig createRequestConfig() {
+        return RequestConfig.custom().setResponseTimeout(responseTimeout, TimeUnit.MILLISECONDS).build();
     }
 
     public interface DownloadFileFunction<R> {
