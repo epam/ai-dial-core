@@ -1,8 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -58,9 +56,9 @@ public class DeploymentFeatureController {
 
         if (endpoint == null) {
             if (requireEndpoint) {
-                context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
+                respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
             } else {
-                context.respond(HttpStatus.OK);
+                respond(HttpStatus.OK);
                 proxy.getLogStore().save(context);
             }
             return;
@@ -79,7 +77,7 @@ public class DeploymentFeatureController {
 
     private void handleError(Throwable error) {
         log.info("Error occurred while processing request", error);
-        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+        respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
     }
 
     @SneakyThrows
@@ -101,13 +99,13 @@ public class DeploymentFeatureController {
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             log.error("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
             log.error("Deployment not found {}", deploymentId, error);
-            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
             log.error("Failed to handle deployment {}", deploymentId, error);
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
         }
     }
 
@@ -183,7 +181,7 @@ public class DeploymentFeatureController {
      */
     private void handleRequestBodyError(Throwable error) {
         log.warn("Failed to receive client body: {}", error.getMessage());
-        context.respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
     /**
@@ -191,7 +189,7 @@ public class DeploymentFeatureController {
      */
     private void handleProxyConnectionError(Throwable error) {
         log.warn("Can't connect to origin: {}", error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
+        respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
     }
 
     /**
@@ -199,7 +197,7 @@ public class DeploymentFeatureController {
      */
     private void handleProxyRequestError(Throwable error) {
         log.warn("Can't send request to origin: {}", error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "deployment responded with error");
+        respond(HttpStatus.BAD_GATEWAY, "deployment responded with error");
     }
 
     /**
@@ -209,5 +207,27 @@ public class DeploymentFeatureController {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+    }
+
+    private void respond(HttpStatus status, String errorMessage) {
+        finalizeRequest();
+        context.respond(status, errorMessage);
+    }
+
+    private void respond(HttpStatus status) {
+        finalizeRequest();
+        context.respond(status);
+    }
+
+    private void finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
+        }
     }
 }

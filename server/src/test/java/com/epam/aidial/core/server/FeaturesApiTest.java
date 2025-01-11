@@ -2,14 +2,9 @@ package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
-import okhttp3.Headers;
-
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 
 public class FeaturesApiTest extends ResourceBaseTest {
 
@@ -71,22 +66,10 @@ public class FeaturesApiTest extends ResourceBaseTest {
     void testUpstreamEndpoint(String inboundPath, String upstream, HttpMethod method) {
         URI uri = URI.create(upstream);
         try (TestWebServer server = new TestWebServer(uri.getPort())) {
-            server.map(method, uri.getPath(),  request -> TestWebServer.createResponse(200, "PONG", convertHeadersToFlatArray(request.getHeaders())));
+            server.map(method, uri.getPath(),  request -> TestWebServer.createResponse(200, "PONG", "foo", "bar"));
 
             Response response = send(method, inboundPath, null, "", "foo", "bar");
             verify(response, 200, "PONG", "foo", "bar");
         }
-    }
-
-    private static String[] convertHeadersToFlatArray(Headers headers) {
-        List<String> flatHeadersList = new ArrayList<>();
-        for (Map.Entry<String, List<String>> entry : headers.toMultimap().entrySet()) {
-            String key = entry.getKey();
-            for (String value : entry.getValue()) {
-                flatHeadersList.add(key);
-                flatHeadersList.add(value);
-            }
-        }
-        return flatHeadersList.toArray(new String[0]);
     }
 }
