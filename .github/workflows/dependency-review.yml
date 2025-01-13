@@ -1,0 +1,17 @@
+name: Dependency Review
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    uses: epam/ai-dial-ci/.github/workflows/java_dependency_review.yml@1.11.0
+    secrets:
+      ACTIONS_BOT_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}

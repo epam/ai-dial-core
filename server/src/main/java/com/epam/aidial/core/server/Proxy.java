@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -88,6 +89,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final RuleService ruleService;
     private final NotificationService notificationService;
     private final ApplicationService applicationService;
+    private final CodeInterpreterService codeInterpreterService;
     private final HeartbeatService heartbeatService;
     private final String version;
 

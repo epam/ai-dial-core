@@ -64,11 +64,11 @@ public class ApplicationService {
     private final boolean includeCustomApps;
 
     public ApplicationService(Vertx vertx,
-                              HttpClient httpClient,
                               RedissonClient redis,
                               EncryptionService encryptionService,
                               ResourceService resourceService,
                               LockService lockService,
+                              ApplicationOperatorService operatorService,
                               Supplier<String> idGenerator,
                               JsonObject settings) {
         String pendingApplicationsKey = BlobStorageUtil.toStoragePath(lockService.getPrefix(), "pending-applications");
@@ -79,7 +79,7 @@ public class ApplicationService {
         this.lockService = lockService;
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
-        this.controller = new ApplicationOperatorService(httpClient, settings);
+        this.controller = operatorService;
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);

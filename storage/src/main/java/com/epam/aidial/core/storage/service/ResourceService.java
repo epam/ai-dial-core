@@ -132,6 +132,20 @@ public class ResourceService implements AutoCloseable {
         return topic.subscribe(resources, subscriber);
     }
 
+    public String getPrefix() {
+        return lockService.getPrefix();
+    }
+
+    public LockService.Lock lockResource(ResourceDescriptor descriptor) {
+        String redisKey = redisKey(descriptor);
+        return lockService.lock(redisKey);
+    }
+
+    public LockService.Lock tryLockResource(ResourceDescriptor descriptor) {
+        String redisKey = redisKey(descriptor);
+        return lockService.tryLock(redisKey);
+    }
+
     public void copyFolder(ResourceDescriptor sourceFolder, ResourceDescriptor targetFolder, boolean overwrite) {
         String token = null;
         do {
@@ -317,7 +331,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @Nullable
-    private String getResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
+    public String getResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
         Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, etag, lock);
         return (result == null) ? null : result.getRight();
     }
@@ -367,7 +381,7 @@ public class ResourceService implements AutoCloseable {
         return putResource(descriptor, body, etag, true);
     }
 
-    private ResourceItemMetadata putResource(
+    public ResourceItemMetadata putResource(
             ResourceDescriptor descriptor, String body, EtagHeader etag, boolean lock) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         return putResource(descriptor, bytes, etag, "application/json", lock);
@@ -487,7 +501,7 @@ public class ResourceService implements AutoCloseable {
         return deleteResource(descriptor, etag, true);
     }
 
-    private boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
+    public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {

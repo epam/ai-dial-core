@@ -11,6 +11,10 @@ public class HttpException extends RuntimeException {
     private final HttpStatus status;
     private final Map<String, String> headers;
 
+    public HttpException(int status, String message) {
+        this(HttpStatus.fromStatusCode(status, HttpStatus.INTERNAL_SERVER_ERROR), message, Map.of());
+    }
+
     public HttpException(HttpStatus status, String message) {
         this(status, message, Map.of());
     }

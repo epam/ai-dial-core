@@ -98,7 +98,7 @@ public class FeaturesApiTest extends ResourceBaseTest {
                 return TestWebServer.createResponse(200, "PONG", convertHeadersToFlatArray(responseHeaders));
             });
 
-            Response response = send(method, inboundPath, null, "PING", requestExtraHeadersArray);
+            Response response = send(method, inboundPath, null, "", requestExtraHeadersArray);
             verify(response, 200, "PONG", requestExtraHeadersArray);
         }
     }

@@ -7,7 +7,8 @@ public enum ResourceTypes implements ResourceType {
     PROMPT("prompts", true), LIMIT("limits", true),
     SHARED_WITH_ME("shared_with_me", true), SHARED_BY_ME("shared_by_me", true), INVITATION("invitations", true),
     PUBLICATION("publications", true), RULES("rules", true), API_KEY_DATA("api_key_data", true), NOTIFICATION("notifications", true),
-    APPLICATION("applications", true), DEPLOYMENT_COST_STATS("deployment_cost_stats", true);
+    APPLICATION("applications", true), DEPLOYMENT_COST_STATS("deployment_cost_stats", true),
+    CODE_INTERPRETER_SESSION("code_interpreter_session", true);
 
     private final String group;
     private final boolean requireCompression;
@@ -16,8 +17,6 @@ public enum ResourceTypes implements ResourceType {
         this.group = group;
         this.requireCompression = requireCompression;
     }
-
-
 
     public static ResourceTypes of(String group) {
         return switch (group) {

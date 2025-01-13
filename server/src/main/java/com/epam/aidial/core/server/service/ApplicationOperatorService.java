@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
@@ -28,7 +29,7 @@ import java.util.function.Function;
 /**
  * A web client to Application Controller Web Service that manages deployments for applications with functions.
  */
-class ApplicationOperatorService {
+public class ApplicationOperatorService {
 
     private final HttpClient client;
     private final String endpoint;
@@ -40,11 +41,11 @@ class ApplicationOperatorService {
         this.timeout = settings.getLong("controllerTimeout", 240000L);
     }
 
-    boolean isActive() {
+    public boolean isActive() {
         return endpoint != null;
     }
 
-    void verifyActive() {
+    public void verifyActive() {
         if (!isActive()) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "The application controller is not available");
         }
@@ -87,7 +88,6 @@ class ApplicationOperatorService {
                     }
 
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-
                     CreateDeploymentRequest body = new CreateDeploymentRequest(function.getEnv());
                     return ProxyUtil.convertToString(body);
                 },
@@ -112,6 +112,24 @@ class ApplicationOperatorService {
         return callController(HttpMethod.GET, "/v1/deployment/" + function.getId() + "/logs",
                 request -> null,
                 body -> ProxyUtil.convertToObject(body, Application.Logs.class));
+    }
+
+    public String createCodeInterpreterDeployment(String id, String image) {
+        CreateDeploymentResponse deployment = callController(HttpMethod.POST, "/v1/deployment/" + id,
+                request -> {
+                    request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+                    CreateDeploymentRequest body = new CreateDeploymentRequest(image, 1, 1, 1, Map.of());
+                    return ProxyUtil.convertToString(body);
+                },
+                body -> convertServerSentEvent(body, CreateDeploymentResponse.class));
+
+        return deployment.url();
+    }
+
+    public void deleteCodeInterpreterDeployment(String id) {
+        callController(HttpMethod.DELETE, "/v1/deployment/" + id,
+                request -> null,
+                body -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
     @SneakyThrows
@@ -206,7 +224,12 @@ class ApplicationOperatorService {
     private record CreateImageRequest(String runtime, String sources) {
     }
 
-    private record CreateDeploymentRequest(Map<String, String> env) {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record CreateDeploymentRequest(String image, Integer initialScale, Integer minScale, Integer maxScale,
+                                           Map<String, String> env) {
+        private CreateDeploymentRequest(Map<String, String> env) {
+            this(null, null, null, null, env);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

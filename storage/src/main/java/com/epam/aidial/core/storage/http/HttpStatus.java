@@ -33,6 +33,10 @@ public enum HttpStatus {
     }
 
     public static HttpStatus fromStatusCode(int code) {
+        return fromStatusCode(code, INTERNAL_SERVER_ERROR);
+    }
+
+    public static HttpStatus fromStatusCode(int code, HttpStatus fallback) {
         return switch (code) {
             case 200 -> OK;
             case 304 -> NOT_MODIFIED;
@@ -52,7 +56,7 @@ public enum HttpStatus {
             case 503 -> SERVICE_UNAVAILABLE;
             case 504 -> GATEWAY_TIMEOUT;
             case 505 -> HTTP_VERSION_NOT_SUPPORTED;
-            default -> throw new IllegalArgumentException("Unknown HTTP status code: " + code);
+            default -> fallback;
         };
     }
 }

@@ -36,6 +36,7 @@ dependencies {
     implementation 'org.hibernate.validator:hibernate-validator:8.0.0.Final'
     implementation 'org.glassfish:jakarta.el:4.0.2'
     implementation 'jakarta.validation:jakarta.validation-api:3.0.2' // Ensure you have Jakarta Validation API dependency
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.4'
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
     testImplementation 'commons-io:commons-io:2.11.0'
@@ -43,7 +44,6 @@ dependencies {
     testImplementation 'io.vertx:vertx-junit5:4.5.10'
     testImplementation 'org.mockito:mockito-core:5.7.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
-    testImplementation 'org.apache.httpcomponents.client5:httpclient5:5.4'
     testImplementation('com.github.codemonstur:embedded-redis:1.4.3') {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
