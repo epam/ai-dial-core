@@ -175,6 +175,14 @@ public class DeploymentController {
             data.setContentPartsSupported(features.getContentPartsSupported());
         }
 
+        if (features.getTemperatureSupported() != null) {
+            data.setTemperatureSupported(features.getTemperatureSupported());
+        }
+
+        if (features.getAddonsSupported() != null) {
+            data.setAddonsSupported(features.getAddonsSupported());
+        }
+
         return data;
     }
 }

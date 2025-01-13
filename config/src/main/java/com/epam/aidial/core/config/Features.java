@@ -32,6 +32,12 @@ public class Features {
     private Boolean folderAttachmentsSupported;
     @JsonAlias({"allowResume", "allow_resume"})
     private Boolean allowResume;
+    @JsonAlias({"accessibleByPerRequestKey", "accessible_by_per_request_key"})
     private Boolean accessibleByPerRequestKey;
+    @JsonAlias({"contentPartsSupported", "content_parts_supported"})
     private Boolean contentPartsSupported;
+    @JsonAlias({"temperatureSupported", "temperature_supported"})
+    private Boolean temperatureSupported;
+    @JsonAlias({"addonsSupported", "addons_supported"})
+    private Boolean addonsSupported;
 }

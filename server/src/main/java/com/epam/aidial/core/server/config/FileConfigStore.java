@@ -198,6 +198,12 @@ public final class FileConfigStore implements ConfigStore {
         if (modelFeatures.getContentPartsSupported() == null) {
             modelFeatures.setContentPartsSupported(features.getContentPartsSupported());
         }
+        if (modelFeatures.getTemperatureSupported() == null) {
+            modelFeatures.setTemperatureSupported(features.getTemperatureSupported());
+        }
+        if (modelFeatures.getAddonsSupported() == null) {
+            modelFeatures.setAddonsSupported(features.getAddonsSupported());
+        }
     }
 
     private JsonMapper buildJsonMapper(JsonObject settings) {

@@ -22,4 +22,6 @@ public class FeaturesData {
     private boolean allowResume = true;
     private boolean accessibleByPerRequestKey = true;
     private boolean contentPartsSupported = false;
+    private boolean temperatureSupported = true;
+    private boolean addonsSupported = true;
 }
