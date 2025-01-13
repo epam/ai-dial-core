@@ -1,9 +1,0 @@
-name: Dependency Submission
-
-on:
-  push:
-    branches: [ 'development' ]
-
-jobs:
-  dependency-submission:
-    uses: epam/ai-dial-ci/.github/workflows/gradle-dependency-submission.yml@main
