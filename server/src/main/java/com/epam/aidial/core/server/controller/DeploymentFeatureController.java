@@ -3,12 +3,14 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -54,14 +56,32 @@ public class DeploymentFeatureController {
 
         if (endpoint == null) {
             if (requireEndpoint) {
-                context.respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
+                respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
             } else {
-                context.respond(HttpStatus.OK);
+                respond(HttpStatus.OK);
                 proxy.getLogStore().save(context);
             }
             return;
         }
 
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        setupProxyApiKeyData(proxyApiKeyData);
+
+        proxy.getVertx().executeBlocking(() -> {
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+            return null;
+        }, false)
+                .onSuccess(ignore -> sendRequest(endpoint)).onFailure(this::handleError);
+
+    }
+
+    private void handleError(Throwable error) {
+        log.error("Error occurred while processing request", error);
+        respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+    }
+
+    @SneakyThrows
+    private void sendRequest(String endpoint) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
                 .setMethod(context.getRequest().method());
@@ -71,34 +91,53 @@ public class DeploymentFeatureController {
                 .onFailure(this::handleProxyConnectionError);
     }
 
+    private void setupProxyApiKeyData(ApiKeyData proxyApiKeyData) {
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+    }
+
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             log.error("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
-            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
             log.error("Deployment not found {}", deploymentId, error);
-            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
             log.error("Failed to handle deployment {}", deploymentId, error);
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
         }
     }
 
     /**
      * Called when proxy connected to the origin.
      */
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin: {}", proxyRequest.connection().remoteAddress());
+    void handleProxyRequest(HttpClientRequest proxyRequest) {
+        log.info("Connected to origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), context.getDeployment().getName(),
+                proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
+        context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        Deployment deployment = context.getDeployment();
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        if (!deployment.isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
 
-        Buffer proxyRequestBody = context.getRequestBody();
-        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
-        proxyRequest.send(proxyRequestBody)
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
+
+        Buffer requestBody = context.getRequestBody();
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
+        context.getRequestHeaders().forEach(proxyRequest::putHeader);
+
+        proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
     }
@@ -142,7 +181,7 @@ public class DeploymentFeatureController {
      */
     private void handleRequestBodyError(Throwable error) {
         log.warn("Failed to receive client body: {}", error.getMessage());
-        context.respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
     /**
@@ -150,7 +189,7 @@ public class DeploymentFeatureController {
      */
     private void handleProxyConnectionError(Throwable error) {
         log.warn("Can't connect to origin: {}", error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
+        respond(HttpStatus.BAD_GATEWAY, "connection error to origin");
     }
 
     /**
@@ -158,7 +197,7 @@ public class DeploymentFeatureController {
      */
     private void handleProxyRequestError(Throwable error) {
         log.warn("Can't send request to origin: {}", error.getMessage());
-        context.respond(HttpStatus.BAD_GATEWAY, "deployment responded with error");
+        respond(HttpStatus.BAD_GATEWAY, "deployment responded with error");
     }
 
     /**
@@ -168,5 +207,27 @@ public class DeploymentFeatureController {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+    }
+
+    private void respond(HttpStatus status, String errorMessage) {
+        finalizeRequest();
+        context.respond(status, errorMessage);
+    }
+
+    private void respond(HttpStatus status) {
+        finalizeRequest();
+        context.respond(status);
+    }
+
+    private void finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
+        }
     }
 }

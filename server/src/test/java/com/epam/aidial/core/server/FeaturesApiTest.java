@@ -2,11 +2,35 @@ package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
+import okhttp3.Headers;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 public class FeaturesApiTest extends ResourceBaseTest {
+
+    private static String[] convertHeadersToFlatArray(Headers headers) {
+        return StreamSupport.stream(headers.spliterator(), false)
+                .flatMap(header -> Stream.of(header.getFirst(), header.getSecond()))
+                .toArray(String[]::new);
+    }
+
+    private static Headers filterHeaders(Headers headers, Headers mask) {
+        Headers.Builder filteredHeaders = new Headers.Builder();
+        for (Map.Entry<String, List<String>> entry : headers.toMultimap().entrySet()) {
+            String key = entry.getKey();
+            if (mask.names().contains(key.toLowerCase())) {
+                for (String value : entry.getValue()) {
+                    filteredHeaders.add(key, value);
+                }
+            }
+        }
+        return filteredHeaders.build();
+    }
 
     @Test
     void testRateEndpointModel() {
@@ -64,11 +88,18 @@ public class FeaturesApiTest extends ResourceBaseTest {
 
     @SneakyThrows
     void testUpstreamEndpoint(String inboundPath, String upstream, HttpMethod method) {
+        Headers requestExtraHeaders = new Headers.Builder().add("foo", "bar").build();
+        String[] requestExtraHeadersArray = convertHeadersToFlatArray(requestExtraHeaders);
+
         URI uri = URI.create(upstream);
         try (TestWebServer server = new TestWebServer(uri.getPort())) {
-            server.map(method, uri.getPath(), 200, "PONG");
-            Response response = send(method, inboundPath);
-            verify(response, 200, "PONG");
+            server.map(method, uri.getPath(), request -> {
+                Headers responseHeaders = filterHeaders(request.getHeaders(), requestExtraHeaders);
+                return TestWebServer.createResponse(200, "PONG", convertHeadersToFlatArray(responseHeaders));
+            });
+
+            Response response = send(method, inboundPath, null, "", requestExtraHeadersArray);
+            verify(response, 200, "PONG", requestExtraHeadersArray);
         }
     }
 }

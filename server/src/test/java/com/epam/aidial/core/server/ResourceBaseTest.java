@@ -229,9 +229,14 @@ public class ResourceBaseTest {
         assertEquals(status, response.status(), () -> "Actual response body: " + response.body());
     }
 
-    static void verify(Response response, int status, String body) {
+    static void verify(Response response, int status, String body, String... headers) {
         assertEquals(status, response.status(), () -> "Actual response body: " + response.body());
         assertEquals(body, response.body());
+        for (int i = 0; i < headers.length; i += 2) {
+            String key = headers[i];
+            String value = headers[i + 1];
+            assertEquals(value, response.headers.get(key));
+        }
     }
 
     static void verifyJson(Response response, int status, String body) {
