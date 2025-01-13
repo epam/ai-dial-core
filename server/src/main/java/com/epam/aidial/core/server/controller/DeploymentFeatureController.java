@@ -76,7 +76,7 @@ public class DeploymentFeatureController {
     }
 
     private void handleError(Throwable error) {
-        log.info("Error occurred while processing request", error);
+        log.error("Error occurred while processing request", error);
         respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
     }
 
