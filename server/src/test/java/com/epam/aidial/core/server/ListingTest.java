@@ -52,7 +52,7 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts_supported": false, "temperature_supported" : true, "addons_supported" : true
+                    "content_parts": false, "temperature" : true, "addons" : true
                     }
                 """));
     }
@@ -64,7 +64,7 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": true, "seed": true
                     , "url_attachments": true, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts_supported": false, "temperature_supported" : true, "addons_supported" : true
+                    "content_parts": false, "temperature" : true, "addons" : true
                     }
                 """));
     }
@@ -76,7 +76,7 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": false, "tools": false, "seed": false
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts_supported": false, "temperature_supported" : true, "addons_supported" : true
+                    "content_parts": false, "temperature" : true, "addons" : true
                     }
                 """));
     }
@@ -88,7 +88,7 @@ public class ListingTest extends ResourceBaseTest {
                     , "system_prompt": true, "tools": false, "seed": false
                     , "url_attachments": false,  "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
-                    "content_parts_supported": false, "temperature_supported" : true, "addons_supported" : true
+                    "content_parts": false, "temperature" : true, "addons" : true
                     }
                 """));
     }

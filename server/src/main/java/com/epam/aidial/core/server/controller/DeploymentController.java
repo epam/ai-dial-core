@@ -172,15 +172,15 @@ public class DeploymentController {
         }
 
         if (features.getContentPartsSupported() != null) {
-            data.setContentPartsSupported(features.getContentPartsSupported());
+            data.setContentParts(features.getContentPartsSupported());
         }
 
         if (features.getTemperatureSupported() != null) {
-            data.setTemperatureSupported(features.getTemperatureSupported());
+            data.setTemperature(features.getTemperatureSupported());
         }
 
         if (features.getAddonsSupported() != null) {
-            data.setAddonsSupported(features.getAddonsSupported());
+            data.setAddons(features.getAddonsSupported());
         }
 
         return data;
