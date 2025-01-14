@@ -26,6 +26,7 @@ public enum ResourceTypes implements ResourceType {
             case "invitations" -> INVITATION;
             case "publications" -> PUBLICATION;
             case "applications" -> APPLICATION;
+            case "code_interpreter_session" -> CODE_INTERPRETER_SESSION;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }
