@@ -321,8 +321,14 @@ public class CodeInterpreterService {
                     ? ("user/" + sessionId)
                     : ("app/" + bucket.getAppBucket() + "/" + sessionId);
 
-            return ResourceDescriptorFactory.fromEncoded(ResourceTypes.CODE_INTERPRETER_SESSION,
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromEncoded(ResourceTypes.CODE_INTERPRETER_SESSION,
                     bucket.getUserBucket(), bucket.getUserBucketLocation(), path);
+
+            if (resource.isFolder()) {
+                throw new IllegalArgumentException("Invalid resource");
+            }
+
+            return resource;
         } catch (Throwable e) {
             throw new IllegalArgumentException("Invalid sessionId: " + sessionId);
         }
