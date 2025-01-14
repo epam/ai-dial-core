@@ -118,7 +118,7 @@ public class ApplicationOperatorService {
         CreateDeploymentResponse deployment = callController(HttpMethod.POST, "/v1/deployment/" + id,
                 request -> {
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-                    CreateDeploymentRequest body = new CreateDeploymentRequest(image, 0, 1, 1, Map.of());
+                    CreateDeploymentRequest body = new CreateDeploymentRequest(image, 1, 1, 1, Map.of());
                     return ProxyUtil.convertToString(body);
                 },
                 body -> convertServerSentEvent(body, CreateDeploymentResponse.class));
