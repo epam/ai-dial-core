@@ -174,6 +174,7 @@ public class DeploymentFeatureController {
         Buffer proxyResponseBody = context.getResponseStream().getContent();
         context.setResponseBody(proxyResponseBody);
         proxy.getLogStore().save(context);
+        finalizeRequest();
     }
 
     /**
@@ -207,6 +208,7 @@ public class DeploymentFeatureController {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        finalizeRequest();
     }
 
     private void respond(HttpStatus status, String errorMessage) {
