@@ -1541,13 +1541,15 @@ class PublicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.PUT, "/v1/applications/%s/test_app".formatted(bucket), null, """
                   {
                       "displayName": "test_app",
-                      "customAppSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                       "property1": "test property1",
-                       "property2": "test property2",
-                       "property3": [
-                            "files/%s/test_file.txt",
-                            "files/%s/xyz/test_file.txt"
-                       ],
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/%s/test_file.txt",
+                                "files/%s/xyz/test_file.txt"
+                        ]
+                       },
                        "userRoles": [
                             "Admin"
                        ],

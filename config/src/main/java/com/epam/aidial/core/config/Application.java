@@ -1,9 +1,6 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonAnyGetter;
-import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -25,21 +22,11 @@ public class Application extends Deployment {
 
     private Function function;
 
-    @JsonIgnore
-    private Map<String, Object> customProperties = new HashMap<>(); //all custom application properties will land there
+    @JsonAlias({"applicationProperties", "application_properties"})
+    private Map<String, Object> applicationProperties; //all custom application properties will land there
 
-    @JsonAnySetter
-    public void setCustomProperty(String key, Object value) { //all custom application properties will land there
-        customProperties.put(key, value);
-    }
-
-    @JsonAnyGetter
-    public  Map<String, Object> getCustomProperties() {
-        return customProperties;
-    }
-
-    @JsonAlias({"customAppSchemaId", "custom_app_schema_id"})
-    private URI customAppSchemaId;
+    @JsonAlias({"applicationTypeSchemaId", "application_type_schema_id"})
+    private URI applicationTypeSchemaId;
 
     @Data
     @Accessors(chain = true)
@@ -135,7 +122,7 @@ public class Application extends Deployment {
         this.setInterceptors(source.getInterceptors());
         this.setDescriptionKeywords(source.getDescriptionKeywords());
         this.setFunction(source.getFunction());
-        this.setCustomProperties(source.getCustomProperties());
-        this.setCustomAppSchemaId(source.getCustomAppSchemaId());
+        this.setApplicationProperties(source.getApplicationProperties());
+        this.setApplicationTypeSchemaId(source.getApplicationTypeSchemaId());
     }
 }

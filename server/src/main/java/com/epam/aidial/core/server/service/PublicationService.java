@@ -413,7 +413,7 @@ public class PublicationService {
                         return Stream.empty();
                     }
                     Application application = applicationService.getApplication(source).getValue();
-                    if (application.getCustomAppSchemaId() == null) {
+                    if (application.getApplicationTypeSchemaId() == null) {
                         return Stream.empty();
                     }
                     String targetFolder = buildTargetFolderForCustomAppFiles(resource);

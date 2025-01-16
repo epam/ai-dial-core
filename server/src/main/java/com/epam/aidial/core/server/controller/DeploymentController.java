@@ -77,7 +77,7 @@ public class DeploymentController {
                             return Future.succeededFuture(deployment);
                         }
                         return proxy.getVertx().executeBlocking(() -> {
-                            if (application.getCustomAppSchemaId() == null) {
+                            if (application.getApplicationTypeSchemaId() == null) {
                                 return application;
                             }
                             Application modifiedApp = application;
@@ -118,7 +118,7 @@ public class DeploymentController {
 
             Application app = proxy.getApplicationService().getApplication(resource).getValue();
 
-            if (app.getCustomAppSchemaId() != null) {
+            if (app.getApplicationTypeSchemaId() != null) {
                 if (filterCustomProperties) {
                     app = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, app);
                 }
