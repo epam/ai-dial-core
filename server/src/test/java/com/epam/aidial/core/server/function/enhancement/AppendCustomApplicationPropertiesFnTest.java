@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
@@ -79,14 +81,23 @@ public class AppendCustomApplicationPropertiesFnTest {
     }
 
     @Test
+    void apply_throws_whenApplicationHasCustomSchemaIdAndNoCustomFieldsPassedAndApplicationPropertiesIsNull() {
+        when(context.getDeployment()).thenReturn(application);
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+        when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schema);
+        ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
+        assertThrows(ApplicationTypeSchemaValidationException.class, () -> function.apply(tree));
+    }
+
+    @Test
     void apply_appendsCustomProperties_whenApplicationHasCustomSchemaIdAndNoCustomFieldsPassed() {
         String serverFile = "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext";
         when(context.getDeployment()).thenReturn(application);
-        application.setCustomAppSchemaId(URI.create("customSchemaId"));
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
         Map<String, Object> customProps = new HashMap<>();
         customProps.put("clientFile", "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext");
         customProps.put("serverFile", serverFile);
-        application.setCustomProperties(customProps);
+        application.setApplicationProperties(customProps);
         when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schema);
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
         boolean result = function.apply(tree);
@@ -112,7 +123,7 @@ public class AppendCustomApplicationPropertiesFnTest {
     @Test
     void apply_returnsFalse_whenApplicationHasNoCustomSchemaId() {
         when(context.getDeployment()).thenReturn(application);
-        application.setCustomAppSchemaId(null);
+        application.setApplicationTypeSchemaId(null);
 
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
         boolean result = function.apply(tree);
@@ -124,10 +135,10 @@ public class AppendCustomApplicationPropertiesFnTest {
     @Test
     void apply_returnsTrue_whenCustomPropertiesAreEmptyAndApplicationHasCustomSchemaId() {
         when(context.getDeployment()).thenReturn(application);
-        application.setCustomAppSchemaId(URI.create("customSchemaId"));
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
         Map<String, Object> customProps = new HashMap<>();
         customProps.put("clientFile", "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext");
-        application.setCustomProperties(customProps);
+        application.setApplicationProperties(customProps);
         when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schema);
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode();
         boolean result = function.apply(tree);
@@ -139,11 +150,11 @@ public class AppendCustomApplicationPropertiesFnTest {
     void apply_appendsCustomProperties_whenApplicationHasCustomSchemaIdAndCustomFieldsPassed() throws JsonProcessingException {
         String serverFile = "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext";
         when(context.getDeployment()).thenReturn(application);
-        application.setCustomAppSchemaId(URI.create("customSchemaId"));
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
         Map<String, Object> customProps = new HashMap<>();
         customProps.put("clientFile", "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext");
         customProps.put("serverFile", serverFile);
-        application.setCustomProperties(customProps);
+        application.setApplicationProperties(customProps);
         when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schema);
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree("""
                 {

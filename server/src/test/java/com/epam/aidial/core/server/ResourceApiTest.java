@@ -338,13 +338,15 @@ class ResourceApiTest extends ResourceBaseTest {
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_files", null, """
                   {
                       "displayName": "test_app",
-                      "customAppSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                       "property1": "test property1",
-                       "property2": "test property2",
-                       "property3": [
-                            "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt",
-                            "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt"
-                       ],
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt",
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt"
+                        ]
+                       },
                        "userRoles": [
                             "Admin"
                        ],
@@ -361,12 +363,14 @@ class ResourceApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_folder", null, """
                   {
                       "displayName": "test_app",
-                      "customAppSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                       "property1": "test property1",
-                       "property2": "test property2",
-                       "property3": [
-                            "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/"
-                       ],
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/"
+                        ]
+                       },
                        "userRoles": [
                             "Admin"
                        ],
@@ -383,12 +387,14 @@ class ResourceApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_files_failed", null, """
                   {
                       "displayName": "test_app",
-                      "customAppSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                       "property1": "test property1",
-                       "property2": "test property2",
-                       "property3": [
-                            "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/unexisting_folder/unexisting_file.txt"
-                       ],
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/unexisting_folder/unexisting_file.txt"
+                        ]
+                       },
                        "userRoles": [
                             "Admin"
                        ],
@@ -405,7 +411,8 @@ class ResourceApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_props_failed", null, """
                   {
                       "displayName": "test_app",
-                      "customAppSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {},
                        "userRoles": [
                             "Admin"
                        ],

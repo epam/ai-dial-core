@@ -42,13 +42,16 @@ public class CustomApplicationsConformToTypeSchemasValidator implements Constrai
         ObjectMapper mapper = new ObjectMapper();
         for (Map.Entry<String, Application> entry : value.getApplications().entrySet()) {
             Application application = entry.getValue();
-            URI schemaId = application.getCustomAppSchemaId();
+            URI schemaId = application.getApplicationTypeSchemaId();
             if (schemaId == null) {
                 continue;
             }
 
             JsonSchema schema = schemaFactory.getSchema(schemaId);
-            JsonNode applicationNode = mapper.valueToTree(application);
+            if (application.getApplicationProperties() == null) {
+                continue;
+            }
+            JsonNode applicationNode = mapper.valueToTree(application.getApplicationProperties());
             Set<ValidationMessage> validationResults = schema.validate(applicationNode);
             if (!validationResults.isEmpty()) {
                 String logMessage = validationResults.stream()

@@ -25,8 +25,8 @@ public class ApplicationUtil {
         data.setDefaults(application.getDefaults());
         data.setDescriptionKeywords(application.getDescriptionKeywords());
 
-        data.setCustomAppSchemaId(application.getCustomAppSchemaId());
-        data.setCustomProperties(application.getCustomProperties());
+        data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());
+        data.setApplicationProperties(application.getApplicationProperties());
         String reference = application.getReference();
         data.setReference(reference == null ? application.getName() : reference);
         data.setFunction(application.getFunction());

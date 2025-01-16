@@ -89,7 +89,7 @@ public class ApplicationTypeSchemaUtilsTest {
     @Test
     public void getCustomApplicationSchemaOrThrow_returnsSchema_whenSchemaIdExists() {
         URI schemaId = URI.create("schemaId");
-        application.setCustomAppSchemaId(schemaId);
+        application.setApplicationTypeSchemaId(schemaId);
         when(config.getCustomApplicationSchema(schemaId)).thenReturn("schema");
 
         String result = ApplicationTypeSchemaUtils.getCustomApplicationSchemaOrThrow(config, application);
@@ -100,7 +100,7 @@ public class ApplicationTypeSchemaUtilsTest {
     @Test
     public void getCustomApplicationSchemaOrThrow_throws_whenSchemaNotFound() {
         URI schemaId = URI.create("schemaId");
-        application.setCustomAppSchemaId(schemaId);
+        application.setApplicationTypeSchemaId(schemaId);
         when(config.getCustomApplicationSchema(schemaId)).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
@@ -109,7 +109,7 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     public void getCustomApplicationSchemaOrThrow_returnsNull_whenSchemaIdIsNull() {
-        application.setCustomAppSchemaId(null);
+        application.setApplicationTypeSchemaId(null);
 
         String result = ApplicationTypeSchemaUtils.getCustomApplicationSchemaOrThrow(config, application);
 
@@ -119,8 +119,8 @@ public class ApplicationTypeSchemaUtilsTest {
     @Test
     public void getCustomServerProperties_returnsProperties_whenSchemaExists() {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
-        application.setCustomProperties(customProperties);
-        application.setCustomAppSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
 
         Map<String, Object> result = ApplicationTypeSchemaUtils.getCustomServerProperties(config, application);
 
@@ -129,7 +129,7 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     public void getCustomServerProperties_returnsEmptyMap_whenSchemaIsNull() {
-        application.setCustomAppSchemaId(null);
+        application.setApplicationTypeSchemaId(null);
 
         Map<String, Object> result = ApplicationTypeSchemaUtils.getCustomServerProperties(config, application);
 
@@ -138,7 +138,7 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     public void getCustomServerProperties_throws_whenSchemaNotFound() {
-        application.setCustomAppSchemaId(URI.create("schemaId"));
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
         Assertions.assertThrows(ApplicationTypeSchemaValidationException.class, () ->
@@ -149,18 +149,29 @@ public class ApplicationTypeSchemaUtilsTest {
     @Test
     public void filterCustomClientProperties_returnsFilteredProperties_whenSchemaExists() {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
-        application.setCustomAppSchemaId(URI.create("schemaId"));
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
 
         Application result = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
 
         Assertions.assertNotSame(application, result);
-        Assertions.assertEquals(clientProperties, result.getCustomProperties());
+        Assertions.assertEquals(clientProperties, result.getApplicationProperties());
+    }
+
+    @Test
+    public void filterCustomClientProperties_returnsOriginalApplication_whenApplicationPropertiesIsNull() {
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(null);
+
+        Application result = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+
+        Assertions.assertSame(application, result);
     }
 
     @Test
     public void filterCustomClientProperties_returnsOriginalApplication_whenSchemaIsNull() {
-        application.setCustomAppSchemaId(null);
+        application.setApplicationTypeSchemaId(null);
 
         Application result = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
 
@@ -171,34 +182,34 @@ public class ApplicationTypeSchemaUtilsTest {
     @Test
     public void filterCustomClientPropertiesWhenNoWriteAccess_returnsFilteredProperties_whenNoWriteAccess() {
         URI schemUri = URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type");
-        application.setCustomAppSchemaId(schemUri);
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(schemUri);
+        application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(eq(schemUri))).thenReturn(schema);
         when(accessService.hasWriteAccess(resource, ctx)).thenReturn(false);
 
         Application result = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, resource, application);
 
         Assertions.assertNotSame(application, result);
-        Assertions.assertEquals(clientProperties, result.getCustomProperties());
+        Assertions.assertEquals(clientProperties, result.getApplicationProperties());
     }
 
     @Test
     public void filterCustomClientPropertiesWhenNoWriteAccess_returnsOriginalApplication_whenHasWriteAccess() {
         URI schemUri = URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type");
         when(accessService.hasWriteAccess(resource, ctx)).thenReturn(true);
-        application.setCustomAppSchemaId(schemUri);
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(schemUri);
+        application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(eq(schemUri))).thenReturn(schema);
 
         Application result = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, resource, application);
 
         Assertions.assertSame(application, result);
-        Assertions.assertEquals(customProperties, result.getCustomProperties());
+        Assertions.assertEquals(customProperties, result.getApplicationProperties());
     }
 
     @Test
     public void modifyEndpointForCustomApplication_setsCustomEndpoint_whenSchemaExists() {
-        application.setCustomAppSchemaId(URI.create("schemaId"));
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
         Application result = ApplicationTypeSchemaUtils.modifyEndpointForCustomApplication(config, application);
@@ -209,7 +220,7 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     public void modifyEndpointForCustomApplication_throws_whenSchemaIsNull() {
-        application.setCustomAppSchemaId(null);
+        application.setApplicationTypeSchemaId(null);
 
         Assertions.assertThrows(ApplicationTypeSchemaProcessingException.class,
                 () -> ApplicationTypeSchemaUtils.modifyEndpointForCustomApplication(config, application));
@@ -232,7 +243,7 @@ public class ApplicationTypeSchemaUtilsTest {
                 + "},"
                 + "\"required\": [\"clientFile\"]"
                 + "}";
-        application.setCustomAppSchemaId(URI.create("schemaId"));
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(schemaWithoutEndpoint);
 
         Assertions.assertThrows(ApplicationTypeSchemaProcessingException.class, () ->
@@ -245,8 +256,8 @@ public class ApplicationTypeSchemaUtilsTest {
         customProperties.put("clientFile", "oldLink1");
         customProperties.put("serverFile", "oldLink2");
 
-        application.setCustomAppSchemaId(URI.create("schemaId"));
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
 
 
         Map<String, String> replacementLinks = new HashMap<>();
@@ -259,7 +270,7 @@ public class ApplicationTypeSchemaUtilsTest {
         expectedProperties.put("clientFile", "newLink1");
         expectedProperties.put("serverFile", "newLink2");
 
-        Assertions.assertEquals(expectedProperties, application.getCustomProperties());
+        Assertions.assertEquals(expectedProperties, application.getApplicationProperties());
     }
 
     @Test
@@ -268,8 +279,8 @@ public class ApplicationTypeSchemaUtilsTest {
         customProperties.put("clientFile", "oldLink1");
         customProperties.put("serverFile", "oldLink2");
 
-        application.setCustomAppSchemaId(null);
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(null);
+        application.setApplicationProperties(customProperties);
 
         Map<String, String> replacementLinks = new HashMap<>();
         replacementLinks.put("oldLink1", "newLink1");
@@ -277,7 +288,7 @@ public class ApplicationTypeSchemaUtilsTest {
 
         ApplicationTypeSchemaUtils.replaceCustomAppFiles(application, replacementLinks);
 
-        Assertions.assertEquals(customProperties, application.getCustomProperties());
+        Assertions.assertEquals(customProperties, application.getApplicationProperties());
     }
 
     @Test
@@ -288,8 +299,8 @@ public class ApplicationTypeSchemaUtilsTest {
         customProperties.put("clientFile", "oldLink1");
         customProperties.put("serverProps", serverProps);
 
-        application.setCustomAppSchemaId(URI.create("schemaId"));
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
 
         Map<String, String> replacementLinks = new HashMap<>();
         replacementLinks.put("oldLink1", "newLink1");
@@ -303,14 +314,14 @@ public class ApplicationTypeSchemaUtilsTest {
         expectedProperties.put("clientFile", "newLink1");
         expectedProperties.put("serverProps", expectedServerProps);
 
-        Assertions.assertEquals(expectedProperties, application.getCustomProperties());
+        Assertions.assertEquals(expectedProperties, application.getApplicationProperties());
     }
 
 
     @Test
     public void getFiles_returnsListOfFiles_whenSchemaExists() {
-        application.setCustomAppSchemaId(URI.create("schemaId"));
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
         EncryptionService encryptionService = mock(EncryptionService.class);
@@ -325,7 +336,7 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     public void getFiles_returnsEmptyList_whenSchemaIsNull() {
-        application.setCustomAppSchemaId(null);
+        application.setApplicationTypeSchemaId(null);
 
         EncryptionService encryptionService = mock(EncryptionService.class);
         ResourceService resourceService = mock(ResourceService.class);
@@ -337,8 +348,8 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     public void getFiles_throwsException_whenResourceNotFound() {
-        application.setCustomAppSchemaId(URI.create("schemaId"));
-        application.setCustomProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
         EncryptionService encryptionService = mock(EncryptionService.class);

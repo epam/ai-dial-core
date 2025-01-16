@@ -58,10 +58,43 @@ class CustomApplicationsConformToTypeSchemasValidatorTest {
     }
 
     @Test
+    void isValidReturnsTrueWhenApplicationHasNullProps() {
+        Map<String, Application> applications = new HashMap<>();
+        Application application = new Application();
+        application.setApplicationTypeSchemaId(URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type"));
+        applications.put("app1", application);
+        config.setApplications(applications);
+        Map<String, String> schemas = new HashMap<>();
+        String customSchemaStr = "{"
+                                 + "\"$schema\": \"https://dial.epam.com/application_type_schemas/schema#\","
+                                 + "\"$id\": \"https://mydial.epam.com/custom_application_schemas/specific_application_type\","
+                                 + "\"dial:applicationTypeEditorUrl\": \"https://mydial.epam.com/specific_application_type_editor\","
+                                 + "\"dial:applicationTypeDisplayName\": \"Specific Application Type\","
+                                 + "\"dial:applicationTypeCompletionEndpoint\": \"http://specific_application_service/opeani/v1/completion\","
+                                 + "\"properties\": {"
+                                 + "  \"file\": {"
+                                 + "    \"type\": \"string\","
+                                 + "    \"format\": \"dial-file-encoded\","
+                                 + "    \"dial:meta\": {"
+                                 + "      \"dial:propertyKind\": \"client\","
+                                 + "      \"dial:propertyOrder\": 1"
+                                 + "    }"
+                                 + "  }"
+                                 + "},"
+                                 + "\"required\": [\"file\"]"
+                                 + "}";
+        schemas.put("https://mydial.epam.com/custom_application_schemas/specific_application_type", customSchemaStr);
+        config.setApplicationTypeSchemas(schemas);
+
+        assertTrue(validator.isValid(config, context));
+    }
+
+    @Test
     void isValidReturnsFalseWhenSchemaValidationFails() {
         Map<String, Application> applications = new HashMap<>();
         Application application = new Application();
-        application.setCustomAppSchemaId(URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type"));
+        application.setApplicationTypeSchemaId(URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type"));
+        application.setApplicationProperties(Map.of());
         applications.put("app1", application);
         config.setApplications(applications);
         Map<String, String> schemas = new HashMap<>();
@@ -93,10 +126,10 @@ class CustomApplicationsConformToTypeSchemasValidatorTest {
     void isValidReturnsTrueWhenSchemaValidationPasses() {
         Map<String, Application> applications = new HashMap<>();
         Application application = new Application();
-        application.setCustomAppSchemaId(URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type"));
+        application.setApplicationTypeSchemaId(URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type"));
         Map<String, Object> props = new HashMap<>();
         props.put("file", "files/bucket/path/name.ext");
-        application.setCustomProperties(props);
+        application.setApplicationProperties(props);
         applications.put("app1", application);
         config.setApplications(applications);
         Map<String, String> schemas = new HashMap<>();

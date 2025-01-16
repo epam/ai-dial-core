@@ -48,7 +48,7 @@ public class ApplicationTypeSchemaUtils {
             .build();
 
     static String getCustomApplicationSchemaOrThrow(Config config, Application application) {
-        URI schemaId = application.getCustomAppSchemaId();
+        URI schemaId = application.getApplicationTypeSchemaId();
         if (schemaId == null) {
             return null;
         }
@@ -60,12 +60,12 @@ public class ApplicationTypeSchemaUtils {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> filterProperties(Map<String, Object> customProps, String schema, String collectorName) {
+    private static Map<String, Object> filterProperties(Map<String, Object> applicationProperties, String schema, String collectorName) {
         try {
             JsonSchema appSchema = SCHEMA_FACTORY.getSchema(schema);
             CollectorContext collectorContext = new CollectorContext();
-            String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(customProps);
-            Set<ValidationMessage> validationResult = appSchema.validate(customPropsJson, InputFormat.JSON,
+            String applicationPropertiesJson = ProxyUtil.MAPPER.writeValueAsString(applicationProperties);
+            Set<ValidationMessage> validationResult = appSchema.validate(applicationPropertiesJson, InputFormat.JSON,
                     e -> e.setCollectorContext(collectorContext));
             if (!validationResult.isEmpty()) {
                 throw new ApplicationTypeSchemaValidationException("Failed to validate custom app against the schema", validationResult);
@@ -76,7 +76,7 @@ public class ApplicationTypeSchemaUtils {
             }
             Map<String, Object> result = new HashMap<>();
             for (String propertyName : propsCollector.collect()) {
-                result.put(propertyName, customProps.get(propertyName));
+                result.put(propertyName, applicationProperties.get(propertyName));
             }
             return result;
         } catch (ApplicationTypeSchemaValidationException e) {
@@ -91,7 +91,10 @@ public class ApplicationTypeSchemaUtils {
         if (customApplicationSchema == null) {
             return Collections.emptyMap();
         }
-        return filterProperties(application.getCustomProperties(), customApplicationSchema, "server");
+        if (application.getApplicationProperties() == null) {
+            throw new ApplicationTypeSchemaValidationException("Typed application's properties not set");
+        }
+        return filterProperties(application.getApplicationProperties(), customApplicationSchema, "server");
     }
 
     public static String getCustomApplicationEndpoint(Config config, Application application) {
@@ -123,9 +126,12 @@ public class ApplicationTypeSchemaUtils {
         if (customApplicationSchema == null) {
             return application;
         }
+        if (application.getApplicationProperties() == null) {
+            return application;
+        }
         Application copy = new Application(application);
-        Map<String, Object> appWithClientOptionsOnly = filterProperties(application.getCustomProperties(), customApplicationSchema, "client");
-        copy.setCustomProperties(appWithClientOptionsOnly);
+        Map<String, Object> appWithClientOptionsOnly = filterProperties(application.getApplicationProperties(), customApplicationSchema, "client");
+        copy.setApplicationProperties(appWithClientOptionsOnly);
         return copy;
     }
 
@@ -137,15 +143,15 @@ public class ApplicationTypeSchemaUtils {
     }
 
     public static void replaceCustomAppFiles(Application application, Map<String, String> replacementLinks) {
-        if (application.getCustomAppSchemaId() == null) {
+        if (application.getApplicationTypeSchemaId() == null) {
             return;
         }
-        JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getCustomProperties(), JsonNode.class);
+        JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
         replaceLinksInJsonNode(customProperties, replacementLinks, null, null);
         Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
         });
 
-        application.setCustomProperties(customPropertiesMap);
+        application.setApplicationProperties(customPropertiesMap);
     }
 
     @SuppressWarnings("unchecked")
@@ -157,7 +163,7 @@ public class ApplicationTypeSchemaUtils {
             }
             JsonSchema appSchema = SCHEMA_FACTORY.getSchema(customApplicationSchema);
             CollectorContext collectorContext = new CollectorContext();
-            String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(application.getCustomProperties());
+            String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
             Set<ValidationMessage> validationResult = appSchema.validate(customPropsJson, InputFormat.JSON,
                     e -> e.setCollectorContext(collectorContext));
             if (!validationResult.isEmpty()) {
