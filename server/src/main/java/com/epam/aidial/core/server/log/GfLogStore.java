@@ -329,11 +329,11 @@ public class GfLogStore implements LogStore {
                     for (JsonNode choice : choices) {
                         MergeChunks.removeIndices(choice);
                         if (choice.isObject()) {
-                            ObjectNode choiceDict = (ObjectNode) choice;
-                            JsonNode delta = choiceDict.get("delta");
+                            ObjectNode choiceObj = (ObjectNode) choice;
+                            JsonNode delta = choiceObj.get("delta");
                             if (delta != null) {
-                                choiceDict.set("message", delta);
-                                choiceDict.remove("delta");
+                                choiceObj.set("message", delta);
+                                choiceObj.remove("delta");
                             }
                         }
                     }
