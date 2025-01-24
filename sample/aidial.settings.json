@@ -13,12 +13,14 @@
       "jwksUrl": "https://login.microsoftonline.com/path/discovery/keys",
       "rolePath": "groups",
       "projectPath": "aud",
+      "audience": "dial",
       "issuerPattern": "^https:\\/\\/some\\.windows\\.net.+$"
     },
     "keycloak": {
       "jwksUrl": "https://host.com/realms/your/protocol/openid-connect/certs",
       "rolePath": "resource_access.your.roles",
       "projectPath": "azp",
+      "audience": "dial",
       "issuerPattern": "^https:\\/\\/some-keycloak.com.+$"
     },
     "google": {
@@ -26,6 +28,7 @@
       "projectPath": "aud",
       "userInfoEndpoint": "https://openidconnect.googleapis.com/v1/userinfo",
       "loggingKey": "email",
+      "audience": "dial",
       "loggingSalt": "salt"
     },
     "cognito": {
@@ -33,12 +36,14 @@
       "issuerPattern": "^https:\\/\\/cognito-idp\\.eu-north-1\\.amazonaws\\.com.+$",
       "rolePath": "roles",
       "projectPath": "aud",
+      "audience": "dial",
       "jwksUrl": "https://cognito-idp.eu-north-1.amazonaws.com/eu-north-1_PWSAjo4OY/.well-known/jwks.json",
       "loggingSalt": "loggingSalt"
     },
     "gitlab": {
       "rolePath": "groups",
       "projectPath": "aud",
+      "audience": "dial",
       "userInfoEndpoint": "https://gitlab.com/oauth/userinfo",
       "loggingKey": "email",
       "loggingSalt": "salt"
@@ -48,6 +53,7 @@
       "issuerPattern": "^https:\\/\\/chatbot-ui-staging\\.eu\\.auth0\\.com.+$",
       "rolePath": "dial_roles",
       "projectPath": "aud",
+      "audience": "dial",
       "jwksUrl": "https://<your_domain>.auth0.com/.well-known/jwks.json",
       "loggingSalt": "loggingSalt"
     },
@@ -56,6 +62,7 @@
       "issuerPattern": "^https:\\/\\/<your_domain>\\.okta\\.com.*$",
       "rolePath": "Groups",
       "projectPath": "aud",
+      "audience": "dial",
       "jwksUrl": "https://<your_domain>.okta.com/oauth2/default/v1/keys",
       "loggingSalt": "loggingSalt"
     },

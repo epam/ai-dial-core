@@ -7,6 +7,7 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.auth0.jwt.interfaces.Verification;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -84,6 +85,8 @@ public class IdentityProvider {
 
     private final GetUserRoleFn getUserRoleFn;
 
+    private final String audience;
+
     public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         if (settings == null) {
@@ -152,6 +155,8 @@ public class IdentityProvider {
             throw new IllegalArgumentException(e);
         }
         obfuscateUserEmail = settings.getBoolean("obfuscateUserEmail", true);
+
+        audience = settings.getString("audience", null);
 
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
@@ -235,7 +240,11 @@ public class IdentityProvider {
         }
         Jwk jwk = jwkResult.jwk();
         try {
-            return JWT.require(Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null)).build().verify(jwt);
+            Verification verification = JWT.require(Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null));
+            if (audience != null) {
+                verification.withAudience(audience);
+            }
+            return verification.build().verify(jwt);
         } catch (JwkException e) {
             throw new RuntimeException(e);
         }
