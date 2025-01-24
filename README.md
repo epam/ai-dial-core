@@ -101,7 +101,7 @@ Priority order:
 | codeInterpreter.sessionImage                  |         -          |    No    |The code interpreter session image to use
 | codeInterpreter.sessionTtl                    |       600000       |    No    |The session time to leave after the last API call
 | codeInterpreter.checkPeriod                   |       10000        |    No    |The interval at which to check active sessions for expiration
-| codeInterpreter.checkSize                     |        256         |    No    |The maximum number of active sessions to check in single check
+| codeInterpreter.checkSize                     |       256          |    No    |The maximum number of active sessions to check in single check
 
 ### Storage requirements
 
