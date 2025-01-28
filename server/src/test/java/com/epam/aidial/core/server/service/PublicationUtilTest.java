@@ -2,17 +2,37 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ResourceBaseTest;
 import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 public class PublicationUtilTest {
+
+    @Mock
+    private EncryptionService encryptionService;
+
+    @Test
+    public void testBuildTargetFolderForCustomAppFiles() {
+        when(encryptionService.decrypt(any(String.class))).thenReturn("location/");
+        assertEquals("folder/.appA/", PublicationUtil.buildTargetFolderForCustomAppFiles("applications/asdfoiefjio/folder/appA", encryptionService));
+        assertEquals(".appA/", PublicationUtil.buildTargetFolderForCustomAppFiles("applications/asdfoiefjio/appA", encryptionService));
+        assertThrows(IllegalArgumentException.class, () -> PublicationUtil.buildTargetFolderForCustomAppFiles("applications/asdfoiefjio/appA/", encryptionService));
+        assertThrows(IllegalArgumentException.class, () -> PublicationUtil.buildTargetFolderForCustomAppFiles("prompts/asdfoiefjio/appA", encryptionService));
+    }
 
     @Test
     void testConversationIdReplacement() {

@@ -1,12 +1,16 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.experimental.UtilityClass;
 
+import java.util.List;
 import java.util.Map;
 
 @UtilityClass
@@ -95,5 +99,30 @@ public class PublicationUtil {
         conversation.put("id", targetResource.getDecodedUrl());
         conversation.put("folderId", folderUrl);
         return conversation;
+    }
+
+
+    /**
+     * Builds the target folder path for custom application files.
+     *
+     * @param targetUrl the target URL of the application being published
+     * @return the constructed target folder path for custom application files
+     */
+    static String buildTargetFolderForCustomAppFiles(String targetUrl, EncryptionService encryptionService) {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(targetUrl, encryptionService);
+        if (descriptor.isFolder()) {
+            throw new IllegalArgumentException("target url must be a file");
+        }
+        if (descriptor.getType() != ResourceTypes.APPLICATION) {
+            throw new IllegalArgumentException("target url must be an application type");
+        }
+        String appName = descriptor.getName();
+        List<String> folders = descriptor.getParentFolders();
+        if (folders.isEmpty()) {
+            return "." + appName + ResourceDescriptor.PATH_SEPARATOR;
+        } else {
+            String appPath = String.join(ResourceDescriptor.PATH_SEPARATOR, folders);
+            return appPath + ResourceDescriptor.PATH_SEPARATOR + "." + appName + ResourceDescriptor.PATH_SEPARATOR;
+        }
     }
 }
