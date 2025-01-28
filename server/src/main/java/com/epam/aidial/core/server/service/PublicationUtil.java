@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -111,6 +112,9 @@ public class PublicationUtil {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(targetUrl, encryptionService);
         if (descriptor.isFolder()) {
             throw new IllegalArgumentException("target url must be a file");
+        }
+        if (descriptor.getType() != ResourceTypes.APPLICATION) {
+            throw new IllegalArgumentException("target url must be an application type");
         }
         String appName = descriptor.getName();
         List<String> folders = descriptor.getParentFolders();

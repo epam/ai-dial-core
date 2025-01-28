@@ -31,6 +31,7 @@ public class PublicationUtilTest {
         assertEquals("folder/.appA/", PublicationUtil.buildTargetFolderForCustomAppFiles("applications/asdfoiefjio/folder/appA", encryptionService));
         assertEquals(".appA/", PublicationUtil.buildTargetFolderForCustomAppFiles("applications/asdfoiefjio/appA", encryptionService));
         assertThrows(IllegalArgumentException.class, () -> PublicationUtil.buildTargetFolderForCustomAppFiles("applications/asdfoiefjio/appA/", encryptionService));
+        assertThrows(IllegalArgumentException.class, () -> PublicationUtil.buildTargetFolderForCustomAppFiles("prompts/asdfoiefjio/appA", encryptionService));
     }
 
     @Test
