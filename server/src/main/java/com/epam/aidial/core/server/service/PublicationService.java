@@ -378,26 +378,6 @@ public class PublicationService {
         validateRules(publication);
     }
 
-    /**
-     * Builds the target folder path for custom application files.
-     *
-     * @param resource the publication resource containing the target URL
-     * @return the constructed target folder path for custom application files
-     */
-    private static String buildTargetFolderForCustomAppFiles(Publication.Resource resource) {
-        String targetUrl = resource.getTargetUrl();
-        // Find the index of the end of a bucket segment (the second slash in the target URL)
-        int indexOfBucketEndSlash = targetUrl.indexOf(ResourceDescriptor.PATH_SEPARATOR, targetUrl.indexOf(ResourceDescriptor.PATH_SEPARATOR) + 1);
-        // Find the index of the start of a file name (the last slash in the target URL)
-        int indexOfFileNameStartSlash = targetUrl.lastIndexOf(ResourceDescriptor.PATH_SEPARATOR);
-        // Extract the application path from the target URL
-        String appPath = targetUrl.substring(indexOfBucketEndSlash + 1, indexOfFileNameStartSlash);
-        // Extract the application name from the target URL
-        String appName = targetUrl.substring(indexOfFileNameStartSlash + 1);
-        // Construct and return the target folder path
-        return appPath + ResourceDescriptor.PATH_SEPARATOR + "." + appName + ResourceDescriptor.PATH_SEPARATOR;
-    }
-
     private void addCustomApplicationRelatedFiles(ProxyContext context, Publication publication) {
         List<String> existingUrls = publication.getResources().stream()
                 .map(Publication.Resource::getSourceUrl)
@@ -416,7 +396,7 @@ public class PublicationService {
                     if (application.getApplicationTypeSchemaId() == null) {
                         return Stream.empty();
                     }
-                    String targetFolder = buildTargetFolderForCustomAppFiles(resource);
+                    String targetFolder = PublicationUtil.buildTargetFolderForCustomAppFiles(resource.getTargetUrl(), encryption);
                     return ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, encryption, resourceService)
                             .stream()
                             .filter(sourceDescriptor -> !existingUrls.contains(sourceDescriptor.getUrl()) && !sourceDescriptor.isPublic())
