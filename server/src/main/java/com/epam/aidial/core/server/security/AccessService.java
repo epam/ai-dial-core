@@ -132,13 +132,10 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (hasAdminAccess(context)) {
-            boolean isNotApplication = context.getApiKeyData().getPerRequestKey() == null;
-            Set<ResourceAccessType> permissions = isNotApplication
-                    ? ResourceAccessType.ALL
-                    : ResourceAccessType.READ_ONLY;
+        if (context.getApiKeyData().getPerRequestKey() == null // not application
+                && hasAdminAccess(context)) {
             return resources.stream()
-                    .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> permissions));
+                    .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 
         return Map.of();
