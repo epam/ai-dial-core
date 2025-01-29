@@ -208,6 +208,7 @@ public class AccessService {
     public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
             Set<ResourceDescriptor> resources, ProxyContext context, String deployment) {
 
+        String appPath = BucketBuilder.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment));
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         String location = BucketBuilder.buildAppDataBucket(context);
         for (ResourceDescriptor resource : resources) {
@@ -216,11 +217,16 @@ public class AccessService {
             }
 
             String parentPath = resource.getParentPath();
-            String filePath = (parentPath == null)
-                    ? resource.getName()
-                    : parentPath + ResourceDescriptor.PATH_SEPARATOR + resource.getName();
+            String filePath;
+            if (resource.isFolder()) {
+                filePath = parentPath;
+            } else {
+                filePath = parentPath == null
+                        ? resource.getName()
+                        : parentPath + ResourceDescriptor.PATH_SEPARATOR + resource.getName();
+            }
 
-            if (filePath.startsWith(BucketBuilder.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment)))) {
+            if (filePath != null && filePath.startsWith(appPath)) {
                 result.put(resource, ResourceAccessType.ALL);
             }
         }
