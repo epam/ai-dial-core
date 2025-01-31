@@ -117,11 +117,10 @@ public class PublicationUtil {
             throw new IllegalArgumentException("target url must be an application type");
         }
         String appName = descriptor.getName();
-        List<String> folders = descriptor.getParentFolders();
-        if (folders.isEmpty()) {
+        String appPath = descriptor.getParentPath();
+        if (appPath == null) {
             return "." + appName + ResourceDescriptor.PATH_SEPARATOR;
         } else {
-            String appPath = String.join(ResourceDescriptor.PATH_SEPARATOR, folders);
             return appPath + ResourceDescriptor.PATH_SEPARATOR + "." + appName + ResourceDescriptor.PATH_SEPARATOR;
         }
     }
