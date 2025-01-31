@@ -61,6 +61,17 @@ public class DialFileFormatTest {
     }
 
     @Test
+    void sampleApplicationWithRealFilenameWithBraces_validatesAgainstSchema_ok() throws Exception {
+        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
+        JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
+        String sampleObjectStr = "{ \"file\": \"files/2pSUd9nfm2gTvgY9ZXj1Z5cSprWyXp8YpDR2EF1pzUxDxNDmKxBx4dK9BRT8xiHgXp/(TechDoc)%20WalletManager%20Overview.svg\" }";
+        JsonNode sampleObjectNode = MAPPER.readTree(sampleObjectStr);
+        Set<ValidationMessage> customSchemaValidationMessages = customSchema.validate(sampleObjectNode);
+        assertTrue(customSchemaValidationMessages.isEmpty(), "Sample app should be valid against custom schema");
+    }
+
+
+    @Test
     void sampleApplication_validatesAgainstSchema_failed_wrongBucket() throws Exception {
         JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
         JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
