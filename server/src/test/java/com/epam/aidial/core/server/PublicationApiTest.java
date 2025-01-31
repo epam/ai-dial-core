@@ -931,15 +931,24 @@ class PublicationApiTest extends ResourceBaseTest {
                   "resourceType" : "CONVERSATION",
                   "permissions" : [ "READ" ],
                   "items" : [ {
-                    "name" : "conversation1",
-                    "parentPath" : "folder1",
-                    "bucket" : "public",
-                    "url" : "conversations/public/folder1/conversation1",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION",
-                    "updatedAt" : "@ignore",
-                    "permissions" : [ "READ" ]
-                  } ]
+                         "name" : "folder1",
+                         "parentPath" : null,
+                         "bucket" : "public",
+                         "url" : "conversations/public/folder1/",
+                         "nodeType" : "FOLDER",
+                         "resourceType" : "CONVERSATION",
+                         "permissions" : [ "READ" ],
+                         "items" : null
+                       }, {
+                         "name" : "conversation1",
+                         "parentPath" : "folder1",
+                         "bucket" : "public",
+                         "url" : "conversations/public/folder1/conversation1",
+                         "nodeType" : "ITEM",
+                         "resourceType" : "CONVERSATION",
+                         "permissions" : [ "READ" ],
+                         "updatedAt" : "@ignore"
+                       } ]
                 }
                 """);
 
@@ -988,24 +997,42 @@ class PublicationApiTest extends ResourceBaseTest {
                   "resourceType" : "CONVERSATION",
                   "permissions" : [ "READ", "WRITE" ],
                   "items" : [ {
-                    "name" : "conversation1",
-                    "parentPath" : "folder1",
-                    "bucket" : "public",
-                    "url" : "conversations/public/folder1/conversation1",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION",
-                    "updatedAt" : "@ignore",
-                    "permissions" : [ "READ", "WRITE" ]
-                  }, {
-                    "name" : "conversation2",
-                    "parentPath" : "folder2",
-                    "bucket" : "public",
-                    "url" : "conversations/public/folder2/conversation2",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION",
-                    "updatedAt" : "@ignore",
-                    "permissions" : [ "READ", "WRITE" ]
-                  } ]
+                         "name" : "folder1",
+                         "parentPath" : null,
+                         "bucket" : "public",
+                         "url" : "conversations/public/folder1/",
+                         "nodeType" : "FOLDER",
+                         "resourceType" : "CONVERSATION",
+                         "permissions" : [ "READ", "WRITE" ],
+                         "items" : null
+                       }, {
+                         "name" : "conversation1",
+                         "parentPath" : "folder1",
+                         "bucket" : "public",
+                         "url" : "conversations/public/folder1/conversation1",
+                         "nodeType" : "ITEM",
+                         "resourceType" : "CONVERSATION",
+                         "permissions" : [ "READ", "WRITE" ],
+                         "updatedAt" : "@ignore"
+                       }, {
+                         "name" : "folder2",
+                         "parentPath" : null,
+                         "bucket" : "public",
+                         "url" : "conversations/public/folder2/",
+                         "nodeType" : "FOLDER",
+                         "resourceType" : "CONVERSATION",
+                         "permissions" : [ "READ", "WRITE" ],
+                         "items" : null
+                       }, {
+                         "name" : "conversation2",
+                         "parentPath" : "folder2",
+                         "bucket" : "public",
+                         "url" : "conversations/public/folder2/conversation2",
+                         "nodeType" : "ITEM",
+                         "resourceType" : "CONVERSATION",
+                         "permissions" : [ "READ", "WRITE" ],
+                         "updatedAt" : "@ignore"
+                       } ]
                 }
                 """);
     }

@@ -1,6 +1,6 @@
 configurations.all {
     resolutionStrategy {
-        force 'com.google.code.gson:gson:2.8.9'
+        force 'com.google.code.gson:gson:2.11.0'
     }
 }
 
@@ -25,8 +25,8 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     implementation 'com.auth0:java-jwt:4.4.0'
     implementation 'com.auth0:jwks-rsa:0.22.1'
-    implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
-    implementation 'org.apache.jclouds.api:filesystem:2.5.0'
+    implementation 'org.apache.jclouds:jclouds-allblobstore:2.7.0'
+    implementation 'org.apache.jclouds.api:filesystem:2.7.0'
     implementation 'org.redisson:redisson:3.27.0'
     implementation 'com.networknt:json-schema-validator:1.5.2'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
