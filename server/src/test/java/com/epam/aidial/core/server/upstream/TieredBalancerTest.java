@@ -110,8 +110,8 @@ public class TieredBalancerTest {
                 .map(index  -> new Upstream("endpoint" + index, null, null, 1, 1))
                 .toList();
         model.setUpstreams(upstreams);
-        AtomicInteger counter = new AtomicInteger();
-        when(generator.nextInt(5)).thenAnswer(cb -> counter.incrementAndGet());
+        AtomicInteger counter = new AtomicInteger(-1);
+        when(generator.nextInt(4)).thenAnswer(cb -> counter.incrementAndGet());
         Supplier<Random> factory = () -> generator;
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, factory);
