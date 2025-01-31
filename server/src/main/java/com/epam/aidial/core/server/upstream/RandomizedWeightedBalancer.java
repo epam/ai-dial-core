@@ -50,9 +50,16 @@ class RandomizedWeightedBalancer implements Comparable<RandomizedWeightedBalance
         if (availableUpstreams.isEmpty()) {
             return null;
         }
+        if (availableUpstreams.size() == 1) {
+            return availableUpstreams.get(0);
+        }
         int total = availableUpstreams.stream().map(Upstream::getWeight).reduce(0, Integer::sum);
         // make sure the upper bound `total` is inclusive
-        int random = generator.nextInt(total + 1);
+        // the lowest bound should be 1 otherwise the 1st upstream with weight 1 has more possibility
+        // to be selected because zero is included in its range
+        // e.g. there are 3 upstreams with equal weight = 1 and the ranges are [0,1], [2,2] and [3,3]
+        // definitely the 1st upstream has higher possibility
+        int random = generator.nextInt(1, total + 1);
         int current = 0;
 
         Upstream result = null;
