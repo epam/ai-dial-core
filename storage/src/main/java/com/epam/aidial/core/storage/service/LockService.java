@@ -38,7 +38,7 @@ public class LockService {
     public Lock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
-        log.info("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
+        log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
 
@@ -95,11 +95,11 @@ public class LockService {
                         local time = redis.call('time')
                         local now = time[1] * 1000000 + time[2]
                         local deadline = tonumber(redis.call('hget', KEYS[1], 'deadline'))
-                        
+
                         if (deadline ~= nil and now < deadline) then
                           return deadline - now
                         end
-                        
+
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
                         return 0
                         """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
@@ -110,7 +110,7 @@ public class LockService {
         if (!ok) {
             log.error("Lock service failed to unlock: {}", id);
         } else {
-            log.info("Thread {} releases a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
+            log.debug("Thread {} releases a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         }
     }
 
@@ -119,12 +119,12 @@ public class LockService {
             return script.eval(RScript.Mode.READ_WRITE,
                     """
                             local owner = redis.call('hget', KEYS[1], 'owner')
-                            
+
                             if (owner == ARGV[1]) then
                               redis.call('del', KEYS[1])
                               return true
                             end
-                            
+
                             return false
                             """, RScript.ReturnType.BOOLEAN, List.of(id), String.valueOf(owner));
         } catch (Throwable e) {
