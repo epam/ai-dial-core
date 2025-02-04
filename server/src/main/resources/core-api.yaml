@@ -1,0 +1,447 @@
+openapi: 3.0.3
+info:
+  title: Swagger DIAL Core - OpenAPI 3.0
+  description: |-
+    This is a DIAL Core Server based on the OpenAPI 3.0 specification.
+  contact:
+    email: WFBMarketingAskEPAM@epam.com
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  version: 0.23.0-rc
+paths:
+  /v1/openai/deployments/{deploymentId}/chat/completions:
+    post:
+      summary: Chat completion API
+      description: This API is based on the OpenAI Azure API and extended to support working with advanced AI DIAL Assistants and Applications.
+      parameters:
+        - name: deploymentId
+          in: path
+          description: The name of the deployment.
+          required: true
+          schema:
+            type: string
+        - name: api-version
+          in: query
+          description: |-
+            Example: api-version=2023-12-01-preview
+            The API version to use for this request. Follows the YYYY-MM-DD format.
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+        required: true
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+        '401':
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponseError'
+      security:
+        - api_key: []
+        - jwt_bearer: []
+
+components:
+  schemas:
+    ChatCompletionRequest:
+      required:
+        - messages
+      type: object
+      properties:
+        model:
+          type: string
+          description: The name of the model to use.
+        messages:
+          type: array
+          description: The present compilation of messages that make up the conversation.
+          items:
+            $ref: '#/components/schemas/ChatCompletionRequestMessage'
+        functions:
+          description: A list of functions the Assistant may generate JSON inputs for.
+          type: array
+          items:
+            $ref: ''
+        function_call:
+          description: |-
+            Controls how the Assistant responds to function calls.
+            "none" means the Assistant does not call a function, and responds to the end-user. The default value assigned as "none" when no functions are present.
+            "auto" means the Assistant can pick between an end-user or calling a function. Specifying a particular function via {"name": "my_function"} forces the Assistant to call that function. The default value assigned as "auto" if functions are present.
+            Note. It can be a string or object.
+          $ref: '#/components/schemas/ChatCompletionRequestFunctionCall'
+        tools:
+          description: A list of tools the model may call. Currently, only functions are supported as a tool. Use this to provide a list of functions the model may generate JSON inputs for.
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionRequestToolCall'
+        tool_choice:
+          type: string
+          description: |-
+            Controls which (if any) function is called by the model. none means the model will not call a function and instead generates a message. auto means the model can pick between generating a message or calling a function. Specifying a particular function via {"type": "function", "function": {"name": "my_function"}} forces the model to call that function.
+        addons:
+          description: A list of Addons the Assistant can use.
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionRequestAddon'
+        stream:
+          description: |-
+            Default: false
+            If set, partial message deltas will be sent. As tokens become available, they will be sent as data-only server-sent events, and the stream will be terminated by a data: [DONE] message. Please see response samples for more details.
+          type: boolean
+        temperature:
+          description: |-
+            Default: 1
+            What sampling temperature to use, between 0 and 2. Higher values such as 0.8 make the output more random, while lower values like 0.2 make it more focused and deterministic.
+          type: number
+        top_p:
+          description: |-
+            Default: 1
+            An alternative to sampling with temperature, called nucleus sampling, where the Assistant considers the results of the tokens with top_p probability mass. A value of 0.1 implies that only the tokens representing the top 10% probability mass are taken into consideration.
+          type: number
+        n:
+          description: |-
+            Default: 1
+            The number of chat completion choices to generate for each input message.
+        stop:
+          description: Up to 4 sequences where the Assistant will stop generating further tokens. (string or null) or Array of strings
+          type: string
+        max_tokens:
+          description: |-
+            Default: "infinity"
+            The maximum number of tokens to generate by the Assistant.
+          type: integer
+        max_prompt_tokens:
+          description: |-
+            Default: "infinity"
+            The maximum number of prompt tokens to handle in a request. The feature is supported only by the model adapters and the Assistant. Given this parameter an adapter truncates the list of the messages to fit into this limit and passes the truncated list to the actual model.
+            The default strategy for truncation is to preserve all system messages and the last message. Whatever else could fit within the limit is added to the final list of messages, prioritizing the most recent messages in the chat over the earlier ones.
+            The list of indices of the messages that were discarded is returned in the statistics.discarded_messages field of the response.
+        presence_penalty:
+          description: |-
+            Default: 0
+            A number between -2.0 and 2.0. Positive values impose a penalty on new tokens based on their appearance in the current text, thereby increasing the model's tendency to introduce new topics in its responses.
+          type: number
+        frequency_penalty:
+          description: |-
+            Default: 0
+            A number between -2.0 and 2.0. Positive values apply a penalty to new tokens according to their existing frequency in the preceding text, thereby reducing the model's propensity to repeat the exact same line.
+          type: number
+        logit_bias:
+          description: |-
+            Default: null
+            Modifies the likelihood of specified tokens appearing in the completion.
+            Accepts a JSON object that maps tokens (specified by their token ID in the tokenizer) to an associated bias value from -100 to 100. Mathematically, the bias is added to the logits generated by the model prior to sampling. The exact effect will vary per model, but values between -1 and 1 should decrease or increase the likelihood of a selection; values like -100 or 100 should result in a ban or exclusive selection of the relevant token.
+          type: object
+        seed:
+          description: |-
+            Default: 0
+            If specified, our system will make a best effort to sample deterministically, such that repeated requests with the same seed and parameters should return the same result. Determinism is not guaranteed, and you should refer to the system_fingerprint response parameter to monitor changes in the backend for deployments that support this.
+          type: integer
+        user:
+          description: A unique identifier representing the end-user.
+          type: string
+        response_format:
+          description: |-
+            An object specifying the format that the model must output. Used to enable JSON mode.
+            Note: the parameter may not be supported by some models.
+          $ref: '#/components/schemas/ChatCompletionRequestResponseFormat'
+        custom_fields:
+          description: Additional DIAL-specific parameters for a chat completion request.
+          $ref: '#/components/schemas/ChatCompletionRequestCustomFields'
+
+    ChatCompletionRequestCustomFields:
+      type: object
+      properties:
+        configuration:
+          description: |-
+            The object that represents configuration of the deployment. The schema of the object is specific for each deployment and provided by the endpoint GET /openai/deployments/{Deployment Name}/configuration.
+            A deployment supports configuration if its listing, retrieved by GET /openai/deployments/{Deployment Name}, has a field features.configuration set to true.
+          type: object
+
+    ChatCompletionRequestResponseFormat:
+      type: object
+      properties:
+        type:
+          description: |-
+            Default: "text"
+            Enum: "text" "json_object"
+            Setting to json_object enables JSON mode. This guarantees that the message the model generates is a valid JSON.
+            Note: JSON mode is not supported by all models.
+          type: string
+
+    ChatCompletionRequestAddon:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The name of an addon defined in the DIAL Core config.
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the response.
+        object:
+          type: string
+          description: Object type. Always is chat.completion for non-streaming.
+        created:
+          type: integer
+          format: int64
+          description: The response timestamp. The time in seconds since the epoch.
+        model:
+          type: string
+          description: The model name that generated the response. May not be the same as the deployment name.
+        choices:
+          type: array
+          description: List of generated messages. Contains n items.
+          items:
+            $ref: '#/components/schemas/ChatCompletionChoice'
+
+    ChatCompletionChoice:
+      required:
+        - index
+        - message
+        - finish_reason
+      type: object
+      properties:
+        index:
+          type: integer
+          format: int32
+          description: The index of the choice from 0 to n - 1.
+        message:
+          $ref: '#/components/schemas/ChatCompletionResponseMessage'
+        finish_reason:
+          type: string
+          description: |-
+            The reason indicating the completion of the choice generation process. The possible reasons:
+              stop: Successful generation.
+              length: The generation was stopped because it surpassed the available number of tokens.
+              function_call: The Assistant decided to call a function.
+              tool_calls: The Assistant decided to call a tool.
+              content_filter: Omitted content due to a flag from content filters.
+
+
+    ChatCompletionRequestMessage:
+      required:
+        - role
+      type: object
+      properties:
+        role:
+          type: string
+          description: The role of the messages author. For the response, the value is always assistant.
+        content:
+          type: string
+          description: The contents of the message. content is set for all messages except messages with function calls.
+        custom_content:
+          description: The custom content of a message.
+          $ref: '#/components/schemas/ChatCompletionCustomContent'
+        function_call:
+          description: The name and arguments of a function that should be called, as generated by the Assistant.
+          $ref: '#/components/schemas/ChatCompletionRequestFunctionCall'
+        tool_calls:
+          description: The tool calls generated by the model, such as function calls.
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionRequestToolCall'
+        tool_call_id:
+          type: string
+          description: Tool call that this message is responding to.
+
+    ChatCompletionResponseMessage:
+      required:
+        - role
+      type: object
+      properties:
+        role:
+          type: string
+          description: The role of the messages author. For the response, the value is always assistant.
+        content:
+          type: string
+          description: The contents of the message. content is set for all messages except messages with function calls.
+        custom_content:
+          description: The custom content of a message.
+          $ref: '#/components/schemas/ChatCompletionCustomContent'
+        function_call:
+          description: The name and arguments of a function that should be called, as generated by the Assistant.
+          $ref: '#/components/schemas/ChatCompletionRequestFunctionCall'
+        tool_calls:
+          description: The tool calls generated by the model, such as function calls.
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionResponseToolCall'
+
+    ChatCompletionResponseToolCall:
+      required:
+        - id
+        - type
+        - function
+      properties:
+        id:
+          type: string
+          description: The ID of the tool call.
+        type:
+          type: string
+          description: |-
+            Value: "function"
+            The type of the tool. Currently, only function is supported.
+        function:
+          $ref: '#/components/schemas/ChatCompletionResponseFunctionCall'
+
+    ChatCompletionRequestToolCall:
+      required:
+        - type
+        - function
+      properties:
+        type:
+          type: string
+          description: |-
+            Value: "function"
+            The type of the tool. Currently, only function is supported.
+        function:
+          $ref: '#/components/schemas/ChatCompletionRequestFunctionCall'
+
+    ChatCompletionResponseFunctionCall:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The name of the function that the Assistant decided to call.
+        arguments:
+          type: string
+          description: The arguments for the function in a JSON format.
+
+    ChatCompletionRequestFunctionCall:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The name of the function that the Assistant decided to call.
+        description:
+          type: string
+          description: A description of what the function does, used by the model to choose when and how to call the function.
+        arguments:
+          type: string
+          description: The arguments for the function in a JSON format.
+
+    ChatCompletionCustomContent:
+      type: object
+      properties:
+        attachments:
+          type: array
+          description: List of attachments.
+          items:
+            $ref: '#/components/schemas/ChatCompletionAttachment'
+        stages:
+          type: array
+          description: The intermediate stages that the Assistant went through to generate the response.
+          items:
+            $ref: '#/components/schemas/ChatCompletionStage'
+        state:
+          type: object
+          description: The internal state of the Assistant. This field can have an arbitrary set of fields with an arbitrary structure. In case of a streaming, the state is published fully in one chunk.
+
+    ChatCompletionAttachment:
+      required:
+        - index
+      type: object
+      properties:
+        index:
+          type: integer
+          description: When attaching files to a message, each attachment must be assigned a unique index. The first attachment should have an index of 0, and each attachment thereafter should have an index greater than the previous one.
+        type:
+          type: string
+          description: |-
+            Default: "text/markdown"
+            The content type of the attachment. Should be one of the MIME types.
+        title:
+          type: string
+          description: The title of the attachment.
+        data:
+          type: string
+          description: |-
+            Should follow the format described in the MIME standard for type.
+            It is mandatory for the attachment to have one of the following fields (never both): data or url.
+        url:
+          type: string
+          format: url
+          description: |-
+            The content of url should follow the format described in the MIME standard for type.
+            It is mandatory for the attachment to have one of the following fields (never both): data or url.
+        reference_type:
+          type: string
+          description: The content type of reference_url. Should be one of the MIME types.
+        reference_url:
+          type: string
+          description: If reference_type is specified, the content of reference_url should follow the format described in the MIME standard for reference_type.
+
+    ChatCompletionStage:
+      required:
+        - index
+        - name
+        - status
+      type: object
+      properties:
+        index:
+          type: integer
+          description: Each stage of the message must a have unique index. The first stage should have an index of 0, and each stage thereafter should have an index greater than the previous one.
+        name:
+          type: string
+          description: The name of the stage.
+        content:
+          type: string
+          description: The contents of the stage.
+        attachments:
+          type: array
+          description: List of attachments to the stage.
+          items:
+            $ref: '#/components/schemas/ChatCompletionAttachment'
+        status:
+          type: string
+          description: |-
+            The execution status of the stage. Available status values:
+              null: The stage is in progress.
+              completed: The stage is completed.
+              failed: The stage is failed.
+            
+    ChatCompletionResponseError:
+      type: object
+      properties:
+        error:
+          description: error object
+          $ref: '#/components/schemas/ChatCompletionErrorObject'
+
+    ChatCompletionErrorObject:
+      type: object
+      properties:
+        type:
+          type: string
+        message:
+          type: string
+        param:
+          type: string
+        code:
+          type: string
+        display_message:
+          type: string
+          description: The user-friendly error message for non-technical users.
+
+  securitySchemes:
+    jwt_bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    api_key:
+      type: apiKey
+      name: Api-Key
+      in: header
