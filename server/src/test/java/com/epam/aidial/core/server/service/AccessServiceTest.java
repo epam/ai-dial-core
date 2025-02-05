@@ -79,4 +79,20 @@ public class AccessServiceTest {
         assertTrue(result.containsKey(descriptor));
         assertEquals(ResourceAccessType.ALL, result.get(descriptor));
     }
+
+    @Test
+    public void testGetAppResourceAccess_DeploymentNameHasSpecialChars() {
+        ProxyContext context = mock(ProxyContext.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getUserSub()).thenReturn("user");
+        when(context.getSourceDeployment()).thenReturn("test app");
+        ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of("appdata", "test app"), "bucket", "Users/user/", false);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(descriptor), context);
+
+        assertTrue(result.containsKey(descriptor));
+        assertEquals(ResourceAccessType.ALL, result.get(descriptor));
+    }
 }

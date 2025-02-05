@@ -208,7 +208,7 @@ public class AccessService {
     public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
             Set<ResourceDescriptor> resources, ProxyContext context, String deployment) {
 
-        String appPath = BucketBuilder.APPDATA_PATTERN.formatted(UrlUtil.encodePath(deployment));
+        String appPath = BucketBuilder.APPDATA_PATTERN.formatted(deployment);
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         String location = BucketBuilder.buildAppDataBucket(context);
         for (ResourceDescriptor resource : resources) {
