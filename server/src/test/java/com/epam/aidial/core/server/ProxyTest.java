@@ -491,6 +491,39 @@ public class ProxyTest {
     }
 
     @Test
+    public void testHandle_AzureOpenAiRequest() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(null);
+        when(request.getHeader(eq(HttpHeaders.AUTHORIZATION))).thenReturn("bearer");
+        when(headers.get(eq(HEADER_API_KEY))).thenReturn("key1");
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Integer.toString(512));
+        when(request.path()).thenReturn("/foo");
+        when(request.uri()).thenReturn("/foo");
+
+        Config config = new Config();
+        Route route = new Route();
+        route.setMethods(Set.of("GET"));
+        route.setName("route");
+        route.setPaths(List.of(Pattern.compile("/foo")));
+        route.setResponse(new Route.Response());
+        LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+        routes.put("route", route);
+        config.setRoutes(routes);
+        when(configStore.load()).thenReturn(config);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        Key originalKey = new Key();
+        apiKeyData.setOriginalKey(originalKey);
+        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(apiKeyData));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
+    }
+
+    @Test
     public void testHandle_SuccessAccessToken() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
