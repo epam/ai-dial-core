@@ -1,6 +1,7 @@
 configurations.all {
     resolutionStrategy {
         force 'com.google.code.gson:gson:2.8.9'
+        force 'io.netty:netty-handler:4.1.118.Final'
     }
 }
 
