@@ -159,6 +159,8 @@ public class ResourceDescriptorFactoryTest {
                 () -> ResourceDescriptorFactory.fromEncoded(ResourceTypes.FILE, "bucket", "location/", "fol%0Fder1"));
         assertThrows(IllegalArgumentException.class,
                 () -> ResourceDescriptorFactory.fromEncoded(ResourceTypes.FILE, "bucket", "location/", "//file.txt"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResourceDescriptorFactory.fromEncoded(ResourceTypes.FILE, "bucket", "location/", "folder1%22"));
     }
 
     @Test
