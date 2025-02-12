@@ -51,7 +51,24 @@ public class TokenUsageParser {
                 verify(token,
                         JsonToken.VALUE_NUMBER_INT, JsonToken.VALUE_NUMBER_FLOAT,
                         JsonToken.VALUE_STRING, JsonToken.VALUE_NULL,
-                        JsonToken.VALUE_FALSE, JsonToken.VALUE_TRUE);
+                        JsonToken.VALUE_FALSE, JsonToken.VALUE_TRUE,
+                        JsonToken.START_OBJECT);
+
+                if (token == JsonToken.START_OBJECT) {
+                    // Skip the nested object with token details
+                    int depth = 1;
+                    while (depth > 0) {
+                        JsonToken nextToken = parser.nextToken();
+                        if (nextToken == null) {
+                            throw new IllegalStateException("Usage nested object is malformed");
+                        } else if (nextToken == JsonToken.START_OBJECT) {
+                            depth++;
+                        } else if (nextToken == JsonToken.END_OBJECT) {
+                            depth--;
+                        }
+                    }
+                    continue;
+                }
 
                 switch (name) {
                     case "completion_tokens" -> usage.setCompletionTokens(parser.getLongValue());
