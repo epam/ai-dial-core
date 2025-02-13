@@ -2,12 +2,14 @@ package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
+import lombok.ToString;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
 public class Key {
+    @ToString.Exclude
     private String key;
     private String project;
     private String role;
