@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Data
 @AllArgsConstructor
@@ -12,6 +13,7 @@ import lombok.NoArgsConstructor;
 public class Upstream {
 
     private String endpoint;
+    @ToString.Exclude
     private String key;
     @JsonDeserialize(using = JsonToStringDeserializer.class)
     private String extraData;
