@@ -1,6 +1,7 @@
 configurations.all {
     resolutionStrategy {
         force 'com.google.code.gson:gson:2.8.9'
+        force 'net.minidev:json-smart:2.5.2'
     }
 }
 
@@ -13,10 +14,10 @@ dependencies {
     implementation 'com.epam.deltix:gflog-api:3.0.6'
     implementation 'com.epam.deltix:gflog-core:3.0.6'
     runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.6'
-    implementation 'io.vertx:vertx-core:4.5.12'
-    implementation 'io.vertx:vertx-config:4.5.12'
-    implementation 'io.vertx:vertx-opentelemetry:4.5.12'
-    implementation 'io.vertx:vertx-micrometer-metrics:4.5.12'
+    implementation 'io.vertx:vertx-core:4.5.13'
+    implementation 'io.vertx:vertx-config:4.5.13'
+    implementation 'io.vertx:vertx-opentelemetry:4.5.13'
+    implementation 'io.vertx:vertx-micrometer-metrics:4.5.13'
     implementation 'io.micrometer:micrometer-registry-prometheus:1.11.2'
     implementation 'io.micrometer:micrometer-registry-otlp:1.11.2'
     implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.47.0'
@@ -40,8 +41,8 @@ dependencies {
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
     testImplementation 'commons-io:commons-io:2.14.0'
-    testImplementation 'io.vertx:vertx-web-client:4.5.12'
-    testImplementation 'io.vertx:vertx-junit5:4.5.12'
+    testImplementation 'io.vertx:vertx-web-client:4.5.13'
+    testImplementation 'io.vertx:vertx-junit5:4.5.13'
     testImplementation 'org.mockito:mockito-core:5.7.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
     testImplementation('com.github.codemonstur:embedded-redis:1.4.3') {
