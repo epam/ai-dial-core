@@ -175,6 +175,7 @@ class TokenUsageParserTest {
                     }
                   ],
                   "usage": {
+                    "foo": [{"a": {}}],
                     "prompt_tokens": 1420,
                     "completion_tokens": 119,
                     "total_tokens": 1539,
