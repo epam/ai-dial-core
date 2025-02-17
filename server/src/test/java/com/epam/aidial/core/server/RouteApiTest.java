@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteApiTest extends ResourceBaseTest {
@@ -19,7 +20,10 @@ class RouteApiTest extends ResourceBaseTest {
     @ParameterizedTest
     @MethodSource("datasource")
     void route(HttpMethod method, String path, String apiKey, int expectedStatus, String expectedResponse) {
-        TestWebServer.Handler handler = request -> new MockResponse().setBody(request.getPath());
+        TestWebServer.Handler handler = request -> {
+            assertNotNull(request.getHeader(Proxy.HEADER_API_KEY));
+            return new MockResponse().setBody(request.getPath());
+        };
         try (TestWebServer server = new TestWebServer(9876, handler)) {
             String reqBody = (method == HttpMethod.POST) ? UUID.randomUUID().toString() : null;
             Response resp = send(method, path, null, reqBody, "api-key", apiKey);
