@@ -17,18 +17,21 @@ public class Invitation {
     List<SharedResource> resources;
     long createdAt;
     long expireAt;
+    String author;
 
     @JsonCreator
     public Invitation(
             @JsonProperty("id") String id,
             @JsonProperty("resources") List<SharedResource> resources,
             @JsonProperty("createdAt") long createdAt,
-            @JsonProperty("expireAt") long expireAt) {
+            @JsonProperty("expireAt") long expireAt,
+            @JsonProperty("author") String author) {
         this.id = id;
         this.resources = resources.stream()
                 .map(SharedResource::withReadIfNoPermissions)
                 .collect(Collectors.toList());
         this.createdAt = createdAt;
         this.expireAt = expireAt;
+        this.author = author;
     }
 }

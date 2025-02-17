@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.data;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -11,6 +12,7 @@ import java.util.Set;
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Publication {
     /**
      * Publication url: publications/bucket/id.
@@ -27,6 +29,7 @@ public class Publication {
     Set<ResourceTypes> resourceTypes;
     List<Rule> rules;
     String etag;
+    String author;
 
     public enum Status {
         PENDING, APPROVED, REJECTED

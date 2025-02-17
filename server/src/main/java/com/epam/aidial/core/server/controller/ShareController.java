@@ -104,9 +104,7 @@ public class ShareController {
                         throw new IllegalArgumentException("Can't initiate share request. Incorrect body");
                     }
 
-                    String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-                    String bucket = encryptionService.encrypt(bucketLocation);
-                    return proxy.getVertx().executeBlocking(() -> shareService.initializeShare(bucket, bucketLocation, request), false);
+                    return proxy.getVertx().executeBlocking(() -> shareService.initializeShare(context, request), false);
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(this::handleServiceError);

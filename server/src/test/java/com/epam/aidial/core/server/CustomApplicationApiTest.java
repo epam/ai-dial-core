@@ -559,7 +559,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "function" : "EQUAL",
                      "source" : "roles",
                      "targets" : [ "user" ]
-                   } ]
+                   } ],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 

@@ -346,6 +346,7 @@ public class PublicationService {
         publication.setTargetFolder(targetFolder);
         publication.setCreatedAt(clock.getAsLong());
         publication.setStatus(Publication.Status.PENDING);
+        publication.setAuthor(context.getUserDisplayName());
 
         addCustomApplicationRelatedFiles(context, publication);
 
@@ -692,6 +693,7 @@ public class PublicationService {
                 .setTargetFolder(publication.getTargetFolder())
                 .setStatus(publication.getStatus())
                 .setResourceTypes(publication.getResourceTypes())
+                .setAuthor(publication.getAuthor())
                 .setCreatedAt(publication.getCreatedAt());
     }
 

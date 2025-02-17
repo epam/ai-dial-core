@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.Invitation;
 import com.epam.aidial.core.server.data.InvitationLink;
@@ -16,6 +17,7 @@ import com.epam.aidial.core.server.data.SharedResources;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -138,12 +140,12 @@ public class ShareService {
     /**
      * Initialize share request by creating invitation object
      *
-     * @param bucket   - user bucket
-     * @param location - storage location
      * @param request  - request body
      * @return invitation link
      */
-    public InvitationLink initializeShare(String bucket, String location, ShareResourcesRequest request) {
+    public InvitationLink initializeShare(ProxyContext context, ShareResourcesRequest request) {
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
+        String bucket = encryptionService.encrypt(bucketLocation);
         // validate resources - owner must be current user
         addCustomApplicationRelatedFiles(bucket, request);
         Set<SharedResource> sharedResources = request.getResources();
@@ -163,7 +165,7 @@ public class ShareService {
             normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()));
         }
 
-        Invitation invitation = invitationService.createInvitation(bucket, location, normalizedResourceLinks);
+        Invitation invitation = invitationService.createInvitation(bucket, bucketLocation, normalizedResourceLinks, context.getUserDisplayName());
         return new InvitationLink(InvitationService.INVITATION_PATH_BASE + ResourceDescriptor.PATH_SEPARATOR + invitation.getId());
     }
 

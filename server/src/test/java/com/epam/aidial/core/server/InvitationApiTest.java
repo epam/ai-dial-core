@@ -39,6 +39,7 @@ public class InvitationApiTest extends ResourceBaseTest {
         // verify invitation can be listed
         response = send(HttpMethod.GET, "/v1/invitations", null, null);
         verifyNotExact(response, 200, "\"id\":\"" + invitationId + "\"");
+        verifyNotExact(response, 200, "\"author\":\"EPM-RTC-GPT\"");
 
         // get invitation details by ID
         response = send(HttpMethod.GET, "/v1/invitations/" + invitationId, null, null);
@@ -47,6 +48,7 @@ public class InvitationApiTest extends ResourceBaseTest {
         // get invitation details by ID
         response = send(HttpMethod.GET, "/v1/invitations/" + invitationId, null, null, "Api-key", "proxyKey2");
         verifyNotExact(response, 200, "\"id\":\"" + invitationId + "\"");
+        verifyNotExact(response, 200, "\"author\":\"EPM-RTC-GPT\"");
 
         // delete invitation
         response = send(HttpMethod.DELETE, "/v1/invitations/" + invitationId, null, null, "Api-key", "proxyKey2");

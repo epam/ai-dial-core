@@ -72,7 +72,8 @@ class PublicationApiTest extends ResourceBaseTest {
                 "function" : "EQUAL",
                 "source" : "roles",
                 "targets" : [ "user" ]
-              } ]
+              } ],
+              "author" : "EPM-RTC-GPT"
             }
             """;
 
@@ -109,7 +110,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
-                    "resourceTypes" : [ "CONVERSATION" ]
+                    "resourceTypes" : [ "CONVERSATION" ],
+                    "author" : "EPM-RTC-GPT"
                   } ]
                 }
                 """);
@@ -183,7 +185,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
-                   "rules" : []
+                   "rules" : [],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -200,7 +203,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder":"public/folder/",
                     "status":"APPROVED",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ]
+                    "resourceTypes" : [ "CONVERSATION" ],
+                    "author" : "EPM-RTC-GPT"
                     }]
                 }
                 """);
@@ -232,14 +236,16 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                          "targetFolder":"public/folder/",
                         "status" : "PENDING",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                       }
                     ]
                 }
@@ -266,7 +272,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder":"public/folder/",
                     "status":"PENDING",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ]
+                    "resourceTypes" : [ "CONVERSATION" ],
+                    "author" : "EPM-RTC-GPT"
                     }]
                 }
                 """);
@@ -312,14 +319,16 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                       }
                     ]
                 }
@@ -387,7 +396,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
-                   "rules" : []
+                   "rules" : [],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -404,7 +414,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder":"public/folder/",
                     "status":"APPROVED",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ]
+                    "resourceTypes" : [ "CONVERSATION" ],
+                    "author" : "EPM-RTC-GPT"
                     }]
                 }
                 """);
@@ -451,14 +462,16 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                         "targetFolder":"public/folder/",
                         "status" : "PENDING",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                       }
                     ]
                 }
@@ -485,7 +498,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status":"PENDING",
                     "createdAt":0,
-                    "resourceTypes" : [ "CONVERSATION" ]
+                    "resourceTypes" : [ "CONVERSATION" ],
+                    "author" : "EPM-RTC-GPT"
                     }]
                 }
                 """);
@@ -522,14 +536,16 @@ class PublicationApiTest extends ResourceBaseTest {
                         "targetFolder":"public/folder/",
                         "status":"APPROVED",
                         "createdAt":0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                     },
                     {
                         "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124",
                         "targetFolder" : "public/folder/",
                         "status" : "REJECTED",
                         "createdAt" : 0,
-                        "resourceTypes" : [ "CONVERSATION" ]
+                        "resourceTypes" : [ "CONVERSATION" ],
+                        "author" : "EPM-RTC-GPT"
                       }
                     ]
                 }
@@ -628,7 +644,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/file"
                     }
                    ],
-                   "resourceTypes" : [ "@ignore", "@ignore" ]
+                   "resourceTypes" : [ "@ignore", "@ignore" ],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -665,7 +682,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhQHmtD7fN295EFSG4HiW8Zi/file"
                     }
                    ],
-                   "resourceTypes" : [ "@ignore", "@ignore" ]
+                   "resourceTypes" : [ "@ignore", "@ignore" ],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -709,7 +727,8 @@ class PublicationApiTest extends ResourceBaseTest {
                      "function" : "EQUAL",
                      "source" : "roles",
                      "targets" : [ "user" ]
-                   } ]
+                   } ],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -780,7 +799,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "function" : "EQUAL",
                     "source" : "roles",
                     "targets" : [ "user" ]
-                  } ]
+                  } ],
+                  "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -1060,7 +1080,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
-                    "resourceTypes" : [ "CONVERSATION" ]
+                    "resourceTypes" : [ "CONVERSATION" ],
+                    "author" : "EPM-RTC-GPT"
                   } ]
                  }
                 """);
@@ -1121,7 +1142,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "function" : "CONTAIN",
                     "source" : "title",
                     "targets" : [ "Engineer" ]
-                  } ]
+                  } ],
+                  "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -1143,7 +1165,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "function" : "CONTAIN",
                     "source" : "title",
                     "targets" : [ "Engineer" ]
-                   } ]
+                   } ],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -1281,7 +1304,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "targetFolder" : "public/folder/",
                     "status" : "PENDING",
                     "createdAt" : 0,
-                    "resourceTypes" : [ "CONVERSATION" ]
+                    "resourceTypes" : [ "CONVERSATION" ],
+                    "author" : "EPM-RTC-GPT"
                   } ]
                  }
                 """);
@@ -1364,7 +1388,8 @@ class PublicationApiTest extends ResourceBaseTest {
                       "source": "title",
                       "targets": ["Engineer"]
                     }
-                  ]
+                  ],
+                  "author" : "EPM-RTC-GPT"
                 }
                 """);
     }
@@ -1607,7 +1632,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "function" : "TRUE",
                     "source" : "roles",
                     "targets" : null
-                  } ]
+                  } ],
+                  "author" : "EPM-RTC-GPT"
                 }""".formatted(bucket, bucket, bucket, bucket);
 
 
