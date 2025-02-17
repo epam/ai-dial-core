@@ -123,6 +123,21 @@ public class CodeInterpreterService {
         }
     }
 
+    public CodeInterpreterSession getSession(ProxyContext context, String sessionId) {
+        verifyActive();
+        verifySessionId(sessionId);
+
+        ResourceDescriptor resource = sessionResource(context, sessionId);
+        String json = resourceService.getResource(resource);
+        CodeInterpreterSession session = convertToObject(json, CodeInterpreterSession.class);
+
+        if (session == null) {
+            throw new ResourceNotFoundException("Session is not found: " + sessionId);
+        }
+
+        return session;
+    }
+
     public CodeInterpreterSession touchSession(ProxyContext context, String sessionId) {
         verifyActive();
         verifySessionId(sessionId);

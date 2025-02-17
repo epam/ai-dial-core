@@ -65,6 +65,19 @@ class CodeInterpreterController {
         return Future.succeededFuture();
     }
 
+    Future<?> getSession() {
+        context.getRequest()
+                .body()
+                .compose(body -> {
+                    CodeInterpreterSessionId data = convertJson(body, CodeInterpreterSessionId.class);
+                    return vertx.executeBlocking(() -> service.getSession(context, data.getSessionId()), false);
+                })
+                .onSuccess(this::respondJson)
+                .onFailure(this::respondError);
+
+        return Future.succeededFuture();
+    }
+
     Future<?> executeCode() {
         context.getRequest()
                 .body()
