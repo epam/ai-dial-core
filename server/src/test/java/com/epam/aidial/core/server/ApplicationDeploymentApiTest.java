@@ -222,6 +222,91 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testApplicationRestarted() {
+        testApplicationStarted();
+
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200,
+                """
+                event: result
+                data: {"deleted":true}
+                """);
+
+        Response response = send(HttpMethod.POST, "/v1/ops/application/redeploy", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
+                }
+                """);
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "function" : {
+                    "id" : "0123",
+                    "runtime": "python3.11",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "status" : "UNDEPLOYING",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  }
+                }
+                """);
+
+        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "DEPLOYED");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "endpoint" : "http://localhost:17321/application",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "function" : {
+                    "id" : "0123",
+                    "runtime": "python3.11",
+                    "author_bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "source_folder" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/",
+                    "target_folder" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    "status" : "DEPLOYED",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  }
+                }
+                """);
+    }
+
+    @Test
     void testApplicationFailed() {
         testApplicationCreated();
 

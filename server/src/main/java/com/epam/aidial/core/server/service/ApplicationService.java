@@ -25,6 +25,7 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
@@ -343,12 +344,11 @@ public class ApplicationService {
         verifyApplication(resource);
         controller.verifyActive();
 
-        Application application = prepareApplicationToUndeploy(resource);
+        Pair<Application, Future<Void>> result = undeployApplicationInternal(resource);
 
-        vertx.executeBlocking(() -> terminateApplication(resource, null), false)
-                .map(ignore -> deployApplication(context, resource))
+        result.getValue().map(ignore -> deployApplication(context, resource))
                 .onFailure(error -> log.error("Application redeployment is failed due to the error", error));
-        return application;
+        return result.getKey();
     }
 
     public Application deployApplication(ProxyContext context, ResourceDescriptor resource) {
@@ -386,29 +386,13 @@ public class ApplicationService {
     }
 
     public Application undeployApplication(ResourceDescriptor resource) {
+        return undeployApplicationInternal(resource).getKey();
+    }
+
+    private Pair<Application, Future<Void>> undeployApplicationInternal(ResourceDescriptor resource) {
         verifyApplication(resource);
         controller.verifyActive();
 
-        Application application = prepareApplicationToUndeploy(resource);
-
-        vertx.executeBlocking(() -> terminateApplication(resource, null), false);
-        return application;
-    }
-
-    public Application.Logs getApplicationLogs(ResourceDescriptor resource) {
-        verifyApplication(resource);
-        controller.verifyActive();
-
-        Application application = getApplication(resource).getValue();
-
-        if (application.getFunction() == null || application.getFunction().getStatus() != Application.Function.Status.DEPLOYED) {
-            throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
-        }
-
-        return controller.getApplicationLogs(application.getFunction());
-    }
-
-    private Application prepareApplicationToUndeploy(ResourceDescriptor resource) {
         MutableObject<Application> result = new MutableObject<>();
         resourceService.computeResource(resource, json -> {
             Application application = ProxyUtil.convertToObject(json, Application.class);
@@ -437,7 +421,21 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
-        return result.getValue();
+        Future<Void> future = vertx.executeBlocking(() -> terminateApplication(resource, null), false);
+        return Pair.of(result.getValue(), future);
+    }
+
+    public Application.Logs getApplicationLogs(ResourceDescriptor resource) {
+        verifyApplication(resource);
+        controller.verifyActive();
+
+        Application application = getApplication(resource).getValue();
+
+        if (application.getFunction() == null || application.getFunction().getStatus() != Application.Function.Status.DEPLOYED) {
+            throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
+        }
+
+        return controller.getApplicationLogs(application.getFunction());
     }
 
     private void prepareApplication(ResourceDescriptor resource, Application application) {
