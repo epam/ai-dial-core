@@ -46,12 +46,12 @@ public class InvitationService {
         this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
     }
 
-    public Invitation createInvitation(String bucket, String location, List<SharedResource> resources) {
+    public Invitation createInvitation(String bucket, String location, List<SharedResource> resources, String userDisplayName) {
         ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
         Instant expirationTime = Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS);
-        Invitation invitation = new Invitation(invitationId, resources, creationTime.toEpochMilli(), expirationTime.toEpochMilli());
+        Invitation invitation = new Invitation(invitationId, resources, creationTime.toEpochMilli(), expirationTime.toEpochMilli(), userDisplayName);
 
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);

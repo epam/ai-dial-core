@@ -87,6 +87,11 @@ public class IdentityProvider {
 
     private final String audience;
 
+    /**
+     * The path to the claim to extract user display name
+     */
+    private final String[] userDisplayName;
+
     public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         if (settings == null) {
@@ -139,7 +144,7 @@ public class IdentityProvider {
             rolePaths.add(rolePath.split("\\."));
         }
 
-        projectPath = settings.containsKey("projectPath") ? settings.getString("projectPath").split("\\.") : null;
+        projectPath = getClaimPath(settings, "projectPath");
         rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
@@ -158,8 +163,14 @@ public class IdentityProvider {
 
         audience = settings.getString("audience", null);
 
+        userDisplayName = getClaimPath(settings, "userDisplayName");
+
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
+    }
+
+    private static String[] getClaimPath(JsonObject settings, String claimName) {
+        return settings.containsKey(claimName) ? settings.getString(claimName).split("\\.") : null;
     }
 
     private void evictExpiredJwks() {
@@ -254,6 +265,18 @@ public class IdentityProvider {
         return (String) userContext.get("sub");
     }
 
+    private static String extractStringClaim(Map<String, Object> claims, String[] path) {
+        if (path == null) {
+            return null;
+        }
+        Object field = extractClaim(claims, path);
+
+        if (field instanceof String value) {
+            return value;
+        }
+        return null;
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static Object extractClaim(Map<String, Object> claims, String[] claimPath) {
         for (int i = 0; i < claimPath.length - 1; i++) {
@@ -264,19 +287,6 @@ public class IdentityProvider {
             }
         }
         return claims.get(claimPath[claimPath.length - 1]);
-    }
-
-
-    private String extractProject(Map<String, Object> claims) {
-        if (projectPath == null) {
-            return null;
-        }
-        Object field = extractClaim(claims, projectPath);
-
-        if (field instanceof String project) {
-            return project;
-        }
-        return null;
     }
 
     private String extractUserHash(String keyClaim) {
@@ -363,7 +373,8 @@ public class IdentityProvider {
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
-        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map), extractProject(map));
+        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey),
+                extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
     }
 
     private void from(String accessToken, JsonObject userInfo, Promise<ExtractedClaims> promise) {
@@ -371,12 +382,14 @@ public class IdentityProvider {
         Map<String, Object> map = userInfo.getMap();
         if (getUserRoleFn != null) {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
-                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles, extractUserHash(userKey), extractUserClaims(map), extractProject(map));
+                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles, extractUserHash(userKey),
+                        extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
                 promise.complete(extractedClaims);
             });
         } else {
             ExtractedClaims extractedClaims =
-                    new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey), extractUserClaims(map), extractProject(map));
+                    new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey),
+                            extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
             promise.complete(extractedClaims);
         }
     }
