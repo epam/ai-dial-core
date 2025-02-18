@@ -339,6 +339,18 @@ public class ApplicationService {
         }
     }
 
+    public Application redeployApplication(ProxyContext context, ResourceDescriptor resource) {
+        verifyApplication(resource);
+        controller.verifyActive();
+
+        Application application = prepareApplicationToUndeploy(resource);
+
+        vertx.executeBlocking(() -> terminateApplication(resource, null), false)
+                .map(ignore -> deployApplication(context, resource))
+                .onFailure(error -> log.error("Application redeployment is failed due to the error", error));
+        return application;
+    }
+
     public Application deployApplication(ProxyContext context, ResourceDescriptor resource) {
         verifyApplication(resource);
         controller.verifyActive();
@@ -377,6 +389,26 @@ public class ApplicationService {
         verifyApplication(resource);
         controller.verifyActive();
 
+        Application application = prepareApplicationToUndeploy(resource);
+
+        vertx.executeBlocking(() -> terminateApplication(resource, null), false);
+        return application;
+    }
+
+    public Application.Logs getApplicationLogs(ResourceDescriptor resource) {
+        verifyApplication(resource);
+        controller.verifyActive();
+
+        Application application = getApplication(resource).getValue();
+
+        if (application.getFunction() == null || application.getFunction().getStatus() != Application.Function.Status.DEPLOYED) {
+            throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
+        }
+
+        return controller.getApplicationLogs(application.getFunction());
+    }
+
+    private Application prepareApplicationToUndeploy(ResourceDescriptor resource) {
         MutableObject<Application> result = new MutableObject<>();
         resourceService.computeResource(resource, json -> {
             Application application = ProxyUtil.convertToObject(json, Application.class);
@@ -405,21 +437,7 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
-        vertx.executeBlocking(() -> terminateApplication(resource, null), false);
         return result.getValue();
-    }
-
-    public Application.Logs getApplicationLogs(ResourceDescriptor resource) {
-        verifyApplication(resource);
-        controller.verifyActive();
-
-        Application application = getApplication(resource).getValue();
-
-        if (application.getFunction() == null || application.getFunction().getStatus() != Application.Function.Status.DEPLOYED) {
-            throw new HttpException(HttpStatus.CONFLICT, "Application is not started: " + resource.getUrl());
-        }
-
-        return controller.getApplicationLogs(application.getFunction());
     }
 
     private void prepareApplication(ResourceDescriptor resource, Application application) {

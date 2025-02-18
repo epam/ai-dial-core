@@ -108,6 +108,21 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    public Future<?> redeployApplication() {
+        context.getRequest()
+                .body()
+                .compose(body -> {
+                    String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
+                    ResourceDescriptor resource = decodeUrl(url);
+                    checkAccess(resource);
+                    return vertx.executeBlocking(() -> applicationService.redeployApplication(context, resource), false);
+                })
+                .onSuccess(application -> context.respond(HttpStatus.OK, application))
+                .onFailure(this::respondError);
+
+        return Future.succeededFuture();
+    }
+
     public Future<?> getApplicationLogs() {
         context.getRequest()
                 .body()

@@ -43,7 +43,7 @@ public class ControllerSelector {
 
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(?<id>.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
-    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(deploy|undeploy|logs)$");
+    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(deploy|undeploy|logs|redeploy)$");
 
     private static final Pattern PATTERN_BUCKET = Pattern.compile("^/v1/bucket$");
 
@@ -285,6 +285,7 @@ public class ControllerSelector {
                 case "deploy" -> controller::deployApplication;
                 case "undeploy" -> controller::undeployApplication;
                 case "logs" -> controller::getApplicationLogs;
+                case "redeploy" -> controller::redeployApplication;
                 default -> null;
             };
         });
