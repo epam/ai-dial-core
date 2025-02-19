@@ -118,12 +118,14 @@ public class ResourceOperationController {
         HttpServerResponse response = context.getResponse();
         Consumer<ResourceEvent> subscriber = this::sendSubscriptionEvent;
         Runnable heartbeat = this::sendHeartbeat;
+        log.info("Subscribe");
 
         context.getRequest()
                 .body()
                 .compose(buffer -> {
                     Set<ResourceDescriptor> resources = parseAndVerifySubscriptionRequest(buffer);
 
+                    log.info("Sending empty response");
                     response.setChunked(true)
                             .setStatusCode(200)
                             .putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
@@ -137,6 +139,7 @@ public class ResourceOperationController {
                     }, false);
                 })
                 .onSuccess(subscription -> response.closeHandler(event -> {
+                    log.info("Unsubscribe");
                     heartbeatService.unsubscribe(heartbeat);
                     subscription.close();
                 }))
@@ -207,6 +210,7 @@ public class ResourceOperationController {
     }
 
     private void handleServiceError(Throwable error) {
+        log.info("Error occurred", error);
         if (error instanceof IllegalArgumentException) {
             context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
         } else if (error instanceof PermissionDeniedException httpException) {
