@@ -41,7 +41,7 @@ public class Conversation {
                         @JsonProperty(value = "name", required = true) String name,
                         @JsonProperty(value = "prompt", required = true) String prompt,
                         @JsonProperty(value = "temperature", required = true) int temperature,
-                        @JsonProperty(value = "lastActivityDate", required = true) long lastActivityDate,
+                        @JsonProperty(value = "lastActivityDate") long lastActivityDate,
                         @JsonProperty(value = "model", required = true) ModelId model,
                         @JsonProperty(value = "selectedAddons", required = true) Set<String> selectedAddons,
                         @JsonProperty(value = "messages", required = true) List<Message> messages,
