@@ -64,18 +64,31 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private long bytesHandled;
 
+    private final String author;
+
     public BlobWriteStream(Vertx vertx,
                            ResourceService resourceService,
                            BlobStorage storage,
                            ResourceDescriptor resource,
                            EtagHeader etag,
                            String contentType) {
+        this(vertx, resourceService, storage, resource, etag, contentType, null);
+    }
+
+    public BlobWriteStream(Vertx vertx,
+                           ResourceService resourceService,
+                           BlobStorage storage,
+                           ResourceDescriptor resource,
+                           EtagHeader etag,
+                           String contentType,
+                           String author) {
         this.vertx = vertx;
         this.resourceService = resourceService;
         this.storage = storage;
         this.resource = resource;
         this.etag = etag;
         this.contentType = contentType != null ? contentType : BlobStorageUtil.getContentType(resource.getName());
+        this.author = author;
     }
 
     @Override
@@ -123,7 +136,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 if (mpu == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
                     try (InputStream chunkStream = new ByteBufInputStream(lastChunk)) {
-                        metadata = resourceService.putFile(resource, chunkStream.readAllBytes(), etag, contentType);
+                        metadata = resourceService.putFile(resource, chunkStream.readAllBytes(), etag, contentType, author);
                     }
                 } else {
                     if (position != 0) {
@@ -136,7 +149,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                     String newEtag = etagBuilder.append(lastChunk.nioBuffer()).build();
                     ResourceService.MultipartData multipartData = new ResourceService.MultipartData(
                             mpu, parts, contentType, bytesHandled, newEtag);
-                    metadata = resourceService.finishFileUpload(resource, multipartData, etag);
+                    metadata = resourceService.finishFileUpload(resource, multipartData, etag, author);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 

@@ -963,6 +963,26 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
 
+        response = send(HttpMethod.GET, "/v1/metadata/conversations/public/folder1/conversation1", "permissions=true", null,
+                "authorization", "user");
+        verifyJsonNotExact(response, 200, """
+                {
+                    "name": "conversation1",
+                    "parentPath": "folder1",
+                    "bucket": "public",
+                    "url": "conversations/public/folder1/conversation1",
+                    "nodeType": "ITEM",
+                    "resourceType": "CONVERSATION",
+                    "permissions": [
+                      "READ"
+                    ],
+                    "createdAt": "@ignore",
+                    "updatedAt": "@ignore",
+                    "etag": "@ignore",
+                    "author": "EPM-RTC-GPT"
+                  }
+                """);
+
         response = send(HttpMethod.GET, "/v1/metadata/conversations/public/", "permissions=true", null,
                 "authorization", "admin");
         verifyJsonNotExact(response, 200, """

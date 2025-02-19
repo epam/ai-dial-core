@@ -214,10 +214,10 @@ public class ApplicationService {
         return applications;
     }
 
-    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, Application application) {
+    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author, Application application) {
         prepareApplication(resource, application);
 
-        ResourceItemMetadata meta = resourceService.computeResource(resource, etag, json -> {
+        ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             Application.Function function = application.getFunction();
 
@@ -289,7 +289,9 @@ public class ApplicationService {
         verifyApplication(source);
         verifyApplication(destination);
 
-        Application application = getApplication(source).getValue();
+        Pair<ResourceItemMetadata, Application> result = getApplication(source);
+        Application application = result.getValue();
+        String author = result.getKey().getAuthor();
         Application.Function function = application.getFunction();
 
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
@@ -299,7 +301,7 @@ public class ApplicationService {
         boolean isPublicOrReview = isPublicOrReview(destination);
         String sourceFolder = (function == null) ? null : function.getSourceFolder();
 
-        resourceService.computeResource(destination, etag, json -> {
+        resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
 
             if (function != null) {

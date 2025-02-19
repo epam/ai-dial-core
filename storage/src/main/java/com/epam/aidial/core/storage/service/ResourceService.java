@@ -67,6 +67,7 @@ public class ResourceService implements AutoCloseable {
     public static final String CREATED_AT_ATTRIBUTE = "created_at";
     public static final String ETAG_ATTRIBUTE = "etag";
     private static final String COMPRESS_ATTRIBUTE = "compress";
+    private static final String AUTHOR_ATTRIBUTE = "author";
 
     private static final Set<String> REDIS_FIELDS_NO_BODY = Set.of(
             ETAG_ATTRIBUTE,
@@ -75,6 +76,7 @@ public class ResourceService implements AutoCloseable {
             RESOURCE_TYPE_ATTRIBUTE,
             CONTENT_TYPE_ATTRIBUTE,
             CONTENT_LENGTH_ATTRIBUTE,
+            AUTHOR_ATTRIBUTE,
             SYNCED_ATTRIBUTE,
             EXISTS_ATTRIBUTE);
     private static final Set<String> REDIS_FIELDS = Sets.union(
@@ -216,10 +218,12 @@ public class ResourceService implements AutoCloseable {
 
             Long createdAt = null;
             Long updatedAt = null;
+            String author = null;
 
             if (metadata != null) {
                 createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
                 updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
+                author = metadata.get(AUTHOR_ATTRIBUTE);
             }
 
             if (createdAt == null && meta.getCreationDate() != null) {
@@ -231,11 +235,12 @@ public class ResourceService implements AutoCloseable {
             }
 
             if (description.getType().requireCompression()) {
-                return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt);
+                return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt).setAuthor(author);
             }
 
             return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
                     .setCreatedAt(createdAt)
+                    .setAuthor(author)
                     .setUpdatedAt(updatedAt);
         }).toList();
 
@@ -270,7 +275,8 @@ public class ResourceService implements AutoCloseable {
         return new ResourceItemMetadata(descriptor)
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
-                .setEtag(result.etag);
+                .setEtag(result.etag)
+                .setAuthor(result.author);
     }
 
     private static FileMetadata toFileMetadata(
@@ -278,6 +284,7 @@ public class ResourceService implements AutoCloseable {
         return (FileMetadata) new FileMetadata(resource, result.contentLength(), result.contentType())
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
+                .setAuthor(result.author)
                 .setEtag(result.etag());
     }
 
@@ -377,14 +384,19 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescriptor descriptor, String body, EtagHeader etag) {
-        return putResource(descriptor, body, etag, true);
+            ResourceDescriptor descriptor, String body, EtagHeader etag, String author) {
+        return putResource(descriptor, body, etag, author, true);
     }
 
     public ResourceItemMetadata putResource(
-            ResourceDescriptor descriptor, String body, EtagHeader etag, boolean lock) {
+            ResourceDescriptor descriptor, String body, EtagHeader etag) {
+        return putResource(descriptor, body, etag, null, true);
+    }
+
+    public ResourceItemMetadata putResource(
+            ResourceDescriptor descriptor, String body, EtagHeader etag, String author, boolean lock) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        return putResource(descriptor, bytes, etag, "application/json", lock);
+        return putResource(descriptor, bytes, etag, "application/json", author, lock);
     }
 
     private ResourceItemMetadata putResource(
@@ -392,6 +404,7 @@ public class ResourceService implements AutoCloseable {
             byte[] body,
             EtagHeader etag,
             String contentType,
+            String author,
             boolean lock) {
         String redisKey = redisKey(descriptor);
 
@@ -400,13 +413,14 @@ public class ResourceService implements AutoCloseable {
 
             if (metadata != null) {
                 etag.validate(metadata.getEtag());
+                author = metadata.getAuthor();
             }
 
             Long updatedAt = time();
             Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
             String newEtag = EtagBuilder.generateEtag(body);
             Result result = new Result(body, newEtag, createdAt, updatedAt, contentType,
-                    descriptor.getType().requireCompression(), (long) body.length, descriptor.getType().name(), false);
+                    descriptor.getType().requireCompression(), (long) body.length, descriptor.getType().name(), author, false);
             if (body.length <= maxSizeToCache) {
                 redisPut(redisKey, result);
                 if (metadata == null) {
@@ -429,21 +443,22 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    public FileMetadata putFile(ResourceDescriptor descriptor, byte[] body, EtagHeader etag, String contentType) {
+    public FileMetadata putFile(ResourceDescriptor descriptor, byte[] body, EtagHeader etag, String contentType, String author) {
         if (descriptor.getType().requireCompression()) {
             throw new IllegalArgumentException("Resource must be uncompressed, got %s".formatted(descriptor.getType()));
         }
 
-        return (FileMetadata) putResource(descriptor, body, etag, contentType, true);
+        return (FileMetadata) putResource(descriptor, body, etag, contentType, author, true);
     }
 
     public FileMetadata finishFileUpload(
-            ResourceDescriptor descriptor, MultipartData multipartData, EtagHeader etag) {
+            ResourceDescriptor descriptor, MultipartData multipartData, EtagHeader etag, String author) {
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
             if (metadata != null) {
                 etag.validate(metadata.getEtag());
+                author = metadata.getAuthor();
             }
 
             flushToBlobStore(redisKey);
@@ -451,7 +466,7 @@ public class ResourceService implements AutoCloseable {
             Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
             MultipartUpload multipartUpload = multipartData.multipartUpload;
             Map<String, String> userMetadata = multipartUpload.blobMetadata().getUserMetadata();
-            userMetadata.putAll(toUserMetadata(multipartData.etag, createdAt, updatedAt, descriptor.getType().name()));
+            userMetadata.putAll(toUserMetadata(multipartData.etag, createdAt, updatedAt, descriptor.getType().name(), author));
             blobStore.completeMultipartUpload(multipartUpload, multipartData.parts);
 
             ResourceEvent.Action action = metadata == null
@@ -472,6 +487,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata computeResource(ResourceDescriptor descriptor, EtagHeader etag, Function<String, String> fn) {
+        return computeResource(descriptor, etag, null, fn);
+    }
+
+    public ResourceItemMetadata computeResource(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lockService.lock(redisKey)) {
@@ -493,7 +512,7 @@ public class ResourceService implements AutoCloseable {
                 return oldResult.getKey();
             }
 
-            return putResource(descriptor, newBody, etag, false);
+            return putResource(descriptor, newBody, etag, author, false);
         }
     }
 
@@ -658,6 +677,7 @@ public class ResourceService implements AutoCloseable {
                 ? Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE))
                 : null;
         String resourceType = meta.getUserMetadata().get(RESOURCE_TYPE_ATTRIBUTE);
+        String author = meta.getUserMetadata().get(AUTHOR_ATTRIBUTE);
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
         if (createdAt == null && meta.getCreationDate() != null) {
@@ -680,7 +700,7 @@ public class ResourceService implements AutoCloseable {
             }
         }
 
-        return new Result(body, etag, createdAt, updatedAt, contentType, null, contentLength, resourceType, true);
+        return new Result(body, etag, createdAt, updatedAt, contentType, null, contentLength, resourceType, author, true);
     }
 
     private void blobPut(String key, Result result) {
@@ -691,7 +711,7 @@ public class ResourceService implements AutoCloseable {
             bytes = Compression.compress(encoding, bytes);
         }
 
-        Map<String, String> metadata = toUserMetadata(result.etag, result.createdAt, result.updatedAt, result.resourceType);
+        Map<String, String> metadata = toUserMetadata(result.etag, result.createdAt, result.updatedAt, result.resourceType, result.author);
         blobStore.store(key, result.contentType, encoding, metadata, bytes);
     }
 
@@ -732,10 +752,11 @@ public class ResourceService implements AutoCloseable {
         Long createdAt = RedisUtil.redisToLong(fields.get(CREATED_AT_ATTRIBUTE));
         Long updatedAt = RedisUtil.redisToLong(fields.get(UPDATED_AT_ATTRIBUTE));
         String resourceType = RedisUtil.redisToString(fields.get(RESOURCE_TYPE_ATTRIBUTE), null);
+        String author = RedisUtil.redisToString(fields.get(AUTHOR_ATTRIBUTE), null);
         // we have to maintain historical data which are already in the cache, but they don't have the field
         Boolean compress = RedisUtil.redisToBoolean(fields.get(COMPRESS_ATTRIBUTE), !key.startsWith("file:"));
 
-        return new Result(body, etag, createdAt, updatedAt, contentType, compress, contentLength, resourceType, synced);
+        return new Result(body, etag, createdAt, updatedAt, contentType, compress, contentLength, resourceType, author, synced);
     }
 
     private void redisPut(String key, Result result) {
@@ -758,6 +779,7 @@ public class ResourceService implements AutoCloseable {
             fields.put(CONTENT_TYPE_ATTRIBUTE, RedisUtil.stringToRedis(result.contentType));
             fields.put(CONTENT_LENGTH_ATTRIBUTE, RedisUtil.longToRedis(result.contentLength));
             fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
+            fields.put(AUTHOR_ATTRIBUTE, RedisUtil.stringToRedis(result.author));
         } else {
             REDIS_FIELDS.forEach(field -> fields.put(field, RedisUtil.EMPTY_ARRAY));
             fields.put(EXISTS_ATTRIBUTE, RedisUtil.BOOLEAN_FALSE_ARRAY);
@@ -805,7 +827,7 @@ public class ResourceService implements AutoCloseable {
         return metadata.getEtag();
     }
 
-    private static Map<String, String> toUserMetadata(String etag, Long createdAt, Long updatedAt, String resourceType) {
+    private static Map<String, String> toUserMetadata(String etag, Long createdAt, Long updatedAt, String resourceType, String author) {
         Map<String, String> metadata = new HashMap<>();
         metadata.put(ETAG_ATTRIBUTE, etag);
         if (createdAt != null) {
@@ -816,6 +838,9 @@ public class ResourceService implements AutoCloseable {
         }
         if (resourceType != null) {
             metadata.put(RESOURCE_TYPE_ATTRIBUTE, resourceType);
+        }
+        if (author != null) {
+            metadata.put(AUTHOR_ATTRIBUTE, author);
         }
 
         return metadata;
@@ -835,16 +860,20 @@ public class ResourceService implements AutoCloseable {
             Boolean compress,
             Long contentLength,
             String resourceType,
+            String author,
             boolean synced) {
-        public static final Result DELETED_SYNCED = new Result(null, null, null, null, null, null, null, null, true);
-        public static final Result DELETED_NOT_SYNCED = new Result(null, null, null, null, null, null, null, null, false);
+        public static final Result DELETED_SYNCED = new Result(null, null, null, null,
+                null, null, null, null, null, true);
+        public static final Result DELETED_NOT_SYNCED = new Result(null, null, null, null,
+                null, null, null, null, null, false);
 
         public boolean exists() {
             return body != null;
         }
 
         public Result toStub() {
-            return new Result(ArrayUtils.EMPTY_BYTE_ARRAY, etag, createdAt, updatedAt, contentType, false, 0L, resourceType, synced);
+            return new Result(ArrayUtils.EMPTY_BYTE_ARRAY, etag, createdAt, updatedAt, contentType, false,
+                    0L, resourceType, author, synced);
         }
     }
 
