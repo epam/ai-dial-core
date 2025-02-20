@@ -132,8 +132,7 @@ public class AccessService {
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (context.getApiKeyData().getPerRequestKey() == null // not application
-                && hasAdminAccess(context)) {
+        if (hasAdminAccess(context)) {
             return resources.stream()
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
@@ -257,7 +256,8 @@ public class AccessService {
     }
 
     public boolean hasAdminAccess(ProxyContext context) {
-        return RuleMatcher.match(context, adminRules);
+        return context.getApiKeyData().getPerRequestKey() == null // not application
+                && RuleMatcher.match(context, adminRules);
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
