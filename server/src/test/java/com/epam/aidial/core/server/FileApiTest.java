@@ -1622,9 +1622,10 @@ public class FileApiTest extends ResourceBaseTest {
     public void testAdminRightsNotInheritedByPerRequestKey(Vertx vertx, VertxTestContext context) {
         ApiKeyData perRequestKey = new ApiKeyData();
         perRequestKey.setExtractedClaims(createClaims("admin"));
+        perRequestKey.setSourceDeployment("testapp");
         apiKeyStore.assignPerRequestApiKey(perRequestKey);
 
-        Checkpoint checkpoint = context.checkpoint(3);
+        Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
 
         String fileUrl = "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/file.txt";
@@ -1649,6 +1650,20 @@ public class FileApiTest extends ResourceBaseTest {
             Promise<Void> promise = Promise.promise();
             client.get(serverPort, "localhost", fileUrl)
                     .putHeader("Authorization", "admin")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+            return promise.future();
+        }).compose((mapper) -> {
+            // Verify that a per-request key has access to the appdata inside admin's bucket
+            Promise<Void> promise = Promise.promise();
+            client.get(serverPort, "localhost", "/v1/metadata/files/4X25dj1mja51jykqxsXnCH/appdata/testapp/")
+                    .putHeader("Api-key", perRequestKey.getPerRequestKey())
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
