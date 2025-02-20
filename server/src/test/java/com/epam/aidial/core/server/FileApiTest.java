@@ -1667,7 +1667,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            assertEquals(200, response.statusCode());
+                            assertEquals(404, response.statusCode());
                             checkpoint.flag();
                             promise.complete();
                         });
