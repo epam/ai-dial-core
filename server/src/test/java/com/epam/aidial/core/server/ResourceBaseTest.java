@@ -28,6 +28,7 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -175,8 +176,7 @@ public class ResourceBaseTest {
                         }
 
                         if (authorization.equals("user") || authorization.equals("admin")) {
-                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization),
-                                    authorization, Map.of("title", List.of("Manager")), null, null));
+                            return Future.succeededFuture(createClaims(authorization));
                         }
 
                         return Future.failedFuture("Not authorized");
@@ -201,6 +201,10 @@ public class ResourceBaseTest {
             destroy();
             throw e;
         }
+    }
+
+    static ExtractedClaims createClaims(String role) {
+        return new ExtractedClaims(role, List.of(role), role, Map.of("title", List.of("Manager")), null, null);
     }
 
     @AfterEach

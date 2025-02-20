@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
+import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
@@ -21,6 +22,7 @@ import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
@@ -1610,6 +1612,60 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
                             assertEquals(200, response.statusCode());
+                            checkpoint.flag();
+                        });
+                    }));
+        });
+    }
+
+    @Test
+    public void testAdminRightsNotInheritedByPerRequestKey(Vertx vertx, VertxTestContext context) {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims("admin"));
+        apiKeyStore.assignPerRequestApiKey(perRequestKey);
+
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        String fileUrl = "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/file.txt";
+        Future.succeededFuture().compose((mapper) -> {
+            // Create a file using proxy key1
+            Promise<Void> promise = Promise.promise();
+            client.put(serverPort, "localhost", fileUrl)
+                    .putHeader("Api-key", "proxyKey1")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("file.txt", TEST_FILE_CONTENT, "text/plain"),
+                            context.succeeding(response -> {
+                                context.verify(() -> {
+                                    assertEquals(200, response.statusCode());
+                                    checkpoint.flag();
+                                    promise.complete();
+                                });
+                            })
+                    );
+            return promise.future();
+        }).compose((mapper) -> {
+            // Verify that admin has read access to the file
+            Promise<Void> promise = Promise.promise();
+            client.get(serverPort, "localhost", fileUrl)
+                    .putHeader("Authorization", "admin")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(200, response.statusCode());
+                            checkpoint.flag();
+                            promise.complete();
+                        });
+                    }));
+            return promise.future();
+        }).andThen((mapper) -> {
+            // Ensure that a per-request key derived from admin key does not grant access to the file
+            client.get(serverPort, "localhost", fileUrl)
+                    .putHeader("Api-key", perRequestKey.getPerRequestKey())
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> {
+                        context.verify(() -> {
+                            assertEquals(403, response.statusCode());
                             checkpoint.flag();
                         });
                     }));
