@@ -245,6 +245,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
                                             }
@@ -440,6 +441,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
                                             }
@@ -796,6 +798,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-GPT",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
                                             }
@@ -901,6 +904,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
                                             }
@@ -981,6 +985,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
                                             }
@@ -1049,6 +1054,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
                                             }
@@ -1128,6 +1134,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
                                             }
@@ -1160,6 +1167,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
                                             }
@@ -1270,6 +1278,7 @@ public class FileApiTest extends ResourceBaseTest {
                                                       "createdAt" : "@ignore",
                                                       "updatedAt" : "@ignore",
                                                       "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                                      "author" : "EPM-RTC-RAIL",
                                                       "contentLength" : 17,
                                                       "contentType" : "binary/octet-stream"
                                                     }
@@ -1344,6 +1353,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
                                               "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
                                             }
@@ -1566,7 +1576,8 @@ public class FileApiTest extends ResourceBaseTest {
                                       "updatedAt":"@ignore",
                                       "etag":"bb6ed8b95d44dba4f8e4a99ebaca9a00",
                                       "contentLength":11,
-                                      "contentType":"text/custom"
+                                      "contentType":"text/custom",
+                                      "author": "EPM-RTC-RAIL"
                                     }
                                     """, response.body());
                             checkpoint.flag();

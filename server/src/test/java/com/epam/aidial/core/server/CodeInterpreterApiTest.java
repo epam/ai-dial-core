@@ -30,6 +30,10 @@ public class CodeInterpreterApiTest extends ResourceBaseTest {
                 {}""");
         verifyJson(response, 200, """
                 {"sessionId":"0123"}""");
+        response = send(HttpMethod.POST, "/v1/ops/code_interpreter/get_session", null, """
+                {"sessionId":"0123"}""");
+        verifyJson(response, 200, """
+                {"sessionId":"0123"}""");
 
         webServer.map(HttpMethod.POST, "/execute_code", 200, """
                 {"status":"SUCCESS","stdout":"","stderr":"","result":{"text/plain":"3"},"display":[]}""");
@@ -91,6 +95,9 @@ public class CodeInterpreterApiTest extends ResourceBaseTest {
                 {"sessionId":"0123"}""");
         verifyJson(response, 200, """
                 {"sessionId":"0123"}""");
+        response = send(HttpMethod.POST, "/v1/ops/code_interpreter/get_session", null, """
+                {"sessionId":"0123"}""");
+        verify(response, 404, "Session is not found: 0123");
     }
 
     @Test

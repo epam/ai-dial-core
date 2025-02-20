@@ -137,6 +137,7 @@ public class ApiKeyStore {
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
             apiKeyDataMap.put(apiKey, apiKeyData);
+            log.debug("Loading {}", value);
         }
         keys = apiKeyDataMap;
     }

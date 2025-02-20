@@ -1,16 +1,9 @@
 package com.epam.aidial.core.server.token;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.buffer.Buffer;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
-
-import java.io.InputStream;
-import java.util.Arrays;
 
 @Slf4j
 @UtilityClass
@@ -25,44 +18,15 @@ public class TokenUsageParser {
         }
     }
 
-    private TokenUsage parseUsage(Buffer body) throws Exception {
+    private TokenUsage parseUsage(Buffer body) {
         int index = findUsage(body);
         if (index < 0) {
             return null;
         }
 
-        ByteBuf slice = body.slice(index, body.length()).getByteBuf();
-        JsonFactory factory = new JsonFactory();
+        Buffer slice = body.slice(index, body.length());
 
-        try (InputStream stream = new ByteBufInputStream(slice); JsonParser parser = factory.createParser(stream)) {
-            TokenUsage usage = new TokenUsage();
-            verify(parser.nextToken(), JsonToken.START_OBJECT);
-
-            while (true) {
-                JsonToken token = parser.nextToken();
-                if (token == JsonToken.END_OBJECT) {
-                    return usage;
-                }
-
-                verify(token, JsonToken.FIELD_NAME);
-                String name = parser.getCurrentName();
-
-                token = parser.nextValue();
-                verify(token,
-                        JsonToken.VALUE_NUMBER_INT, JsonToken.VALUE_NUMBER_FLOAT,
-                        JsonToken.VALUE_STRING, JsonToken.VALUE_NULL,
-                        JsonToken.VALUE_FALSE, JsonToken.VALUE_TRUE);
-
-                switch (name) {
-                    case "completion_tokens" -> usage.setCompletionTokens(parser.getLongValue());
-                    case "prompt_tokens" -> usage.setPromptTokens(parser.getLongValue());
-                    case "total_tokens" -> usage.setTotalTokens(parser.getLongValue());
-                    default -> {
-                        // ignore
-                    }
-                }
-            }
-        }
+        return ProxyUtil.convertToObject(slice, TokenUsage.class);
     }
 
     private int findUsage(Buffer body) {
@@ -111,13 +75,4 @@ public class TokenUsageParser {
         };
     }
 
-    private void verify(JsonToken actual, JsonToken... expected) {
-        for (JsonToken candidate : expected) {
-            if (candidate == actual) {
-                return;
-            }
-        }
-
-        throw new IllegalArgumentException("Actual: " + actual + "Expected: " + Arrays.toString(expected));
-    }
 }

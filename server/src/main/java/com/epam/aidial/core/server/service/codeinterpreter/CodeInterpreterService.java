@@ -123,6 +123,21 @@ public class CodeInterpreterService {
         }
     }
 
+    public CodeInterpreterSession getSession(ProxyContext context, String sessionId) {
+        verifyActive();
+        verifySessionId(sessionId);
+
+        ResourceDescriptor resource = sessionResource(context, sessionId);
+        String json = resourceService.getResource(resource);
+        CodeInterpreterSession session = convertToObject(json, CodeInterpreterSession.class);
+
+        if (session == null) {
+            throw new ResourceNotFoundException("Session is not found: " + sessionId);
+        }
+
+        return session;
+    }
+
     public CodeInterpreterSession touchSession(ProxyContext context, String sessionId) {
         verifyActive();
         verifySessionId(sessionId);
@@ -142,7 +157,7 @@ public class CodeInterpreterService {
 
             session.setUsedAt(System.currentTimeMillis());
             activeSessions.add(session.getUsedAt() + sessionTtl, resource.getUrl());
-            resourceService.putResource(resource, convertToString(session), EtagHeader.ANY, false);
+            resourceService.putResource(resource, convertToString(session), EtagHeader.ANY, null, false);
             return session;
         }
     }
@@ -170,14 +185,14 @@ public class CodeInterpreterService {
             cleanup = true;
             session.setUsedAt(System.currentTimeMillis());
             activeSessions.add(session.getUsedAt() + sessionTtl, resource.getUrl());
-            resourceService.putResource(resource, convertToString(session), EtagHeader.ANY, false);
+            resourceService.putResource(resource, convertToString(session), EtagHeader.ANY, null, false);
 
             String deploymentUrl = operatorService.createCodeInterpreterDeployment(session.getDeploymentId(), sessionImage);
             session.setDeploymentUrl(deploymentUrl);
             session.setUsedAt(System.currentTimeMillis());
 
             activeSessions.add(session.getUsedAt() + sessionTtl, resource.getUrl());
-            resourceService.putResource(resource, convertToString(session), EtagHeader.ANY, false);
+            resourceService.putResource(resource, convertToString(session), EtagHeader.ANY, null, false);
         } catch (Throwable error) {
             if (cleanup) {
                 Predicate<CodeInterpreterSession> ifMatch = candidate -> Objects.equals(candidate.getDeploymentId(), session.getDeploymentId());

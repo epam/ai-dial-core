@@ -93,6 +93,8 @@ public class ProxyContext {
     private List<String> interceptors;
     private boolean isStreamingRequest;
     private String traceOperation;
+    // userName to be extracted from JWT or project name belongs to API key
+    private String userDisplayName;
 
     public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.proxy = proxy;
@@ -123,9 +125,11 @@ public class ProxyContext {
             this.userHash = extractedClaims.userHash();
             this.userSub = extractedClaims.sub();
             this.userProject = extractedClaims.project();
+            this.userDisplayName = extractedClaims.userDisplayName();
         } else {
             this.userRoles = Objects.requireNonNull(originalKey, "API key must be provided if user claims are missed")
                     .getMergedRoles();
+            this.userDisplayName = originalKey.getProject();
         }
     }
 

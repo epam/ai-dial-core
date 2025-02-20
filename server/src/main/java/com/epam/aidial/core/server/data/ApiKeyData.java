@@ -78,10 +78,15 @@ public class ApiKeyData {
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
             currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
-        currentPath.add(context.getDeployment().getName());
+        if (context.getDeployment() != null) {
+            currentPath.add(context.getDeployment().getName());
+            proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
+        } else if (context.getRoute() != null) {
+            currentPath.add(context.getRoute().getName());
+            proxyApiKeyData.setSourceDeployment(context.getRoute().getName());
+        }
         proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
-        proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
     }
 
     @JsonIgnore

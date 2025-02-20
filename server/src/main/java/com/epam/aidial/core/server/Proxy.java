@@ -223,6 +223,12 @@ public class Proxy implements Handler<HttpServerRequest> {
                             });
         }
 
+        // see https://github.com/epam/ai-dial-core/issues/675
+        if ("Bearer".equalsIgnoreCase(authorization.trim())) {
+            return apiKeyStore.getApiKeyData(apiKey)
+                    .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
+        }
+
         if (apiKey.equals(AccessTokenValidator.extractTokenFromHeader(authorization))) {
             // we don't know exactly what kind of credentials a client provided to us.
             // we try if it's access token the first and then API key

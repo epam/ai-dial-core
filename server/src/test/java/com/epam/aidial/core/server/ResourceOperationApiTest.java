@@ -35,6 +35,9 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         // verify new resource can be downloaded
         response = resourceRequest(HttpMethod.GET, "/folder2/conversation2");
         verifyJson(response, 200, CONVERSATION_BODY_1);
+        // verify the resource has the same author
+        response = metadata("/folder2/conversation2");
+        verifyNotExact(response, 200, "\"author\":\"EPM-RTC-GPT\"");
     }
 
     @Test

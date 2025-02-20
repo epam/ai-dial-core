@@ -213,15 +213,15 @@ public class ResourceController extends AccessControlBaseController {
             return Pair.of(etag, body);
         });
 
+        String author = context.getUserDisplayName();
         Future<ResourceItemMetadata> responseFuture;
-
         if (descriptor.getType() == ResourceTypes.APPLICATION) {
             responseFuture = requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class);
                 return vertx.executeBlocking(() -> {
                     validateCustomApplication(application);
-                    return applicationService.putApplication(descriptor, etag, application).getKey();
+                    return applicationService.putApplication(descriptor, etag, author, application).getKey();
                 }, false);
             });
         } else {
@@ -229,7 +229,7 @@ public class ResourceController extends AccessControlBaseController {
                 EtagHeader etag = pair.getKey();
                 String body = pair.getValue();
                 validateRequestBody(descriptor, body);
-                return vertx.executeBlocking(() -> resourceService.putResource(descriptor, body, etag), false);
+                return vertx.executeBlocking(() -> resourceService.putResource(descriptor, body, etag, author), false);
             });
         }
 

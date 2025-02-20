@@ -36,7 +36,7 @@ public class UploadFileController extends AccessControlBaseController {
         if (!ResourceDescriptorFactory.isValidResourcePath(resource)) {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
-
+        String author = context.getUserDisplayName();
         return proxy.getVertx().executeBlocking(() -> {
             EtagHeader etag = validateRequest(context.getRequest(), resource);
             context.getRequest()
@@ -45,7 +45,7 @@ public class UploadFileController extends AccessControlBaseController {
                         String contentType = upload.contentType();
                         Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
                         BlobWriteStream writeStream = new BlobWriteStream(proxy.getVertx(), proxy.getResourceService(),
-                                proxy.getStorage(), resource, etag, contentType);
+                                proxy.getStorage(), resource, etag, contentType, author);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
                                     FileMetadata metadata = writeStream.getMetadata();

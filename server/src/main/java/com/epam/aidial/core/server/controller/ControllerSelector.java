@@ -43,7 +43,7 @@ public class ControllerSelector {
 
     private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(?<id>.+?)$");
     private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
-    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(deploy|undeploy|logs)$");
+    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(deploy|undeploy|logs|redeploy)$");
 
     private static final Pattern PATTERN_BUCKET = Pattern.compile("^/v1/bucket$");
 
@@ -76,9 +76,10 @@ public class ControllerSelector {
 
     private static final Pattern APP_SCHEMAS = Pattern.compile("^/v1/application_type_schemas/(schemas|schema|meta_schema)?");
     private static final Pattern CODE_INTERPRETER = Pattern.compile("^/v1/ops/code_interpreter/"
-                                                                    + "(open_session|close_session|execute_code|"
-                                                                    + "upload_file|download_file|list_files|"
-                                                                    + "transfer_input_file|transfer_output_file)$");
+            + "(open_session|close_session|get_session|"
+            + "execute_code|"
+            + "upload_file|download_file|list_files|"
+            + "transfer_input_file|transfer_output_file)$");
 
     static {
         // GET routes
@@ -284,6 +285,7 @@ public class ControllerSelector {
                 case "deploy" -> controller::deployApplication;
                 case "undeploy" -> controller::undeployApplication;
                 case "logs" -> controller::getApplicationLogs;
+                case "redeploy" -> controller::redeployApplication;
                 default -> null;
             };
         });
@@ -294,6 +296,7 @@ public class ControllerSelector {
             return switch (operation) {
                 case "open_session" -> controller::openSession;
                 case "close_session" -> controller::closeSession;
+                case "get_session" -> controller::getSession;
                 case "execute_code" -> controller::executeCode;
                 case "upload_file" -> controller::uploadFile;
                 case "download_file" -> controller::downloadFile;

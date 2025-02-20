@@ -25,6 +25,7 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
@@ -213,10 +214,10 @@ public class ApplicationService {
         return applications;
     }
 
-    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, Application application) {
+    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author, Application application) {
         prepareApplication(resource, application);
 
-        ResourceItemMetadata meta = resourceService.computeResource(resource, etag, json -> {
+        ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             Application.Function function = application.getFunction();
 
@@ -288,7 +289,9 @@ public class ApplicationService {
         verifyApplication(source);
         verifyApplication(destination);
 
-        Application application = getApplication(source).getValue();
+        Pair<ResourceItemMetadata, Application> result = getApplication(source);
+        Application application = result.getValue();
+        String author = result.getKey().getAuthor();
         Application.Function function = application.getFunction();
 
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
@@ -298,7 +301,7 @@ public class ApplicationService {
         boolean isPublicOrReview = isPublicOrReview(destination);
         String sourceFolder = (function == null) ? null : function.getSourceFolder();
 
-        resourceService.computeResource(destination, etag, json -> {
+        resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
 
             if (function != null) {
@@ -339,6 +342,17 @@ public class ApplicationService {
         }
     }
 
+    public Application redeployApplication(ProxyContext context, ResourceDescriptor resource) {
+        verifyApplication(resource);
+        controller.verifyActive();
+
+        Pair<Application, Future<Void>> result = undeployApplicationInternal(resource);
+
+        result.getValue().map(ignore -> deployApplication(context, resource))
+                .onFailure(error -> log.error("Application redeployment is failed due to the error", error));
+        return result.getKey();
+    }
+
     public Application deployApplication(ProxyContext context, ResourceDescriptor resource) {
         verifyApplication(resource);
         controller.verifyActive();
@@ -374,6 +388,10 @@ public class ApplicationService {
     }
 
     public Application undeployApplication(ResourceDescriptor resource) {
+        return undeployApplicationInternal(resource).getKey();
+    }
+
+    private Pair<Application, Future<Void>> undeployApplicationInternal(ResourceDescriptor resource) {
         verifyApplication(resource);
         controller.verifyActive();
 
@@ -405,8 +423,8 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
-        vertx.executeBlocking(() -> terminateApplication(resource, null), false);
-        return result.getValue();
+        Future<Void> future = vertx.executeBlocking(() -> terminateApplication(resource, null), false);
+        return Pair.of(result.getValue(), future);
     }
 
     public Application.Logs getApplicationLogs(ResourceDescriptor resource) {

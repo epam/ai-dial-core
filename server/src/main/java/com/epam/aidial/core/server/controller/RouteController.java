@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -45,14 +46,14 @@ public class RouteController implements Controller {
         Route route = selectRoute();
         if (route == null) {
             log.warn("RouteController can't find a route to proceed the request: {}", getRequestUri());
-            context.respond(HttpStatus.BAD_GATEWAY, "No route");
+            respond(HttpStatus.BAD_GATEWAY, "No route");
             return Future.succeededFuture();
         }
 
         if (!route.hasAccess(context.getUserRoles())) {
             log.error("Forbidden route {}. Trace: {}. Span: {}. Project: {}. User sub: {}.",
                     route.getName(), context.getTraceId(), context.getSpanId(), context.getProject(), context.getUserSub());
-            context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
+            respond(HttpStatus.FORBIDDEN, "Forbidden route");
             return Future.succeededFuture();
         }
 
@@ -105,6 +106,7 @@ public class RouteController implements Controller {
             proxy.getRateLimiter().limit(context, context.getRoute())
                     .compose(rateLimitResult -> {
                         if (rateLimitResult.status() == HttpStatus.OK) {
+                            setupProxyApiKeyData();
                             return sendRequest();
                         } else {
                             handleRateLimitHit(rateLimitResult);
@@ -118,6 +120,17 @@ public class RouteController implements Controller {
         }
     }
 
+    private void setupProxyApiKeyData() {
+        Upstream upstream = context.getUpstreamRoute().get();
+        if (upstream != null && upstream.getKey() != null) {
+            return;
+        }
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+    }
+
     /**
      * Called when proxy connected to the origin.
      */
@@ -129,7 +142,12 @@ public class RouteController implements Controller {
 
         Upstream upstream = context.getUpstreamRoute().get();
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
-        proxyRequest.putHeader(Proxy.HEADER_API_KEY, upstream.getKey());
+        if (upstream != null && upstream.getKey() != null) {
+            proxyRequest.putHeader(Proxy.HEADER_API_KEY, upstream.getKey());
+        } else {
+            ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+            proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
+        }
 
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
@@ -185,7 +203,7 @@ public class RouteController implements Controller {
         try {
             route.next();
         } catch (HttpException e) {
-            context.respond(e);
+            respond(e);
             return false;
         }
         return true;
@@ -218,13 +236,13 @@ public class RouteController implements Controller {
             httpException = new HttpException(result.status(), errorMessage);
         }
 
-        context.respond(httpException);
+        respond(httpException);
     }
 
     private void handleError(Throwable error) {
         String route = context.getRoute().getName();
         log.error("Failed to handle route {}", route, error);
-        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process route request: " + route);
+        respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process route request: " + route);
     }
 
     /**
@@ -232,7 +250,7 @@ public class RouteController implements Controller {
      */
     private void handleRequestBodyError(Throwable error) {
         log.warn("Failed to receive client body: {}", error.getMessage());
-        context.respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
     }
 
     /**
@@ -270,6 +288,7 @@ public class RouteController implements Controller {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        finalizeRequest();
     }
 
     private Route selectRoute() {
@@ -310,5 +329,27 @@ public class RouteController implements Controller {
             }
         }
         return uriBuilder.toString();
+    }
+
+    private void respond(HttpStatus status, String result) {
+        finalizeRequest();
+        context.respond(status, result);
+    }
+
+    private void respond(HttpException exception) {
+        finalizeRequest();
+        context.respond(exception);
+    }
+
+    private void finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
+        }
     }
 }

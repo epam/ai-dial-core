@@ -155,6 +155,48 @@ class TokenUsageParserTest {
                 """, 26, 226, 252);
     }
 
+    @Test
+    void testValidResponseWithDetails() {
+        valid("""
+                {
+                  "id": "eb69ae53-055b-4182-af8f-47f5f3ce810c",
+                  "object": "chat.completion",
+                  "created": 1687222196,
+                  "model": "gpt-4o-2024-05-13",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "message": {
+                        "role": "assistant",
+                        "content": "some content",
+                        "refusal": null
+                      },
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "foo": [{"a": {}}],
+                    "prompt_tokens": 1420,
+                    "completion_tokens": 119,
+                    "total_tokens": 1539,
+                    "prompt_tokens_details": {
+                      "cached_tokens": 0,
+                      "audio_tokens": 0
+                    },
+                    "completion_tokens_details": {
+                      "reasoning_tokens": 0,
+                      "audio_tokens": 0,
+                      "accepted_prediction_tokens": 0,
+                      "rejected_prediction_tokens": 0,
+                      "some_custom_field": {
+                        "some_nested_field": "some_value"
+                      }
+                    }
+                  }
+                }
+                """, 119, 1420, 1539);
+    }
+
     private void valid(String body, long completion, long prompt, long total) {
         TokenUsage usage = TokenUsageParser.parse(Buffer.buffer(body));
         Assertions.assertNotNull(usage);

@@ -19,7 +19,7 @@ public class RandomizedWeightedBalancerTest {
 
     @Mock
     private Random generator;
-    
+
     @Test
     void testWeightedLoadBalancer() {
         List<Upstream> upstreams = List.of(
@@ -31,25 +31,25 @@ public class RandomizedWeightedBalancerTest {
 
         RandomizedWeightedBalancer balancer = new RandomizedWeightedBalancer("model1", upstreams, generator);
 
-        when(generator.nextInt(11)).thenReturn(0);
+        when(generator.nextInt(10)).thenReturn(0);
 
         Upstream upstream = balancer.next();
         assertNotNull(upstream);
         assertEquals(upstreams.get(0), upstream);
 
-        when(generator.nextInt(11)).thenReturn(2);
+        when(generator.nextInt(10)).thenReturn(2);
 
         upstream = balancer.next();
         assertNotNull(upstream);
         assertEquals(upstreams.get(1), upstream);
 
-        when(generator.nextInt(11)).thenReturn(6);
+        when(generator.nextInt(10)).thenReturn(5);
 
         upstream = balancer.next();
         assertNotNull(upstream);
         assertEquals(upstreams.get(2), upstream);
 
-        when(generator.nextInt(11)).thenReturn(10);
+        when(generator.nextInt(10)).thenReturn(9);
 
         upstream = balancer.next();
         assertNotNull(upstream);

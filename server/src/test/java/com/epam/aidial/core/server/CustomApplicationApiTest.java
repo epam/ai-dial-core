@@ -34,7 +34,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -110,7 +111,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -133,7 +135,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -194,7 +197,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -279,7 +283,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -559,7 +564,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "function" : "EQUAL",
                      "source" : "roles",
                      "targets" : [ "user" ]
-                   } ]
+                   } ],
+                   "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -842,7 +848,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
                 }
                 """);
 
@@ -865,7 +872,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
                 }
                 """);
 
