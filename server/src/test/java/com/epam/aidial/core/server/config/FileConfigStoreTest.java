@@ -29,7 +29,7 @@ public class FileConfigStoreTest {
         FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(true), apiKeyStore);
         Set<String> expectedUserRoles = Set.of("second_role1");
 
-        Config config = fileConfigStore.load();
+        Config config = fileConfigStore.get();
 
         Set<String> actualUserRoles = config.getModels().get("testModel").getUserRoles();
         Assertions.assertEquals(expectedUserRoles, actualUserRoles);
@@ -40,7 +40,7 @@ public class FileConfigStoreTest {
         FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(false), apiKeyStore);
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
-        Config config = fileConfigStore.load();
+        Config config = fileConfigStore.get();
 
         Set<String> actualUserRoles = config.getModels().get("testModel").getUserRoles();
         Assertions.assertEquals(expectedUserRoles, actualUserRoles);
@@ -51,7 +51,7 @@ public class FileConfigStoreTest {
         FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore);
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
-        Config config = fileConfigStore.load();
+        Config config = fileConfigStore.get();
 
         Set<String> actualUserRoles = config.getModels().get("testModel").getUserRoles();
         Assertions.assertEquals(expectedUserRoles, actualUserRoles);

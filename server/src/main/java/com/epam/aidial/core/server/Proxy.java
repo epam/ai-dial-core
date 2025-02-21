@@ -168,7 +168,7 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        Config config = configStore.load();
+        Config config = configStore.get();
         SpanContext spanContext = Span.current().getSpanContext();
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();

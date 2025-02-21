@@ -81,6 +81,8 @@ public class ControllerSelector {
             + "upload_file|download_file|list_files|"
             + "transfer_input_file|transfer_output_file)$");
 
+    private static final Pattern CONFIG = Pattern.compile("^/v1/ops/config/reload$");
+
     static {
         // GET routes
         get(PATTERN_DEPLOYMENT, (proxy, context, pathMatcher) -> {
@@ -306,6 +308,7 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        post(CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
         // DELETE routes
         delete(PATTERN_FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);

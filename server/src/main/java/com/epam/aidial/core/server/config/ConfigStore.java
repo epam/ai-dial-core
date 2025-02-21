@@ -9,6 +9,8 @@ public interface ConfigStore {
      *
      * @return immutable config.
      */
-    Config load();
+    Config get();
+
+    void reload();
 
 }

@@ -187,7 +187,7 @@ public class ProxyTest {
         when(request.path()).thenReturn("/foo");
 
         Config config = new Config();
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
 
         proxy.handle(request);
@@ -208,7 +208,7 @@ public class ProxyTest {
         when(request.path()).thenReturn("/foo");
 
         Config config = new Config();
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
 
@@ -230,7 +230,7 @@ public class ProxyTest {
         when(request.path()).thenReturn("/foo");
 
         Config config = new Config();
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request_key");
         when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
@@ -253,7 +253,7 @@ public class ProxyTest {
         when(request.path()).thenReturn("/foo");
 
         Config config = new Config();
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request_key");
         apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
@@ -287,7 +287,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
 
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request_key");
@@ -314,7 +314,7 @@ public class ProxyTest {
         when(request.path()).thenReturn("/foo");
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Api key is not found")));
 
         when(request.response()).thenReturn(response);
@@ -349,7 +349,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
@@ -385,7 +385,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
@@ -421,7 +421,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
@@ -447,7 +447,7 @@ public class ProxyTest {
         when(request.path()).thenReturn("/foo");
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
         when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
         when(request.response()).thenReturn(response);
@@ -479,7 +479,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
@@ -512,7 +512,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
@@ -544,7 +544,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), null, null);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
 
@@ -573,7 +573,7 @@ public class ProxyTest {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         routes.put("route", route);
         config.setRoutes(routes);
-        when(configStore.load()).thenReturn(config);
+        when(configStore.get()).thenReturn(config);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
         when(request.response()).thenReturn(response);
         when(response.ended()).thenReturn(false);

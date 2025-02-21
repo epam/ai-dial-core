@@ -117,7 +117,7 @@ public class ShareService {
     private void addCustomApplicationRelatedFiles(String bucket, ShareResourcesRequest request) {
         List<String> filesFromRequest = request.getResources().stream()
                 .map(SharedResource::url).toList();
-        Config config = configStore.load();
+        Config config = configStore.get();
         Set<SharedResource> newSharedResources = new HashSet<>(request.getResources());
         for (SharedResource sharedResource : request.getResources()) {
             ResourceDescriptor resource = getResourceFromLink(sharedResource.url());

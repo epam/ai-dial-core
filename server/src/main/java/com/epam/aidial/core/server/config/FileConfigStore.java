@@ -52,8 +52,13 @@ public final class FileConfigStore implements ConfigStore {
     }
 
     @Override
-    public Config load() {
+    public Config get() {
         return config;
+    }
+
+    @Override
+    public void reload() {
+        load(true);
     }
 
     @SneakyThrows
