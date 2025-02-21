@@ -217,14 +217,9 @@ public class AccessService {
             }
 
             String parentPath = resource.getParentPath();
-            String filePath;
-            if (resource.isFolder()) {
-                filePath = parentPath;
-            } else {
-                filePath = parentPath == null
-                        ? resource.getName()
-                        : parentPath + ResourceDescriptor.PATH_SEPARATOR + resource.getName();
-            }
+            String filePath = parentPath == null
+                    ? resource.getName()
+                    : parentPath + ResourceDescriptor.PATH_SEPARATOR + resource.getName();
 
             if (filePath != null && filePath.startsWith(appPath)) {
                 result.put(resource, ResourceAccessType.ALL);

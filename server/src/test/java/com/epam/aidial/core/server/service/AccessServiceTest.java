@@ -81,6 +81,22 @@ public class AccessServiceTest {
     }
 
     @Test
+    public void testGetAppResourceAccess_AppDataFolder() {
+        ProxyContext context = mock(ProxyContext.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getUserSub()).thenReturn("user");
+        when(context.getSourceDeployment()).thenReturn("app");
+        ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "app", List.of("appdata"), "bucket", "Users/user/", true);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(descriptor), context);
+
+        assertTrue(result.containsKey(descriptor));
+        assertEquals(ResourceAccessType.ALL, result.get(descriptor));
+    }
+
+    @Test
     public void testGetAppResourceAccess_DeploymentNameHasSpecialChars() {
         ProxyContext context = mock(ProxyContext.class);
         ApiKeyData apiKeyData = new ApiKeyData();
