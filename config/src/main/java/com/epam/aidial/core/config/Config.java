@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.databind.MapToJsonArraySerializer;
 import com.epam.aidial.core.config.validation.ConformToMetaSchema;
 import com.epam.aidial.core.config.validation.CustomApplicationsConformToTypeSchemas;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import lombok.Data;
@@ -27,6 +28,7 @@ public class Config {
     private Map<String, Addon> addons = Map.of();
     private Map<String, Application> applications = Map.of();
     private Assistants assistant = new Assistants();
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private Map<String, Key> keys = new HashMap<>();
     private Map<String, Role> roles = new HashMap<>();
     private Set<Integer> retriableErrorCodes = Set.of();

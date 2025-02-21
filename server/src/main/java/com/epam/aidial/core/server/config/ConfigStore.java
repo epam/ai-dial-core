@@ -11,6 +11,6 @@ public interface ConfigStore {
      */
     Config get();
 
-    void reload();
+    Config reload();
 
 }

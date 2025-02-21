@@ -57,12 +57,12 @@ public final class FileConfigStore implements ConfigStore {
     }
 
     @Override
-    public void reload() {
-        load(true);
+    public Config reload() {
+        return load(true);
     }
 
     @SneakyThrows
-    private void load(boolean fail) {
+    private Config load(boolean fail) {
         try {
             log.debug("Config loading is started");
             Config config = loadConfig();
@@ -139,6 +139,7 @@ public final class FileConfigStore implements ConfigStore {
 
             this.config = config;
             log.debug("Config loading is completed");
+            return config;
         } catch (Throwable e) {
             if (fail) {
                 throw e;
@@ -146,6 +147,7 @@ public final class FileConfigStore implements ConfigStore {
 
             log.warn("Failed to reload config: {}", e.getMessage());
         }
+        return null;
     }
 
     private Config loadConfig() throws Exception {
