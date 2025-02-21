@@ -3,7 +3,6 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
-import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
@@ -22,7 +21,6 @@ import org.apache.http.HttpHeaders;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
@@ -1620,10 +1618,8 @@ public class FileApiTest extends ResourceBaseTest {
 
     @Test
     public void testAdminRightsNotInheritedByPerRequestKey(Vertx vertx, VertxTestContext context) {
-        ApiKeyData perRequestKey = new ApiKeyData();
-        perRequestKey.setExtractedClaims(createClaims("admin"));
-        perRequestKey.setSourceDeployment("testapp");
-        apiKeyStore.assignPerRequestApiKey(perRequestKey);
+        ApiKeyData adminAppKey = createAdminAppKey();
+        apiKeyStore.assignPerRequestApiKey(adminAppKey);
 
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);
@@ -1663,7 +1659,7 @@ public class FileApiTest extends ResourceBaseTest {
             // Verify that a per-request key has access to the appdata inside admin's bucket
             Promise<Void> promise = Promise.promise();
             client.get(serverPort, "localhost", "/v1/metadata/files/4X25dj1mja51jykqxsXnCH/appdata/testapp/")
-                    .putHeader("Api-key", perRequestKey.getPerRequestKey())
+                    .putHeader("Api-key", adminAppKey.getPerRequestKey())
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
@@ -1676,7 +1672,7 @@ public class FileApiTest extends ResourceBaseTest {
         }).andThen((mapper) -> {
             // Ensure that a per-request key derived from admin key does not grant access to the file
             client.get(serverPort, "localhost", fileUrl)
-                    .putHeader("Api-key", perRequestKey.getPerRequestKey())
+                    .putHeader("Api-key", adminAppKey.getPerRequestKey())
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -28,7 +29,6 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -205,6 +205,13 @@ public class ResourceBaseTest {
 
     static ExtractedClaims createClaims(String role) {
         return new ExtractedClaims(role, List.of(role), role, Map.of("title", List.of("Manager")), null, null);
+    }
+
+    static ApiKeyData createAdminAppKey() {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims("admin"));
+        perRequestKey.setSourceDeployment("testapp");
+        return perRequestKey;
     }
 
     @AfterEach
