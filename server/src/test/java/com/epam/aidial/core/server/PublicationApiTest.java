@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -152,6 +153,9 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void testDeleteApprovedPublicationWorkflow() {
+        ApiKeyData adminAppKey = createAdminAppKey();
+        apiKeyStore.assignPerRequestApiKey(adminAppKey);
+
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
@@ -170,6 +174,9 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "api-key", adminAppKey.getPerRequestKey());
+        verify(response, 403);
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verifyJson(response, 200, """
@@ -767,6 +774,9 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void testPublicationReject() {
+        ApiKeyData adminAppKey = createAdminAppKey();
+        apiKeyStore.assignPerRequestApiKey(adminAppKey);
+
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
 
@@ -778,6 +788,9 @@ class PublicationApiTest extends ResourceBaseTest {
         verify(response, 403);
 
         response = operationRequest("/v1/ops/publication/reject", PUBLICATION_URL, "authorization", "user");
+        verify(response, 403);
+
+        response = operationRequest("/v1/ops/publication/reject", PUBLICATION_URL, "api-key", adminAppKey.getPerRequestKey());
         verify(response, 403);
 
         response = operationRequest("/v1/ops/publication/reject", PUBLICATION_URL, "authorization", "admin");

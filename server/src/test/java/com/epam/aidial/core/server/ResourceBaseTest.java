@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -175,8 +176,7 @@ public class ResourceBaseTest {
                         }
 
                         if (authorization.equals("user") || authorization.equals("admin")) {
-                            return Future.succeededFuture(new ExtractedClaims(authorization, List.of(authorization),
-                                    authorization, Map.of("title", List.of("Manager")), null, null));
+                            return Future.succeededFuture(createClaims(authorization));
                         }
 
                         return Future.failedFuture("Not authorized");
@@ -201,6 +201,17 @@ public class ResourceBaseTest {
             destroy();
             throw e;
         }
+    }
+
+    static ExtractedClaims createClaims(String role) {
+        return new ExtractedClaims(role, List.of(role), role, Map.of("title", List.of("Manager")), null, null);
+    }
+
+    static ApiKeyData createAdminAppKey() {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims("admin"));
+        perRequestKey.setSourceDeployment("testapp");
+        return perRequestKey;
     }
 
     @AfterEach
