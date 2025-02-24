@@ -1,11 +1,15 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -1873,5 +1877,25 @@ public class ShareApiTest extends ResourceBaseTest {
                 }
                 """.formatted(bucket));
         verify(response, 400);
+    }
+
+    @Test
+    void testPerRequestKeyCannotBeUsed() {
+        ApiKeyData originalKey = apiKeyStore.getApiKeyData("proxyKey1").result();
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setOriginalKey(originalKey.getOriginalKey());
+        apiKeyStore.assignPerRequestApiKey(perRequestKey);
+        String expectedError = "The Share API is not allowed for per-request keys";
+        List<String> endpoints = List.of(
+                "/v1/ops/resource/share/create",
+                "/v1/ops/resource/share/list",
+                "/v1/ops/resource/share/discard",
+                "/v1/ops/resource/share/revoke",
+                "/v1/ops/resource/share/copy");
+
+        for (String endpoint : endpoints) {
+            Response response = operationRequest(endpoint, "", "api-key", perRequestKey.getPerRequestKey());
+            verify(response, 403, expectedError);
+        }
     }
 }

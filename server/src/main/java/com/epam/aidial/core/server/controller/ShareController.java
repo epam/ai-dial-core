@@ -50,6 +50,11 @@ public class ShareController {
     }
 
     public Future<?> handle(Operation operation) {
+        if (context.getApiKeyData().getPerRequestKey() != null) {
+            context.respond(HttpStatus.FORBIDDEN, "The Share API is not allowed for per-request keys");
+            return Future.succeededFuture();
+        }
+
         switch (operation) {
             case LIST -> listSharedResources();
             case CREATE -> createSharedResources();
