@@ -105,28 +105,3 @@ The status code indicates that the server, while acting as a gateway or proxy, d
 #### 505 HTTP VERSION NOT SUPPORTED
 
 DIAL Core supports HTTP 1.1 version only.
-
-
-
-## Detailed HTTP error codes table
-
-| Http Status Code | Error Message                                                        | Reason                                                                                                                                                                            |
-|:-----------------|:---------------------------------------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 505              |                                                                      | Http 1.1 protocol is supported only                                                                                                                                               |
-| 405              |                                                                      | GET, PUT, DELETE, POST, HEAD, OPTIONS are supported only                                                                                                                          |
-| 413              | Request body is too large                                            | Request body size is exceeded the maximum `maxUploadedFileSize` defined in the storage settings if contentType is `multipart/form-data` or `maxSize` is resource service settings |
-| 401              | At least API-KEY or Authorization header must be provided            | Neither `api-key` or `Authorization` header is provided                                                                                                                           |
-| 401              | Bad Authorization header                                             | Access token provided in `Authorization` header                                                                                                                                   |
-| 400              | Either API-KEY or Authorization header must be provided but not both | Both `api-key` and `Authorization` are provided                                                                                                                                   |
-| 400              | Invalid resource url provided: <resource_url>                        | Resource url is malformed or invalid in the HTTP request                                                                                                                          |
-| 403              | You don't have an access to: <resource_url>                          | Forbidden access to the provided resource                                                                                                                                         |
-| 404              |                                                                      | Addon is not found                                                                                                                                                                |                                                                                                                                                                |
-| 404              |                                                                      | Access to addon is forbidden                                                                                                                                                      |
-| 403              | Forbidden operation for application: <application_url>               | Operation is forbidden for application: deploy, undeploy, get logs                                                                                                                |
-| 404              | Schema ID is required                                                | Application Schema ID is missed                                                                                                                                                   |
-| 400              | Bad Schema ID                                                        | Application schema ID is malformed                                                                                                                                                |
-| 400              | Schema not found                                                     | Application schema is not found by ID                                                                                                                                             |
-| 404              |                                                                      | Assistant is not found                                                                                                                                                            |                                                                                                                                                                |
-| 404              |                                                                      | Access to assistant is forbidden                                                                                                                                                  |
-
-
