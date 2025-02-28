@@ -13,6 +13,15 @@
                     "endpoint": "http://localhost:9877"
                 }
             ]
+        },
+        "rate": {
+            "paths": ["/v1/rate"],
+            "rewritePath": true,
+            "methods": ["GET", "HEAD"],
+            "response": {
+                "status": 200,
+                "body": "OK"
+            }
         }
     },
     "interceptors": {
