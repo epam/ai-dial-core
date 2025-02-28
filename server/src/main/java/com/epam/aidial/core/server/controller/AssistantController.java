@@ -67,6 +67,15 @@ public class AssistantController {
         data.setDefaults(assistant.getDefaults());
         data.setReference(assistant.getName());
         data.setDescriptionKeywords(assistant.getDescriptionKeywords());
+        if (assistant.getAuthor() != null) {
+            data.setOwner(assistant.getAuthor());
+        }
+        if (assistant.getCreatedAt() != null) {
+            data.setCreatedAt(assistant.getCreatedAt());
+        }
+        if (assistant.getUpdatedAt() != null) {
+            data.setUpdatedAt(assistant.getUpdatedAt());
+        }
         return data;
     }
 }

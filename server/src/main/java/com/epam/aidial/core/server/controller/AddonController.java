@@ -60,6 +60,15 @@ public class AddonController {
         data.setDescription(addon.getDescription());
         data.setReference(addon.getName());
         data.setDescriptionKeywords(addon.getDescriptionKeywords());
+        if (addon.getAuthor() != null) {
+            data.setOwner(addon.getAuthor());
+        }
+        if (addon.getCreatedAt() != null) {
+            data.setCreatedAt(addon.getCreatedAt());
+        }
+        if (addon.getUpdatedAt() != null) {
+            data.setUpdatedAt(addon.getUpdatedAt());
+        }
         return data;
     }
 }

@@ -32,6 +32,16 @@ public class ApplicationUtil {
         data.setFunction(application.getFunction());
         data.setMaxRetryAttempts(application.getMaxRetryAttempts());
 
+        if (application.getAuthor() != null) {
+            data.setOwner(application.getAuthor());
+        }
+        if (application.getCreatedAt() != null) {
+            data.setCreatedAt(application.getCreatedAt());
+        }
+        if (application.getUpdatedAt() != null) {
+            data.setUpdatedAt(application.getUpdatedAt());
+        }
+
         return data;
     }
 

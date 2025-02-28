@@ -54,4 +54,10 @@ public abstract class Deployment extends RoleBasedEntity {
      * The author who has developed that deployment(application/assistant/model)
      */
     private String author;
+
+    @JsonAlias({"createdAt", "created_at"})
+    private Long createdAt;
+
+    @JsonAlias({"updatedAt", "updated_at"})
+    private Long updatedAt;
 }
