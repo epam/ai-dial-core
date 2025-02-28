@@ -294,7 +294,7 @@ public class RouteController implements Controller {
     private Route selectRoute() {
         Config config = context.getConfig();
         HttpServerRequest request = context.getRequest();
-        String uri = request.uri();
+        String path = request.path();
 
         for (Route route : config.getRoutes().values()) {
             List<Pattern> paths = route.getPaths();
@@ -308,8 +308,8 @@ public class RouteController implements Controller {
                 return route;
             }
 
-            for (Pattern path : route.getPaths()) {
-                if (path.matcher(uri).matches()) {
+            for (Pattern pattern : route.getPaths()) {
+                if (pattern.matcher(path).matches()) {
                     return route;
                 }
             }
