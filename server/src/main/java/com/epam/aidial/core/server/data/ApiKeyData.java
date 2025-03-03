@@ -62,9 +62,6 @@ public class ApiKeyData {
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
-        proxyApiKeyData.setInterceptors(context.getInterceptors());
-        proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
-        proxyApiKeyData.setInitialDeploymentApi(context.getInitialDeploymentApi());
         proxyApiKeyData.setHttpHeaders(collectHttpHeaders(context));
 
         if (apiKeyData.getPerRequestKey() == null) {
