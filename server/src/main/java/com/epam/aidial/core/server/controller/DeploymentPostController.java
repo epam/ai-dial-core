@@ -153,6 +153,9 @@ public class DeploymentPostController {
             context.setDeployment(interceptor);
             ApiKeyData proxyApiKeyData = new ApiKeyData();
             proxyApiKeyData.setInterceptorIndex(interceptorIndex);
+            proxyApiKeyData.setInterceptors(interceptors);
+            proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
+            proxyApiKeyData.setInitialDeploymentApi(context.getInitialDeploymentApi());
             setupProxyApiKeyData(proxyApiKeyData);
 
             InterceptorController controller = new InterceptorController(proxy, context);
