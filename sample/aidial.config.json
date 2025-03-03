@@ -1,5 +1,29 @@
 {
-    "routes": {},
+    "routes": {
+        "vector_store_query": {
+            "paths": ["/v1/vector_store(/[^/]+)*$"],
+            "rewritePath": true,
+            "methods": ["GET", "HEAD"],
+            "userRoles": ["role1"],
+            "upstreams": [
+                {
+                    "endpoint": "http://localhost:9876"
+                },
+                {
+                    "endpoint": "http://localhost:9877"
+                }
+            ]
+        },
+        "rate": {
+            "paths": ["/v1/rate"],
+            "rewritePath": true,
+            "methods": ["GET", "HEAD"],
+            "response": {
+                "status": 200,
+                "body": "OK"
+            }
+        }
+    },
     "interceptors": {
         "interceptor1": {
             "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
