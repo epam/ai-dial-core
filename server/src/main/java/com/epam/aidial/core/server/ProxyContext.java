@@ -198,7 +198,8 @@ public class ProxyContext {
     }
 
     public boolean hasNextInterceptor() {
-        if (apiKeyData.getInterceptors() == null) { // initial call to the deployment
+        // initial call to the deployment or the interceptor calls another deployment
+        if (apiKeyData.getInterceptors() == null || !deployment.getName().equals(getInitialDeployment())) {
             return !deployment.getInterceptors().isEmpty();
         } else { // make sure if a next interceptor is available from the list
             return apiKeyData.getInterceptorIndex() + 1 < apiKeyData.getInterceptors().size();
