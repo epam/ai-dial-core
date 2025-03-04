@@ -220,7 +220,7 @@ class CodeInterpreterController {
     }
 
     private void checkRunCodeInterpreter() {
-        if (!accessService.canCreateCodeApps(context.getUserRoles())) {
+        if (!accessService.canCreateCodeApps(context)) {
             throw new PermissionDeniedException("User doesn't have sufficient permissions to run code interpreter");
         }
     }

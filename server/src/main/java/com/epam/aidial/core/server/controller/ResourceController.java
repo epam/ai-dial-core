@@ -186,7 +186,7 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private void checkCreateCodeApp(Application application) {
-        if (application != null && application.getFunction() != null && !accessService.canCreateCodeApps(context.getUserRoles())) {
+        if (application != null && application.getFunction() != null && !accessService.canCreateCodeApps(context)) {
             throw new PermissionDeniedException("User doesn't have sufficient permissions to create code app");
         }
     }

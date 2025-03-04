@@ -11,6 +11,7 @@ import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -35,6 +36,8 @@ public class AccessServiceTest {
     @Mock
     private ShareService shareService;
 
+    @Mock
+    private ProxyContext context;
 
     @Test
     public void testGetAppResourceAccess_RootFolder() {
@@ -131,6 +134,7 @@ public class AccessServiceTest {
 
     @Test
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesUndefined() {
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
                 {
                  "admin": {
@@ -138,11 +142,13 @@ public class AccessServiceTest {
                  }
                 }
                 """));
-        assertTrue(service.canCreateCodeApps(List.of("role1")));
+        assertTrue(service.canCreateCodeApps(context));
     }
 
     @Test
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesEmpty() {
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserRoles()).thenReturn(List.of("role1"));
         AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
                 {
                  "admin": {
@@ -151,11 +157,13 @@ public class AccessServiceTest {
                  "createCodeAppRoles": []
                 }
                 """));
-        assertFalse(service.canCreateCodeApps(List.of("role1")));
+        assertFalse(service.canCreateCodeApps(context));
     }
 
     @Test
-    public void testCanCreateCodeApps_WhenCreateCodeAppRolesNotEmpty() {
+    public void testCanCreateCodeApps_WhenCreateCodeAppRolesNotEmpty_Forbidden() {
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserRoles()).thenReturn(List.of("role1"));
         AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
                 {
                  "admin": {
@@ -164,7 +172,37 @@ public class AccessServiceTest {
                  "createCodeAppRoles": ["admin"]
                 }
                 """));
-        assertFalse(service.canCreateCodeApps(List.of("role1")));
-        assertTrue(service.canCreateCodeApps(List.of("role1", "admin")));
+        assertFalse(service.canCreateCodeApps(context));
+    }
+
+    @Test
+    public void testCanCreateCodeApps_WhenCreateCodeAppRolesNotEmpty_Allowed() {
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserRoles()).thenReturn(List.of("role1", "admin"));
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        assertTrue(service.canCreateCodeApps(context));
+    }
+
+    @Test
+    public void testCanCreateCodeApps_WhenPerRequestKey() {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        assertTrue(service.canCreateCodeApps(context));
     }
 }

@@ -96,7 +96,7 @@ Priority order:
 | redis.provider.serverless                     |         -          |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
 | invitations.ttlInSeconds                      |       259200       |    No    |Invitation time to live in seconds.
 | access.admin.rules                            |         -          |    No    |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions, like deleting any resource or approving a publication. Example: [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]. If roles contain "admin, the actions are allowed.
-| access.createCodeAppRoles                     |         -          |    No    |The list of user roles to be allowed to create custom code applications or run code interpreter
+| access.createCodeAppRoles                     |         -          |    No    |The list of user roles to be allowed to create custom code applications or run code interpreter. **Note**. Calls by per request key are permitted even if the originator doesn't have permissions.
 | applications.includeCustomApps                |       false        |    No    |The flag indicates whether custom applications should be included into openai listing
 | applications.controllerEndpoint               |         -          |    No    |The endpoint to Application Controller Web Service that manages deployments for applications with functions 
 | applications.controllerTimeout                |       240000       |    No    |The timeout of operations to Application Controller Web Service
