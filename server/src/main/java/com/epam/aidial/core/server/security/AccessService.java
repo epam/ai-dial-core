@@ -16,8 +16,10 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.google.common.collect.Sets;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,6 +37,9 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
+
+    private final List<String> createCodeAppRoles;
+
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
@@ -53,6 +58,19 @@ public class AccessService {
         this.shareService = shareService;
         this.ruleService = ruleService;
         this.adminRules = adminRules(settings);
+        this.createCodeAppRoles = getCreateCodeAppRoles(settings);
+    }
+
+    private List<String> getCreateCodeAppRoles(JsonObject settings) {
+        JsonArray roles = settings.getJsonArray("createCodeAppRoles");
+        if (roles == null) {
+            return null;
+        }
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < roles.size(); i++) {
+            result.add(roles.getString(i));
+        }
+        return result;
     }
 
     public boolean hasReadAccess(ResourceDescriptor resource, ProxyContext context) {
@@ -78,6 +96,14 @@ public class AccessService {
     public boolean hasPublicAccess(Set<ResourceDescriptor> resources, ProxyContext context) {
         return resources.stream().allMatch(ResourceDescriptor::isPublic) && hasAdminAccess(context)
                 || resources.equals(ruleService.getAllowedPublicResources(context, resources));
+    }
+
+    public boolean canCreateCodeApps(List<String> actualUserRoles) {
+        if (createCodeAppRoles == null) {
+            return true;
+        }
+        return !createCodeAppRoles.isEmpty()
+                && actualUserRoles.stream().anyMatch(createCodeAppRoles::contains);
     }
 
     /**

@@ -168,6 +168,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private void validateCustomApplication(Application application) {
         try {
+            checkCreateCodeApp(application);
             Config config = context.getConfig();
             List<ResourceDescriptor> files = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService,
                     resourceService);
@@ -181,6 +182,12 @@ public class ResourceController extends AccessControlBaseController {
             throw new HttpException(FORBIDDEN, "Failed to access application resource " + e.getResourceUri(), e);
         } catch (ApplicationTypeSchemaProcessingException e) {
             throw new HttpException(INTERNAL_SERVER_ERROR, "Custom application processing exception", e);
+        }
+    }
+
+    private void checkCreateCodeApp(Application application) {
+        if (application != null && application.getFunction() != null && !accessService.canCreateCodeApps(context.getUserRoles())) {
+            throw new PermissionDeniedException("User doesn't have sufficient permissions to create code app");
         }
     }
 
@@ -269,7 +276,7 @@ public class ResourceController extends AccessControlBaseController {
         } else if (error instanceof ResourceNotFoundException) {
             context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
         } else if (error instanceof PermissionDeniedException) {
-            context.respond(HttpStatus.FORBIDDEN, "Forbidden: " + descriptor.getUrl());
+            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else {
             log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
