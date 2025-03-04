@@ -99,10 +99,7 @@ public class AccessService {
     }
 
     public boolean canCreateCodeApps(ProxyContext context) {
-        if (context.getApiKeyData().getPerRequestKey() != null) {
-            return true;
-        }
-        if (createCodeAppRoles == null) {
+        if (context.getApiKeyData().getPerRequestKey() != null || createCodeAppRoles == null) {
             return true;
         }
         List<String> actualUserRoles = context.getUserRoles();
