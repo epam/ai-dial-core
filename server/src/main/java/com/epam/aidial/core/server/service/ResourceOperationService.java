@@ -57,13 +57,13 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == APPLICATION) {
-            applicationService.copyApplication(source, destination, overwriteIfExists, app -> {
+            applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
                 }
             });
         } else {
-            boolean copied = resourceService.copyResource(source, destination, overwriteIfExists);
+            boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {
                 throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
                         .formatted(sourceResourceUrl, destinationResourceUrl));

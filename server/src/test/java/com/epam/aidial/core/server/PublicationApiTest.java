@@ -876,6 +876,7 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publication/create", """
                 {
                   "targetFolder": "public/folder1/",
+                  "displayAuthor": "dream-team",
                   "resources": [
                     {
                       "action": "ADD",
@@ -903,6 +904,7 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publication/create", """
                 {
                   "targetFolder": "public/folder2/",
+                  "displayAuthor": "dream-team",
                   "resources": [
                     {
                       "action": "ADD",
@@ -992,7 +994,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "createdAt": "@ignore",
                     "updatedAt": "@ignore",
                     "etag": "@ignore",
-                    "author": "EPM-RTC-GPT"
+                    "author": "dream-team"
                   }
                 """);
 

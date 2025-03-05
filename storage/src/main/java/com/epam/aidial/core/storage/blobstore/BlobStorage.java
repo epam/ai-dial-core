@@ -176,8 +176,14 @@ public class BlobStorage implements Closeable {
         blobStore.removeBlob(bucketName, storageLocation);
     }
 
-    public boolean copy(String fromPath, String toPath) {
-        blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), CopyOptions.NONE);
+    public boolean copy(String fromPath, String toPath, Map<String, String> userMetadata) {
+        CopyOptions copyOptions;
+        if (userMetadata == null) {
+            copyOptions = CopyOptions.NONE;
+        } else {
+            copyOptions = CopyOptions.builder().userMetadata(userMetadata).build();
+        }
+        blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), copyOptions);
         return true;
     }
 

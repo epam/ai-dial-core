@@ -30,6 +30,7 @@ public class Publication {
     List<Rule> rules;
     String etag;
     String author;
+    String displayAuthor;
 
     public enum Status {
         PENDING, APPROVED, REJECTED
