@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -256,7 +257,7 @@ public class PublicationService {
 
         ruleService.storeRules(publication);
 
-        copyReviewToTargetResources(resourcesToAdd);
+        copyReviewToTargetResources(publication, resourcesToAdd);
         deleteReviewResources(resourcesToAdd);
         deletePublicResources(resourcesToDelete);
 
@@ -589,7 +590,7 @@ public class PublicationService {
             ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(reviewUrl, encryption);
 
             if (from.getType() == ResourceTypes.APPLICATION) {
-                applicationService.copyApplication(from, to, false, app -> {
+                applicationService.copyApplication(from, to, null, false, app -> {
                     replaceCustomAppFiles(app, replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
@@ -605,7 +606,7 @@ public class PublicationService {
     }
 
 
-    private void copyReviewToTargetResources(List<Publication.Resource> resources) {
+    private void copyReviewToTargetResources(Publication publication, List<Publication.Resource> resources) {
         Map<String, String> replacementLinks = new HashMap<>();
 
         for (Publication.Resource resource : resources) {
@@ -631,14 +632,28 @@ public class PublicationService {
             ResourceDescriptor to = ResourceDescriptorFactory.fromPublicUrl(targetUrl);
 
             if (from.getType() == ResourceTypes.APPLICATION) {
-                applicationService.copyApplication(from, to, false, app -> {
+                applicationService.copyApplication(from, to, publication.getAuthor(), false, app -> {
                     replaceCustomAppFiles(app, replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
-            } else if (!resourceService.copyResource(from, to, false)
-                    && resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT) {
-                throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
+            } else {
+                UserMetadata userMetadata = new UserMetadata();
+                ResourceItemMetadata metadata = resourceService.getResourceMetadata(from);
+                if (metadata == null) {
+                    throw new IllegalArgumentException("Review resource does not exist: " + from.getUrl());
+                }
+                userMetadata.setAuthor(publication.getDisplayAuthor());
+                userMetadata.setResourceType(metadata.getResourceType().name());
+                userMetadata.setEtag(metadata.getEtag());
+                long currentIme = clock.getAsLong();
+                userMetadata.setCreatedAt(currentIme);
+                userMetadata.setUpdatedAt(currentIme);
+
+                if (!resourceService.copyResource(from, to, userMetadata, false)
+                        && resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT) {
+                    throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
+                }
             }
 
             if (from.getType() == ResourceTypes.CONVERSATION) {

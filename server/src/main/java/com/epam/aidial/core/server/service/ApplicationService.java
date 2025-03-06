@@ -297,13 +297,15 @@ public class ApplicationService {
         }
     }
 
-    public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, boolean overwrite, Consumer<Application> consumer) {
+    public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite, Consumer<Application> consumer) {
         verifyApplication(source);
         verifyApplication(destination);
 
         Pair<ResourceItemMetadata, Application> result = getApplication(source);
         Application application = result.getValue();
-        String author = result.getKey().getAuthor();
+        if (author == null) {
+            author = result.getKey().getAuthor();
+        }
         Application.Function function = application.getFunction();
 
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
