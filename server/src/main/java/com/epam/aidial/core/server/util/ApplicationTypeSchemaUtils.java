@@ -95,7 +95,7 @@ public class ApplicationTypeSchemaUtils {
 
     @FunctionalInterface
     public interface ServerPropertiesConsumer {
-        void accept(Map<String, Object> properties, boolean usePropertiesHeader) throws JsonProcessingException;
+        void accept(Map<String, Object> properties, boolean appendApplicationPropertiesHeader) throws JsonProcessingException;
     }
 
     public static void consumeServerProperties(Config config, Application application, ServerPropertiesConsumer consumer) {
@@ -110,9 +110,9 @@ public class ApplicationTypeSchemaUtils {
 
         try {
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-            boolean usePropertiesHeader = !schemaNode.has("dial:usePropertiesHeader") || schemaNode.get("dial:usePropertiesHeader").asBoolean();
+            boolean appendApplicationPropertiesHeader = !schemaNode.has("dial:appendApplicationPropertiesHeader") || schemaNode.get("dial:appendApplicationPropertiesHeader").asBoolean();
             Map<String, Object> serverProperties = filterProperties(application.getApplicationProperties(), customApplicationSchema, "server");
-            consumer.accept(serverProperties, usePropertiesHeader);
+            consumer.accept(serverProperties, appendApplicationPropertiesHeader);
         } catch (JsonProcessingException e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to parse custom application schema", e);
         }

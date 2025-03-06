@@ -639,7 +639,7 @@ public class DeploymentPostControllerTest {
                 {
                   "$schema": "https://dial.epam.com/application_type_schemas/schema#",
                   "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
-                  "dial:usePropertiesHeader": false,
+                  "dial:appendApplicationPropertiesHeader": false,
                   "properties": {
                     "clientFile": {
                       "type": "string",

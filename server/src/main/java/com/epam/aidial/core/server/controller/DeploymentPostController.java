@@ -327,8 +327,8 @@ public class DeploymentPostController {
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
 
-            ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, usePropertiesHeader) -> {
-                if (usePropertiesHeader) {
+            ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, appendApplicationPropertiesHeader) -> {
+                if (appendApplicationPropertiesHeader) {
                     String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
                 }

@@ -124,9 +124,9 @@ public class ApplicationTypeSchemaUtilsTest {
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
 
-        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, usePropertiesHeader) -> {
+        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
             Assertions.assertEquals(serverProperties, properties);
-            Assertions.assertTrue(usePropertiesHeader);
+            Assertions.assertTrue(appendApplicationPropertiesHeader);
         });
     }
 
@@ -134,9 +134,9 @@ public class ApplicationTypeSchemaUtilsTest {
     void consumeServerProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, usePropertiesHeader) -> {
+        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
             Assertions.assertEquals(Collections.emptyMap(), properties);
-            Assertions.assertTrue(usePropertiesHeader);
+            Assertions.assertTrue(appendApplicationPropertiesHeader);
         });
     }
 
@@ -146,7 +146,7 @@ public class ApplicationTypeSchemaUtilsTest {
         when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, usePropertiesHeader) -> {
+                ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
                 }));
     }
 
