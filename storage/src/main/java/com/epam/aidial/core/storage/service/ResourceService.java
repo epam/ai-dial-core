@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
@@ -163,7 +164,7 @@ public class ResourceService implements AutoCloseable {
                 ResourceDescriptor sourceFile = sourceFolder.resolveByUrl(sourceFileUrl);
                 ResourceDescriptor targetFile = targetFolder.resolveByUrl(targetFileUrl);
 
-                if (!copyResource(sourceFile, targetFile, overwrite)) {
+                if (!copyResource(sourceFile, targetFile, null, overwrite)) {
                     throw new IllegalArgumentException("Can't copy source file: " + sourceFileUrl
                                                        + " to target file: " + targetFileUrl);
                 }
@@ -542,10 +543,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to) {
-        return copyResource(from, to, true);
+        return copyResource(from, to, null, true);
     }
 
-    public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to, boolean overwrite) {
+    public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to, UserMetadata userMetadata, boolean overwrite) {
         if (from.equals(to)) {
             return overwrite;
         }
@@ -564,7 +565,7 @@ public class ResourceService implements AutoCloseable {
             if (toMetadata == null || overwrite) {
                 flushToBlobStore(fromRedisKey);
                 flushToBlobStore(toRedisKey);
-                blobStore.copy(blobKey(from), blobKey(to));
+                blobStore.copy(blobKey(from), blobKey(to), toUserMetaData(userMetadata));
 
                 ResourceEvent.Action action = toMetadata == null
                         ? ResourceEvent.Action.CREATE
@@ -575,6 +576,15 @@ public class ResourceService implements AutoCloseable {
 
             return false;
         }
+    }
+
+    @Nullable
+    private Map<String, String> toUserMetaData(UserMetadata userMetadata) {
+        if (userMetadata == null) {
+            return null;
+        }
+        return toUserMetadata(userMetadata.getEtag(), userMetadata.getCreatedAt(),
+                userMetadata.getUpdatedAt(), userMetadata.getResourceType(), userMetadata.getAuthor());
     }
 
     private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag) {
