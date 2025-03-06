@@ -41,11 +41,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
@@ -57,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -454,4 +459,234 @@ public class DeploymentPostControllerTest {
         verify(tokenStatsTracker).startSpan(eq(context));
     }
 
+    @Test
+    public void testHandleProxyRequest_SetsApplicationHeaders_WhenCustomApplication() {
+        Application application = new Application();
+        application.setName("customApp");
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("serverFile", "files/public/some-path/server-file.ext");
+        customProps.put("clientFile", "files/public/some-path/client-file.ext");
+        application.setApplicationProperties(customProps);
+
+        String schema = """
+                {
+                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",
+                  "dial:applicationTypeDisplayName": "Specific Application Type",
+                  "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",
+                  "properties": {
+                    "clientFile": {
+                      "type": "string",
+                      "format": "dial-file-encoded",
+                      "dial:meta": {
+                        "dial:propertyKind": "client",
+                        "dial:propertyOrder": 1
+                      },
+                      "dial:file": true
+                    },
+                    "serverFile": {
+                      "type": "string",
+                      "format": "dial-file-encoded",
+                      "dial:meta": {
+                        "dial:propertyKind": "server",
+                        "dial:propertyOrder": 2
+                      },
+                      "dial:file": true
+                    }
+                  },
+                  "required": [
+                    "clientFile"
+                  ]
+                }""";
+
+        when(context.getDeployment()).thenReturn(application);
+        when(context.getConfig()).thenReturn(mock(Config.class));
+        when(context.getConfig().getCustomApplicationSchema(any(URI.class))).thenReturn(schema);
+
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("test-key");
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Buffer requestBody = Buffer.buffer("{}");
+        when(context.getRequestBody()).thenReturn(requestBody);
+        when(context.getRequestHeaders()).thenReturn(Map.of());
+
+        controller.handleProxyRequest(proxyRequest);
+
+        verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_ID), eq("customApp"));
+
+        verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_PROPERTIES), eq("{\"serverFile\":\"files/public/some-path/server-file.ext\"}"));
+    }
+
+    @Test
+    public void testHandleProxyRequest_DoesNotSetApplicationHeaders_WhenNotCustomApplication() {
+        Model model = new Model();
+        model.setName("modelName");
+
+        when(context.getDeployment()).thenReturn(model);
+
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("test-key");
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Buffer requestBody = Buffer.buffer("{}");
+        when(context.getRequestBody()).thenReturn(requestBody);
+
+        controller.handleProxyRequest(proxyRequest);
+
+        verify(proxyRequest, never()).putHeader(eq(HEADER_APPLICATION_ID), anyString());
+        verify(proxyRequest, never()).putHeader(eq(HEADER_APPLICATION_PROPERTIES), anyString());
+    }
+
+    @Test
+    public void testHandleProxyRequest_SetsApplicationPropertiesHeader_WhenApplicationHasCustomSchemaIdAndCustomFields() {
+        Application application = new Application();
+        application.setName("customApp");
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("serverFile", "files/public/some-path/server-file.ext");
+        customProps.put("clientFile", "files/public/some-path/client-file.ext");
+        application.setApplicationProperties(customProps);
+
+        String schema = """
+                {
+                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "properties": {
+                    "clientFile": {
+                      "type": "string",
+                      "format": "dial-file-encoded",
+                      "dial:meta": {
+                        "dial:propertyKind": "client",
+                        "dial:propertyOrder": 1
+                      },
+                      "dial:file": true
+                    },
+                    "serverFile": {
+                      "type": "string",
+                      "format": "dial-file-encoded",
+                      "dial:meta": {
+                        "dial:propertyKind": "server",
+                        "dial:propertyOrder": 2
+                      },
+                      "dial:file": true
+                    }
+                  },
+                  "required": ["clientFile"]
+                }""";
+
+        when(context.getDeployment()).thenReturn(application);
+        when(context.getConfig()).thenReturn(mock(Config.class));
+        when(context.getConfig().getCustomApplicationSchema(any(URI.class))).thenReturn(schema);
+
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("test-key");
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Buffer requestBody = Buffer.buffer("{\"custom_fields\":{\"foo\":\"bar\"}}");
+        when(context.getRequestBody()).thenReturn(requestBody);
+        when(context.getRequestHeaders()).thenReturn(Map.of());
+
+        controller.handleProxyRequest(proxyRequest);
+
+        verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_ID), eq("customApp"));
+
+        verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_PROPERTIES),
+                argThat((String jsonStr) ->
+                        jsonStr.contains("\"serverFile\":\"files/public/some-path/server-file.ext\"")));
+    }
+
+    @Test
+    public void testHandleProxyRequest_DoesNotSetApplicationPropertiesHeader_WhenFlagIsFalse() {
+        Application application = new Application();
+        application.setName("customApp");
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("serverFile", "files/public/some-path/server-file.ext");
+        customProps.put("clientFile", "files/public/some-path/client-file.ext");
+        application.setApplicationProperties(customProps);
+
+        String schema = """
+                {
+                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:usePropertiesHeader": false,
+                  "properties": {
+                    "clientFile": {
+                      "type": "string",
+                      "format": "dial-file-encoded",
+                      "dial:meta": {
+                        "dial:propertyKind": "client",
+                        "dial:propertyOrder": 1
+                      },
+                      "dial:file": true
+                    },
+                    "serverFile": {
+                      "type": "string",
+                      "format": "dial-file-encoded",
+                      "dial:meta": {
+                        "dial:propertyKind": "server",
+                        "dial:propertyOrder": 2
+                      },
+                      "dial:file": true
+                    }
+                  },
+                  "required": ["clientFile"]
+                }""";
+
+        when(context.getDeployment()).thenReturn(application);
+        when(context.getConfig()).thenReturn(mock(Config.class));
+        when(context.getConfig().getCustomApplicationSchema(any(URI.class))).thenReturn(schema);
+
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(context.getRequest()).thenReturn(request);
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        MultiMap proxyHeaders = new HeadersMultiMap();
+        when(proxyRequest.headers()).thenReturn(proxyHeaders);
+
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("test-key");
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Buffer requestBody = Buffer.buffer("{}");
+        when(context.getRequestBody()).thenReturn(requestBody);
+        when(context.getRequestHeaders()).thenReturn(Map.of());
+
+        controller.handleProxyRequest(proxyRequest);
+
+        verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_ID), eq("customApp"));
+
+        verify(proxyRequest, never()).putHeader(eq(HEADER_APPLICATION_PROPERTIES), anyString());
+    }
 }

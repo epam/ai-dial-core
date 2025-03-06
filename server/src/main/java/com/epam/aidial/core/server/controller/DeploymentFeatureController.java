@@ -141,7 +141,7 @@ public class DeploymentFeatureController {
         if ((deployment instanceof Application application && application.isCustom())) {
             try {
                 proxyRequest.headers().add(HEADER_APPLICATION_ID, deployment.getName());
-                ApplicationTypeSchemaUtils.getCustomServerProperties(context.getConfig(), application, (properties, usePropertiesHeader) -> {
+                ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, usePropertiesHeader) -> {
                     if (usePropertiesHeader) {
                         String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                         proxyRequest.headers().add(HEADER_APPLICATION_PROPERTIES, propsString);

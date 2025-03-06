@@ -98,7 +98,7 @@ public class ApplicationTypeSchemaUtils {
         void accept(Map<String, Object> properties, boolean usePropertiesHeader) throws JsonProcessingException;
     }
 
-    public static void getCustomServerProperties(Config config, Application application, ServerPropertiesConsumer consumer) {
+    public static void consumeServerProperties(Config config, Application application, ServerPropertiesConsumer consumer) {
         String customApplicationSchema = getCustomApplicationSchemaOrThrow(config, application);
         if (customApplicationSchema == null) {
             return;

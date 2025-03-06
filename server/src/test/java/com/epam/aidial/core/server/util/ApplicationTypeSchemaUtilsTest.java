@@ -119,34 +119,34 @@ public class ApplicationTypeSchemaUtilsTest {
     }
 
     @Test
-    void getCustomServerProperties_returnsProperties_whenSchemaExists() {
+    void consumeServerProperties_returnsProperties_whenSchemaExists() {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
 
-        ApplicationTypeSchemaUtils.getCustomServerProperties(config, application, (properties, usePropertiesHeader) -> {
+        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, usePropertiesHeader) -> {
             Assertions.assertEquals(serverProperties, properties);
             Assertions.assertTrue(usePropertiesHeader);
         });
     }
 
     @Test
-    void getCustomServerProperties_returnsEmptyMap_whenSchemaIsNull() {
+    void consumeServerProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        ApplicationTypeSchemaUtils.getCustomServerProperties(config, application, (properties, usePropertiesHeader) -> {
+        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, usePropertiesHeader) -> {
             Assertions.assertEquals(Collections.emptyMap(), properties);
             Assertions.assertTrue(usePropertiesHeader);
         });
     }
 
     @Test
-    void getCustomServerProperties_throws_whenSchemaNotFound() {
+    void consumeServerProperties_throws_whenSchemaNotFound() {
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                ApplicationTypeSchemaUtils.getCustomServerProperties(config, application, (properties, usePropertiesHeader) -> {
+                ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, usePropertiesHeader) -> {
                 }));
     }
 
