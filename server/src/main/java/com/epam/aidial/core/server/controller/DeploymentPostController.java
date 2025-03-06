@@ -324,7 +324,7 @@ public class DeploymentPostController {
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
         }
 
-        if ((deployment instanceof Application application && application.isCustom())) {
+        if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
 
             ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, usePropertiesHeader) -> {

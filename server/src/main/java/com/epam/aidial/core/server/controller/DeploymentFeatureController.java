@@ -138,7 +138,7 @@ public class DeploymentFeatureController {
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
-        if ((deployment instanceof Application application && application.isCustom())) {
+        if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {
                 proxyRequest.headers().add(HEADER_APPLICATION_ID, deployment.getName());
                 ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, usePropertiesHeader) -> {

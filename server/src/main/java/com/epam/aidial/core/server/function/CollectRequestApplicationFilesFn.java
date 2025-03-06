@@ -29,7 +29,7 @@ public class CollectRequestApplicationFilesFn extends BaseRequestFunction<Object
     public Boolean apply(ObjectNode tree) {
         try {
             Deployment deployment = context.getDeployment();
-            if (!(deployment instanceof Application application && application.isCustom())) {
+            if (!(deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
                 return false;
             }
             if (application.getApplicationProperties() == null) {

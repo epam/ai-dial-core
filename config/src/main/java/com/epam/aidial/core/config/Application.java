@@ -29,7 +29,7 @@ public class Application extends Deployment {
     private URI applicationTypeSchemaId;
 
     @JsonIgnore
-    public Boolean isCustom() {
+    public Boolean hasApplicationTypeSchemaId() {
         return applicationTypeSchemaId != null;
     }
 

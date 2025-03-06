@@ -45,7 +45,7 @@ public class ApplicationController {
     }
 
     public Future<?> getApplication(String applicationId) {
-        boolean propertyFilteringRequired = !Objects.equals(context.getSourceDeployment(), applicationId);
+        boolean propertyFilteringRequired = !applicationId.equals(context.getSourceDeployment());
         DeploymentController.selectDeployment(context, applicationId, propertyFilteringRequired, true)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
