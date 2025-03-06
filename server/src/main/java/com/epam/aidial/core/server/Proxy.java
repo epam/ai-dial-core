@@ -58,6 +58,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
 
+    // All new headers should start with X-DIAL- while existing may stay untouched
+
     public static final String HEADER_API_KEY = "API-KEY";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
