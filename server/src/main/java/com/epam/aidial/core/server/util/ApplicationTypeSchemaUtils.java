@@ -110,7 +110,8 @@ public class ApplicationTypeSchemaUtils {
 
         try {
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-            boolean appendApplicationPropertiesHeader = !schemaNode.has("dial:appendApplicationPropertiesHeader") || schemaNode.get("dial:appendApplicationPropertiesHeader").asBoolean();
+            boolean appendApplicationPropertiesHeader = !schemaNode.has("dial:appendApplicationPropertiesHeader")
+                                                        || schemaNode.get("dial:appendApplicationPropertiesHeader").asBoolean();
             Map<String, Object> serverProperties = filterProperties(application.getApplicationProperties(), customApplicationSchema, "server");
             consumer.accept(serverProperties, appendApplicationPropertiesHeader);
         } catch (JsonProcessingException e) {
