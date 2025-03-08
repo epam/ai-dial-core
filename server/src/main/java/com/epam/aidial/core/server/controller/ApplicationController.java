@@ -23,6 +23,8 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -45,7 +47,8 @@ public class ApplicationController {
     }
 
     public Future<?> getApplication(String applicationId) {
-        boolean propertyFilteringRequired = !applicationId.equals(context.getSourceDeployment());
+        String decodedSourceDeployment = context.getSourceDeployment() != null ? URLDecoder.decode(context.getSourceDeployment(), StandardCharsets.UTF_8) : null;
+        boolean propertyFilteringRequired = !applicationId.equals(decodedSourceDeployment);
         DeploymentController.selectDeployment(context, applicationId, propertyFilteringRequired, true)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
@@ -68,7 +71,8 @@ public class ApplicationController {
             List<Application> list = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
-                    boolean propertyFilteringRequired = !Objects.equals(context.getSourceDeployment(), application.getName());
+                    String decodedSourceDeployment = context.getSourceDeployment() != null ? URLDecoder.decode(context.getSourceDeployment(), StandardCharsets.UTF_8) : null;
+                    boolean propertyFilteringRequired = !Objects.equals(decodedSourceDeployment, application.getName());
                     if (propertyFilteringRequired) {
                         application = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
                     }
