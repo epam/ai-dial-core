@@ -90,12 +90,12 @@ public class AccessService {
      * This method also checks admin privileges.
      *
      * @param resources - public resources
-     * @param context - context
+     * @param context   - context
      * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
      */
     public boolean hasPublicAccess(Set<ResourceDescriptor> resources, ProxyContext context) {
         return resources.stream().allMatch(ResourceDescriptor::isPublic) && hasAdminAccess(context)
-                || resources.equals(ruleService.getAllowedPublicResources(context, resources));
+               || resources.equals(ruleService.getAllowedPublicResources(context, resources));
     }
 
     public boolean canCreateCodeApps(ProxyContext context) {
@@ -104,7 +104,7 @@ public class AccessService {
         }
         List<String> actualUserRoles = context.getUserRoles();
         return !createCodeAppRoles.isEmpty()
-                && actualUserRoles.stream().anyMatch(createCodeAppRoles::contains);
+               && actualUserRoles.stream().anyMatch(createCodeAppRoles::contains);
     }
 
     /**
@@ -121,7 +121,7 @@ public class AccessService {
      * </ul>
      *
      * @param resources - resources to retrieve permissions for
-     * @param context - proxy context
+     * @param context   - proxy context
      * @return User permissions to all requested resources
      */
     public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
@@ -171,7 +171,7 @@ public class AccessService {
      * Returns USER permissions to the provided public resources.
      *
      * @param resources - public resources
-     * @param context - context
+     * @param context   - context
      * @return USER permissions
      */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getPublicAccess(
@@ -216,9 +216,9 @@ public class AccessService {
             }
             // application makes call to read own configuration on behalf of user
             if (resource.getType() == ResourceTypes.APPLICATION
-                && !resource.isFolder()
-                && BucketBuilder.buildInitiatorBucket(context).equals(resource.getBucketLocation())
-                && resource.getName().equals(context.getSourceDeployment())) {
+                    && !resource.isFolder()
+                    && BucketBuilder.buildInitiatorBucket(context).equals(resource.getBucketLocation())
+                    && resource.getName().equals(context.getSourceDeployment())) {
                 result.put(resource, ResourceAccessType.READ_ONLY);
             }
         }
@@ -286,7 +286,7 @@ public class AccessService {
 
     public boolean hasAdminAccess(ProxyContext context) {
         return context.getApiKeyData().getPerRequestKey() == null // not application
-                && RuleMatcher.match(context, adminRules);
+               && RuleMatcher.match(context, adminRules);
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
