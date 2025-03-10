@@ -350,7 +350,9 @@ public class DeploymentPostController {
             return;
         }
 
-        if (responseStatusCode == 200) {
+        // don't mark the response as failed with status code 400
+        // see https://github.com/epam/ai-dial-core/issues/725
+        if (responseStatusCode == 200 || responseStatusCode == 400) {
             upstreamRoute.succeed();
         } else {
             // mark the upstream as failed
