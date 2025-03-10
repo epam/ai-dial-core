@@ -135,8 +135,9 @@ public class ApplicationService {
             if (meta instanceof ResourceItemMetadata) {
                 try {
                     Application application = getApplication(resource).getValue();
-                    boolean propertyFilteringRequired = !Objects.equals(context.getSourceDeployment(), application.getName());
-                    if (propertyFilteringRequired) {
+                    boolean applicationRequestInfoAboutItSelf = Objects.equals(UrlUtil.decodePath(context.getSourceDeployment()),
+                            UrlUtil.decodePath(application.getName()));
+                    if (!applicationRequestInfoAboutItSelf) {
                         application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, application);
                     }
                     list.add(application);
@@ -208,8 +209,9 @@ public class ApplicationService {
                     try {
                         ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = getApplication(item).getValue();
-                        boolean propertyFilteringRequired = !Objects.equals(ctx.getSourceDeployment(), application.getName());
-                        if (propertyFilteringRequired) {
+                        boolean applicationRequestInfoAboutItSelf = !Objects.equals(UrlUtil.decodePath(ctx.getSourceDeployment()),
+                                UrlUtil.decodePath(application.getName()));
+                        if (applicationRequestInfoAboutItSelf) {
                             application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
                         }
                         application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);

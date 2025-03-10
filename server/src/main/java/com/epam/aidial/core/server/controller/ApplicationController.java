@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
@@ -71,9 +72,9 @@ public class ApplicationController {
             List<Application> list = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
-                    String decodedSourceDeployment = context.getSourceDeployment() != null ? URLDecoder.decode(context.getSourceDeployment(), StandardCharsets.UTF_8) : null;
-                    boolean propertyFilteringRequired = !Objects.equals(decodedSourceDeployment, application.getName());
-                    if (propertyFilteringRequired) {
+                    String decodedSourceDeployment = context.getSourceDeployment() != null ? UrlUtil.decodePath(context.getSourceDeployment()) : null;
+                    boolean applicationRequestInfoAboutItSelf = Objects.equals(decodedSourceDeployment, UrlUtil.decodePath(application.getName()));
+                    if (!applicationRequestInfoAboutItSelf) {
                         application = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
                     }
                     application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application);

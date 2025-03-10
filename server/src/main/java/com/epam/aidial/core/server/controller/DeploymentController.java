@@ -21,8 +21,6 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -116,10 +114,7 @@ public class DeploymentController {
 
             Application app = proxy.getApplicationService().getApplication(resource).getValue();
 
-            String decodedSourceDeployment = context.getSourceDeployment() != null ? URLDecoder.decode(context.getSourceDeployment(), StandardCharsets.UTF_8) : null;
-            boolean accessFromTheCustomAppItself = id.equals(decodedSourceDeployment) && app.hasApplicationTypeSchemaId();
-
-            if (!proxy.getAccessService().hasReadAccess(resource, context) && !accessFromTheCustomAppItself) {
+            if (!proxy.getAccessService().hasReadAccess(resource, context)) {
                 throw new PermissionDeniedException();
             }
 
