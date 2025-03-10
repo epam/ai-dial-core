@@ -352,7 +352,7 @@ public class DeploymentPostController {
 
         if (responseStatusCode == 200) {
             upstreamRoute.succeed();
-        } else if (responseStatusCode != 400) {
+        } else if (!HttpStatus.fromStatusCode(responseStatusCode).is4xx()) {
             // mark the upstream as failed
             // and the next time we will select another one
             upstreamRoute.fail(proxyResponse);
