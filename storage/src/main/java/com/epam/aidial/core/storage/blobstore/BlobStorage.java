@@ -181,7 +181,8 @@ public class BlobStorage implements Closeable {
         if (userMetadata == null) {
             copyOptions = CopyOptions.NONE;
         } else {
-            copyOptions = CopyOptions.builder().userMetadata(userMetadata).build();
+            BlobMetadata blobMetadata = meta(fromPath);
+            copyOptions = CopyOptions.builder().contentMetadata(blobMetadata.getContentMetadata()).userMetadata(userMetadata).build();
         }
         blobStore.copyBlob(bucketName, getStorageLocation(fromPath), bucketName, getStorageLocation(toPath), copyOptions);
         return true;
