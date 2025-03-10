@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
@@ -14,7 +15,6 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -213,6 +213,13 @@ public class AccessService {
         for (ResourceDescriptor resource : resources) {
             if (resource.getBucketLocation().equals(location)) {
                 result.put(resource, ResourceAccessType.ALL);
+            }
+            // application makes call to read own configuration on behalf of user
+            if (resource.getType() == ResourceTypes.APPLICATION
+                && !resource.isFolder()
+                && BucketBuilder.buildInitiatorBucket(context).equals(resource.getBucketLocation())
+                && resource.getName().equals(context.getSourceDeployment())) {
+                result.put(resource, ResourceAccessType.READ_ONLY);
             }
         }
 
