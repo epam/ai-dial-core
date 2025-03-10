@@ -15,6 +15,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -218,7 +219,9 @@ public class AccessService {
             if (resource.getType() == ResourceTypes.APPLICATION
                     && !resource.isFolder()
                     && BucketBuilder.buildInitiatorBucket(context).equals(resource.getBucketLocation())
-                    && resource.getName().equals(context.getSourceDeployment())) {
+                    && context.getSourceDeployment() != null
+                    && UrlUtil.decodePath(resource.getUrl())
+                        .equals(UrlUtil.decodePath(context.getSourceDeployment()))) {
                 result.put(resource, ResourceAccessType.READ_ONLY);
             }
         }
