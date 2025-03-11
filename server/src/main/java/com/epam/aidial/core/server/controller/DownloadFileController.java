@@ -40,10 +40,8 @@ public class DownloadFileController extends AccessControlBaseController {
 
                     InputStreamReader stream = new InputStreamReader(proxy.getVertx(), resourceStream.inputStream());
                     stream.pipeTo(response)
-                            .onFailure(error -> {
-                                stream.close();
-                                response.reset();
-                            });
+                            .onFailure(error -> response.reset())
+                            .onComplete(ignore -> stream.close());
                     return Future.succeededFuture();
                 }).onFailure(error -> {
                     log.warn("Failed to download file: {}", resource.getUrl(), error);
