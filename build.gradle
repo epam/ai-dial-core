@@ -5,6 +5,13 @@ plugins {
     id 'io.freefair.lombok' version '8.0.1'
 }
 
+configurations.configureEach {
+    resolutionStrategy {
+        force 'com.google.code.gson:gson:2.11.0'
+        force 'net.minidev:json-smart:2.5.2'
+    }
+}
+
 allprojects {
     group = 'com.epam.aidial'
     version = "0.26.0-rc"
@@ -25,6 +32,13 @@ allprojects {
     }
 
     repositories {
+        maven {
+            url = uri("https://maven.pkg.github.com/epam/jclouds")
+            credentials {
+                username = System.getenv("GITHUB_USERNAME")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
         mavenCentral()
     }
 }

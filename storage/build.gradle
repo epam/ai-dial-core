@@ -1,8 +1,3 @@
-configurations.all {
-    resolutionStrategy {
-        force 'com.google.code.gson:gson:2.8.9'
-    }
-}
 
 dependencies {
 
@@ -10,8 +5,8 @@ dependencies {
     implementation 'org.slf4j:slf4j-api:1.7.32'
     implementation 'org.apache.commons:commons-lang3:3.12.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
-    implementation 'org.apache.jclouds:jclouds-allblobstore:2.5.0'
-    implementation 'org.apache.jclouds.api:filesystem:2.5.0'
+    implementation 'org.apache.jclouds:jclouds-allblobstore:2.7.1'
+    implementation 'org.apache.jclouds.api:filesystem:2.7.1'
     implementation 'org.redisson:redisson:3.27.0'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
