@@ -11,7 +11,9 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
@@ -75,7 +77,8 @@ public class DeploymentPostController {
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new AppendApplicationPropertiesFn(proxy, context),
-                new CollectRequestApplicationFilesFn(proxy, context));
+                new CollectRequestApplicationFilesFn(proxy, context),
+                new BuildUpstreamCacheFn(proxy, context));
     }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
@@ -187,13 +190,6 @@ public class DeploymentPostController {
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        Deployment deployment = context.getDeployment();
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment);
-        if (!canRetry(upstreamRoute)) {
-            return Future.succeededFuture();
-        }
-        context.setUpstreamRoute(upstreamRoute);
-
         setupProxyApiKeyData(new ApiKeyData());
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
             context.getRequest().body()
@@ -284,6 +280,12 @@ public class DeploymentPostController {
             return;
         }
 
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCachedUpstreamEntry());
+        if (!canRetry(upstreamRoute)) {
+            return;
+        }
+        context.setUpstreamRoute(upstreamRoute);
+
         sendRequest();
     }
 
@@ -313,10 +315,14 @@ public class DeploymentPostController {
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
-            Upstream upstream = context.getUpstreamRoute().get();
+            Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
+            String breakpointPath = context.getUpstreamRoute().getBreakpointPath();
+            if (breakpointPath != null) {
+                proxyRequest.putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath());
+            }
         }
 
         Buffer requestBody = context.getRequestBody();
@@ -351,6 +357,7 @@ public class DeploymentPostController {
         }
 
         if (responseStatusCode == 200) {
+            updateUpstreamCache(proxyResponse);
             upstreamRoute.succeed();
         } else if (!HttpStatus.fromStatusCode(responseStatusCode).is4xx()) {
             // mark the upstream as failed
@@ -381,6 +388,25 @@ public class DeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse(responseStream))
                 .onFailure(this::handleResponseError);
+    }
+
+    private void updateUpstreamCache(HttpClientResponse proxyResponse) {
+        String breakpointPath = proxyResponse.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH);
+        if (breakpointPath == null) {
+            // no cache
+            return;
+        }
+        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
+        CachedUpstreamEntry entry = context.getCachedUpstreamEntry();
+        Upstream upstream = Objects.requireNonNull(upstreamRoute.get());
+        entry.setPrefixPath(breakpointPath);
+        entry.setExpireAt(expireAt);
+        entry.setEndpoint(upstream.getEndpoint());
+        proxy.getVertx().executeBlocking(() -> {
+            proxy.getUpstreamCacheService().updateEntry(entry, (Model) context.getDeployment());
+            return null;
+        }, false).onFailure(error -> log.error("Error occurred while updating cached upstream entry", error));
     }
 
     private boolean isRetriableError(int statusCode) {

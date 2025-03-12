@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,18 +43,18 @@ public class UpstreamRouteProvider {
         vertx.setPeriodic(0, TimeUnit.MINUTES.toMillis(1), event -> evictExpiredBalancers());
     }
 
-    public UpstreamRoute get(Deployment deployment) {
+    public UpstreamRoute get(Deployment deployment, CachedUpstreamEntry cachedUpstreamEntry) {
         String key = getKey(deployment);
         List<Upstream> upstreams = getUpstreams(deployment);
-        return get(key, upstreams, deployment.getMaxRetryAttempts());
+        return get(key, upstreams, deployment.getMaxRetryAttempts(), cachedUpstreamEntry);
     }
 
     public UpstreamRoute get(Route route) {
         String key = getKey(route);
-        return get(key, route.getUpstreams(), route.getMaxRetryAttempts());
+        return get(key, route.getUpstreams(), route.getMaxRetryAttempts(), null);
     }
 
-    private UpstreamRoute get(String key, List<Upstream> upstreams, int maxRetryAttempts) {
+    private UpstreamRoute get(String key, List<Upstream> upstreams, int maxRetryAttempts, CachedUpstreamEntry cachedUpstreamEntry) {
         BalancerWrapper wrapper = balancers.compute(key, (k, cur) -> {
             BalancerWrapper result;
             if (cur != null && isUpstreamsTheSame(cur.upstreams, upstreams)
@@ -70,7 +71,23 @@ public class UpstreamRouteProvider {
         if (result <= 0) {
             throw new IllegalArgumentException("max retry attempts must be positive integer");
         }
-        return new UpstreamRoute(wrapper.balancer, result);
+        if (cachedUpstreamEntry != null && cachedUpstreamEntry.getEndpoint() != null) {
+            String endpoint = cachedUpstreamEntry.getEndpoint();
+            Upstream originalUpstream = null;
+            for (Upstream upstream : upstreams) {
+                if (upstream.getEndpoint().equals(endpoint)) {
+                    originalUpstream = upstream;
+                    break;
+                }
+            }
+            if (originalUpstream != null) {
+                cachedUpstreamEntry.setOriginalUpstream(originalUpstream);
+            } else {
+                log.warn("cached upstream doesn't exist any longer in config: {}", endpoint);
+                cachedUpstreamEntry.setEndpoint(null);
+            }
+        }
+        return new UpstreamRoute(wrapper.balancer, result, cachedUpstreamEntry);
     }
 
     private List<Upstream> getUpstreams(Deployment deployment) {

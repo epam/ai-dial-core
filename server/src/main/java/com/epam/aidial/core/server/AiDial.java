@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -143,11 +144,14 @@ public class AiDial {
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, settings("resources").getLong("heartbeatPeriod"));
+
+            UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService);
+
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, applicationService, codeInterpreterService, heartbeatService, version());
+                    notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

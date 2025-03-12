@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.data.cache.CachePolicy;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.http.HttpClientResponse;
 import lombok.Getter;
@@ -50,9 +52,12 @@ public class UpstreamRoute {
 
     private final Set<Upstream> usedUpstreams = new HashSet<>();
 
-    public UpstreamRoute(TieredBalancer balancer, int maxRetryAttempts) {
+    private final CachedUpstreamEntry cachedUpstreamEntry;
+
+    public UpstreamRoute(TieredBalancer balancer, int maxRetryAttempts, CachedUpstreamEntry cachedUpstreamEntry) {
         this.balancer = balancer;
         this.maxRetryAttempts = maxRetryAttempts;
+        this.cachedUpstreamEntry = cachedUpstreamEntry;
     }
 
     /**
@@ -77,11 +82,18 @@ public class UpstreamRoute {
             throw balancer.createUpstreamUnavailableException();
         }
         attemptCount++;
-        upstream = balancer.next(usedUpstreams);
-        if (upstream == null) {
-            throw balancer.createUpstreamUnavailableException();
+        if (cachedUpstreamEntry == null
+                || (cachedUpstreamEntry.getPolicy() != CachePolicy.CACHE_PRIORITY && attemptCount > 1)
+                || cachedUpstreamEntry.getOriginalUpstream() == null) {
+            upstream = balancer.next(usedUpstreams);
+            if (upstream == null) {
+                throw balancer.createUpstreamUnavailableException();
+            }
+            return upstream;
+        } else {
+            upstream = cachedUpstreamEntry.getOriginalUpstream();
+            return upstream;
         }
-        return upstream;
     }
 
     /**
@@ -116,6 +128,10 @@ public class UpstreamRoute {
     public void succeed() {
         verifyCurrentUpstream();
         balancer.succeed(upstream);
+    }
+
+    public String getBreakpointPath() {
+        return cachedUpstreamEntry == null ? null : cachedUpstreamEntry.getPrefixPath();
     }
 
     private void verifyCurrentUpstream() {

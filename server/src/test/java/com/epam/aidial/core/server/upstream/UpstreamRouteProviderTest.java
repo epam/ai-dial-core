@@ -32,12 +32,12 @@ public class UpstreamRouteProviderTest {
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
         Application application = new Application();
         application.setName("app");
-        UpstreamRoute route1 = provider.get(application);
+        UpstreamRoute route1 = provider.get(application, null);
         route1.next();
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
         assertThrows(HttpException.class, route1::next);
         // make sure new router doesn't have any upstreams for the same application
-        UpstreamRoute route2 = provider.get(application);
+        UpstreamRoute route2 = provider.get(application, null);
         assertNotNull(route2.next());
         assertThrows(HttpException.class, route2::next);
     }
@@ -53,7 +53,7 @@ public class UpstreamRouteProviderTest {
         model.setUpstreams(List.of(upstream1));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
-        UpstreamRoute route1 = provider.get(model);
+        UpstreamRoute route1 = provider.get(model, null);
         route1.next();
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
         assertThrows(HttpException.class, route1::next);
@@ -64,7 +64,7 @@ public class UpstreamRouteProviderTest {
         upstream2.setWeight(1);
         model.setUpstreams(List.of(upstream2));
         // change upstreams in the model
-        UpstreamRoute route2 = provider.get(model);
+        UpstreamRoute route2 = provider.get(model, null);
         route2.next();
         // the upstream is found
         assertTrue(route2.available());

@@ -41,7 +41,7 @@ public class UpstreamRouteTest {
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator);
-        UpstreamRoute route = upstreamRouteProvider.get(model);
+        UpstreamRoute route = upstreamRouteProvider.get(model, null);
         assertNotNull(route.next());
 
         assertTrue(route.available());
@@ -88,7 +88,7 @@ public class UpstreamRouteTest {
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator);
-        UpstreamRoute route = upstreamRouteProvider.get(model);
+        UpstreamRoute route = upstreamRouteProvider.get(model, null);
         assertNotNull(route.next());
 
         assertTrue(route.available());

@@ -116,7 +116,7 @@ public class TieredBalancerTest {
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, factory);
 
-        UpstreamRoute route1 = upstreamRouteProvider.get(model);
+        UpstreamRoute route1 = upstreamRouteProvider.get(model, null);
         assertNotNull(route1.next());
         assertEquals(upstreams.get(0), route1.get());
         route1.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);
@@ -127,7 +127,7 @@ public class TieredBalancerTest {
         assertEquals(upstreams.get(3), route1.next());
         route1.fail(HttpStatus.TOO_MANY_REQUESTS, 5);
 
-        UpstreamRoute route2 = upstreamRouteProvider.get(model);
+        UpstreamRoute route2 = upstreamRouteProvider.get(model, null);
         assertNotNull(route2.next());
         assertEquals(upstreams.get(0), route2.get());
         route2.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);

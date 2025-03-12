@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -70,7 +71,7 @@ public class DeploymentPostControllerTest {
 
     @Mock
     private ProxyContext context;
-    @Mock
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private Proxy proxy;
 
     @Mock
@@ -187,7 +188,7 @@ public class DeploymentPostControllerTest {
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
+        when(balancerProvider.get(any(Deployment.class), any(CachedUpstreamEntry.class))).thenReturn(endpointRoute);
         when(endpointRoute.next()).thenThrow(new HttpException(BAD_GATEWAY, "no route"));
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
@@ -218,7 +219,7 @@ public class DeploymentPostControllerTest {
         UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
         when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
         UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
+        when(balancerProvider.get(any(Deployment.class), any(CachedUpstreamEntry.class))).thenReturn(endpointRoute);
         when(endpointRoute.next()).thenReturn(new Upstream());
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
@@ -437,11 +438,6 @@ public class DeploymentPostControllerTest {
         application.setEndpoint("http://fake.com");
         when(proxy.getVertx()).thenReturn(vertx);
         when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
-        UpstreamRouteProvider balancerProvider = mock(UpstreamRouteProvider.class);
-        when(proxy.getUpstreamRouteProvider()).thenReturn(balancerProvider);
-        UpstreamRoute endpointRoute = mock(UpstreamRoute.class);
-        when(balancerProvider.get(any(Deployment.class))).thenReturn(endpointRoute);
-        when(endpointRoute.next()).thenReturn(new Upstream());
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);

@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -95,6 +96,7 @@ public class ProxyContext {
     private String traceOperation;
     // userName to be extracted from JWT or project name belongs to API key
     private String userDisplayName;
+    private CachedUpstreamEntry cachedUpstreamEntry;
 
     public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.proxy = proxy;
