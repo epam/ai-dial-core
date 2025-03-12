@@ -271,7 +271,7 @@ public class AccessService {
         for (ResourceDescriptor resource : resources) {
             if (resource.getType() == ResourceTypes.APPLICATION
                     && !resource.isFolder()
-                    &&  UrlUtil.decodePath(resource.getUrl()).equals(sourceApp)) {
+                    &&  resource.getDecodedUrl().equals(sourceApp)) {
                 result.put(resource, ResourceAccessType.READ_ONLY);
             }
         }
