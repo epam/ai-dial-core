@@ -32,6 +32,10 @@ public enum HttpStatus {
         return code >= 500 && code < 600;
     }
 
+    public boolean is4xx() {
+        return code >= 400 && code < 500;
+    }
+
     public static HttpStatus fromStatusCode(int code) {
         return fromStatusCode(code, INTERNAL_SERVER_ERROR);
     }
