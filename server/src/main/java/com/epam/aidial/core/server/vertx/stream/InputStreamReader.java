@@ -1,17 +1,13 @@
 package com.epam.aidial.core.server.vertx.stream;
 
 import io.netty.buffer.Unpooled;
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.buffer.impl.BufferImpl;
-import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
-import io.vertx.core.streams.WriteStream;
 import io.vertx.core.streams.impl.InboundBuffer;
-import io.vertx.core.streams.impl.PipeImpl;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
@@ -64,12 +60,6 @@ public class InputStreamReader implements ReadStream<Buffer> {
     public synchronized InputStreamReader exceptionHandler(Handler<Throwable> exceptionHandler) {
         this.exceptionHandler = exceptionHandler;
         return this;
-    }
-
-    @Override
-    public void pipeTo(WriteStream<Buffer> dst, Handler<AsyncResult<Void>> handler) {
-        Pipe<Buffer> pipe = new PipeImpl<>(this).endOnFailure(false);
-        pipe.to(dst, handler);
     }
 
     @Override
