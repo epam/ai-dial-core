@@ -58,6 +58,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
 
+    // All new headers should start with X-DIAL- while existing may stay untouched
+
     public static final String HEADER_API_KEY = "API-KEY";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
@@ -66,6 +68,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_UPSTREAM_EXTRA_DATA = "X-UPSTREAM-EXTRA-DATA";
     public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
+    public static final String HEADER_APPLICATION_PROPERTIES = "X-DIAL-APPLICATION-PROPERTIES";
+    public static final String HEADER_APPLICATION_ID = "X-DIAL-APPLICATION-ID";
     private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.HEAD);
 
     private final Vertx vertx;

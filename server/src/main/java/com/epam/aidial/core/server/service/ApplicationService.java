@@ -135,7 +135,11 @@ public class ApplicationService {
             if (meta instanceof ResourceItemMetadata) {
                 try {
                     Application application = getApplication(resource).getValue();
-                    application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, application);
+                    boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(),
+                            resource.getDecodedUrl());
+                    if (!applicationRequestInfoAboutItSelf) {
+                        application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, application);
+                    }
                     list.add(application);
                 } catch (ResourceNotFoundException ignore) {
                     // skip shared app which might be deleted incidentally
@@ -205,7 +209,12 @@ public class ApplicationService {
                     try {
                         ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = getApplication(item).getValue();
-                        application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
+                        boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
+                                resource.getDecodedUrl());
+                        if (applicationRequestInfoAboutItSelf) {
+                            application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
+                        }
+                        application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);
                         applications.add(application);
                     } catch (ResourceNotFoundException ignore) {
                         // deleted while fetching

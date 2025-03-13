@@ -18,12 +18,14 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 public class ApplicationController {
@@ -43,7 +45,8 @@ public class ApplicationController {
     }
 
     public Future<?> getApplication(String applicationId) {
-        DeploymentController.selectDeployment(context, applicationId, true, true)
+        boolean propertyFilteringRequired = !applicationId.equals(context.getDecodedSourceDeployment());
+        DeploymentController.selectDeployment(context, applicationId, propertyFilteringRequired, true)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         return application;
@@ -65,7 +68,11 @@ public class ApplicationController {
             List<Application> list = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
-                    application = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+                    boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), UrlUtil.decodePath(application.getName()));
+                    if (!applicationRequestInfoAboutItSelf) {
+                        application = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+                    }
+                    application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application);
                     list.add(application);
                 }
             }
