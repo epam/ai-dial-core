@@ -15,7 +15,6 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -256,11 +255,10 @@ public class AccessService {
 
     public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppSelfAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        String app = context.getSourceDeployment() != null ? UrlUtil.decodePath(context.getSourceDeployment()) : null;
-        if (app == null) {
+        if (context.getDecodedSourceDeployment() == null) {
             return Map.of();
         }
-        return getAppSelfAccess(resources, app);
+        return getAppSelfAccess(resources, context.getDecodedSourceDeployment());
     }
 
     /**
