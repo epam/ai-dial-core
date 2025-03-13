@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
@@ -110,8 +111,8 @@ public class ApplicationTypeSchemaUtils {
 
         try {
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-            boolean appendApplicationPropertiesHeader = !schemaNode.has("dial:appendApplicationPropertiesHeader")
-                                                        || schemaNode.get("dial:appendApplicationPropertiesHeader").asBoolean();
+            boolean appendApplicationPropertiesHeader = !schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES)
+                                                        || schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES).asBoolean();
             Map<String, Object> serverProperties = filterProperties(application.getApplicationProperties(), customApplicationSchema, "server");
             consumer.accept(serverProperties, appendApplicationPropertiesHeader);
         } catch (JsonProcessingException e) {

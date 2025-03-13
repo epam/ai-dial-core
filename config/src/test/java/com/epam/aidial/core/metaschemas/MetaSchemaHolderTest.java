@@ -231,7 +231,7 @@ public class MetaSchemaHolderTest {
     }
 
     @Test
-    void customSchema_validatesAgainstMetaSchema_failed_EditorUrlAbsent() throws Exception {
+    void customSchema_validatesAgainstMetaSchema_success_EditorUrlAbsent() throws Exception {
         String invalidCustomSchemaStr = """
                 {\
                 "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
@@ -253,8 +253,7 @@ public class MetaSchemaHolderTest {
                 }""";
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
-        assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+        assertEquals(0, metaSchemaValidationMessages.size(), "Custom schema should be ok if editor url absent");
     }
 
     @Test

@@ -58,7 +58,6 @@
         }
       },
       "required": [
-        "dial:applicationTypeEditorUrl",
         "dial:applicationTypeCompletionEndpoint",
         "dial:applicationTypeDisplayName"
       ]

@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 public class MetaSchemaHolder {
 
     public static final String CUSTOM_APPLICATION_META_SCHEMA_ID = "https://dial.epam.com/application_type_schemas/schema#";
+    public static final String APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES = "dial:appendApplicationPropertiesHeader";
     public static final String APPLICATION_TYPE_EDITOR_URL = "dial:applicationTypeEditorUrl";
     public static final String APPLICATION_TYPE_VIEWER_URL = "dial:applicationTypeViewerUrl";
     public static final String APPLICATION_TYPE_DISPLAY_NAME = "dial:applicationTypeDisplayName";
@@ -21,6 +22,7 @@ public class MetaSchemaHolder {
     public static final String APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT = "dial:applicationTypeTruncatePromptEndpoint";
     public static final String PROPERTY_KIND = "dial:propertyKind";
     public static final String PROPERTY_ORDER = "dial:propertyOrder";
+    public static final String APPLICATION_TYPE_ID_FIELD = "$id";
 
     public static String getCustomApplicationMetaSchema() {
         try (InputStream inputStream = MetaSchemaHolder.class.getClassLoader()

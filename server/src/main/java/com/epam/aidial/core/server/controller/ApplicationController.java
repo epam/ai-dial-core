@@ -23,8 +23,6 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -47,7 +45,7 @@ public class ApplicationController {
     }
 
     public Future<?> getApplication(String applicationId) {
-        String decodedSourceDeployment = context.getSourceDeployment() != null ? URLDecoder.decode(context.getSourceDeployment(), StandardCharsets.UTF_8) : null;
+        String decodedSourceDeployment = context.getSourceDeployment() != null ? UrlUtil.decodePath(context.getSourceDeployment()) : null;
         boolean propertyFilteringRequired = !applicationId.equals(decodedSourceDeployment);
         DeploymentController.selectDeployment(context, applicationId, propertyFilteringRequired, true)
                 .map(deployment -> {
