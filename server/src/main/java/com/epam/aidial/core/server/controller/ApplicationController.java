@@ -45,8 +45,7 @@ public class ApplicationController {
     }
 
     public Future<?> getApplication(String applicationId) {
-        String decodedSourceDeployment = context.getSourceDeployment() != null ? UrlUtil.decodePath(context.getSourceDeployment()) : null;
-        boolean propertyFilteringRequired = !applicationId.equals(decodedSourceDeployment);
+        boolean propertyFilteringRequired = !applicationId.equals(context.getDecodedSourceDeployment());
         DeploymentController.selectDeployment(context, applicationId, propertyFilteringRequired, true)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
@@ -69,8 +68,7 @@ public class ApplicationController {
             List<Application> list = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
-                    String decodedSourceDeployment = context.getSourceDeployment() != null ? UrlUtil.decodePath(context.getSourceDeployment()) : null;
-                    boolean applicationRequestInfoAboutItSelf = Objects.equals(decodedSourceDeployment, UrlUtil.decodePath(application.getName()));
+                    boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), UrlUtil.decodePath(application.getName()));
                     if (!applicationRequestInfoAboutItSelf) {
                         application = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
                     }
