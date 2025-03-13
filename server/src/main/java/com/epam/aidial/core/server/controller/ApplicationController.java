@@ -13,7 +13,6 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
-import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -165,11 +164,16 @@ public class ApplicationController {
     }
 
     private void checkAccess(ResourceDescriptor resource) {
-        boolean hasAccess = accessService.hasAdminAccess(context);
+        boolean hasAccess = accessService.hasWriteAccess(resource, context);
 
-        if (!hasAccess && resource.isPrivate()) {
-            String bucket = BucketBuilder.buildInitiatorBucket(context);
-            hasAccess = resource.getBucketLocation().equals(bucket);
+        if (hasAccess) {
+            Application application = applicationService.getApplication(resource).getValue();
+            Application.Function function = application.getFunction();
+
+            if (function != null) {
+                ResourceDescriptor sources = ResourceDescriptorFactory.fromAnyUrl(function.getSourceFolder(), encryptionService);
+                hasAccess = accessService.hasWriteAccess(sources, context);
+            }
         }
 
         if (!hasAccess) {
