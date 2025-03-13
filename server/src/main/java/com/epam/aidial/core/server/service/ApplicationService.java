@@ -137,7 +137,7 @@ public class ApplicationService {
                     Application application = getApplication(resource).getValue();
                     String sourceDeploymentDecoded = context.getSourceDeployment() != null ? UrlUtil.decodePath(context.getSourceDeployment()) : null;
                     boolean applicationRequestInfoAboutItSelf = Objects.equals(sourceDeploymentDecoded,
-                            UrlUtil.decodePath(application.getName()));
+                            resource.getDecodedUrl());
                     if (!applicationRequestInfoAboutItSelf) {
                         application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, application);
                     }
@@ -212,7 +212,7 @@ public class ApplicationService {
                         Application application = getApplication(item).getValue();
                         String sourceDeploymentDecoded = ctx.getSourceDeployment() != null ? UrlUtil.decodePath(ctx.getSourceDeployment()) : null;
                         boolean applicationRequestInfoAboutItSelf = !Objects.equals(sourceDeploymentDecoded,
-                                UrlUtil.decodePath(application.getName()));
+                                resource.getDecodedUrl());
                         if (applicationRequestInfoAboutItSelf) {
                             application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
                         }
