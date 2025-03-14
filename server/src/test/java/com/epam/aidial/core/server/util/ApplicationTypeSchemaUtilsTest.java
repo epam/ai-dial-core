@@ -119,32 +119,35 @@ public class ApplicationTypeSchemaUtilsTest {
     }
 
     @Test
-    public void getCustomServerProperties_returnsProperties_whenSchemaExists() {
+    void consumeServerProperties_returnsProperties_whenSchemaExists() {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
 
-        Map<String, Object> result = ApplicationTypeSchemaUtils.getCustomServerProperties(config, application);
-
-        Assertions.assertEquals(serverProperties, result);
+        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
+            Assertions.assertEquals(serverProperties, properties);
+            Assertions.assertTrue(appendApplicationPropertiesHeader);
+        });
     }
 
     @Test
-    public void getCustomServerProperties_returnsEmptyMap_whenSchemaIsNull() {
+    void consumeServerProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        Map<String, Object> result = ApplicationTypeSchemaUtils.getCustomServerProperties(config, application);
-
-        Assertions.assertEquals(Collections.emptyMap(), result);
+        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
+            Assertions.assertEquals(Collections.emptyMap(), properties);
+            Assertions.assertTrue(appendApplicationPropertiesHeader);
+        });
     }
 
     @Test
-    public void getCustomServerProperties_throws_whenSchemaNotFound() {
+    void consumeServerProperties_throws_whenSchemaNotFound() {
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
-        Assertions.assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                ApplicationTypeSchemaUtils.getCustomServerProperties(config, application));
+        assertThrows(ApplicationTypeSchemaValidationException.class, () ->
+                ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
+                }));
     }
 
 
@@ -210,26 +213,26 @@ public class ApplicationTypeSchemaUtilsTest {
     }
 
     @Test
-    public void modifyEndpointForCustomApplication_setsCustomEndpoint_whenSchemaExists() {
+    public void modifyEndpointForCustomApplication_setsCustomEndpoints_whenSchemaExists() {
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
-        Application result = ApplicationTypeSchemaUtils.modifyEndpointForCustomApplication(config, application);
+        Application result = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application);
 
         Assertions.assertNotSame(application, result);
         Assertions.assertEquals("http://specific_application_service/opeani/v1/completion", result.getEndpoint());
     }
 
     @Test
-    public void modifyEndpointForCustomApplication_throws_whenSchemaIsNull() {
+    public void modifyEndpointsForCustomApplication_return_original_app_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        Assertions.assertThrows(ApplicationTypeSchemaProcessingException.class,
-                () -> ApplicationTypeSchemaUtils.modifyEndpointForCustomApplication(config, application));
+        Assertions.assertSame(application,
+                ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application));
     }
 
     @Test
-    public void modifyEndpointForCustomApplication_throws_whenEndpointNotFound() {
+    public void modifyEndpointForCustomApplication_throws_whenEndpointsNotFound() {
         String schemaWithoutEndpoint = """
                 {
                 "$schema": "https://dial.epam.com/application_type_schemas/schema#",
@@ -250,7 +253,7 @@ public class ApplicationTypeSchemaUtilsTest {
         when(config.getCustomApplicationSchema(any())).thenReturn(schemaWithoutEndpoint);
 
         Assertions.assertThrows(ApplicationTypeSchemaProcessingException.class, () ->
-                ApplicationTypeSchemaUtils.modifyEndpointForCustomApplication(config, application));
+                ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application));
     }
 
     @Test

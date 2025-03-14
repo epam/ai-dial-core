@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
@@ -45,7 +46,8 @@ public class AccessService {
             AccessService::getAppResourceAccess,
             this::getReviewAccess,
             this::getPublicAccess,
-            this::getSharedAccess);
+            this::getSharedAccess,
+            AccessService::getAppSelfAccess);
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
@@ -246,6 +248,29 @@ public class AccessService {
             }
         }
 
+        return result;
+    }
+
+    public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppSelfAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        if (context.getDecodedSourceDeployment() == null) {
+            return Map.of();
+        }
+        return getAppSelfAccess(resources, context.getDecodedSourceDeployment());
+    }
+
+    /**
+     * Application makes a call to read own configuration on behalf of user.
+     */
+    public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppSelfAccess(Set<ResourceDescriptor> resources, String sourceApp) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+        for (ResourceDescriptor resource : resources) {
+            if (resource.getType() == ResourceTypes.APPLICATION
+                    && !resource.isFolder()
+                    &&  resource.getDecodedUrl().equals(sourceApp)) {
+                result.put(resource, ResourceAccessType.READ_ONLY);
+            }
+        }
         return result;
     }
 
