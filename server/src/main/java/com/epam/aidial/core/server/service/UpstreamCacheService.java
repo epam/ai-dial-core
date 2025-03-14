@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.service.LockService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -13,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.BatchResult;
 import org.redisson.api.RBatch;
 import org.redisson.api.RMap;
+import org.redisson.api.RMapAsync;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
@@ -28,6 +30,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,7 +45,7 @@ public class UpstreamCacheService {
     private static final String UPSTREAM_ENDPOINT_FIELD = "upstream_endpoint";
     private static final String PREFIX_PATH_FIELD = "prefix_path";
 
-    private static final Set<Object> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD);
+    private static final Set<String> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD);
 
     private static final int BATCH_SIZE = 64;
 
@@ -54,11 +57,14 @@ public class UpstreamCacheService {
 
     private final LockService lockService;
 
+    private final LongSupplier clock;
+
     private final String prefix;
 
-    public UpstreamCacheService(RedissonClient redisClient, LockService lockService, String prefix) {
+    public UpstreamCacheService(RedissonClient redisClient, LockService lockService, LongSupplier clock, String prefix) {
         this.redisClient = redisClient;
         this.lockService = lockService;
+        this.clock = clock;
         this.prefix = prefix;
     }
 
@@ -112,9 +118,10 @@ public class UpstreamCacheService {
     public CachedUpstreamEntry getCacheEntry(CacheBreakpointContext cacheBreakpointContext, Model model) {
         List<String> breakpoints = cacheBreakpointContext.breakpoints();
         if (breakpoints.isEmpty()) {
-            // embedding request
+            // model doesn't support caching
             return null;
         }
+        long currentTime = clock.getAsLong();
         Map<String, String> prefixToHash = cacheBreakpointContext.prefixToHash();
         for (int i = breakpoints.size() - 1; i >= 0;) {
             RBatch batch = redisClient.createBatch();
@@ -123,13 +130,16 @@ public class UpstreamCacheService {
                 String prefixPath = breakpoints.get(i);
                 String hash = prefixToHash.get(prefixPath);
                 String key = getEntryKey(model.getName(), hash);
-                batch.getMap(key, REDIS_MAP_CODEC).getAllAsync(ALL_FIELDS);
+                RMapAsync<String, String> rmap = batch.getMap(key, REDIS_MAP_CODEC);
+                rmap.getAllAsync(ALL_FIELDS);
+                rmap.getExpireTimeAsync();
             }
             BatchResult<?> result = batch.execute();
             List<?> responses = result.getResponses();
-            for (int j = 0; j < count; j++) {
+            for (int j = 0; j < responses.size(); j += 2) {
                 Map<String, String> map = (Map<String, String>) responses.get(j);
-                if (!map.isEmpty()) {
+                Long expireTime = (Long) responses.get(j + 1);
+                if (!map.isEmpty() && expireTime > currentTime) {
                     return new CachedUpstreamEntry(map.get(UPSTREAM_ENDPOINT_FIELD), map.get(PREFIX_PATH_FIELD));
                 }
             }
@@ -152,7 +162,7 @@ public class UpstreamCacheService {
             map.putAll(fields);
 
             Instant expireAt = expireAt(expireAtStr);
-            if (expireAt == null && exists) {
+            if (expireAt == null && !exists) {
                 // adapter didn't return expireAt for a new cache entry
                 expireAt = Instant.now().plus(DEFAULT_TTL);
             }
@@ -183,7 +193,7 @@ public class UpstreamCacheService {
     }
 
     private String getEntryKey(String modelName, String hash) {
-        return prefix + ":" + modelName + ":" + hash;
+        return "upstream_cache:" + BlobStorageUtil.toStoragePath(prefix, BlobStorageUtil.toStoragePath(modelName, hash));
     }
 
     @SneakyThrows

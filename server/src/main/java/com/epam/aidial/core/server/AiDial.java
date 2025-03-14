@@ -144,7 +144,7 @@ public class AiDial {
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, settings("resources").getLong("heartbeatPeriod"));
 
-            UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, storage.getPrefix());
+            UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new, upstreamCacheService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
