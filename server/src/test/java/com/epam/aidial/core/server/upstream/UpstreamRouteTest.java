@@ -2,6 +2,9 @@ package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.data.cache.CachePolicy;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
@@ -11,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,6 +31,9 @@ public class UpstreamRouteTest {
     private Vertx vertx;
 
     @Mock
+    private UpstreamCacheService upstreamCacheService;
+
+    @Mock
     private Random generator;
 
     @Test
@@ -40,8 +47,9 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint4", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator);
-        UpstreamRoute route = upstreamRouteProvider.get(model, null);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+        UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
 
         assertTrue(route.available());
@@ -87,8 +95,9 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator);
-        UpstreamRoute route = upstreamRouteProvider.get(model, null);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+        UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
 
         assertTrue(route.available());

@@ -280,7 +280,7 @@ public class DeploymentPostController {
             return;
         }
 
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCachedUpstreamEntry());
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext());
         if (!canRetry(upstreamRoute)) {
             return;
         }
@@ -319,10 +319,7 @@ public class DeploymentPostController {
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
-            String breakpointPath = context.getUpstreamRoute().getBreakpointPath();
-            if (breakpointPath != null) {
-                proxyRequest.putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath());
-            }
+            proxyRequest.putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath());
         }
 
         Buffer requestBody = context.getRequestBody();
@@ -357,8 +354,7 @@ public class DeploymentPostController {
         }
 
         if (responseStatusCode == 200) {
-            updateUpstreamCache(proxyResponse);
-            upstreamRoute.succeed();
+            upstreamRoute.succeed(proxyResponse, context.getDeployment());
         } else if (!HttpStatus.fromStatusCode(responseStatusCode).is4xx()) {
             // mark the upstream as failed
             // and the next time we will select another one
@@ -388,25 +384,6 @@ public class DeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse(responseStream))
                 .onFailure(this::handleResponseError);
-    }
-
-    private void updateUpstreamCache(HttpClientResponse proxyResponse) {
-        String breakpointPath = proxyResponse.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH);
-        if (breakpointPath == null) {
-            // no cache
-            return;
-        }
-        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-        String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
-        CachedUpstreamEntry entry = context.getCachedUpstreamEntry();
-        Upstream upstream = Objects.requireNonNull(upstreamRoute.get());
-        entry.setPrefixPath(breakpointPath);
-        entry.setExpireAt(expireAt);
-        entry.setEndpoint(upstream.getEndpoint());
-        proxy.getVertx().executeBlocking(() -> {
-            proxy.getUpstreamCacheService().updateEntry(entry, (Model) context.getDeployment());
-            return null;
-        }, false).onFailure(error -> log.error("Error occurred while updating cached upstream entry", error));
     }
 
     private boolean isRetriableError(int statusCode) {

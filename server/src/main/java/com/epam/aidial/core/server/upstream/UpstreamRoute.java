@@ -1,9 +1,15 @@
 package com.epam.aidial.core.server.upstream;
 
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClientResponse;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +48,6 @@ public class UpstreamRoute {
     /**
      * Current upstream
      */
-    @Nullable
     private Upstream upstream;
     /**
      * Attempt counter
@@ -52,12 +57,18 @@ public class UpstreamRoute {
 
     private final Set<Upstream> usedUpstreams = new HashSet<>();
 
-    private final CachedUpstreamEntry cachedUpstreamEntry;
+    private final UpstreamCacheContext upstreamCacheContext;
 
-    public UpstreamRoute(TieredBalancer balancer, int maxRetryAttempts, CachedUpstreamEntry cachedUpstreamEntry) {
+    private final UpstreamCacheService upstreamCacheService;
+
+    private final Vertx vertx;
+
+    public UpstreamRoute(Vertx vertx, UpstreamCacheService upstreamCacheService, TieredBalancer balancer, int maxRetryAttempts, UpstreamCacheContext upstreamCacheContext) {
         this.balancer = balancer;
         this.maxRetryAttempts = maxRetryAttempts;
-        this.cachedUpstreamEntry = cachedUpstreamEntry;
+        this.upstreamCacheContext = upstreamCacheContext;
+        this.vertx = vertx;
+        this.upstreamCacheService = upstreamCacheService;
     }
 
     /**
@@ -82,18 +93,17 @@ public class UpstreamRoute {
             throw balancer.createUpstreamUnavailableException();
         }
         attemptCount++;
-        if (cachedUpstreamEntry == null
-                || (cachedUpstreamEntry.getPolicy() != CachePolicy.CACHE_PRIORITY && attemptCount > 1)
-                || cachedUpstreamEntry.getOriginalUpstream() == null) {
+        if (upstreamCacheContext == null
+                || (upstreamCacheContext.getPolicy() != CachePolicy.CACHE_PRIORITY && attemptCount > 1)
+                || upstreamCacheContext.getOriginalUpstream() == null) {
             upstream = balancer.next(usedUpstreams);
             if (upstream == null) {
                 throw balancer.createUpstreamUnavailableException();
             }
-            return upstream;
         } else {
-            upstream = cachedUpstreamEntry.getOriginalUpstream();
-            return upstream;
+            upstream = upstreamCacheContext.getOriginalUpstream();
         }
+        return upstream;
     }
 
     /**
@@ -126,12 +136,44 @@ public class UpstreamRoute {
     }
 
     public void succeed() {
+        succeed(null, null);
+    }
+
+    public void succeed(HttpClientResponse proxyResponse, Deployment deployment) {
         verifyCurrentUpstream();
+        if (deployment instanceof Model model) {
+            updateUpstreamCache(proxyResponse, model);
+        }
         balancer.succeed(upstream);
     }
 
+    private void updateUpstreamCache(HttpClientResponse proxyResponse, Model model) {
+        String breakpointPath = proxyResponse.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH);
+        if (breakpointPath == null) {
+            // no cache
+            return;
+        }
+        String hash = upstreamCacheContext.getPrefixToHash().get(breakpointPath);
+        if (hash == null) {
+            if (model.getType() != ModelType.EMBEDDING) {
+                log.warn("prefix is not found: {}", breakpointPath);
+            }
+            return;
+        }
+        String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), breakpointPath);
+        vertx.executeBlocking(() -> {
+            upstreamCacheService.updateEntry(hash, entry, model, expireAt);
+            return null;
+        }, false).onFailure(error -> log.error("Error occurred while updating cached upstream entry", error));
+    }
+
     public String getBreakpointPath() {
-        return cachedUpstreamEntry == null ? null : cachedUpstreamEntry.getPrefixPath();
+        if (upstreamCacheContext == null) {
+            return null;
+        }
+        CachedUpstreamEntry entry  = upstreamCacheContext.getEntry();
+        return entry == null ? null : entry.prefixPath();
     }
 
     private void verifyCurrentUpstream() {

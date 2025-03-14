@@ -104,7 +104,6 @@ public class AiDial {
             client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
 
             LogStore logStore = new GfLogStore(vertx);
-            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new);
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
@@ -145,7 +144,8 @@ public class AiDial {
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, settings("resources").getLong("heartbeatPeriod"));
 
-            UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService);
+            UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, storage.getPrefix());
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new, upstreamCacheService);
 
             proxy = new Proxy(vertx, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,

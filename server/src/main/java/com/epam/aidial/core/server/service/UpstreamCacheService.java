@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.storage.service.LockService;
@@ -10,8 +10,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.BatchResult;
+import org.redisson.api.RBatch;
 import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.Codec;
+import org.redisson.client.codec.StringCodec;
+import org.redisson.codec.CompositeCodec;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -22,6 +27,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,22 +39,34 @@ public class UpstreamCacheService {
 
     private static final String CUSTOM_FIELDS_NODE = "custom_fields";
     private static final String CACHE_BREAKPOINT_NODE = "cache_breakpoint";
-    private static final String UPSTREAM_ENDPOINT_ATTR = "upstream_endpoint";
-    private static final String PREFIX_PATH_ATTR = "prefix_path";
+    private static final String UPSTREAM_ENDPOINT_FIELD = "upstream_endpoint";
+    private static final String PREFIX_PATH_FIELD = "prefix_path";
+
+    private static final Set<Object> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD);
+
+    private static final int BATCH_SIZE = 64;
+
+    private static final Codec REDIS_MAP_CODEC = new CompositeCodec(
+            StringCodec.INSTANCE,
+            StringCodec.INSTANCE);
 
     private final RedissonClient redisClient;
 
     private final LockService lockService;
 
-    public UpstreamCacheService(RedissonClient redisClient, LockService lockService) {
+    private final String prefix;
+
+    public UpstreamCacheService(RedissonClient redisClient, LockService lockService, String prefix) {
         this.redisClient = redisClient;
         this.lockService = lockService;
+        this.prefix = prefix;
     }
 
-    public CachedUpstreamEntry getCacheEntry(ObjectNode body, CachePolicy cachePolicy, Model model) {
+    public CacheBreakpointContext buildCacheBreakpointContext(ObjectNode body, CachePolicy policy, Model model) {
+        boolean autoCaching = policy == CachePolicy.AUTO_CACHING;
         List<String> fieldsOrder = model.getFieldsHashingOrder();
         MessageDigest messageDigest = createMessageDigest();
-        List<Breakpoint> breakpoints = new ArrayList<>();
+        List<String> breakpoints = new ArrayList<>();
         Map<String, String> prefixToHash = new HashMap<>();
         for (String field : fieldsOrder) {
             Matcher matcher = PREFIX_PATH.matcher(field);
@@ -81,79 +99,79 @@ public class UpstreamCacheService {
                 }
                 String hash = toString(messageDigest.digest());
                 String prefix = field + "[" + index + "]";
-                if (cachePolicy == CachePolicy.AUTO_CACHING
-                        || (objectNode.has(CUSTOM_FIELDS_NODE) && objectNode.get(CUSTOM_FIELDS_NODE).has(CACHE_BREAKPOINT_NODE))) {
-                    breakpoints.add(new Breakpoint(prefix, hash));
+                if (autoCaching || (objectNode.has(CUSTOM_FIELDS_NODE) && objectNode.get(CUSTOM_FIELDS_NODE).has(CACHE_BREAKPOINT_NODE))) {
+                    breakpoints.add(prefix);
                 }
                 prefixToHash.put(prefix, hash);
             }
 
         }
+        return new CacheBreakpointContext(breakpoints, prefixToHash, policy);
+    }
+
+    public CachedUpstreamEntry getCacheEntry(CacheBreakpointContext cacheBreakpointContext, Model model) {
+        List<String> breakpoints = cacheBreakpointContext.breakpoints();
         if (breakpoints.isEmpty()) {
             // embedding request
-            CachedUpstreamEntry entry = new CachedUpstreamEntry();
-            entry.setPolicy(cachePolicy);
-            entry.setPrefixToHash(prefixToHash);
-            return entry;
+            return null;
         }
-        for (int i = breakpoints.size() - 1; i >= 0; i--) {
-            Breakpoint breakpoint = breakpoints.get(i);
-            String key = getEntryKey(model.getName(), breakpoint.hash);
-            RMap<String, String> map = redisClient.getMap(key);
-            if (!map.isEmpty()) {
-                CachedUpstreamEntry entry = toEntry(map);
-                entry.setHash(breakpoint.hash);
-                entry.setPolicy(cachePolicy);
-                entry.setPrefixToHash(prefixToHash);
-                return entry;
+        Map<String, String> prefixToHash = cacheBreakpointContext.prefixToHash();
+        for (int i = breakpoints.size() - 1; i >= 0;) {
+            RBatch batch = redisClient.createBatch();
+            int count = 0;
+            for (; i >= 0 && count < BATCH_SIZE; count++, i--) {
+                String prefixPath = breakpoints.get(i);
+                String hash = prefixToHash.get(prefixPath);
+                String key = getEntryKey(model.getName(), hash);
+                batch.getMap(key, REDIS_MAP_CODEC).getAllAsync(ALL_FIELDS);
+            }
+            BatchResult<?> result = batch.execute();
+            List<?> responses = result.getResponses();
+            for (int j = 0; j < count; j++) {
+                Map<String, String> map = (Map<String, String>) responses.get(j);
+                if (!map.isEmpty()) {
+                    return new CachedUpstreamEntry(map.get(UPSTREAM_ENDPOINT_FIELD), map.get(PREFIX_PATH_FIELD));
+                }
             }
         }
         // take the last breakpoint
-        Breakpoint last = breakpoints.get(breakpoints.size() - 1);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry();
-        entry.setPrefixPath(last.prefix);
-        entry.setHash(last.hash);
-        entry.setPolicy(cachePolicy);
-        entry.setPrefixToHash(prefixToHash);
-        return entry;
+        String prefixPath = breakpoints.get(breakpoints.size() - 1);
+        return new CachedUpstreamEntry(null, prefixPath);
     }
 
-    public void updateEntry(CachedUpstreamEntry entry, Model model) {
-        String hash = entry.getPrefixToHash().get(entry.getPrefixPath());
-        if (hash == null) {
-            if (model.getType() != ModelType.EMBEDDING) {
-                log.warn("prefix is not found: {}", entry.getPrefixPath());
-            }
-            return;
-        }
+    public void updateEntry(String hash, CachedUpstreamEntry entry, Model model, String expireAtStr) {
         String key = getEntryKey(model.getName(), hash);
         Map<String, String> fields = new HashMap<>();
-        fields.put(UPSTREAM_ENDPOINT_ATTR, entry.getEndpoint());
-        fields.put(PREFIX_PATH_ATTR, entry.getPrefixPath());
+        fields.put(UPSTREAM_ENDPOINT_FIELD, entry.endpoint());
+        fields.put(PREFIX_PATH_FIELD, entry.prefixPath());
         try (var ignore = lockService.lock(key)) {
+
             RMap<String, String> map = redisClient.getMap(key);
-            boolean isEmpty = map.isEmpty();
+            boolean exists = map.isExists();
+
             map.putAll(fields);
-            if (entry.getExpireAt() != null) {
-                try {
-                    Instant expireAt = Instant.ofEpochSecond(Long.parseLong(entry.getExpireAt()));
-                    map.expire(expireAt);
-                } catch (NumberFormatException e) {
-                    log.error("Invalid expireAt datetime format: " + entry.getExpireAt());
-                    map.expire(DEFAULT_TTL);
-                }
-            } else if (isEmpty) {
+
+            Instant expireAt = expireAt(expireAtStr);
+            if (expireAt == null && exists) {
                 // adapter didn't return expireAt for a new cache entry
-                map.expire(DEFAULT_TTL);
+                expireAt = Instant.now().plus(DEFAULT_TTL);
+            }
+            if (expireAt != null) {
+                map.expire(expireAt);
             }
         }
     }
 
-    private static CachedUpstreamEntry toEntry(RMap<String, String> map) {
-        CachedUpstreamEntry entry = new CachedUpstreamEntry();
-        entry.setEndpoint(map.get(UPSTREAM_ENDPOINT_ATTR));
-        entry.setPrefixPath(map.get(PREFIX_PATH_ATTR));
-        return entry;
+    private static Instant expireAt(String val) {
+        if (val == null) {
+            return null;
+        }
+        try {
+            return Instant.ofEpochSecond(Long.parseLong(val));
+        } catch (NumberFormatException e) {
+            log.error("Invalid expireAt datetime format: " + val);
+            return null;
+        }
     }
 
     private static String toString(byte[] digest) {
@@ -164,8 +182,8 @@ public class UpstreamCacheService {
         return hexString.toString();
     }
 
-    private static String getEntryKey(String modelName, String hash) {
-        return modelName + ":" + hash;
+    private String getEntryKey(String modelName, String hash) {
+        return prefix + ":" + modelName + ":" + hash;
     }
 
     @SneakyThrows
@@ -173,5 +191,4 @@ public class UpstreamCacheService {
         return MessageDigest.getInstance("SHA-1");
     }
 
-    private record Breakpoint(String prefix, String hash) {}
 }

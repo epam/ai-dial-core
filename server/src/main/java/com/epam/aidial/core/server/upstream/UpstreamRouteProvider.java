@@ -6,7 +6,9 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
@@ -38,15 +40,29 @@ public class UpstreamRouteProvider {
 
     private final Supplier<Random> generatorFactory;
 
-    public UpstreamRouteProvider(Vertx vertx, Supplier<Random> generatorFactory) {
+    private final UpstreamCacheService upstreamCacheService;
+
+    private final Vertx vertx;
+
+    public UpstreamRouteProvider(Vertx vertx, Supplier<Random> generatorFactory, UpstreamCacheService upstreamCacheService) {
         this.generatorFactory = generatorFactory;
+        this.upstreamCacheService = upstreamCacheService;
         vertx.setPeriodic(0, TimeUnit.MINUTES.toMillis(1), event -> evictExpiredBalancers());
+        this.vertx = vertx;
     }
 
-    public UpstreamRoute get(Deployment deployment, CachedUpstreamEntry cachedUpstreamEntry) {
+    public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext) {
         String key = getKey(deployment);
         List<Upstream> upstreams = getUpstreams(deployment);
-        return get(key, upstreams, deployment.getMaxRetryAttempts(), cachedUpstreamEntry);
+        UpstreamCacheContext context = null;
+        if (deployment instanceof Model model) {
+            CachedUpstreamEntry entry = upstreamCacheService.getCacheEntry(breakpointContext, model);
+            context = new UpstreamCacheContext();
+            context.setPolicy(breakpointContext.policy());
+            context.setEntry(entry);
+            context.setPrefixToHash(breakpointContext.prefixToHash());
+        }
+        return get(key, upstreams, deployment.getMaxRetryAttempts(), context);
     }
 
     public UpstreamRoute get(Route route) {
@@ -54,7 +70,7 @@ public class UpstreamRouteProvider {
         return get(key, route.getUpstreams(), route.getMaxRetryAttempts(), null);
     }
 
-    private UpstreamRoute get(String key, List<Upstream> upstreams, int maxRetryAttempts, CachedUpstreamEntry cachedUpstreamEntry) {
+    private UpstreamRoute get(String key, List<Upstream> upstreams, int maxRetryAttempts, UpstreamCacheContext context) {
         BalancerWrapper wrapper = balancers.compute(key, (k, cur) -> {
             BalancerWrapper result;
             if (cur != null && isUpstreamsTheSame(cur.upstreams, upstreams)
@@ -71,8 +87,8 @@ public class UpstreamRouteProvider {
         if (result <= 0) {
             throw new IllegalArgumentException("max retry attempts must be positive integer");
         }
-        if (cachedUpstreamEntry != null && cachedUpstreamEntry.getEndpoint() != null) {
-            String endpoint = cachedUpstreamEntry.getEndpoint();
+        if (context != null && context.getEntry() != null) {
+            String endpoint = context.getEntry().endpoint();
             Upstream originalUpstream = null;
             for (Upstream upstream : upstreams) {
                 if (upstream.getEndpoint().equals(endpoint)) {
@@ -81,13 +97,12 @@ public class UpstreamRouteProvider {
                 }
             }
             if (originalUpstream != null) {
-                cachedUpstreamEntry.setOriginalUpstream(originalUpstream);
+                context.setOriginalUpstream(originalUpstream);
             } else {
                 log.warn("cached upstream doesn't exist any longer in config: {}", endpoint);
-                cachedUpstreamEntry.setEndpoint(null);
             }
         }
-        return new UpstreamRoute(wrapper.balancer, result, cachedUpstreamEntry);
+        return new UpstreamRoute(vertx, upstreamCacheService, wrapper.balancer, result, context);
     }
 
     private List<Upstream> getUpstreams(Deployment deployment) {

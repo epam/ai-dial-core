@@ -3,6 +3,9 @@ package com.epam.aidial.core.server.upstream;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.data.cache.CachePolicy;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
@@ -12,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -25,11 +29,14 @@ public class UpstreamRouteProviderTest {
     private Vertx vertx;
 
     @Mock
+    private UpstreamCacheService upstreamCacheService;
+
+    @Mock
     private Random generator;
 
     @Test
     public void testGet_UpstreamsNotChanged() {
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
         Application application = new Application();
         application.setName("app");
         UpstreamRoute route1 = provider.get(application, null);
@@ -52,8 +59,9 @@ public class UpstreamRouteProviderTest {
         upstream1.setWeight(2);
         model.setUpstreams(List.of(upstream1));
 
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
-        UpstreamRoute route1 = provider.get(model, null);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
         route1.next();
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
         assertThrows(HttpException.class, route1::next);
@@ -64,7 +72,7 @@ public class UpstreamRouteProviderTest {
         upstream2.setWeight(1);
         model.setUpstreams(List.of(upstream2));
         // change upstreams in the model
-        UpstreamRoute route2 = provider.get(model, null);
+        UpstreamRoute route2 = provider.get(model, cacheBreakpointContext);
         route2.next();
         // the upstream is found
         assertTrue(route2.available());

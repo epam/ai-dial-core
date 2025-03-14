@@ -2,6 +2,9 @@ package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.data.cache.CachePolicy;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
@@ -12,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,6 +33,9 @@ public class TieredBalancerTest {
 
     @Mock
     private Vertx vertx;
+
+    @Mock
+    private UpstreamCacheService upstreamCacheService;
 
     @Mock
     private Random generator;
@@ -114,9 +121,11 @@ public class TieredBalancerTest {
         when(generator.nextInt(4)).thenAnswer(cb -> counter.incrementAndGet());
         Supplier<Random> factory = () -> generator;
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, factory);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, factory, upstreamCacheService);
 
-        UpstreamRoute route1 = upstreamRouteProvider.get(model, null);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+
+        UpstreamRoute route1 = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route1.next());
         assertEquals(upstreams.get(0), route1.get());
         route1.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);
@@ -127,7 +136,7 @@ public class TieredBalancerTest {
         assertEquals(upstreams.get(3), route1.next());
         route1.fail(HttpStatus.TOO_MANY_REQUESTS, 5);
 
-        UpstreamRoute route2 = upstreamRouteProvider.get(model, null);
+        UpstreamRoute route2 = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route2.next());
         assertEquals(upstreams.get(0), route2.get());
         route2.fail(HttpStatus.SERVICE_UNAVAILABLE, -1);
