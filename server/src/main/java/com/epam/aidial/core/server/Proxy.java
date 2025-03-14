@@ -67,8 +67,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_UPSTREAM_EXTRA_DATA = "X-UPSTREAM-EXTRA-DATA";
     public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
     public static final String HEADER_CACHE_POLICY = "X-DIAL-CACHE-POLICY";
-    public static final String HEADER_CACHE_BREAKPOINT_PATH = "X-DIAL-CACHE-BREAKPOINT_PATH";
-    public static final String HEADER_CACHE_EXPIRE_AT = "X-DIAL-CACHE-EXPIRE_AT";
+    public static final String HEADER_CACHE_BREAKPOINT_PATH = "X-DIAL-CACHE-BREAKPOINT-PATH";
+    public static final String HEADER_CACHE_EXPIRE_AT = "X-DIAL-CACHE-EXPIRE-AT";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
     private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.HEAD);
 
