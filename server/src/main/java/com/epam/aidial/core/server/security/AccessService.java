@@ -4,7 +4,6 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
-import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -46,7 +45,6 @@ public class AccessService {
             AccessService::getAutoSharedAccess,
             AccessService::getAppResourceAccess,
             this::getReviewAccess,
-            this::getDeploymentAccess,
             this::getPublicAccess,
             this::getSharedAccess,
             AccessService::getAppSelfAccess);
@@ -288,15 +286,6 @@ public class AccessService {
 
         return resources.stream()
                 .filter(resource -> PublicationService.hasReviewAccess(context, resource))
-                .collect(Collectors.toUnmodifiableMap(
-                        Function.identity(), resource -> ResourceAccessType.READ_ONLY));
-    }
-
-    private Map<ResourceDescriptor, Set<ResourceAccessType>> getDeploymentAccess(
-            Set<ResourceDescriptor> resources, ProxyContext context) {
-
-        return resources.stream()
-                .filter(resource -> ApplicationService.hasDeploymentAccess(context, resource))
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(), resource -> ResourceAccessType.READ_ONLY));
     }

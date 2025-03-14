@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -51,20 +52,10 @@ public class ApplicationOperatorService {
         }
     }
 
-    void createApplicationImage(ProxyContext context, Application.Function function) {
+    void createApplicationImage(Application.Function function, ApiKeyData apiKey) {
         callController(HttpMethod.POST, "/v1/image/" + function.getId(),
                 request -> {
-                    String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
-                    String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
-
-                    if (apiKey != null) {
-                        request.putHeader(Proxy.HEADER_API_KEY, apiKey);
-                    }
-
-                    if (auth != null) {
-                        request.putHeader(HttpHeaders.AUTHORIZATION, auth);
-                    }
-
+                    request.putHeader(Proxy.HEADER_API_KEY, apiKey.getPerRequestKey());
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
 
                     CreateImageRequest body = new CreateImageRequest(function.getRuntime(), function.getTargetFolder());
@@ -73,20 +64,9 @@ public class ApplicationOperatorService {
                 body -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
-    String createApplicationDeployment(ProxyContext context, Application.Function function) {
+    String createApplicationDeployment(Application.Function function) {
         CreateDeploymentResponse deployment = callController(HttpMethod.POST, "/v1/deployment/" + function.getId(),
                 request -> {
-                    String apiKey = context.getRequest().getHeader(Proxy.HEADER_API_KEY);
-                    String auth = context.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
-
-                    if (apiKey != null) {
-                        request.putHeader(Proxy.HEADER_API_KEY, apiKey);
-                    }
-
-                    if (auth != null) {
-                        request.putHeader(HttpHeaders.AUTHORIZATION, auth);
-                    }
-
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
                     CreateDeploymentRequest body = new CreateDeploymentRequest(function.getEnv());
                     return ProxyUtil.convertToString(body);

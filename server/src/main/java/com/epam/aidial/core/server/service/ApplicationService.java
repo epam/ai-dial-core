@@ -4,10 +4,13 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ApplicationUtil;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -16,6 +19,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
+import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -52,6 +56,7 @@ public class ApplicationService {
     private static final int PAGE_SIZE = 1000;
 
     private final Vertx vertx;
+    private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
     private final ResourceService resourceService;
     private final LockService lockService;
@@ -65,6 +70,7 @@ public class ApplicationService {
 
     public ApplicationService(Vertx vertx,
                               RedissonClient redis,
+                              ApiKeyStore apiKeyStore,
                               EncryptionService encryptionService,
                               ResourceService resourceService,
                               LockService lockService,
@@ -74,6 +80,7 @@ public class ApplicationService {
         String pendingApplicationsKey = BlobStorageUtil.toStoragePath(lockService.getPrefix(), "pending-applications");
 
         this.vertx = vertx;
+        this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
         this.lockService = lockService;
@@ -88,16 +95,6 @@ public class ApplicationService {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
             vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
         }
-    }
-
-    public static boolean hasDeploymentAccess(ProxyContext context, ResourceDescriptor resource) {
-        if (resource.getBucketLocation().contains(DEPLOYMENTS_NAME)) {
-            String location = BucketBuilder.buildInitiatorBucket(context);
-            String reviewLocation = location + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR;
-            return resource.getBucketLocation().startsWith(reviewLocation);
-        }
-
-        return false;
     }
 
     public List<Application> getAllApplications(ProxyContext context) {
@@ -573,8 +570,19 @@ public class ApplicationService {
                 copyFolder(function.getSourceFolder(), function.getTargetFolder(), false);
             }
 
-            controller.createApplicationImage(context, function);
-            String endpoint = controller.createApplicationDeployment(context, function);
+            ApiKeyData key = new ApiKeyData();
+            key.getAttachedFolders().put(function.getTargetFolder(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+
+            ApiKeyData.initFromContext(key, context);
+            apiKeyStore.assignPerRequestApiKey(key);
+
+            try {
+                controller.createApplicationImage(function, key);
+            } finally {
+                apiKeyStore.invalidatePerRequestApiKey(key);
+            }
+
+            String endpoint = controller.createApplicationDeployment(function);
 
             resourceService.computeResource(resource, json -> {
                 Application existing = ProxyUtil.convertToObject(json, Application.class);
