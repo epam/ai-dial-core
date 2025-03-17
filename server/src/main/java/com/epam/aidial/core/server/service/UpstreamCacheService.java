@@ -45,10 +45,8 @@ public class UpstreamCacheService {
     private static final String UPSTREAM_ENDPOINT_FIELD = "upstream_endpoint";
     private static final String PREFIX_PATH_FIELD = "prefix_path";
 
-    private static final String EXPIRED_AT_FIELD = "expired_at";
 
-
-    private static final Set<String> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD, EXPIRED_AT_FIELD);
+    private static final Set<String> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD);
 
     private static final int BATCH_SIZE = 64;
 
@@ -124,7 +122,6 @@ public class UpstreamCacheService {
             // model doesn't support caching
             return null;
         }
-        long currentTime = clock.getAsLong();
         Map<String, String> prefixToHash = cacheBreakpointContext.prefixToHash();
         for (int i = breakpoints.size() - 1; i >= 0;) {
             RBatch batch = redisClient.createBatch();
@@ -147,8 +144,7 @@ public class UpstreamCacheService {
                     String key = getEntryKey(model.getName(), hash);
                     RMap<String, String> map = redisClient.getMap(key, REDIS_MAP_CODEC);
                     Map<String, String> fields = map.getAll(ALL_FIELDS);
-                    long expiredAt = Long.parseLong(fields.get(EXPIRED_AT_FIELD));
-                    if (expiredAt > currentTime) {
+                    if (!fields.isEmpty()) {
                         return new CachedUpstreamEntry(fields.get(UPSTREAM_ENDPOINT_FIELD), fields.get(PREFIX_PATH_FIELD));
                     }
                 }
@@ -164,22 +160,18 @@ public class UpstreamCacheService {
         Map<String, String> fields = new HashMap<>();
         fields.put(UPSTREAM_ENDPOINT_FIELD, entry.endpoint());
         fields.put(PREFIX_PATH_FIELD, entry.prefixPath());
+        Instant expireAt = expireAt(expireAtStr);
+
         try (var ignore = lockService.lock(key)) {
 
             RMap<String, String> map = redisClient.getMap(key, REDIS_MAP_CODEC);
-            boolean exists = map.isExists();
-
-            Instant expireAt = expireAt(expireAtStr);
-            if (expireAt == null && !exists) {
-                // adapter didn't return expireAt for a new cache entry
-                expireAt = Instant.ofEpochMilli(clock.getAsLong()).plus(DEFAULT_TTL);
-            }
-
-            if (expireAt != null) {
-                fields.put(EXPIRED_AT_FIELD, Long.toString(expireAt.toEpochMilli()));
-            }
 
             map.putAll(fields);
+            long ttl = map.remainTimeToLive();
+
+            if (expireAt == null && ttl == -1) {
+                expireAt = Instant.ofEpochMilli(clock.getAsLong()).plus(DEFAULT_TTL);
+            }
 
             if (expireAt != null) {
                 map.expire(expireAt);
