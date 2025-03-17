@@ -35,7 +35,7 @@ allprojects {
         maven {
             url = uri("https://maven.pkg.github.com/epam/jclouds")
             credentials {
-                username = System.getenv("GITHUB_USERNAME")
+                username = "dummy"
                 password = System.getenv("GITHUB_TOKEN")
             }
         }
