@@ -45,7 +45,10 @@ public class UpstreamCacheService {
     private static final String UPSTREAM_ENDPOINT_FIELD = "upstream_endpoint";
     private static final String PREFIX_PATH_FIELD = "prefix_path";
 
-    private static final Set<String> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD);
+    private static final String EXPIRED_AT_FIELD = "expired_at";
+
+
+    private static final Set<String> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD, EXPIRED_AT_FIELD);
 
     private static final int BATCH_SIZE = 64;
 
@@ -131,16 +134,23 @@ public class UpstreamCacheService {
                 String hash = prefixToHash.get(prefixPath);
                 String key = getEntryKey(model.getName(), hash);
                 RMapAsync<String, String> rmap = batch.getMap(key, REDIS_MAP_CODEC);
-                rmap.getAllAsync(ALL_FIELDS);
-                rmap.getExpireTimeAsync();
+                rmap.isExistsAsync();
             }
             BatchResult<?> result = batch.execute();
             List<?> responses = result.getResponses();
-            for (int j = 0; j < responses.size(); j += 2) {
-                Map<String, String> map = (Map<String, String>) responses.get(j);
-                Long expireTime = (Long) responses.get(j + 1);
-                if (!map.isEmpty() && expireTime > currentTime) {
-                    return new CachedUpstreamEntry(map.get(UPSTREAM_ENDPOINT_FIELD), map.get(PREFIX_PATH_FIELD));
+            for (int j = 0; j < responses.size(); j++) {
+                Boolean exists = (Boolean) responses.get(j);
+                if (exists) {
+                    int index = i + count - j;
+                    String prefixPath = breakpoints.get(index);
+                    String hash = prefixToHash.get(prefixPath);
+                    String key = getEntryKey(model.getName(), hash);
+                    RMap<String, String> map = redisClient.getMap(key, REDIS_MAP_CODEC);
+                    Map<String, String> fields = map.getAll(ALL_FIELDS);
+                    long expiredAt = Long.parseLong(fields.get(EXPIRED_AT_FIELD));
+                    if (expiredAt > currentTime) {
+                        return new CachedUpstreamEntry(fields.get(UPSTREAM_ENDPOINT_FIELD), fields.get(PREFIX_PATH_FIELD));
+                    }
                 }
             }
         }
@@ -156,16 +166,21 @@ public class UpstreamCacheService {
         fields.put(PREFIX_PATH_FIELD, entry.prefixPath());
         try (var ignore = lockService.lock(key)) {
 
-            RMap<String, String> map = redisClient.getMap(key);
+            RMap<String, String> map = redisClient.getMap(key, REDIS_MAP_CODEC);
             boolean exists = map.isExists();
-
-            map.putAll(fields);
 
             Instant expireAt = expireAt(expireAtStr);
             if (expireAt == null && !exists) {
                 // adapter didn't return expireAt for a new cache entry
-                expireAt = Instant.now().plus(DEFAULT_TTL);
+                expireAt = Instant.ofEpochMilli(clock.getAsLong()).plus(DEFAULT_TTL);
             }
+
+            if (expireAt != null) {
+                fields.put(EXPIRED_AT_FIELD, Long.toString(expireAt.toEpochMilli()));
+            }
+
+            map.putAll(fields);
+
             if (expireAt != null) {
                 map.expire(expireAt);
             }
