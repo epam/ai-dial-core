@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -18,9 +19,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class UpstreamRouteProviderTest {
@@ -76,5 +80,55 @@ public class UpstreamRouteProviderTest {
         route2.next();
         // the upstream is found
         assertTrue(route2.available());
+    }
+
+    @Test
+    public void testGet_CachedUpstreamPresent() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("upstream1");
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        Upstream upstream2 = new Upstream();
+        upstream2.setEndpoint("upstream2");
+        upstream2.setTier(1);
+        upstream2.setWeight(2);
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("upstream2", "prefix");
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
+        Upstream result = route1.next();
+
+        assertEquals(upstream2, result);
+    }
+
+    @Test
+    public void testGet_CachedUpstreamMissed() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("upstream1");
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        Upstream upstream2 = new Upstream();
+        upstream2.setEndpoint("upstream2");
+        upstream2.setTier(1);
+        upstream2.setWeight(2);
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("test", "prefix");
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
+        Upstream result = route1.next();
+
+        assertEquals(upstream1, result);
     }
 }

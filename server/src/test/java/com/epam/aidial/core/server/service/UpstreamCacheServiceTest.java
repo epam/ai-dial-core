@@ -23,6 +23,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class UpstreamCacheServiceTest {
@@ -260,7 +261,7 @@ public class UpstreamCacheServiceTest {
     }
 
     @Test
-    public void testGetCacheEntry() throws JsonProcessingException {
+    public void testGetCacheEntry_entryFound() throws JsonProcessingException {
         service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
         String body = """
                 {
@@ -365,5 +366,104 @@ public class UpstreamCacheServiceTest {
         assertEquals("http://host/chat", entry.endpoint());
     }
 
+    @Test
+    public void testGetCacheEntry_entryNotFound() throws JsonProcessingException {
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        String body = """
+                {
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "some_long_function",
+                                "description": "desc"
+                            }
+                        },
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "some_long_function_1",
+                                "description": "...",
+                                "args": {
+                                    "type": "object",
+                                    "properties": {
+                                        "a": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            },
+                            "custom_fields": {
+                                "cache_breakpoint": {},
+                                "some_random_key": "some_random_value"
+                            }
+                        }
+                    ],
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "System prompt",
+                            "custom_fields": {
+                                "cache_breakpoint": {
+                                    "expire_at": "2025-10-02T15:01:23Z"
+                                }
+                            }
+                        },
+                        {
+                            "role": "user",
+                            "content": "Here is a file, say hello",
+                            "custom_fields": {
+                                "cache_breakpoint": {
+                                    "expire_at": "2025-10-03T15:01:23Z"
+                                }
+                            },
+                            "custom_content": {
+                                "state": {
+                                    "some_field": "some_value",
+                                    "some_random_key": "some_random_value"
+                                },
+                                "attachments": [
+                                    {
+                                        "url": "URL"
+                                    },
+                                    {
+                                        "data": "long long data..."
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "..."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": "..."
+                                    }
+                                }
+                            ],
+                            "custom_fields": {
+                                "cache_breakpoint": {
+                                    "expire_at": "2025-10-04T15:01:23Z"
+                                }
+                            }
+                        }
+                    ]
+                }
+                """;
+        ObjectNode objectNode = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+        Model model = new Model();
+        model.setName("gpt-4");
 
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AVAILABILITY_PRIORITY, model);
+
+        CachedUpstreamEntry entry = service.getCacheEntry(context, model);
+        assertNotNull(entry);
+        assertEquals("prefix.body.messages[2]", entry.prefixPath());
+        assertNull(entry.endpoint());
+    }
 }
