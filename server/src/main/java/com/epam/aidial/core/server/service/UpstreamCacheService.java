@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
@@ -44,9 +45,10 @@ public class UpstreamCacheService {
     private static final String CACHE_BREAKPOINT_NODE = "cache_breakpoint";
     private static final String UPSTREAM_ENDPOINT_FIELD = "upstream_endpoint";
     private static final String PREFIX_PATH_FIELD = "prefix_path";
+    private static final String EXTRA_METADATA_FIELD = "extra_metadata";
 
 
-    private static final Set<String> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD);
+    private static final Set<String> ALL_FIELDS = Set.of(UPSTREAM_ENDPOINT_FIELD, PREFIX_PATH_FIELD, EXTRA_METADATA_FIELD);
 
     private static final int BATCH_SIZE = 64;
 
@@ -70,7 +72,7 @@ public class UpstreamCacheService {
     }
 
     public CacheBreakpointContext buildCacheBreakpointContext(ObjectNode body, CachePolicy policy, Model model) {
-        boolean autoCaching = policy == CachePolicy.AUTO_CACHING;
+        boolean autoCaching = isAutoCaching(model);
         List<String> fieldsOrder = model.getFieldsHashingOrder();
         MessageDigest messageDigest = createMessageDigest();
         List<String> breakpoints = new ArrayList<>();
@@ -145,14 +147,14 @@ public class UpstreamCacheService {
                     RMap<String, String> map = redisClient.getMap(key, REDIS_MAP_CODEC);
                     Map<String, String> fields = map.getAll(ALL_FIELDS);
                     if (!fields.isEmpty()) {
-                        return new CachedUpstreamEntry(fields.get(UPSTREAM_ENDPOINT_FIELD), fields.get(PREFIX_PATH_FIELD));
+                        return new CachedUpstreamEntry(fields.get(UPSTREAM_ENDPOINT_FIELD), fields.get(PREFIX_PATH_FIELD), fields.get(EXTRA_METADATA_FIELD));
                     }
                 }
             }
         }
         // take the last breakpoint
         String prefixPath = breakpoints.get(breakpoints.size() - 1);
-        return new CachedUpstreamEntry(null, prefixPath);
+        return new CachedUpstreamEntry(null, prefixPath, null);
     }
 
     public void updateEntry(String hash, CachedUpstreamEntry entry, Model model, String expireAtStr) {
@@ -160,6 +162,7 @@ public class UpstreamCacheService {
         Map<String, String> fields = new HashMap<>();
         fields.put(UPSTREAM_ENDPOINT_FIELD, entry.endpoint());
         fields.put(PREFIX_PATH_FIELD, entry.prefixPath());
+        fields.put(EXTRA_METADATA_FIELD, entry.extraMetadata());
         Instant expireAt = expireAt(expireAtStr);
 
         try (var ignore = lockService.lock(key)) {
@@ -177,6 +180,15 @@ public class UpstreamCacheService {
                 map.expire(expireAt);
             }
         }
+    }
+
+    private boolean isAutoCaching(Model model) {
+        Features features = model.getFeatures();
+        if (features == null) {
+            return false;
+        }
+        Boolean autoCaching = features.getAutoCachingSupported();
+        return autoCaching != null && autoCaching;
     }
 
     private static Instant expireAt(String val) {

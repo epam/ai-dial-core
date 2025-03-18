@@ -55,7 +55,7 @@ public class UpstreamRouteProvider {
         String key = getKey(deployment);
         List<Upstream> upstreams = getUpstreams(deployment);
         UpstreamCacheContext context = null;
-        if (deployment instanceof Model model) {
+        if (deployment instanceof Model model && breakpointContext != null) {
             CachedUpstreamEntry entry = upstreamCacheService.getCacheEntry(breakpointContext, model);
             context = new UpstreamCacheContext();
             context.setPolicy(breakpointContext.policy());

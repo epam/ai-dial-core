@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server.data.cache;
 
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+
 public enum CachePolicy {
     /**
      * Prioritize service availability over cache hits. We will try to route his request to same upstream, that will provide caching feature.
@@ -10,15 +13,7 @@ public enum CachePolicy {
      * Prioritize cache hits over service availability. We will route request with cache flag to the same upstream.
      * Even if cache upstream is not available, we will retry request to the same upstream.
      */
-    CACHE_PRIORITY("cache-priority"),
-    /**
-     * Try to create automatic cache, where it's possible. We will route request that is cached to same upstream.
-     * But in case, when cache upstream is not available, we will fallback to another available upstream, and will create cache there.
-     * <p>
-     *  <b>Note</b>. Core should calculate hash for all prefixes for each request, and check their existence in Redis.
-     * </p>
-     */
-    AUTO_CACHING("auto-caching");
+    CACHE_PRIORITY("cache-priority");
 
     private final String val;
     CachePolicy(String val) {
@@ -26,12 +21,14 @@ public enum CachePolicy {
     }
 
     public static CachePolicy fromString(String val) {
+        if (val == null) {
+            return AVAILABILITY_PRIORITY;
+        }
         for (CachePolicy policy : CachePolicy.values()) {
             if (policy.val.equals(val)) {
                 return policy;
             }
         }
-        // fallback
-        return AVAILABILITY_PRIORITY;
+        throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid cache policy: " + val);
     }
 }

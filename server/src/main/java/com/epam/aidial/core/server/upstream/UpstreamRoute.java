@@ -155,13 +155,14 @@ public class UpstreamRoute {
         }
         String hash = upstreamCacheContext.getPrefixToHash().get(breakpointPath);
         if (hash == null) {
-            if (model.getType() != ModelType.EMBEDDING) {
+            if (model.getType() == ModelType.CHAT) {
                 log.warn("prefix is not found: {}", breakpointPath);
             }
             return;
         }
         String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), breakpointPath);
+        String extraMetadata = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXTRA_METADATA);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), breakpointPath, extraMetadata);
         vertx.executeBlocking(() -> {
             upstreamCacheService.updateEntry(hash, entry, model, expireAt);
             return null;
@@ -169,11 +170,17 @@ public class UpstreamRoute {
     }
 
     public String getBreakpointPath() {
-        if (upstreamCacheContext == null) {
-            return null;
-        }
-        CachedUpstreamEntry entry  = upstreamCacheContext.getEntry();
+        CachedUpstreamEntry entry  = getCachedUpstreamEntry();
         return entry == null ? null : entry.prefixPath();
+    }
+
+    public String getExtraMetadata() {
+        CachedUpstreamEntry entry  = getCachedUpstreamEntry();
+        return entry == null ? null : entry.extraMetadata();
+    }
+
+    private CachedUpstreamEntry getCachedUpstreamEntry() {
+        return upstreamCacheContext == null ? null : upstreamCacheContext.getEntry();
     }
 
     private void verifyCurrentUpstream() {
