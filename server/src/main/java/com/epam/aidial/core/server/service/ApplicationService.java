@@ -175,6 +175,10 @@ public class ApplicationService {
             throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
         }
 
+        application.setAuthor(meta.getAuthor());
+        application.setCreatedAt(meta.getCreatedAt());
+        application.setUpdatedAt(meta.getUpdatedAt());
+
         return Pair.of(meta, application);
     }
 
