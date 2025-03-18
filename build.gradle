@@ -35,8 +35,8 @@ allprojects {
         maven {
             url = uri("https://maven.pkg.github.com/epam/jclouds")
             credentials {
-                username = "dummy"
-                password = System.getenv("GITHUB_TOKEN")
+                username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
+                password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
             }
         }
         mavenCentral()

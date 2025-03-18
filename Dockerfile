@@ -1,8 +1,10 @@
 FROM gradle:8.2.0-jdk17-alpine AS builder
 
-ARG GITHUB_TOKEN
+ARG USERNAME
+ARG TOKEN
 
-ENV GITHUB_TOKEN=${GITHUB_TOKEN}
+ENV USERNAME=${USERNAME}
+ENV TOKEN=${TOKEN}
 
 #COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
