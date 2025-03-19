@@ -4,7 +4,7 @@ FROM gradle:8.2.0-jdk17-alpine AS builder
 COPY --chown=gradle:gradle . /home/gradle/src
 
 WORKDIR /home/gradle/src
-RUN --mount=type=secret,id=USERNAME,env=USERNAME --mount=type=secret,id=TOKEN,env=TOKEN gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
+RUN --mount=type=secret,id=GPR_USERNAME,env=GPR_USERNAME --mount=type=secret,id=GPR_PASSWORD,env=GPR_PASSWORD gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
 
 FROM eclipse-temurin:17-jdk-alpine
@@ -21,8 +21,8 @@ ENV OTEL_METRICS_EXPORTER="none"
 ENV OTEL_LOGS_EXPORTER="none"
 
 # Local storage dir configured in the default aidial.settings.json
-ENV STORAGE_DIR /app/data
-ENV LOG_DIR /app/log
+ENV STORAGE_DIR=/app/data
+ENV LOG_DIR=/app/log
 
 WORKDIR /app
 
