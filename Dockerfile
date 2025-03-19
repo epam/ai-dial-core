@@ -3,9 +3,6 @@ FROM gradle:8.2.0-jdk17-alpine AS builder
 ARG USERNAME
 ARG TOKEN
 
-ENV USERNAME=${USERNAME}
-ENV TOKEN=${TOKEN}
-
 #COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
 
