@@ -1,13 +1,10 @@
 FROM gradle:8.2.0-jdk17-alpine AS builder
 
-ARG USERNAME
-ARG TOKEN
-
 #COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
 
 WORKDIR /home/gradle/src
-RUN gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
+RUN --mount=type=secret,id=USERNAME,env=USERNAME --mount=type=secret,id=TOKEN,env=TOKEN gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
 
 FROM eclipse-temurin:17-jdk-alpine
