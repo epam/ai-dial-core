@@ -125,7 +125,7 @@ public class AiDial {
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
-            ApplicationService applicationService = new ApplicationService(vertx, redis, encryptionService,
+            ApplicationService applicationService = new ApplicationService(vertx, redis, apiKeyStore, encryptionService,
                     resourceService, lockService, operatorService, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService, configStore);
             RuleService ruleService = new RuleService(resourceService);

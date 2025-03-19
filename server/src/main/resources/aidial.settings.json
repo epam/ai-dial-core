@@ -1,6 +1,6 @@
 {
   "vertx": {
-    "workerPoolSize": 32,
+    "workerPoolSize": 64,
     "metricsOptions": {
       "enabled": true,
       "disabledMetricsCategories": ["http.server"],

@@ -23,12 +23,7 @@ import java.util.Map;
 public class ApplicationTypeSchemaController {
 
     private static final String FAILED_READ_SCHEMA_MESSAGE = "Failed to read schema from resources";
-    private static final String ID_FIELD = "$id";
     private static final String ID_PARAM = "id";
-    private static final String EDITOR_URL_FIELD = "dial:applicationTypeEditorUrl";
-    private static final String VIEWER_URL_FIELD = "dial:applicationTypeViewerUrl";
-    private static final String DISPLAY_NAME_FIELD = "dial:applicationTypeDisplayName";
-    private static final String COMPLETION_ENDPOINT_FIELD = "dial:applicationTypeCompletionEndpoint";
 
     private final ProxyContext context;
     private final Vertx vertx;
@@ -64,8 +59,23 @@ public class ApplicationTypeSchemaController {
             throw new HttpException(HttpStatus.NOT_FOUND, "Schema not found");
         }
         ObjectNode schemaNode = (ObjectNode) ProxyUtil.MAPPER.readTree(schema);
-        if (schemaNode.has(COMPLETION_ENDPOINT_FIELD)) {
-            schemaNode.remove(COMPLETION_ENDPOINT_FIELD); //we need to remove completion endpoint from response to avoid disclosure
+        if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_COMPLETION_ENDPOINT)) {
+            schemaNode.remove(MetaSchemaHolder.APPLICATION_TYPE_COMPLETION_ENDPOINT); //we need to remove endpoints from response to avoid disclosure
+        }
+        if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_CONFIGURATION_ENDPOINT)) {
+            schemaNode.remove(MetaSchemaHolder.APPLICATION_TYPE_CONFIGURATION_ENDPOINT);
+        }
+        if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_RATE_ENDPOINT)) {
+            schemaNode.remove(MetaSchemaHolder.APPLICATION_TYPE_RATE_ENDPOINT);
+        }
+        if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT)) {
+            schemaNode.remove(MetaSchemaHolder.APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT);
+        }
+        if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_TOKENIZE_ENDPOINT)) {
+            schemaNode.remove(MetaSchemaHolder.APPLICATION_TYPE_TOKENIZE_ENDPOINT);
+        }
+        if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES)) {
+            schemaNode.remove(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES);
         }
         return schemaNode;
     }
@@ -84,16 +94,17 @@ public class ApplicationTypeSchemaController {
             JsonNode schemaNode;
             schemaNode = ProxyUtil.MAPPER.readTree(entry.getValue());
 
-            if (schemaNode.has(ID_FIELD)
-                    && schemaNode.has(EDITOR_URL_FIELD)
-                    && schemaNode.has(DISPLAY_NAME_FIELD)) {
+            if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_ID_FIELD)
+                    && schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_DISPLAY_NAME)) {
                 ObjectNode filteredNode = ProxyUtil.MAPPER.createObjectNode();
-                filteredNode.set(ID_FIELD, schemaNode.get(ID_FIELD));
-                filteredNode.set(EDITOR_URL_FIELD, schemaNode.get(EDITOR_URL_FIELD));
-                filteredNode.set(DISPLAY_NAME_FIELD, schemaNode.get(DISPLAY_NAME_FIELD));
+                filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_ID_FIELD, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_ID_FIELD));
+                filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_DISPLAY_NAME, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_DISPLAY_NAME));
 
-                if (schemaNode.has(VIEWER_URL_FIELD)) {
-                    filteredNode.set(VIEWER_URL_FIELD, schemaNode.get(VIEWER_URL_FIELD));
+                if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL)) {
+                    filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+                }
+                if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_EDITOR_URL)) {
+                    filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_EDITOR_URL, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_EDITOR_URL));
                 }
 
                 filteredSchemas.add(filteredNode);

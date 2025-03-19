@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -10,7 +11,6 @@ import lombok.experimental.Accessors;
 
 import java.net.URI;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 
 @Data
@@ -27,6 +27,11 @@ public class Application extends Deployment {
 
     @JsonAlias({"applicationTypeSchemaId", "application_type_schema_id"})
     private URI applicationTypeSchemaId;
+
+    @JsonIgnore
+    public Boolean hasApplicationTypeSchemaId() {
+        return applicationTypeSchemaId != null;
+    }
 
     @Data
     @Accessors(chain = true)

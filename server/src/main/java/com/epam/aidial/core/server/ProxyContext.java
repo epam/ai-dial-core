@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -65,6 +66,7 @@ public class ProxyContext {
     private final String parentSpanId;
     // deployment name of the source(application/assistant/model) associated with the current request
     private final String sourceDeployment;
+    private final String decodedSourceDeployment;
 
     private Deployment deployment;
     private String userSub;
@@ -111,11 +113,13 @@ public class ProxyContext {
             this.traceId = apiKeyData.getTraceId();
             this.parentSpanId = apiKeyData.getSpanId();
             this.sourceDeployment = apiKeyData.getSourceDeployment();
+            this.decodedSourceDeployment = sourceDeployment != null ? UrlUtil.decodePath(sourceDeployment) : null;
         } else {
             initExtractedClaims(extractedClaims, apiKeyData.getOriginalKey());
             this.traceId = traceId;
             this.parentSpanId = null;
             this.sourceDeployment = null;
+            this.decodedSourceDeployment = null;
         }
         this.spanId = spanId;
     }
