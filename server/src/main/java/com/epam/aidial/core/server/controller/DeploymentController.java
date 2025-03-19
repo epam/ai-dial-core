@@ -183,6 +183,14 @@ public class DeploymentController {
             data.setAddons(features.getAddonsSupported());
         }
 
+        if (features.getCacheSupported() != null) {
+            data.setCache(features.getCacheSupported());
+        }
+
+        if (features.getAutoCachingSupported() != null) {
+            data.setAutoCaching(features.getAutoCachingSupported());
+        }
+
         return data;
     }
 }

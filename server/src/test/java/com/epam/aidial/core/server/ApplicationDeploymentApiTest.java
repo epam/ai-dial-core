@@ -862,7 +862,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "accessible_by_per_request_key" : true,
                       "content_parts": false,
                       "temperature" : true,
-                      "addons" : true
+                      "addons" : true,
+                      "cache" : false,
+                      "auto_caching" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -916,7 +918,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "accessible_by_per_request_key" : true,
                       "content_parts": false,
                       "temperature" : true,
-                      "addons" : true
+                      "addons" : true,
+                      "cache" : false,
+                      "auto_caching" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -945,7 +949,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "accessible_by_per_request_key" : true,
                       "content_parts": false,
                       "temperature" : true,
-                      "addons" : true
+                      "addons" : true,
+                      "cache" : false,
+                      "auto_caching" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
