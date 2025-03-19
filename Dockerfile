@@ -27,11 +27,8 @@ RUN chown -R appuser:appuser /app
 COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# fix CVE-2023-5363
-# TODO remove the fix once a new version is released
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
-# fix CVE-2023-52425
-RUN apk upgrade --no-cache libexpat
+# upgrade/install packages
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils
 RUN apk add --no-cache su-exec
 
 HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
