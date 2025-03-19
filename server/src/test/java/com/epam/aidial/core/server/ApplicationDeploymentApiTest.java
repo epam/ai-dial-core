@@ -120,6 +120,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -204,6 +207,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -289,6 +295,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -373,6 +382,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -657,6 +669,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -736,6 +751,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0127",
                     "runtime": "python3.11",
@@ -828,11 +846,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "icon_url" : "http://application1/icon.svg",
                     "description" : "My App Description",
                     "reference" : "@ignore",
-                    "owner" : "organization-owner",
                     "object" : "application",
                     "status" : "succeeded",
-                    "created_at" : 1672534800,
-                    "updated_at" : 1672534800,
                     "features" : {
                       "rate" : false,
                       "tokenize" : false,
@@ -852,6 +867,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "owner" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore",
                     "function" : {
                       "id" : "0123",
                       "runtime" : "python3.11",
@@ -911,11 +929,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "icon_url" : "http://application1/icon.svg",
                     "description" : "My App Description",
                     "reference" : "@ignore",
-                    "owner" : "organization-owner",
                     "object" : "application",
                     "status" : "succeeded",
-                    "created_at" : 1672534800,
-                    "updated_at" : 1672534800,
                     "features" : {
                       "rate" : false,
                       "tokenize" : false,
@@ -935,6 +950,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "owner" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore",
                     "function" : {
                       "id" : "0123",
                       "runtime" : "python3.11",

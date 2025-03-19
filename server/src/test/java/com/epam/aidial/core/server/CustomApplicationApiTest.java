@@ -53,7 +53,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
-                "max_retry_attempts" : 1
+                "max_retry_attempts" : 1,
+                "author" : "EPM-RTC-GPT",
+                "created_at" : "@ignore",
+                "updated_at" : "@ignore"
                 }
                 """);
 
@@ -220,7 +223,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "defaults": {},
                 "interceptors": [],
                 "description_keywords":[],
-                "max_retry_attempts" : 1
+                "max_retry_attempts" : 1,
+                "author" : "EPM-RTC-GPT",
+                "created_at" : "@ignore",
+                "updated_at" : "@ignore"
                 }
                 """);
 
@@ -326,11 +332,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "icon_url" : "http://application1/icon.svg",
                    "description" : "My Custom Application Description",
                    "reference" : "@ignore",
-                   "owner" : "organization-owner",
                    "object" : "application",
                    "status" : "succeeded",
-                   "created_at" : 1672534800,
-                   "updated_at" : 1672534800,
                    "features" : {
                      "rate" : true,
                      "tokenize" : false,
@@ -349,7 +352,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    },
                    "defaults" : { },
                    "description_keywords":[],
-                   "max_retry_attempts" : 1
+                   "max_retry_attempts" : 1,
+                   "owner" : "EPM-RTC-GPT",
+                   "created_at" : "@ignore",
+                   "updated_at" : "@ignore"
                 }
                 """);
 
@@ -398,11 +404,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
                             "reference": "@ignore",
-                            "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
-                            "created_at" : 1672534800,
-                            "updated_at" : 1672534800,
                             "features" : {
                               "rate" : true,
                               "tokenize" : false,
@@ -421,7 +424,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             },
                             "defaults" : { },
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "owner" : "EPM-RTC-GPT",
+                            "created_at" : "@ignore",
+                            "updated_at" : "@ignore"
                           }
                     ],
                     "object":"list"
@@ -473,11 +479,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
                             "reference" : "@ignore",
-                            "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
-                            "created_at" : 1672534800,
-                            "updated_at" : 1672534800,
                             "features" : {
                               "rate" : true,
                               "tokenize" : false,
@@ -496,7 +499,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             },
                             "defaults" : { },
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "owner" : "EPM-RTC-GPT",
+                            "created_at" : "@ignore",
+                            "updated_at" : "@ignore"
                           }
                     ],
                     "object":"list"
@@ -622,11 +628,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
                             "reference" : "@ignore",
-                            "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
-                            "created_at" : 1672534800,
-                            "updated_at" : 1672534800,
                             "features" : {
                               "rate" : true,
                               "tokenize" : false,
@@ -645,7 +648,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             },
                             "defaults" : { },
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "owner" : "EPM-RTC-GPT",
+                            "created_at" : "@ignore",
+                            "updated_at" : "@ignore"
                           }
                     ],
                     "object":"list"
@@ -724,11 +730,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "icon_url":"http://application1/icon.svg",
                     "description":"My Custom Application Description",
                     "reference":"@ignore",
-                    "owner":"organization-owner",
                     "object":"application",
                     "status":"succeeded",
-                    "created_at":1672534800,
-                    "updated_at":1672534800,
                     "features":{
                         "rate":true,
                         "tokenize":false,
@@ -747,7 +750,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     },
                     "defaults":{},
                     "description_keywords":[],
-                    "max_retry_attempts" : 1
+                    "max_retry_attempts" : 1,
+                    "owner" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore"
                 }
                 """);
 
@@ -796,11 +802,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "icon_url" : "http://application1/icon.svg",
                             "description" : "My Custom Application Description",
                             "reference": "@ignore",
-                            "owner" : "organization-owner",
                             "object" : "application",
                             "status" : "succeeded",
-                            "created_at" : 1672534800,
-                            "updated_at" : 1672534800,
                             "features" : {
                               "rate" : true,
                               "tokenize" : false,
@@ -819,7 +822,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             },
                             "defaults" : { },
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "owner" : "EPM-RTC-GPT",
+                            "created_at" : "@ignore",
+                            "updated_at" : "@ignore"
                           }
                     ],
                     "object":"list"
@@ -892,7 +898,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
-                "max_retry_attempts" : 1
+                "max_retry_attempts" : 1,
+                "author" : "EPM-RTC-GPT",
+                "created_at" : "@ignore",
+                "updated_at" : "@ignore"
                 }
                 """);
         Application application1 = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -913,7 +922,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
-                "max_retry_attempts" : 1
+                "max_retry_attempts" : 1,
+                "author" : "EPM-RTC-GPT",
+                "created_at" : "@ignore",
+                "updated_at" : "@ignore"
                 }
                 """);
         Application application2 = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -956,7 +968,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
-                "max_retry_attempts" : 1
+                "max_retry_attempts" : 1,
+                "author" : "EPM-RTC-GPT",
+                "created_at" : "@ignore",
+                "updated_at" : "@ignore"
                 }
                 """);
         Application application = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -1019,6 +1034,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "application_properties" : {
                     "property1" : "test property1",
                     "property2" : "test property2",
@@ -1059,6 +1077,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
                 }
                 """);
