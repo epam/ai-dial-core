@@ -123,7 +123,7 @@ public class TieredBalancerTest {
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, factory, upstreamCacheService);
 
-        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
 
         UpstreamRoute route1 = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route1.next());

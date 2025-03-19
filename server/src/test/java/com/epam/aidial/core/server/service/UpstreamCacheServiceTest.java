@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
@@ -7,6 +8,7 @@ import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.service.LockService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -76,7 +78,7 @@ public class UpstreamCacheServiceTest {
     public void testUpdateEntry() {
         service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
 
-        service.updateEntry("hash", new CachedUpstreamEntry("http://localhost:8080/chat", "prefix.body.messages[1]"), new Model(), null);
+        service.updateEntry("hash", new CachedUpstreamEntry("http://localhost:8080/chat", "prefix.body.messages[1]", null), new Model(), null);
 
         assertTrue(redissonClient.getKeys().getKeys().iterator().hasNext());
     }
@@ -242,22 +244,18 @@ public class UpstreamCacheServiceTest {
         ObjectNode objectNode = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
         Model model = new Model();
         model.setName("gpt-4");
+        Features features = new Features();
+        features.setAutoCachingSupported(true);
+        model.setFeatures(features);
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AUTO_CACHING, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AVAILABILITY_PRIORITY, model);
 
         assertNotNull(context);
         assertEquals(4, context.breakpoints().size());
         List<String> expectedBreakpoints = List.of("prefix.body.tools[0]", "prefix.body.messages[0]", "prefix.body.messages[1]", "prefix.body.messages[2]");
         assertEquals(expectedBreakpoints, context.breakpoints());
         assertEquals(4, context.prefixToHash().size());
-        assertEquals(CachePolicy.AUTO_CACHING, context.policy());
-
-        context = service.buildCacheBreakpointContext(objectNode, CachePolicy.CACHE_PRIORITY, model);
-
-        assertNotNull(context);
-        assertTrue(context.breakpoints().isEmpty());
-        assertEquals(4, context.prefixToHash().size());
-        assertEquals(CachePolicy.CACHE_PRIORITY, context.policy());
+        assertEquals(CachePolicy.AVAILABILITY_PRIORITY, context.policy());
     }
 
     @Test
@@ -356,7 +354,7 @@ public class UpstreamCacheServiceTest {
         CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AVAILABILITY_PRIORITY, model);
         Map<String, String> prefixToHash = context.prefixToHash();
         for (var breakpoint : context.breakpoints()) {
-            CachedUpstreamEntry cachedUpstreamEntry = new CachedUpstreamEntry("http://host/chat", breakpoint);
+            CachedUpstreamEntry cachedUpstreamEntry = new CachedUpstreamEntry("http://host/chat", breakpoint, null);
             service.updateEntry(prefixToHash.get(breakpoint), cachedUpstreamEntry, model, null);
         }
 
@@ -465,5 +463,29 @@ public class UpstreamCacheServiceTest {
         assertNotNull(entry);
         assertEquals("prefix.body.messages[2]", entry.prefixPath());
         assertNull(entry.endpoint());
+    }
+
+    @Test
+    public void testSortObjectProperties_simple() throws JsonProcessingException {
+        String simpleJson = """
+                 {
+                   "d" : {
+                     "b" : 1,
+                     "a": 2
+                   },
+                   "c": [
+                     {"d": true,"a": "text"},
+                     {"z": 3, "a": false}
+                   ],
+                   "a" : {
+                     "z" : 1,
+                     "f": 2
+                   }
+                 }
+                 """;
+        JsonNode node = ProxyUtil.MAPPER.readTree(simpleJson);
+        JsonNode result = UpstreamCacheService.sortObjectProperties(node);
+        assertEquals("""
+                 {"a":{"f":2,"z":1},"c":[{"a":"text","d":true},{"a":false,"z":3}],"d":{"a":2,"b":1}}""", result.toString());
     }
 }

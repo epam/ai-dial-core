@@ -5,11 +5,13 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.service.LockService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.BatchResult;
@@ -31,6 +33,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -89,18 +92,17 @@ public class UpstreamCacheService {
                 // embedding request is not supported yet
                 continue;
             }
-            ArrayNode arrayNode = (ArrayNode) node;
-            for (int index = 0; index < arrayNode.size(); index++) {
-                ObjectNode objectNode = (ObjectNode) arrayNode.get(index);
-                for (Iterator<Map.Entry<String, JsonNode>> it = objectNode.fields(); it.hasNext(); ) {
-                    Map.Entry<String, JsonNode> entry = it.next();
+            for (int index = 0; index < node.size(); index++) {
+                ObjectNode objectNode = (ObjectNode) sortObjectProperties(node.get(index));
+                for (Map.Entry<String, JsonNode> entry : objectNode.properties()) {
                     if (entry.getKey().equals(CUSTOM_FIELDS_NODE)) {
                         continue;
                     }
                     if (entry.getKey().equals("custom_content")) {
                         // include attachments only
-                        if (entry.getValue().has("attachments")) {
-                            messageDigest.update(entry.getValue().get("attachments").toString().getBytes(StandardCharsets.UTF_8));
+                        JsonNode attachments = entry.getValue().get("attachments");
+                        if (attachments != null && !attachments.isEmpty()) {
+                            messageDigest.update(attachments.toString().getBytes(StandardCharsets.UTF_8));
                         }
                     } else {
                         messageDigest.update(entry.getValue().toString().getBytes(StandardCharsets.UTF_8));
@@ -162,7 +164,9 @@ public class UpstreamCacheService {
         Map<String, String> fields = new HashMap<>();
         fields.put(UPSTREAM_ENDPOINT_FIELD, entry.endpoint());
         fields.put(PREFIX_PATH_FIELD, entry.prefixPath());
-        fields.put(EXTRA_METADATA_FIELD, entry.extraMetadata());
+        if (entry.extraMetadata() != null) {
+            fields.put(EXTRA_METADATA_FIELD, entry.extraMetadata());
+        }
         Instant expireAt = expireAt(expireAtStr);
 
         try (var ignore = lockService.lock(key)) {
@@ -180,6 +184,23 @@ public class UpstreamCacheService {
                 map.expire(expireAt);
             }
         }
+    }
+
+    @VisibleForTesting
+    static JsonNode sortObjectProperties(JsonNode node) {
+        if (node.isArray()) {
+            ArrayNode arrayNode = (ArrayNode) node;
+            for (int i = 0; i < node.size(); i++) {
+                arrayNode.set(i, sortObjectProperties(arrayNode.get(i)));
+            }
+        } else if (node.isObject()) {
+            ObjectNode result = new ObjectNode(ProxyUtil.MAPPER.getNodeFactory(), new TreeMap<>());
+            for (Map.Entry<String, JsonNode> entry : node.properties()) {
+                result.set(entry.getKey(), sortObjectProperties(entry.getValue()));
+            }
+            node = result;
+        }
+        return node;
     }
 
     private boolean isAutoCaching(Model model) {

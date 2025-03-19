@@ -64,7 +64,7 @@ public class UpstreamRouteProviderTest {
         model.setUpstreams(List.of(upstream1));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
-        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
         UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
         route1.next();
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
@@ -97,8 +97,8 @@ public class UpstreamRouteProviderTest {
         model.setUpstreams(List.of(upstream1, upstream2));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
-        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("upstream2", "prefix");
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("upstream2", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
 
         UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
@@ -122,8 +122,8 @@ public class UpstreamRouteProviderTest {
         model.setUpstreams(List.of(upstream1, upstream2));
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
-        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AUTO_CACHING);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("test", "prefix");
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("test", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
 
         UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
