@@ -225,6 +225,12 @@ public final class FileConfigStore implements ConfigStore {
         if (modelFeatures.getAddonsSupported() == null) {
             modelFeatures.setAddonsSupported(features.getAddonsSupported());
         }
+        if (modelFeatures.getCacheSupported() == null) {
+            modelFeatures.setCacheSupported(features.getCacheSupported());
+        }
+        if (modelFeatures.getAutoCachingSupported() == null) {
+            modelFeatures.setAutoCachingSupported(features.getAutoCachingSupported());
+        }
     }
 
     private JsonMapper buildJsonMapper(JsonObject settings) {
