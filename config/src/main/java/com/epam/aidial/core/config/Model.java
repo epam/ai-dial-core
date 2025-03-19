@@ -1,5 +1,6 @@
 package com.epam.aidial.core.config;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -17,6 +18,8 @@ public class Model extends Deployment {
     private List<Upstream> upstreams = List.of();
     // if it's set then the model name is overridden with that name in the request body to the model adapter
     private String overrideName;
+    @JsonAlias({"fieldsHashingOrder", "fields_hashing_order"})
+    private List<String> fieldsHashingOrder = List.of("prefix.body.tools", "prefix.body.messages");
 
     public Model() {
         setMaxRetryAttempts(5);

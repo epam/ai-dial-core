@@ -3,6 +3,10 @@ package com.epam.aidial.core.server.upstream;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.data.cache.CachePolicy;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
@@ -12,11 +16,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class UpstreamRouteProviderTest {
@@ -25,19 +33,22 @@ public class UpstreamRouteProviderTest {
     private Vertx vertx;
 
     @Mock
+    private UpstreamCacheService upstreamCacheService;
+
+    @Mock
     private Random generator;
 
     @Test
     public void testGet_UpstreamsNotChanged() {
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
         Application application = new Application();
         application.setName("app");
-        UpstreamRoute route1 = provider.get(application);
+        UpstreamRoute route1 = provider.get(application, null);
         route1.next();
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
         assertThrows(HttpException.class, route1::next);
         // make sure new router doesn't have any upstreams for the same application
-        UpstreamRoute route2 = provider.get(application);
+        UpstreamRoute route2 = provider.get(application, null);
         assertNotNull(route2.next());
         assertThrows(HttpException.class, route2::next);
     }
@@ -52,8 +63,9 @@ public class UpstreamRouteProviderTest {
         upstream1.setWeight(2);
         model.setUpstreams(List.of(upstream1));
 
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator);
-        UpstreamRoute route1 = provider.get(model);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
         route1.next();
         route1.fail(HttpStatus.TOO_MANY_REQUESTS);
         assertThrows(HttpException.class, route1::next);
@@ -64,9 +76,59 @@ public class UpstreamRouteProviderTest {
         upstream2.setWeight(1);
         model.setUpstreams(List.of(upstream2));
         // change upstreams in the model
-        UpstreamRoute route2 = provider.get(model);
+        UpstreamRoute route2 = provider.get(model, cacheBreakpointContext);
         route2.next();
         // the upstream is found
         assertTrue(route2.available());
+    }
+
+    @Test
+    public void testGet_CachedUpstreamPresent() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("upstream1");
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        Upstream upstream2 = new Upstream();
+        upstream2.setEndpoint("upstream2");
+        upstream2.setTier(1);
+        upstream2.setWeight(2);
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("upstream2", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
+        Upstream result = route1.next();
+
+        assertEquals(upstream2, result);
+    }
+
+    @Test
+    public void testGet_CachedUpstreamMissed() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("upstream1");
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        Upstream upstream2 = new Upstream();
+        upstream2.setEndpoint("upstream2");
+        upstream2.setTier(1);
+        upstream2.setWeight(2);
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("test", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
+        Upstream result = route1.next();
+
+        assertEquals(upstream1, result);
     }
 }
