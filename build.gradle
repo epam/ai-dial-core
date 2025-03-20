@@ -5,13 +5,6 @@ plugins {
     id 'io.freefair.lombok' version '8.0.1'
 }
 
-configurations.configureEach {
-    resolutionStrategy {
-        force 'com.google.code.gson:gson:2.11.0'
-        force 'net.minidev:json-smart:2.5.2'
-    }
-}
-
 allprojects {
     group = 'com.epam.aidial'
     version = "0.26.0-rc"
@@ -41,4 +34,12 @@ allprojects {
         }
         mavenCentral()
     }
+
+    configurations.configureEach {
+        resolutionStrategy {
+            force 'com.google.code.gson:gson:2.11.0'
+            force 'net.minidev:json-smart:2.5.2'
+        }
+    }
+
 }
