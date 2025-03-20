@@ -540,6 +540,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publication/create", """
                 {
                   "targetFolder": "public/folder/",
+                  "displayAuthor": "dream-team",
                   "resources": [
                     {
                       "action": "ADD",
@@ -581,7 +582,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "source" : "roles",
                      "targets" : [ "user" ]
                    } ],
-                   "author" : "EPM-RTC-GPT"
+                   "author" : "EPM-RTC-GPT",
+                   "displayAuthor" : "dream-team"
                 }
                 """);
 
@@ -663,7 +665,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "defaults" : { },
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
-                            "owner" : "EPM-RTC-GPT",
+                            "owner" : "dream-team",
                             "created_at" : "@ignore",
                             "updated_at" : "@ignore"
                           }
