@@ -2,6 +2,7 @@ package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
+import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -119,6 +120,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -203,6 +207,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -288,6 +295,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -372,6 +382,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -515,27 +528,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         testApplicationStarted();
 
         Response response = send(HttpMethod.GET, "/v1/metadata/files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/", null, null);
-        verifyJsonNotExact(response, 200, """
-                {
-                  "name" : null,
-                  "parentPath" : null,
-                  "bucket" : "2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt",
-                  "url" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
-                  "nodeType" : "FOLDER",
-                  "resourceType" : "FILE",
-                  "items" : [ {
-                    "name" : "app.py",
-                    "parentPath" : null,
-                    "bucket" : "2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt",
-                    "url" : "files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/app.py",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "FILE",
-                    "updatedAt" : "@ignore",
-                    "contentLength" : 17,
-                    "contentType" : "text/plain"
-                  } ]
-                }
-                """);
+        verify(response, 403);
 
         response = send(HttpMethod.DELETE, "/v1/files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/", null, null);
         verify(response, 403);
@@ -676,6 +669,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0123",
                     "runtime": "python3.11",
@@ -755,6 +751,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
                   "function" : {
                     "id" : "0127",
                     "runtime": "python3.11",
@@ -847,11 +846,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "icon_url" : "http://application1/icon.svg",
                     "description" : "My App Description",
                     "reference" : "@ignore",
-                    "owner" : "organization-owner",
                     "object" : "application",
                     "status" : "succeeded",
-                    "created_at" : 1672534800,
-                    "updated_at" : 1672534800,
                     "features" : {
                       "rate" : false,
                       "tokenize" : false,
@@ -866,11 +862,16 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "accessible_by_per_request_key" : true,
                       "content_parts": false,
                       "temperature" : true,
-                      "addons" : true
+                      "addons" : true,
+                      "cache" : false,
+                      "auto_caching" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "owner" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore",
                     "function" : {
                       "id" : "0123",
                       "runtime" : "python3.11",
@@ -917,7 +918,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "accessible_by_per_request_key" : true,
                       "content_parts": false,
                       "temperature" : true,
-                      "addons" : true
+                      "addons" : true,
+                      "cache" : false,
+                      "auto_caching" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -930,11 +933,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "icon_url" : "http://application1/icon.svg",
                     "description" : "My App Description",
                     "reference" : "@ignore",
-                    "owner" : "organization-owner",
                     "object" : "application",
                     "status" : "succeeded",
-                    "created_at" : 1672534800,
-                    "updated_at" : 1672534800,
                     "features" : {
                       "rate" : false,
                       "tokenize" : false,
@@ -949,11 +949,16 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "accessible_by_per_request_key" : true,
                       "content_parts": false,
                       "temperature" : true,
-                      "addons" : true
+                      "addons" : true,
+                      "cache" : false,
+                      "auto_caching" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
+                    "owner" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore",
                     "function" : {
                       "id" : "0123",
                       "runtime" : "python3.11",
@@ -990,5 +995,53 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
 
             Thread.sleep(32);
         }
+    }
+
+    @Test
+    void testPerRequestKeyAccessWhenBuildingImage() {
+        testApplicationCreated();
+
+        Response response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/app.py", null, """
+                some python code
+                """);
+        verify(response, 200);
+
+        webServer.map(HttpMethod.POST, "/v1/image/0123", request -> {
+            String perRequestKey = request.getHeaders().get("API-KEY");
+
+            Response answer = send(HttpMethod.GET, "/v1/metadata/files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/",
+                    null, null, "API-KEY", perRequestKey);
+            verify(answer, 200);
+
+            answer = send(HttpMethod.GET, "/v1/files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/app.py",
+                    null, null, "API-KEY", perRequestKey);
+            verify(answer, 200);
+
+            answer = send(HttpMethod.DELETE, "/v1/files/2CZ9i2bcBACFts8JbBu3MdcF8sdwTbELGXeFRV6CVDwnPEU8vWC1y8PpXyRChHQvzt/app.py",
+                    null, null, "API-KEY", perRequestKey);
+            verify(answer, 403);
+
+            return new MockResponse().setBody("""
+                    :heartbeat
+                    
+                    event: result
+                    data: {}
+                    """);
+        });
+
+        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, """
+                event: result
+                data: {"url":"http://localhost:17321"}
+                """);
+
+        response = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
+                {
+                  "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app"
+                }
+                """);
+        verify(response, 200);
+
+        response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "DEPLOYED");
+        verify(response, 200);
     }
 }

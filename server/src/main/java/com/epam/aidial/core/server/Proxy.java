@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -58,6 +59,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
 
+    // All new headers should start with X-DIAL- while existing may stay untouched
+
     public static final String HEADER_API_KEY = "API-KEY";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
@@ -65,7 +68,13 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_UPSTREAM_KEY = "X-UPSTREAM-KEY";
     public static final String HEADER_UPSTREAM_EXTRA_DATA = "X-UPSTREAM-EXTRA-DATA";
     public static final String HEADER_UPSTREAM_ATTEMPTS = "X-UPSTREAM-ATTEMPTS";
+    public static final String HEADER_CACHE_POLICY = "X-DIAL-CACHE-POLICY";
+    public static final String HEADER_CACHE_BREAKPOINT_PATH = "X-DIAL-CACHE-BREAKPOINT-PATH";
+    public static final String HEADER_CACHE_EXPIRE_AT = "X-DIAL-CACHE-EXPIRE-AT";
+    public static final String HEADER_CACHE_EXTRA_METADATA = "X-DIAL-CACHE-EXTRA-METADATA";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
+    public static final String HEADER_APPLICATION_PROPERTIES = "X-DIAL-APPLICATION-PROPERTIES";
+    public static final String HEADER_APPLICATION_ID = "X-DIAL-APPLICATION-ID";
     private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.HEAD);
 
     private final Vertx vertx;
@@ -91,6 +100,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ApplicationService applicationService;
     private final CodeInterpreterService codeInterpreterService;
     private final HeartbeatService heartbeatService;
+    private final UpstreamCacheService upstreamCacheService;
     private final String version;
 
     @Override

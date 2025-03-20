@@ -24,4 +24,6 @@ public class FeaturesData {
     private boolean contentParts = false;
     private boolean temperature = true;
     private boolean addons = true;
+    private boolean cache = false;
+    private boolean autoCaching = false;
 }

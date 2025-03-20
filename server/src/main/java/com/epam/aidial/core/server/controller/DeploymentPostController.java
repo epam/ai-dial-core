@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Interceptor;
@@ -11,12 +12,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
-import com.epam.aidial.core.server.function.enhancement.AppendApplicationPropertiesFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
@@ -26,6 +28,7 @@ import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -55,6 +58,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
+
 @Slf4j
 public class DeploymentPostController {
 
@@ -74,8 +80,8 @@ public class DeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
-                new AppendApplicationPropertiesFn(proxy, context),
-                new CollectRequestApplicationFilesFn(proxy, context));
+                new CollectRequestApplicationFilesFn(proxy, context),
+                new BuildUpstreamCacheFn(proxy, context));
     }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
@@ -187,13 +193,6 @@ public class DeploymentPostController {
                 context.getProject(), context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
-        Deployment deployment = context.getDeployment();
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment);
-        if (!canRetry(upstreamRoute)) {
-            return Future.succeededFuture();
-        }
-        context.setUpstreamRoute(upstreamRoute);
-
         setupProxyApiKeyData(new ApiKeyData());
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
             context.getRequest().body()
@@ -284,6 +283,12 @@ public class DeploymentPostController {
             return;
         }
 
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext());
+        if (!canRetry(upstreamRoute)) {
+            return;
+        }
+        context.setUpstreamRoute(upstreamRoute);
+
         sendRequest();
     }
 
@@ -306,6 +311,8 @@ public class DeploymentPostController {
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
+        excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
+        excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
@@ -313,10 +320,23 @@ public class DeploymentPostController {
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
-            Upstream upstream = context.getUpstreamRoute().get();
+            Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
+            proxyRequest.putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath());
+            proxyRequest.putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, context.getUpstreamRoute().getExtraMetadata());
+        }
+
+        if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
+            proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
+
+            ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, appendApplicationPropertiesHeader) -> {
+                if (appendApplicationPropertiesHeader) {
+                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
+                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
+                }
+            });
         }
 
         Buffer requestBody = context.getRequestBody();
@@ -351,7 +371,7 @@ public class DeploymentPostController {
         }
 
         if (responseStatusCode == 200) {
-            upstreamRoute.succeed();
+            upstreamRoute.succeed(proxyResponse, context.getDeployment());
         } else if (!HttpStatus.fromStatusCode(responseStatusCode).is4xx()) {
             // mark the upstream as failed
             // and the next time we will select another one

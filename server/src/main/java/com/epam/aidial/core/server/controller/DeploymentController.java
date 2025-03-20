@@ -85,7 +85,7 @@ public class DeploymentController {
                                 modifiedApp = ApplicationTypeSchemaUtils.filterCustomClientProperties(context.getConfig(), application);
                             }
                             if (modifyEndpoint) {
-                                modifiedApp = ApplicationTypeSchemaUtils.modifyEndpointForCustomApplication(context.getConfig(), modifiedApp);
+                                modifiedApp = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), modifiedApp);
                             }
                             return modifiedApp;
                         }, false);
@@ -112,18 +112,18 @@ public class DeploymentController {
                 throw new ResourceNotFoundException("Invalid application url: " + url);
             }
 
+            Application app = proxy.getApplicationService().getApplication(resource).getValue();
+
             if (!proxy.getAccessService().hasReadAccess(resource, context)) {
                 throw new PermissionDeniedException();
             }
-
-            Application app = proxy.getApplicationService().getApplication(resource).getValue();
 
             if (app.getApplicationTypeSchemaId() != null) {
                 if (filterCustomProperties) {
                     app = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, app);
                 }
                 if (modifyEndpoint) {
-                    app = ApplicationTypeSchemaUtils.modifyEndpointForCustomApplication(context.getConfig(), app);
+                    app = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), app);
                 }
             }
 
@@ -181,6 +181,14 @@ public class DeploymentController {
 
         if (features.getAddonsSupported() != null) {
             data.setAddons(features.getAddonsSupported());
+        }
+
+        if (features.getCacheSupported() != null) {
+            data.setCache(features.getCacheSupported());
+        }
+
+        if (features.getAutoCachingSupported() != null) {
+            data.setAutoCaching(features.getAutoCachingSupported());
         }
 
         return data;

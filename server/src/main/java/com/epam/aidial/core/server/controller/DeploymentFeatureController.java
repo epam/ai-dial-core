@@ -1,13 +1,16 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -23,6 +26,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.net.URL;
 import java.util.function.Function;
+
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 
 @Slf4j
 public class DeploymentFeatureController {
@@ -52,8 +58,6 @@ public class DeploymentFeatureController {
 
     @SneakyThrows
     private void handleRequestBody(String endpoint, boolean requireEndpoint, Buffer requestBody) {
-        context.setRequestBody(requestBody);
-
         if (endpoint == null) {
             if (requireEndpoint) {
                 respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
@@ -63,6 +67,8 @@ public class DeploymentFeatureController {
             }
             return;
         }
+
+        context.setRequestBody(requestBody);
 
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         setupProxyApiKeyData(proxyApiKeyData);
@@ -127,8 +133,24 @@ public class DeploymentFeatureController {
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
+        excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
+        excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+
+        if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
+            try {
+                proxyRequest.headers().add(HEADER_APPLICATION_ID, deployment.getName());
+                ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, appendApplicationPropertiesHeader) -> {
+                    if (appendApplicationPropertiesHeader) {
+                        String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
+                        proxyRequest.headers().add(HEADER_APPLICATION_PROPERTIES, propsString);
+                    }
+                });
+            } catch (Throwable e) {
+                throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to enrich request with application properties");
+            }
+        }
 
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());

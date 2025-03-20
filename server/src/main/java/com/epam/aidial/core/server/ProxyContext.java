@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -12,6 +13,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -64,6 +66,7 @@ public class ProxyContext {
     private final String parentSpanId;
     // deployment name of the source(application/assistant/model) associated with the current request
     private final String sourceDeployment;
+    private final String decodedSourceDeployment;
 
     private Deployment deployment;
     private String userSub;
@@ -95,6 +98,7 @@ public class ProxyContext {
     private String traceOperation;
     // userName to be extracted from JWT or project name belongs to API key
     private String userDisplayName;
+    private CacheBreakpointContext cacheBreakpointContext;
 
     public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
         this.proxy = proxy;
@@ -109,11 +113,13 @@ public class ProxyContext {
             this.traceId = apiKeyData.getTraceId();
             this.parentSpanId = apiKeyData.getSpanId();
             this.sourceDeployment = apiKeyData.getSourceDeployment();
+            this.decodedSourceDeployment = sourceDeployment != null ? UrlUtil.decodePath(sourceDeployment) : null;
         } else {
             initExtractedClaims(extractedClaims, apiKeyData.getOriginalKey());
             this.traceId = traceId;
             this.parentSpanId = null;
             this.sourceDeployment = null;
+            this.decodedSourceDeployment = null;
         }
         this.spanId = spanId;
     }

@@ -40,4 +40,15 @@ public class Features {
     private Boolean temperatureSupported;
     @JsonAlias({"addonsSupported", "addons_supported"})
     private Boolean addonsSupported;
+    @JsonAlias({"cacheSupported", "cache_supported"})
+    private Boolean cacheSupported;
+    /**
+     * Try to create automatic cache, where it's possible. We will route request that is cached to same upstream.
+     * But in case, when cache upstream is not available, we will fallback to another available upstream, and will create cache there.
+     * <p>
+     *  <b>Note</b>. Core should calculate hash for all prefixes for each request, and check their existence in Redis.
+     * </p>
+     */
+    @JsonAlias({"autoCachingSupported", "auto_caching_supported"})
+    private Boolean autoCachingSupported;
 }

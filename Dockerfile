@@ -9,13 +9,6 @@ RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.
 
 FROM eclipse-temurin:17-jdk-alpine
 
-# fix CVE-2023-5363
-# TODO remove the fix once a new version is released
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
-# fix CVE-2023-52425
-RUN apk upgrade --no-cache libexpat
-RUN apk add --no-cache su-exec
-
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
 ENV OTEL_LOGS_EXPORTER="none"
@@ -33,6 +26,10 @@ RUN chown -R appuser:appuser /app
 
 COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# upgrade/install packages
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils
+RUN apk add --no-cache su-exec
 
 HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
   CMD wget --no-verbose --spider --tries=1 http://localhost:8080/health || exit 1

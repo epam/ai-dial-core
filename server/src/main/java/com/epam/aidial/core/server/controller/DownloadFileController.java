@@ -39,7 +39,9 @@ public class DownloadFileController extends AccessControlBaseController {
                             .getResponse();
 
                     InputStreamReader stream = new InputStreamReader(proxy.getVertx(), resourceStream.inputStream());
-                    stream.pipeTo(response)
+                    stream.pipe()
+                            .endOnFailure(false)
+                            .to(response)
                             .onFailure(error -> {
                                 stream.close();
                                 response.reset();
