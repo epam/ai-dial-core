@@ -7,6 +7,28 @@ Written in Java 17 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ## Build
 
+DIAL Core has a dependency on GitHub packages of [JClouds](https://github.com/epam/jclouds).
+Github doesn't provide anonymous [access to packages](https://github.com/orgs/community/discussions/26634#discussioncomment-8527086).
+
+That requires to pass credentials GitHub for access to published JClouds packages. See the code snippet below:
+
+```
+repositories {
+        maven {
+            url = uri("https://maven.pkg.github.com/epam/jclouds")
+            credentials {
+                username = project.findProperty("gpr.user") ?: System.getenv("GPR_USERNAME")
+                password = project.findProperty("gpr.key") ?: System.getenv("GPR_PASSWORD")
+            }
+        }
+        mavenCentral()
+    }
+```
+
+You should set env variables `GPR_USERNAME` and `GPR_PASSWORD` to valid values, where `GPR_USERNAME` - GitHub username and `GPR_PASSWORD` - GitHub personal access token.
+
+See more details [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) to generate personal access token in GitHub.
+
 Build the project with Gradle and Java 17:
 
 ```
