@@ -456,11 +456,12 @@ public class ResourceService implements AutoCloseable {
         return (FileMetadata) putResource(descriptor, body, etag, contentType, author, true);
     }
 
-    public ResourceUpload initFileUpload(ResourceDescriptor resource, String contentType, String author) {
+    public ResourceUpload initFileUpload(ResourceDescriptor resource, String contentType, EtagHeader etagHeader, String author) {
         String redisKey = redisKey(resource);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(resource);
             if (metadata != null) {
+                etagHeader.validate(metadata.getEtag());
                 author = metadata.getAuthor();
             }
 

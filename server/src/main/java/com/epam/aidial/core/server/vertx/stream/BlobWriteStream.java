@@ -178,7 +178,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
             synchronized (BlobWriteStream.this) {
                 try {
                     if (resourceUpload == null) {
-                        resourceUpload = resourceService.initFileUpload(resource, contentType, author);
+                        resourceUpload = resourceService.initFileUpload(resource, contentType, etag, author);
                         mpu = resourceUpload.getMultipartUpload();
                     }
 
