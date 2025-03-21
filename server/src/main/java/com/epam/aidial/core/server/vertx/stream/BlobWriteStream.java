@@ -49,7 +49,6 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     private int chunkSize = MIN_PART_SIZE_BYTES;
     private int position;
     private MultipartUpload mpu;
-    private EtagBuilder etagBuilder;
     private int chunkNumber = 0;
     @Getter
     private FileMetadata metadata;
@@ -146,10 +145,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                         }
                     }
 
-                    String newEtag = etagBuilder.append(lastChunk.nioBuffer()).build();
                     ResourceService.MultipartData multipartData = new ResourceService.MultipartData(
-                            mpu, parts, contentType, bytesHandled, newEtag);
-                    metadata = resourceService.finishFileUpload(resource, multipartData, etag, author);
+                            mpu, parts, contentType, bytesHandled);
+                    metadata = resourceService.finishFileUpload(resource, multipartData);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 
@@ -179,8 +177,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
             synchronized (BlobWriteStream.this) {
                 try {
                     if (mpu == null) {
-                        mpu = storage.initMultipartUpload(resource.getAbsoluteFilePath(), contentType);
-                        etagBuilder = new EtagBuilder();
+                        mpu = resourceService.initFileUpload(resource, contentType, etag, author);
                     }
 
                     ByteBuf chunk = chunkBuffer.slice(0, position).getByteBuf();
@@ -188,7 +185,6 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                         MultipartPart part = storage.storeMultipartPart(mpu, ++chunkNumber, payload);
                         parts.add(part);
                     }
-                    etagBuilder.append(chunk.nioBuffer());
                     position = 0;
                     isBufferFull = false;
                 } catch (Throwable ex) {

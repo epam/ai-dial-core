@@ -52,6 +52,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -90,6 +91,7 @@ public class ResourceService implements AutoCloseable {
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
+    private final Supplier<String> etagGenerator;
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
@@ -106,11 +108,13 @@ public class ResourceService implements AutoCloseable {
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
+                           Supplier<String> etagGenerator,
                            Settings settings,
                            String prefix) {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
+        this.etagGenerator = etagGenerator;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = settings.maxSize;
         this.maxSizeToCache = settings.maxSizeToCache();
@@ -452,34 +456,48 @@ public class ResourceService implements AutoCloseable {
         return (FileMetadata) putResource(descriptor, body, etag, contentType, author, true);
     }
 
-    public FileMetadata finishFileUpload(
-            ResourceDescriptor descriptor, MultipartData multipartData, EtagHeader etag, String author) {
-        String redisKey = redisKey(descriptor);
+    public MultipartUpload initFileUpload(ResourceDescriptor resource, String contentType, EtagHeader etag, String author) {
+        String redisKey = redisKey(resource);
         try (var ignore = lockService.lock(redisKey)) {
-            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+            ResourceItemMetadata metadata = getResourceMetadata(resource);
             if (metadata != null) {
                 etag.validate(metadata.getEtag());
                 author = metadata.getAuthor();
             }
 
-            flushToBlobStore(redisKey);
             Long updatedAt = time();
             Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            String newEtag = etagGenerator.get();
+            Map<String, String> userMetadata = new HashMap<>(toUserMetadata(newEtag, createdAt, updatedAt, resource.getType().name(), author));
+            return blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
+        }
+    }
+
+    public FileMetadata finishFileUpload(ResourceDescriptor descriptor, MultipartData multipartData) {
+        String redisKey = redisKey(descriptor);
+        try (var ignore = lockService.lock(redisKey)) {
+            ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+            flushToBlobStore(redisKey);
+
             MultipartUpload multipartUpload = multipartData.multipartUpload;
             Map<String, String> userMetadata = multipartUpload.blobMetadata().getUserMetadata();
-            userMetadata.putAll(toUserMetadata(multipartData.etag, createdAt, updatedAt, descriptor.getType().name(), author));
+
+            long updatedAt = Long.parseLong(userMetadata.get(UPDATED_AT_ATTRIBUTE));
+            Long createdAt = Long.parseLong(userMetadata.get(CREATED_AT_ATTRIBUTE));
+            String etag = userMetadata.get(ETAG_ATTRIBUTE);
+
             blobStore.completeMultipartUpload(multipartUpload, multipartData.parts);
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, updatedAt, multipartData.etag);
+            publishEvent(descriptor, action, updatedAt, etag);
 
             return (FileMetadata) new FileMetadata(
                     descriptor, multipartData.contentLength, multipartData.contentType)
                     .setCreatedAt(createdAt)
                     .setUpdatedAt(updatedAt)
-                    .setEtag(multipartData.etag);
+                    .setEtag(etag);
         }
     }
 
@@ -915,8 +933,7 @@ public class ResourceService implements AutoCloseable {
             MultipartUpload multipartUpload,
             List<MultipartPart> parts,
             String contentType,
-            long contentLength,
-            String etag) {
+            long contentLength) {
     }
 
     /**

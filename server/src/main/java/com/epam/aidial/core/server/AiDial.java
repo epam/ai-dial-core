@@ -120,7 +120,7 @@ public class AiDial {
             LockService lockService = new LockService(redis, storage.getPrefix());
             TimerService timerService = new VertxTimerService(vertx);
             ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
-            resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
+            resourceService = new ResourceService(timerService, redis, storage, lockService, generator, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(resourceService, vertx);
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);

@@ -106,7 +106,7 @@ public class RateLimiterTest {
         LockService lockService = new LockService(redissonClient, null);
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
-                lockService, settings, null);
+                lockService, () -> "123", settings, null);
         rateLimiter = new RateLimiter(vertx, resourceService);
     }
 
