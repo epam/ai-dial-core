@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.Compression;
@@ -24,7 +25,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
-import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
@@ -456,37 +456,45 @@ public class ResourceService implements AutoCloseable {
         return (FileMetadata) putResource(descriptor, body, etag, contentType, author, true);
     }
 
-    public MultipartUpload initFileUpload(ResourceDescriptor resource, String contentType, EtagHeader etag, String author) {
+    public ResourceUpload initFileUpload(ResourceDescriptor resource, String contentType, String author) {
         String redisKey = redisKey(resource);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(resource);
             if (metadata != null) {
-                etag.validate(metadata.getEtag());
                 author = metadata.getAuthor();
             }
 
-            Long updatedAt = time();
-            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            long updatedAt = time();
+            long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
             String newEtag = etagGenerator.get();
             Map<String, String> userMetadata = toUserMetadata(newEtag, createdAt, updatedAt, resource.getType().name(), author);
-            return blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
+            MultipartUpload mpu = blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
+            ResourceUpload resourceUpload = new ResourceUpload();
+            resourceUpload.setContentType(contentType);
+            resourceUpload.setMultipartUpload(mpu);
+            resourceUpload.setEtag(newEtag);
+            resourceUpload.setCreatedAt(createdAt);
+            resourceUpload.setUpdatedAt(updatedAt);
+            return resourceUpload;
         }
     }
 
-    public FileMetadata finishFileUpload(ResourceDescriptor descriptor, MultipartData multipartData) {
+    public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
+            if (metadata != null) {
+                etagHeader.validate(metadata.getEtag());
+            }
             flushToBlobStore(redisKey);
 
-            MultipartUpload multipartUpload = multipartData.multipartUpload;
-            Map<String, String> userMetadata = multipartUpload.blobMetadata().getUserMetadata();
+            MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
 
-            long updatedAt = Long.parseLong(userMetadata.get(UPDATED_AT_ATTRIBUTE));
-            Long createdAt = Long.parseLong(userMetadata.get(CREATED_AT_ATTRIBUTE));
-            String etag = userMetadata.get(ETAG_ATTRIBUTE);
+            long updatedAt = resourceUpload.getUpdatedAt();
+            Long createdAt = resourceUpload.getCreatedAt();
+            String etag = resourceUpload.getEtag();
 
-            blobStore.completeMultipartUpload(multipartUpload, multipartData.parts);
+            blobStore.completeMultipartUpload(multipartUpload, resourceUpload.getParts());
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
@@ -494,7 +502,7 @@ public class ResourceService implements AutoCloseable {
             publishEvent(descriptor, action, updatedAt, etag);
 
             return (FileMetadata) new FileMetadata(
-                    descriptor, multipartData.contentLength, multipartData.contentType)
+                    descriptor, resourceUpload.getContentLength(), resourceUpload.getContentType())
                     .setCreatedAt(createdAt)
                     .setUpdatedAt(updatedAt)
                     .setEtag(etag);
@@ -927,13 +935,6 @@ public class ResourceService implements AutoCloseable {
                     item.contentType(),
                     item.body.length);
         }
-    }
-
-    public record MultipartData(
-            MultipartUpload multipartUpload,
-            List<MultipartPart> parts,
-            String contentType,
-            long contentLength) {
     }
 
     /**

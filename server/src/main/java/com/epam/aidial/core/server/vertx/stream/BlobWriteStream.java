@@ -3,9 +3,9 @@ package com.epam.aidial.core.server.vertx.stream;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
+import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -49,6 +49,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     private int chunkSize = MIN_PART_SIZE_BYTES;
     private int position;
     private MultipartUpload mpu;
+    private ResourceUpload resourceUpload;
     private int chunkNumber = 0;
     @Getter
     private FileMetadata metadata;
@@ -132,7 +133,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 }
 
                 ByteBuf lastChunk = chunkBuffer.slice(0, position).getByteBuf();
-                if (mpu == null) {
+                if (resourceUpload == null) {
                     log.info("Resource is too small for multipart upload, sending as a regular blob");
                     try (InputStream chunkStream = new ByteBufInputStream(lastChunk)) {
                         metadata = resourceService.putFile(resource, chunkStream.readAllBytes(), etag, contentType, author);
@@ -145,9 +146,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                         }
                     }
 
-                    ResourceService.MultipartData multipartData = new ResourceService.MultipartData(
-                            mpu, parts, contentType, bytesHandled);
-                    metadata = resourceService.finishFileUpload(resource, multipartData);
+                    resourceUpload.setParts(parts);
+                    resourceUpload.setContentLength(bytesHandled);
+                    metadata = resourceService.finishFileUpload(resource, resourceUpload, etag);
                     log.info("Multipart upload committed, bytes handled {}", bytesHandled);
                 }
 
@@ -176,8 +177,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
         vertx.executeBlocking(() -> {
             synchronized (BlobWriteStream.this) {
                 try {
-                    if (mpu == null) {
-                        mpu = resourceService.initFileUpload(resource, contentType, etag, author);
+                    if (resourceUpload == null) {
+                        resourceUpload = resourceService.initFileUpload(resource, contentType, author);
+                        mpu = resourceUpload.getMultipartUpload();
                     }
 
                     ByteBuf chunk = chunkBuffer.slice(0, position).getByteBuf();
