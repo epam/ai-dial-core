@@ -27,6 +27,8 @@ repositories {
 
 You should set env variables `GPR_USERNAME` and `GPR_PASSWORD` to valid values, where `GPR_USERNAME` - GitHub username and `GPR_PASSWORD` - GitHub personal access token.
 
+**Note**. The access token requires the permission `read:packages`.
+
 See more details [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) to generate personal access token in GitHub.
 
 Build the project with Gradle and Java 17:
