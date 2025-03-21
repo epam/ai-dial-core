@@ -470,13 +470,7 @@ public class ResourceService implements AutoCloseable {
             String newEtag = etagGenerator.get();
             Map<String, String> userMetadata = toUserMetadata(newEtag, createdAt, updatedAt, resource.getType().name(), author);
             MultipartUpload mpu = blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
-            ResourceUpload resourceUpload = new ResourceUpload();
-            resourceUpload.setContentType(contentType);
-            resourceUpload.setMultipartUpload(mpu);
-            resourceUpload.setEtag(newEtag);
-            resourceUpload.setCreatedAt(createdAt);
-            resourceUpload.setUpdatedAt(updatedAt);
-            return resourceUpload;
+            return new ResourceUpload(blobStore, mpu, newEtag, contentType, createdAt, updatedAt);
         }
     }
 

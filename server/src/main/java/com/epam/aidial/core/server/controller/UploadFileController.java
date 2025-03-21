@@ -45,7 +45,7 @@ public class UploadFileController extends AccessControlBaseController {
                         String contentType = upload.contentType();
                         Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
                         BlobWriteStream writeStream = new BlobWriteStream(proxy.getVertx(), proxy.getResourceService(),
-                                proxy.getStorage(), resource, etag, contentType, author);
+                                resource, etag, contentType, author);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
                                     FileMetadata metadata = writeStream.getMetadata();

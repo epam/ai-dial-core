@@ -316,8 +316,7 @@ public class CodeInterpreterService {
         ResourceDescriptor resource = verifyFile(context, file.getTargetUrl(), false);
 
         return downloadFile(context, file.getSessionId(), file.getSourcePath(), (input, size) -> {
-            BlobWriteStream output = new BlobWriteStream(vertx, resourceService,
-                    context.getProxy().getStorage(), resource, EtagHeader.ANY, null);
+            BlobWriteStream output = new BlobWriteStream(vertx, resourceService, resource, EtagHeader.ANY, null);
 
             return new InputStreamReader(vertx, input)
                     .pipe()
