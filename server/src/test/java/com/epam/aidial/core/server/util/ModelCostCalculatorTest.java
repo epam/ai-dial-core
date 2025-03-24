@@ -64,6 +64,62 @@ public class ModelCostCalculatorTest {
     }
 
     @Test
+    public void testCalculate_LengthCost_Chat_StreamIsMissing_Success() {
+        Model model = new Model();
+        model.setType(ModelType.CHAT);
+        Pricing pricing = new Pricing();
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        pricing.setUnit("char_without_whitespace");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+
+        String response = """
+                {
+                   "choices": [
+                     {
+                       "index": 0,
+                       "finish_reason": "stop",
+                       "message": {
+                         "role": "assistant",
+                         "content": "A file is a named collection."
+                       }
+                     }
+                   ],
+                   "usage": {
+                     "prompt_tokens": 4,
+                     "completion_tokens": 343,
+                     "total_tokens": 347
+                   },
+                   "id": "fd3be95a-c208-4dca-90cf-67e5082a4e5b",
+                   "created": 1705319789,
+                   "object": "chat.completion"
+                 }
+                """;
+        when(context.getResponseBody()).thenReturn(Buffer.buffer(response));
+
+        String request = """
+                {
+                  "messages": [
+                    {
+                      "role": "system",
+                      "content": ""
+                    },
+                    {
+                      "role": "user",
+                      "content": "How are you?"
+                    }
+                  ],
+                  "max_tokens": 500,
+                  "temperature": 1
+                }
+                """;
+        when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
+
+        assertEquals(new BigDecimal("13.0"), ModelCostCalculator.calculate(context));
+    }
+
+    @Test
     public void testCalculate_LengthCost_Chat_StreamIsFalse_Success() {
         Model model = new Model();
         model.setType(ModelType.CHAT);
