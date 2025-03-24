@@ -1,0 +1,56 @@
+package com.epam.aidial.core.storage.data;
+
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
+import lombok.Data;
+import org.jclouds.blobstore.domain.MultipartPart;
+import org.jclouds.blobstore.domain.MultipartUpload;
+import org.jclouds.io.Payload;
+import org.jclouds.io.payloads.InputStreamPayload;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+@Data
+public class ResourceUpload {
+    private final MultipartUpload multipartUpload;
+    private final BlobStorage blobStorage;
+    private final List<MultipartPart> parts = new ArrayList<>();
+    private final String etag;
+    private final String contentType;
+    private final long updatedAt;
+    private final long createdAt;
+    private long contentLength;
+    private int chunkNumber = 0;
+
+    public ResourceUpload(BlobStorage blobStorage, MultipartUpload mpu, String etag, String contentType, long createdAt, long updatedAt) {
+        this.multipartUpload = mpu;
+        this.blobStorage = blobStorage;
+        this.etag = etag;
+        this.contentType = contentType;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+    }
+
+    public void addChunk(ByteBuf chunk) throws IOException {
+        try (Payload payload = bufferToPayload(chunk.duplicate())) {
+            MultipartPart part = blobStorage.storeMultipartPart(multipartUpload, ++chunkNumber, payload);
+            parts.add(part);
+        }
+        contentLength += chunk.readableBytes();
+    }
+
+    public void abort() {
+        blobStorage.abortMultipartUpload(multipartUpload);
+    }
+
+    private static Payload bufferToPayload(ByteBuf buffer) {
+        Payload payload = new InputStreamPayload(new ByteBufInputStream(buffer));
+        // Content length is required by S3BlobStore
+        payload.getContentMetadata().setContentLength((long) buffer.readableBytes());
+
+        return payload;
+    }
+}

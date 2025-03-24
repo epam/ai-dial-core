@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.Compression;
@@ -24,7 +25,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
-import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
@@ -52,6 +52,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -90,6 +91,7 @@ public class ResourceService implements AutoCloseable {
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
+    private final Supplier<String> etagGenerator;
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
@@ -106,11 +108,13 @@ public class ResourceService implements AutoCloseable {
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
+                           Supplier<String> etagGenerator,
                            Settings settings,
                            String prefix) {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
+        this.etagGenerator = etagGenerator;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = settings.maxSize;
         this.maxSizeToCache = settings.maxSizeToCache();
@@ -452,34 +456,51 @@ public class ResourceService implements AutoCloseable {
         return (FileMetadata) putResource(descriptor, body, etag, contentType, author, true);
     }
 
-    public FileMetadata finishFileUpload(
-            ResourceDescriptor descriptor, MultipartData multipartData, EtagHeader etag, String author) {
+    public ResourceUpload initFileUpload(ResourceDescriptor resource, String contentType, EtagHeader etagHeader, String author) {
+        String redisKey = redisKey(resource);
+        try (var ignore = lockService.lock(redisKey)) {
+            ResourceItemMetadata metadata = getResourceMetadata(resource);
+            if (metadata != null) {
+                etagHeader.validate(metadata.getEtag());
+                author = metadata.getAuthor();
+            }
+
+            long updatedAt = time();
+            long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
+            String newEtag = etagGenerator.get();
+            Map<String, String> userMetadata = toUserMetadata(newEtag, createdAt, updatedAt, resource.getType().name(), author);
+            MultipartUpload mpu = blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
+            return new ResourceUpload(blobStore, mpu, newEtag, contentType, createdAt, updatedAt);
+        }
+    }
+
+    public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
         String redisKey = redisKey(descriptor);
         try (var ignore = lockService.lock(redisKey)) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
             if (metadata != null) {
-                etag.validate(metadata.getEtag());
-                author = metadata.getAuthor();
+                etagHeader.validate(metadata.getEtag());
             }
-
             flushToBlobStore(redisKey);
-            Long updatedAt = time();
-            Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
-            MultipartUpload multipartUpload = multipartData.multipartUpload;
-            Map<String, String> userMetadata = multipartUpload.blobMetadata().getUserMetadata();
-            userMetadata.putAll(toUserMetadata(multipartData.etag, createdAt, updatedAt, descriptor.getType().name(), author));
-            blobStore.completeMultipartUpload(multipartUpload, multipartData.parts);
+
+            MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
+
+            long updatedAt = resourceUpload.getUpdatedAt();
+            Long createdAt = resourceUpload.getCreatedAt();
+            String etag = resourceUpload.getEtag();
+
+            blobStore.completeMultipartUpload(multipartUpload, resourceUpload.getParts());
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, updatedAt, multipartData.etag);
+            publishEvent(descriptor, action, updatedAt, etag);
 
             return (FileMetadata) new FileMetadata(
-                    descriptor, multipartData.contentLength, multipartData.contentType)
+                    descriptor, resourceUpload.getContentLength(), resourceUpload.getContentType())
                     .setCreatedAt(createdAt)
                     .setUpdatedAt(updatedAt)
-                    .setEtag(multipartData.etag);
+                    .setEtag(etag);
         }
     }
 
@@ -909,14 +930,6 @@ public class ResourceService implements AutoCloseable {
                     item.contentType(),
                     item.body.length);
         }
-    }
-
-    public record MultipartData(
-            MultipartUpload multipartUpload,
-            List<MultipartPart> parts,
-            String contentType,
-            long contentLength,
-            String etag) {
     }
 
     /**

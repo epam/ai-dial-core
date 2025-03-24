@@ -83,9 +83,9 @@ public class BlobStorage implements Closeable {
      * @param contentType      MIME type of the content, for example: text/csv
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public MultipartUpload initMultipartUpload(String absoluteFilePath, String contentType) {
+    public MultipartUpload initMultipartUpload(String absoluteFilePath, String contentType, Map<String, String> userMetadata) {
         String storageLocation = getStorageLocation(absoluteFilePath);
-        BlobMetadata metadata = buildBlobMetadata(storageLocation, contentType, bucketName);
+        BlobMetadata metadata = buildBlobMetadata(storageLocation, contentType, bucketName, userMetadata);
         return blobStore.initiateMultipartUpload(bucketName, metadata, PutOptions.NONE);
     }
 
@@ -249,9 +249,11 @@ public class BlobStorage implements Closeable {
         return blobContentType;
     }
 
-    private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType, String bucketName) {
+    private static BlobMetadata buildBlobMetadata(String absoluteFilePath, String contentType,
+                                                  String bucketName, Map<String, String> userMetadata) {
         ContentMetadata contentMetadata = buildContentMetadata(contentType);
-        return new BlobMetadataImpl(null, absoluteFilePath, null, null, null, null, null, Map.of(), null, bucketName, contentMetadata, null, Tier.STANDARD);
+        return new BlobMetadataImpl(null, absoluteFilePath, null, null, null, null,
+                null, userMetadata, null, bucketName, contentMetadata, null, Tier.STANDARD);
     }
 
     private static ContentMetadata buildContentMetadata(String contentType) {

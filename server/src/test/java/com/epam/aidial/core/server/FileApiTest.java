@@ -512,7 +512,7 @@ public class FileApiTest extends ResourceBaseTest {
         WebClient client = WebClient.create(vertx);
 
         byte[] content = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
-        String etag = "682fdfa22b3f97021b6d3cc3f00baa2b";
+        String etag = "0123";
         IntStream.range(0, content.length).forEach(i -> content[i] = (byte) i);
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -560,7 +560,7 @@ public class FileApiTest extends ResourceBaseTest {
                                                "resourceType" : "FILE",
                                                "createdAt" : "@ignore",
                                                "updatedAt" : "@ignore",
-                                               "etag" : "682fdfa22b3f97021b6d3cc3f00baa2b",
+                                               "etag" : "0123",
                                                "contentLength" : 7864320,
                                                "contentType" : "application/x-binary"
                                              }
@@ -584,6 +584,35 @@ public class FileApiTest extends ResourceBaseTest {
                         assertEquals(200, response.statusCode());
                         assertArrayEquals(content, response.body().getBytes());
                         assertEquals(etag, response.getHeader(HttpHeaders.ETAG));
+                        checkpoint.flag();
+                        promise.complete();
+                    })));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // // verify metadata of uploaded file
+            client.get(serverPort, "localhost", "/v1/metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin")
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .send(context.succeeding(response -> context.verify(() -> {
+                        assertEquals(200, response.statusCode());
+                        verifyJsonNotExact("""
+                                {
+                                   "name" : "file.bin",
+                                   "parentPath" : null,
+                                   "bucket" : "7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt",
+                                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
+                                   "nodeType" : "ITEM",
+                                   "resourceType" : "FILE",
+                                   "createdAt" : "@ignore",
+                                   "updatedAt" : "@ignore",
+                                   "etag" : "0123",
+                                   "author" : "EPM-RTC-RAIL",
+                                   "contentLength" : 7864320,
+                                   "contentType" : "application/x-binary"
+                                 }
+                                    """, response.body());
                         checkpoint.flag();
                         promise.complete();
                     })));
@@ -724,7 +753,7 @@ public class FileApiTest extends ResourceBaseTest {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "CREATE",
                   "timestamp" : "@ignore",
-                  "etag" : "682fdfa22b3f97021b6d3cc3f00baa2b"
+                  "etag" : "0123"
                 }
                 """, events.take());
         verifyJsonNotExact("""
@@ -732,7 +761,7 @@ public class FileApiTest extends ResourceBaseTest {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "UPDATE",
                   "timestamp" : "@ignore",
-                  "etag" : "b206fbc15a3889b72fa3c0a003c25a1a"
+                  "etag" : "0124"
                 }
                 """, events.take());
         verifyJsonNotExact("""
