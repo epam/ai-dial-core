@@ -854,7 +854,9 @@ public class ResourceService implements AutoCloseable {
 
     private static Map<String, String> toUserMetadata(String etag, Long createdAt, Long updatedAt, String resourceType, String author) {
         Map<String, String> metadata = new HashMap<>();
-        metadata.put(ETAG_ATTRIBUTE, etag);
+        if (etag != null) {
+            metadata.put(ETAG_ATTRIBUTE, etag);
+        }
         if (createdAt != null) {
             metadata.put(CREATED_AT_ATTRIBUTE, Long.toString(createdAt));
         }
