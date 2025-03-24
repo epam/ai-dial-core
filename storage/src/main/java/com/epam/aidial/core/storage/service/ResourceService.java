@@ -52,7 +52,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -107,7 +106,6 @@ public class ResourceService implements AutoCloseable {
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
-                           Supplier<String> etagGenerator,
                            Settings settings,
                            String prefix) {
         this.redis = redis;
