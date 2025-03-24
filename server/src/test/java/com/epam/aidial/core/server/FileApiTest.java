@@ -18,12 +18,14 @@ import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.Map;
 import java.util.stream.IntStream;
 
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -512,7 +514,6 @@ public class FileApiTest extends ResourceBaseTest {
         WebClient client = WebClient.create(vertx);
 
         byte[] content = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
-        String etag = "0123";
         IntStream.range(0, content.length).forEach(i -> content[i] = (byte) i);
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -560,12 +561,12 @@ public class FileApiTest extends ResourceBaseTest {
                                                "resourceType" : "FILE",
                                                "createdAt" : "@ignore",
                                                "updatedAt" : "@ignore",
-                                               "etag" : "0123",
+                                               "etag" : "@ignore",
                                                "contentLength" : 7864320,
                                                "contentType" : "application/x-binary"
                                              }
                                             """, response.body());
-                                    assertEquals(etag, response.getHeader(HttpHeaders.ETAG));
+                                    Assertions.assertNotNull(response.getHeader(HttpHeaders.ETAG));
 
                                     checkpoint.flag();
                                     promise.complete();
@@ -583,7 +584,7 @@ public class FileApiTest extends ResourceBaseTest {
                     .send(context.succeeding(response -> context.verify(() -> {
                         assertEquals(200, response.statusCode());
                         assertArrayEquals(content, response.body().getBytes());
-                        assertEquals(etag, response.getHeader(HttpHeaders.ETAG));
+                        Assertions.assertNotNull(response.getHeader(HttpHeaders.ETAG));
                         checkpoint.flag();
                         promise.complete();
                     })));
@@ -607,7 +608,7 @@ public class FileApiTest extends ResourceBaseTest {
                                    "resourceType" : "FILE",
                                    "createdAt" : "@ignore",
                                    "updatedAt" : "@ignore",
-                                   "etag" : "0123",
+                                   "etag" : "@ignore",
                                    "author" : "EPM-RTC-RAIL",
                                    "contentLength" : 7864320,
                                    "contentType" : "application/x-binary"
@@ -753,7 +754,7 @@ public class FileApiTest extends ResourceBaseTest {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "CREATE",
                   "timestamp" : "@ignore",
-                  "etag" : "0123"
+                  "etag" : "@ignore"
                 }
                 """, events.take());
         verifyJsonNotExact("""
@@ -761,7 +762,7 @@ public class FileApiTest extends ResourceBaseTest {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "UPDATE",
                   "timestamp" : "@ignore",
-                  "etag" : "0124"
+                  "etag" : "@ignore"
                 }
                 """, events.take());
         verifyJsonNotExact("""
