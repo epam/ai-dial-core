@@ -52,7 +52,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -91,7 +90,6 @@ public class ResourceService implements AutoCloseable {
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
-    private final Supplier<String> etagGenerator;
     private final ResourceTopic topic;
     @Getter
     private final int maxSize;
@@ -108,13 +106,11 @@ public class ResourceService implements AutoCloseable {
                            RedissonClient redis,
                            BlobStorage blobStore,
                            LockService lockService,
-                           Supplier<String> etagGenerator,
                            Settings settings,
                            String prefix) {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
-        this.etagGenerator = etagGenerator;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = settings.maxSize;
         this.maxSizeToCache = settings.maxSizeToCache();
@@ -373,7 +369,7 @@ public class ResourceService implements AutoCloseable {
 
             Payload payload = blob.getPayload();
             BlobMetadata metadata = blob.getMetadata();
-            String etag = extractEtag(metadata.getUserMetadata());
+            String etag = extractEtag(metadata);
             String contentType = metadata.getContentMetadata().getContentType();
             Long length = metadata.getContentMetadata().getContentLength();
 
@@ -467,10 +463,9 @@ public class ResourceService implements AutoCloseable {
 
             long updatedAt = time();
             long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
-            String newEtag = etagGenerator.get();
-            Map<String, String> userMetadata = toUserMetadata(newEtag, createdAt, updatedAt, resource.getType().name(), author);
+            Map<String, String> userMetadata = toUserMetadata(null, createdAt, updatedAt, resource.getType().name(), author);
             MultipartUpload mpu = blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
-            return new ResourceUpload(blobStore, mpu, newEtag, contentType, createdAt, updatedAt);
+            return new ResourceUpload(blobStore, mpu, contentType, createdAt, updatedAt);
         }
     }
 
@@ -487,9 +482,8 @@ public class ResourceService implements AutoCloseable {
 
             long updatedAt = resourceUpload.getUpdatedAt();
             Long createdAt = resourceUpload.getCreatedAt();
-            String etag = resourceUpload.getEtag();
 
-            blobStore.completeMultipartUpload(multipartUpload, resourceUpload.getParts());
+            String etag = blobStore.completeMultipartUpload(multipartUpload, resourceUpload.getParts());
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
@@ -698,7 +692,7 @@ public class ResourceService implements AutoCloseable {
 
     @SneakyThrows
     private static Result blobToResult(Blob blob, BlobMetadata meta) {
-        String etag = extractEtag(meta.getUserMetadata());
+        String etag = extractEtag(meta);
         String contentType = meta.getContentMetadata().getContentType();
         Long contentLength = meta.getContentMetadata().getContentLength();
         Long createdAt = meta.getUserMetadata().containsKey(CREATED_AT_ATTRIBUTE)
@@ -860,7 +854,9 @@ public class ResourceService implements AutoCloseable {
 
     private static Map<String, String> toUserMetadata(String etag, Long createdAt, Long updatedAt, String resourceType, String author) {
         Map<String, String> metadata = new HashMap<>();
-        metadata.put(ETAG_ATTRIBUTE, etag);
+        if (etag != null) {
+            metadata.put(ETAG_ATTRIBUTE, etag);
+        }
         if (createdAt != null) {
             metadata.put(CREATED_AT_ATTRIBUTE, Long.toString(createdAt));
         }
@@ -877,8 +873,9 @@ public class ResourceService implements AutoCloseable {
         return metadata;
     }
 
-    private static String extractEtag(Map<String, String> attributes) {
-        return attributes.getOrDefault(ETAG_ATTRIBUTE, DEFAULT_ETAG);
+    private static String extractEtag(BlobMetadata meta) {
+        Map<String, String> attributes = meta.getUserMetadata();
+        return attributes.getOrDefault(ETAG_ATTRIBUTE, meta.getETag());
     }
 
     @Builder

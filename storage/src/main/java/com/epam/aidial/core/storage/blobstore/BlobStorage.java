@@ -106,8 +106,8 @@ public class BlobStorage implements Closeable {
      * This method must be called after all parts/chunks uploaded
      */
     @SuppressWarnings("UnstableApiUsage") // multipart upload uses beta API
-    public void completeMultipartUpload(MultipartUpload multipart, List<MultipartPart> parts) {
-        blobStore.completeMultipartUpload(multipart, parts);
+    public String completeMultipartUpload(MultipartUpload multipart, List<MultipartPart> parts) {
+        return blobStore.completeMultipartUpload(multipart, parts);
     }
 
     /**

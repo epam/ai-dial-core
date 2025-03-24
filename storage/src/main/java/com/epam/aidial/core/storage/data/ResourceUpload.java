@@ -18,17 +18,15 @@ public class ResourceUpload {
     private final MultipartUpload multipartUpload;
     private final BlobStorage blobStorage;
     private final List<MultipartPart> parts = new ArrayList<>();
-    private final String etag;
     private final String contentType;
     private final long updatedAt;
     private final long createdAt;
     private long contentLength;
     private int chunkNumber = 0;
 
-    public ResourceUpload(BlobStorage blobStorage, MultipartUpload mpu, String etag, String contentType, long createdAt, long updatedAt) {
+    public ResourceUpload(BlobStorage blobStorage, MultipartUpload mpu, String contentType, long createdAt, long updatedAt) {
         this.multipartUpload = mpu;
         this.blobStorage = blobStorage;
-        this.etag = etag;
         this.contentType = contentType;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
