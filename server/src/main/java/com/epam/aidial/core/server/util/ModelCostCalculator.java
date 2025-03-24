@@ -135,7 +135,9 @@ public class ModelCostCalculator {
                     JsonNode message = messages.get(i);
                     len += getLengthWithoutWhitespace(message.get("content").textValue());
                 }
-                return new RequestLengthResult(len, tree.get("stream").asBoolean(false));
+                JsonNode streamNode = tree.get("stream");
+                boolean isStream = streamNode != null && streamNode.asBoolean(false);
+                return new RequestLengthResult(len, isStream);
             } else {
                 JsonNode input = tree.get("input");
                 if (input instanceof ArrayNode array) {
