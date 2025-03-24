@@ -873,7 +873,7 @@ public class ResourceService implements AutoCloseable {
 
     private static String extractEtag(BlobMetadata meta) {
         Map<String, String> attributes = meta.getUserMetadata();
-        return attributes.computeIfAbsent(ETAG_ATTRIBUTE, key -> meta.getETag());
+        return attributes.getOrDefault(ETAG_ATTRIBUTE, meta.getETag());
     }
 
     @Builder
