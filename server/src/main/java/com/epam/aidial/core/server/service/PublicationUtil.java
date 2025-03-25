@@ -10,7 +10,6 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.experimental.UtilityClass;
 
-import java.util.List;
 import java.util.Map;
 
 @UtilityClass
@@ -27,7 +26,7 @@ public class PublicationUtil {
      * @return conversation body after replacement
      */
     public String replaceConversationLinks(String conversationBody, ResourceDescriptor targetResource, Map<String, String> attachmentsMapping) {
-        JsonObject conversation = replaceConversationIdentity(conversationBody, targetResource);
+        JsonObject conversation = replaceResourceIdentity(conversationBody, targetResource);
 
         if (attachmentsMapping.isEmpty()) {
             return conversation.toString();
@@ -86,7 +85,11 @@ public class PublicationUtil {
         }
     }
 
-    private JsonObject replaceConversationIdentity(String conversationBody, ResourceDescriptor targetResource) {
+    public String replacePromptIdentity(String body, ResourceDescriptor targetResource) {
+        return replaceResourceIdentity(body, targetResource).toString();
+    }
+
+    private JsonObject replaceResourceIdentity(String conversationBody, ResourceDescriptor targetResource) {
         JsonObject conversation = new JsonObject(conversationBody);
         ResourceDescriptor folderLink = targetResource.getParent();
         String folderUrl = folderLink == null

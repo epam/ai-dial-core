@@ -70,6 +70,28 @@ public class PublicationUtilTest {
     }
 
     @Test
+    void testPromptIdReplacement() {
+        ResourceDescriptor targetResource1 = ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROMPT, "public", "bucket/location/", "Prompt 5");
+        verifyJson("""
+                {
+                 "id": "prompts/public/Prompt 5",
+                 "name": "Prompt 5",
+                 "folderId": "prompts/public",
+                 "description": "desc",
+                 "content": "test"
+                 }
+                """, PublicationUtil.replacePromptIdentity("""
+                {
+                "id": "prompts/6kCJoJk2Seh6ameHGsw2pe/Prompt 5",
+                "name": "Prompt 5",
+                "folderId": "prompts/6kCJoJk2Seh6ameHGsw2pe",
+                "description": "desc",
+                "content": "test"
+                }
+                """, targetResource1));
+    }
+
+    @Test
     void testAttachmentLinksReplacement() {
         ResourceDescriptor targetResource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.CONVERSATION, "bucketName", "bucket/location/", "conversation");
         String conversationBody = """

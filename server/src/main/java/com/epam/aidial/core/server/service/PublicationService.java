@@ -658,6 +658,8 @@ public class PublicationService {
 
             if (from.getType() == ResourceTypes.CONVERSATION) {
                 resourceService.computeResource(to, body -> PublicationUtil.replaceConversationLinks(body, to, replacementLinks));
+            } else if (from.getType() == ResourceTypes.PROMPT) {
+                resourceService.computeResource(to, body -> PublicationUtil.replacePromptIdentity(body, to));
             }
         }
     }
