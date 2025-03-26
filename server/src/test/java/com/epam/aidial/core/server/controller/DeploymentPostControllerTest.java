@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
-import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -159,7 +158,7 @@ public class DeploymentPostControllerTest {
         Application app = new Application();
         app.setEndpoint("http://fake-endpoint.com");
         Features features = new Features();
-        features.setAccessibleByPerRequestKey(false);
+        features.setConsentRequired(false);
         app.setFeatures(features);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("perRequestKey");

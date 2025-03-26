@@ -60,4 +60,9 @@ public abstract class Deployment extends RoleBasedEntity {
 
     @JsonAlias({"updatedAt", "updated_at"})
     private Long updatedAt;
+
+    /**
+     * Dependent deployments
+     */
+    private List<String> dependencies = List.of();
 }

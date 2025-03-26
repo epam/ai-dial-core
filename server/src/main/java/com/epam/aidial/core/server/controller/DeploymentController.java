@@ -167,8 +167,8 @@ public class DeploymentController {
             data.setAllowResume(features.getAllowResume());
         }
 
-        if (features.getAccessibleByPerRequestKey() != null) {
-            data.setAccessibleByPerRequestKey(features.getAccessibleByPerRequestKey());
+        if (features.getConsentRequired() != null) {
+            data.setAccessibleByPerRequestKey(features.getConsentRequired());
         }
 
         if (features.getContentPartsSupported() != null) {
