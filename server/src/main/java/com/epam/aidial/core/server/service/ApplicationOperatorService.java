@@ -38,7 +38,7 @@ public class ApplicationOperatorService {
 
     public ApplicationOperatorService(HttpClient client, JsonObject settings) {
         this.client = client;
-        this.endpoint = settings.getString("controllerEndpoint");
+        this.endpoint = "http://dial-app-controller-test.dial-development.svc.cluster.local";
         this.timeout = settings.getLong("controllerTimeout", 240000L);
     }
 
@@ -108,6 +108,24 @@ public class ApplicationOperatorService {
 
     public void deleteCodeInterpreterDeployment(String id) {
         callController(HttpMethod.DELETE, "/v1/deployment/" + id,
+                request -> null,
+                body -> convertServerSentEvent(body, EmptyResponse.class));
+    }
+
+    public String createCodeInterpreterSession(String id, String image) {
+        CreateSessionResponse session = callController(HttpMethod.POST, "/v1/session/" + id,
+                request -> {
+                    request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+                    CreateSessionRequest body = new CreateSessionRequest(image);
+                    return ProxyUtil.convertToString(body);
+                },
+                body -> convertServerSentEvent(body, CreateSessionResponse.class));
+
+        return session.url();
+    }
+
+    public void deleteCodeInterpreterSession(String id) {
+        callController(HttpMethod.DELETE, "/v1/session/" + id,
                 request -> null,
                 body -> convertServerSentEvent(body, EmptyResponse.class));
     }
@@ -214,6 +232,13 @@ public class ApplicationOperatorService {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record CreateDeploymentResponse(String url) {
+    }
+
+    private record CreateSessionRequest(String image) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record CreateSessionResponse(String url) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

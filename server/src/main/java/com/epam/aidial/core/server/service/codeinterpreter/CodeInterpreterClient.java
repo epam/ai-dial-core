@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service.codeinterpreter;
 
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
@@ -8,30 +9,59 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
-import lombok.RequiredArgsConstructor;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
 import lombok.SneakyThrows;
-import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.HttpEntities;
+import org.apache.hc.core5.http.message.BasicHttpRequest;
 
 import java.io.InputStream;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import javax.annotation.Nullable;
 
-@RequiredArgsConstructor
 public class CodeInterpreterClient {
 
+    private static final String PROXY_TARGET = "X-DIAL-PROXY-TARGET";
+
     // Vertx HttpClient does not support multipart upload, Vertx WebClient supports only Buffer as body for multipart upload
-    private final HttpClient client = HttpClients.createDefault();
-    private final long responseTimeout;
+    private final org.apache.hc.client5.http.classic.HttpClient fileClient;
+    private final HttpClient client;
+
+    private final String proxyUrl;
+    private final long timeout;
+
+    public CodeInterpreterClient(HttpClient client, String proxyUrl, long timeout) {
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectionRequestTimeout(timeout, TimeUnit.MILLISECONDS)
+                .setResponseTimeout(timeout, TimeUnit.MILLISECONDS)
+                .build();
+
+        this.client = client;
+        this.proxyUrl = proxyUrl;
+        this.timeout = timeout;
+        this.fileClient = HttpClients.custom()
+                .setDefaultRequestConfig(requestConfig)
+                .disableContentCompression()
+                .build();
+    }
 
     CodeInterpreterExecuteResponse executeCode(CodeInterpreterSession session, String code) {
         Map<String, String> body = Map.of("code", code);
@@ -45,13 +75,14 @@ public class CodeInterpreterClient {
 
     @SneakyThrows
     CodeInterpreterFile uploadFile(CodeInterpreterSession session, InputStream source, String target) {
-        HttpPost post = new HttpPost(session.getDeploymentUrl() + "/upload_file");
-        post.setConfig(createRequestConfig());
+        HttpPost post = new HttpPost(createSessionUrl(session, "/upload_file"));
+        addSessionHeaders(session, post);
+
         post.setEntity(MultipartEntityBuilder.create()
                 .addBinaryBody("file", source, ContentType.APPLICATION_OCTET_STREAM, target)
                 .build());
 
-        return client.execute(post, response -> {
+        return fileClient.execute(post, response -> {
             int status = response.getCode();
             String body = EntityUtils.toString(response.getEntity());
 
@@ -65,11 +96,11 @@ public class CodeInterpreterClient {
 
     @SneakyThrows
     <R> R downloadFile(CodeInterpreterSession session, String path, DownloadFileFunction<R> consumer) {
-        HttpPost post = new HttpPost(session.getDeploymentUrl() + "/download_file");
-        post.setConfig(createRequestConfig());
+        HttpPost post = new HttpPost(createSessionUrl(session, "/download_file"));
+        addSessionHeaders(session, post);
         post.setEntity(HttpEntities.create(ProxyUtil.convertToString(Map.of("path", path)), ContentType.APPLICATION_JSON));
 
-        return client.execute(post, response -> {
+        return fileClient.execute(post, response -> {
             int status = response.getCode();
             HttpEntity entity = response.getEntity();
 
@@ -80,14 +111,14 @@ public class CodeInterpreterClient {
 
             try {
                 CompletableFuture<R> result = new CompletableFuture<>();
-                long size = Long.parseLong(response.getHeader(HttpHeaders.CONTENT_LENGTH).getValue());
+                Long size = getContentLength(response);
                 InputStream stream = entity.getContent();
 
                 consumer.apply(stream, size)
                         .onSuccess(result::complete)
                         .onFailure(result::completeExceptionally);
 
-                return result.get(responseTimeout, TimeUnit.MILLISECONDS);
+                return result.get(timeout, TimeUnit.MILLISECONDS);
             } catch (Throwable e) {
                 EntityUtils.consumeQuietly(entity);
                 throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to download file: " + path);
@@ -97,27 +128,90 @@ public class CodeInterpreterClient {
 
     @SneakyThrows
     private <R> R execute(CodeInterpreterSession session, String path, Object requestPayload, Class<R> responseType) {
-        HttpPost post = new HttpPost(session.getDeploymentUrl() + path);
-        post.setConfig(createRequestConfig());
-        post.setEntity(HttpEntities.create(ProxyUtil.convertToString(requestPayload), ContentType.APPLICATION_JSON));
+        CompletableFuture<R> resultFuture = new CompletableFuture<>();
+        AtomicReference<HttpClientRequest> requestReference = new AtomicReference<>();
 
-        return client.execute(post, response -> {
-            int status = response.getCode();
-            String body = EntityUtils.toString(response.getEntity());
+        RequestOptions requestOptions = new RequestOptions()
+                .setMethod(HttpMethod.POST)
+                .setAbsoluteURI(createSessionUrl(session, path))
+                .setIdleTimeout(timeout);
 
-            if (status != 200) {
-                throw new HttpException(status, body);
+        client.request(requestOptions)
+                .compose(request -> {
+                    requestReference.set(request);
+                    request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+
+                    if (session.getDeploymentType() == CodeInterpreterSession.DeploymentType.SESSION) {
+                        Objects.requireNonNull(proxyUrl, "No proxy url");
+                        request.putHeader(PROXY_TARGET, session.getDeploymentUrl());
+                    }
+
+                    String body = ProxyUtil.convertToString(requestPayload);
+                    return request.send(body)
+                            .compose(response -> {
+                                // must be inside to eliminate race condition for response.body()
+                                if (response.statusCode() != 200) {
+                                    throw new HttpException(response.statusCode(), body);
+                                }
+
+                                return response.body();
+                            });
+                })
+                .map(buffer -> ProxyUtil.convertToObject(buffer, responseType))
+                .onSuccess(resultFuture::complete)
+                .onFailure(resultFuture::completeExceptionally);
+
+        try {
+            return resultFuture.get(timeout, TimeUnit.MILLISECONDS);
+        } catch (Throwable e) {
+            if (e instanceof TimeoutException) {
+                HttpClientRequest request = requestReference.get();
+
+                if (request != null) {
+                    request.reset();
+                }
             }
 
-            return ProxyUtil.convertToObject(body, responseType);
-        });
+            if (e instanceof ExecutionException) {
+                e = e.getCause();
+            }
+
+            throw e;
+        }
     }
 
-    private RequestConfig createRequestConfig() {
-        return RequestConfig.custom().setResponseTimeout(responseTimeout, TimeUnit.MILLISECONDS).build();
+    private String createSessionUrl(CodeInterpreterSession session, String path) {
+        if (session.getDeploymentType() == CodeInterpreterSession.DeploymentType.SESSION) {
+            Objects.requireNonNull(proxyUrl, "No proxy url");
+            return proxyUrl + path;
+        }
+
+        return session.getDeploymentUrl() + path;
+    }
+
+    private void addSessionHeaders(CodeInterpreterSession session, BasicHttpRequest request) {
+        if (session.getDeploymentType() == CodeInterpreterSession.DeploymentType.SESSION) {
+            Objects.requireNonNull(proxyUrl, "No proxy url");
+            request.setHeader(PROXY_TARGET, session.getDeploymentUrl());
+        }
+    }
+
+    private static Long getContentLength(ClassicHttpResponse response) {
+        try {
+            Header header = response.getHeader(HttpHeaders.CONTENT_LENGTH);
+            if (header == null) {
+                return null;
+            }
+            String text = header.getValue();
+            long value = Long.parseLong(text);
+
+            return (value >= 0) ? value : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public interface DownloadFileFunction<R> {
-        Future<R> apply(InputStream stream, long size) throws Throwable;
+        Future<R> apply(InputStream stream, @Nullable Long size) throws Throwable;
     }
 }
