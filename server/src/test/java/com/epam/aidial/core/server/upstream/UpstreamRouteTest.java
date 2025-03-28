@@ -31,7 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -209,5 +211,61 @@ public class UpstreamRouteTest {
         route.succeed(response, model);
 
         verify(upstreamCacheService).updateEntry(anyString(), any(CachedUpstreamEntry.class), eq(model), any());
+    }
+
+    @Test
+    void testSuccess_UpstreamCache_PrefixNotFound() {
+        Model model = new Model();
+        model.setName("model1");
+        model.setUpstreams(List.of(
+                new Upstream("endpoint1", null, null, 1, 1),
+                new Upstream("endpoint2", null, null, 1, 1)
+        ));
+
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of("prefix"), Map.of("prefix", "hash"), CachePolicy.CACHE_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+        UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
+        assertNotNull(route.next());
+
+        assertTrue(route.available());
+        assertEquals(model.getUpstreams().get(1), route.get());
+        assertEquals(1, route.getAttemptCount());
+
+        HttpClientResponse response = mock(HttpClientResponse.class);
+        when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn("unknown");
+
+
+        route.succeed(response, model);
+
+        verify(vertx, never()).executeBlocking(any(Callable.class), eq(false));
+        verify(upstreamCacheService, never()).updateEntry(isNull(), any(CachedUpstreamEntry.class), any(Model.class), any());
+    }
+
+    @Test
+    void testSuccess_UpstreamCache_NoCacheBreakpointContext() {
+        Model model = new Model();
+        model.setName("model1");
+        model.setUpstreams(List.of(
+                new Upstream("endpoint1", null, null, 1, 1),
+                new Upstream("endpoint2", null, null, 1, 0)
+        ));
+
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRoute route = upstreamRouteProvider.get(model, null);
+        assertNotNull(route.next());
+
+        assertTrue(route.available());
+        assertEquals(model.getUpstreams().get(1), route.get());
+        assertEquals(1, route.getAttemptCount());
+
+        HttpClientResponse response = mock(HttpClientResponse.class);
+        when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn("prefix");
+
+        route.succeed(response, model);
+
+        verify(vertx, never()).executeBlocking(any(Callable.class), eq(false));
+        verify(upstreamCacheService, never()).updateEntry(isNull(), any(CachedUpstreamEntry.class), any(Model.class), any());
     }
 }
