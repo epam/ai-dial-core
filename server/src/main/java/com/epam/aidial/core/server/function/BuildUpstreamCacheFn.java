@@ -33,7 +33,6 @@ public class BuildUpstreamCacheFn extends BaseRequestFunction<ObjectNode> {
         if (features == null) {
             return false;
         }
-        Boolean cacheSupported = features.getCacheSupported();
-        return cacheSupported != null && cacheSupported;
+        return Boolean.TRUE.equals(features.getCacheSupported()) || Boolean.TRUE.equals(features.getAutoCachingSupported());
     }
 }

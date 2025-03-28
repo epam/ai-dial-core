@@ -49,4 +49,21 @@ public class BuildUpstreamCacheFnTest {
         verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(eq(objectNode), eq(CachePolicy.CACHE_PRIORITY), eq(model));
         verify(context).setCacheBreakpointContext(any(CacheBreakpointContext.class));
     }
+
+    @Test
+    public void testApply_WhenAutoCachingSupported() {
+        Model model = new Model();
+        Features features = new Features();
+        features.setAutoCachingSupported(true);
+        model.setFeatures(features);
+        when(context.getDeployment()).thenReturn(model);
+        when(context.getRequestHeader(eq(Proxy.HEADER_CACHE_POLICY))).thenReturn("cache-priority");
+        ObjectNode objectNode = ProxyUtil.MAPPER.createObjectNode();
+
+        Boolean res = fn.apply(objectNode);
+
+        assertFalse(res);
+        verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(eq(objectNode), eq(CachePolicy.CACHE_PRIORITY), eq(model));
+        verify(context).setCacheBreakpointContext(any(CacheBreakpointContext.class));
+    }
 }
