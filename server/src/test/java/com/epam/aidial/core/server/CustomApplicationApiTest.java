@@ -325,40 +325,22 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, "", "Api-key", "proxyKey2");
         verifyJsonNotExact(response, 200, """
                 {
-                   "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                   "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                    "display_name" : "My Custom Application",
                    "display_version" : "1.0",
                    "icon_url" : "http://application1/icon.svg",
                    "description" : "My Custom Application Description",
                    "reference" : "@ignore",
-                   "object" : "application",
-                   "status" : "succeeded",
-                   "features" : {
-                     "rate" : true,
-                     "tokenize" : false,
-                     "truncate_prompt" : false,
-                     "configuration" : true,
-                     "system_prompt" : true,
-                     "tools" : false,
-                     "seed" : false,
-                     "url_attachments" : false,
-                     "folder_attachments" : false,
-                     "allow_resume":true,
-                     "accessible_by_per_request_key": true,
-                     "content_parts": false,
-                     "temperature" : true,
-                     "addons" : true,
-                     "cache" : false,
-                     "auto_caching" : false
-                   },
+                   "forward_auth_token" : false,
+                   "features" : { },
                    "defaults" : { },
-                   "description_keywords":[],
+                   "interceptors" : [ ],
+                   "description_keywords" : [ ],
                    "max_retry_attempts" : 1,
-                   "owner" : "EPM-RTC-GPT",
+                   "author" : "EPM-RTC-GPT",
                    "created_at" : "@ignore",
                    "updated_at" : "@ignore"
-                }
+                 }
                 """);
 
         // verify user1 can list both applications (from config and own)
