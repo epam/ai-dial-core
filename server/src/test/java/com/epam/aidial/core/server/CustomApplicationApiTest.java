@@ -341,7 +341,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "max_retry_attempts" : 1,
                    "author" : "EPM-RTC-GPT",
                    "created_at" : "@ignore",
-                   "updated_at" : "@ignore"
+                   "updated_at" : "@ignore",
+                   "dependencies" : [ ]
                  }
                 """);
 
