@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -147,11 +148,23 @@ public class ResourceController extends AccessControlBaseController {
             Application application = result.getValue();
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
-                    : ProxyUtil.convertToString(ApplicationUtil.mapApplication(application));
+                    : ProxyUtil.convertToString(clearApplicationProperties(application, context.getConfig()));
 
             return Pair.of(meta, body);
 
         }, false);
+    }
+
+    private Application clearApplicationProperties(Application application, Config config) {
+        application.setEndpoint(null);
+        Features features = application.getFeatures();
+        if (features != null) {
+            features.setConfigurationEndpoint(null);
+            features.setRateEndpoint(null);
+            features.setTokenizeEndpoint(null);
+            features.setTruncatePromptEndpoint(null);
+        }
+        return ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
     }
 
     private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescriptor descriptor, EtagHeader etag) {

@@ -57,6 +57,7 @@ public class UpstreamRoute {
 
     private final Set<Upstream> usedUpstreams = new HashSet<>();
 
+    @Nullable
     private final UpstreamCacheContext upstreamCacheContext;
 
     private final UpstreamCacheService upstreamCacheService;
@@ -153,7 +154,7 @@ public class UpstreamRoute {
             // no cache
             return;
         }
-        String hash = upstreamCacheContext.getPrefixToHash().get(breakpointPath);
+        String hash = upstreamCacheContext == null ? null : upstreamCacheContext.getPrefixToHash().get(breakpointPath);
         if (hash == null) {
             if (model.getType() == ModelType.CHAT) {
                 log.warn("prefix is not found: {}", breakpointPath);
