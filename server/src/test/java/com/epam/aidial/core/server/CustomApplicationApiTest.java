@@ -54,6 +54,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
+                "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
                 "updated_at" : "@ignore"
@@ -224,6 +225,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "interceptors": [],
                 "description_keywords":[],
                 "max_retry_attempts" : 1,
+                "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
                 "updated_at" : "@ignore"
@@ -923,6 +925,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
+                "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
                 "updated_at" : "@ignore"
@@ -947,6 +950,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
+                "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
                 "updated_at" : "@ignore"
@@ -993,6 +997,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
+                "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
                 "updated_at" : "@ignore"
@@ -1058,6 +1063,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "dependencies" : [ ],
                   "author" : "EPM-RTC-GPT",
                   "created_at" : "@ignore",
                   "updated_at" : "@ignore",
@@ -1101,6 +1107,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
+                  "dependencies" : [ ],
                   "author" : "EPM-RTC-GPT",
                   "created_at" : "@ignore",
                   "updated_at" : "@ignore",

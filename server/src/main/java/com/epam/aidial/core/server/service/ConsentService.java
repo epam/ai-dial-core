@@ -4,7 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.consent.Consent;
-import com.epam.aidial.core.server.data.consent.ConsentResponse;
+import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -27,14 +27,14 @@ public class ConsentService {
         this.resourceService = resourceService;
     }
 
-    public ConsentResponse buildConsent(ProxyContext context, String deploymentId) {
+    public ReviewConsentResponse buildConsent(ProxyContext context, String deploymentId) {
         Set<String> seen = new HashSet<>();
         ArrayDeque<String> queue = new ArrayDeque<>();
         queue.offer(deploymentId);
         seen.add(deploymentId);
         Set<String> securedApps = new HashSet<>();
         Set<String> regularApps = new HashSet<>();
-        ConsentResponse response = new ConsentResponse();
+        ReviewConsentResponse response = new ReviewConsentResponse();
         while (!queue.isEmpty()) {
             deploymentId = queue.poll();
             Deployment deployment = deploymentService.findDeployment(context, deploymentId);
@@ -45,12 +45,12 @@ public class ConsentService {
             } else {
                 regularApps.add(deploymentId);
             }
-            Consent.Deployment parentDeployment = new Consent.Deployment();
+            Consent.Deployment current = new Consent.Deployment();
             for (String dependency : deployment.getDependencies()) {
                 if (seen.add(dependency)) {
                     Consent.Deployment dependentDeployment = new Consent.Deployment();
                     dependentDeployment.setName(dependency);
-                    parentDeployment.getDependencies().add(dependency);
+                    current.getDependencies().add(dependency);
                     response.getConsent().getDeployments().put(dependency, dependentDeployment);
                     queue.offer(dependency);
                 }
@@ -69,15 +69,21 @@ public class ConsentService {
     }
 
     public void verifyUserConsent(ProxyContext context, Deployment deployment) {
-        List<String> executionPath = context.getApiKeyData().getExecutionPath();
-        if (!isConsentRequired(deployment) ||  executionPath == null || executionPath.isEmpty()) {
+        if (!isConsentRequired(deployment)) {
             return;
         }
         String deploymentId = deployment.getName();
         Consent consent = readConsent(context, deploymentId);
-        for (String dep : executionPath) {
-            if (!consent.getDeployments().containsKey(dep)) {
-                fail(deploymentId);
+        if (consent == null) {
+            // missing consent
+            fail(deploymentId);
+        }
+        List<String> executionPath = context.getApiKeyData().getExecutionPath();
+        if (executionPath != null) {
+            for (String dep : executionPath) {
+                if (!consent.getDeployments().containsKey(dep)) {
+                    fail(deploymentId);
+                }
             }
         }
         Consent.Deployment consentDeployment = consent.getDeployments().get(deploymentId);
@@ -87,7 +93,7 @@ public class ConsentService {
     }
 
     private static void fail(String deploymentId) {
-        throw new PermissionDeniedException("User didn't accept consent to call a such deployment: " + deploymentId);
+        throw new PermissionDeniedException("User didn't accept consent to call the deployment: " + deploymentId);
     }
 
     private Consent readConsent(ProxyContext context, String deploymentId) {
@@ -96,7 +102,7 @@ public class ConsentService {
         return ProxyUtil.convertToObject(consent, Consent.class);
     }
 
-    private boolean hasAccepted(Consent consent, Set<String> securedApps, Set<String> regularApps) {
+    private static boolean hasAccepted(Consent consent, Set<String> securedApps, Set<String> regularApps) {
         if (consent == null) {
             return false;
         }
@@ -114,12 +120,12 @@ public class ConsentService {
         return true;
     }
 
-    private boolean isConsentRequired(Deployment deployment) {
+    private static boolean isConsentRequired(Deployment deployment) {
         return deployment.getFeatures() != null
                 && Boolean.TRUE.equals(deployment.getFeatures().getConsentRequired());
     }
 
-    private ResourceDescriptor getResourceDescription(ProxyContext context, String deploymentId) {
+    private static ResourceDescriptor getResourceDescription(ProxyContext context, String deploymentId) {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         return ResourceDescriptorFactory.fromEncoded(ResourceTypes.USER_CONSENT, bucketLocation, bucketLocation, deploymentId);
     }

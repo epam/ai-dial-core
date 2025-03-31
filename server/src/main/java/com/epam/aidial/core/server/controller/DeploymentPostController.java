@@ -102,11 +102,18 @@ public class DeploymentPostController {
                 .compose(dep -> proxy.getVertx().executeBlocking(() -> {
                     proxy.getConsentService().verifyUserConsent(context, dep);
                     return dep;
-                }))
+                }, false))
                 .map(dep -> {
                     if (dep.getEndpoint() == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
+
+                    Features features = dep.getFeatures();
+                    boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
+                    if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+                        throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
+                    }
+
                     if (dep instanceof Application app) {
                         dep = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), app);
                     }

@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.consent.ConsentRequest;
+import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -32,17 +32,15 @@ public class ConsentController {
         context.getRequest()
                 .body()
                 .compose(buffer -> {
-                    ConsentRequest request;
+                    AcceptConsentRequest request;
                     try {
-                        String body = buffer.toString(StandardCharsets.UTF_8);
-                        request = ProxyUtil.convertToObject(body, ConsentRequest.class);
+                        request = ProxyUtil.convertToObject(buffer, AcceptConsentRequest.class);
                     } catch (Exception e) {
                         log.error("Invalid request body provided", e);
                         throw new IllegalArgumentException("Can't accept user consent. Incorrect body");
                     }
 
                     if (request == null || request.getConsent() == null) {
-                        log.error("User consent is missed");
                         context.respond(HttpStatus.BAD_REQUEST, "User consent is missed");
                         return Future.succeededFuture();
                     }

@@ -50,7 +50,7 @@ public class ApplicationController {
 
     public Future<?> getApplication(String applicationId) {
         boolean propertyFilteringRequired = !applicationId.equals(context.getDecodedSourceDeployment());
-        vertx.executeBlocking(() -> deploymentService.findDeployment(context, applicationId))
+        vertx.executeBlocking(() -> deploymentService.findDeployment(context, applicationId), false)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         if (propertyFilteringRequired) {

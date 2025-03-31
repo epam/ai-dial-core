@@ -32,8 +32,8 @@ public class Features {
     private Boolean folderAttachmentsSupported;
     @JsonAlias({"allowResume", "allow_resume"})
     private Boolean allowResume;
-    @JsonAlias({"accessibleByPerRequestKey", "accessible_by_per_request_key", "consentRequired"})
-    private Boolean consentRequired;
+    @JsonAlias({"accessibleByPerRequestKey", "accessible_by_per_request_key"})
+    private Boolean accessibleByPerRequestKey;
     @JsonAlias({"contentPartsSupported", "content_parts_supported"})
     private Boolean contentPartsSupported;
     @JsonAlias({"temperatureSupported", "temperature_supported"})
@@ -51,4 +51,6 @@ public class Features {
      */
     @JsonAlias({"autoCachingSupported", "auto_caching_supported"})
     private Boolean autoCachingSupported;
+    @JsonAlias({"consentRequired", "consent_required"})
+    private Boolean consentRequired;
 }
