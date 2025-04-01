@@ -48,7 +48,7 @@ public class ConsentApiTest extends ResourceBaseTest {
             assertNotNull(request.getHeader(Proxy.HEADER_API_KEY));
             return new MockResponse().setBody(appResponse);
         };
-        try (TestWebServer server = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignored = new TestWebServer(9876, handler)) {
             // user has not accepted the consent yet
             Response resp = send(HttpMethod.POST, "/openai/deployments/secured-app/chat/completions",
                     null, appRequest, "Authorization", "user", "content-type", "application/json");
@@ -68,5 +68,33 @@ public class ConsentApiTest extends ResourceBaseTest {
                     null, appRequest, "Authorization", "user", "content-type", "application/json");
             verify(resp, 200);
         }
+    }
+
+    @Test
+    public void testRequestConsent_WhenDeploymentNotFound() {
+        var resp = send(HttpMethod.GET, "/v1/consent/unknown-app", null, null, "Authorization", "user");
+        verify(resp, 404);
+    }
+
+    @Test
+    public void testRequestConsent_WhenDeploymentIsForbidden() {
+        var resp = send(HttpMethod.GET, "/v1/consent/secured-app", null, null, "api-key", "proxyKey1");
+        verify(resp, 403);
+    }
+
+    @Test
+    public void testAcceptConsent_WhenConsentIsInvalid() {
+        var resp = send(HttpMethod.POST, "/v1/consent/secured-app", null, "", "Authorization", "user");
+        verify(resp, 400);
+
+        resp = send(HttpMethod.POST, "/v1/consent/secured-app", null, """
+                {"foo": {}}
+                """, "Authorization", "user");
+        verify(resp, 400);
+
+        resp = send(HttpMethod.POST, "/v1/consent/secured-app", null, """
+                {}
+                """, "Authorization", "user");
+        verify(resp, 400);
     }
 }

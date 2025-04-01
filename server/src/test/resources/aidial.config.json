@@ -89,7 +89,8 @@
       "description": "Some description of the application for testing",
       "features": {
         "consentRequired": true
-      }
+      },
+      "userRoles": ["user"]
     }
   },
   "models": {
