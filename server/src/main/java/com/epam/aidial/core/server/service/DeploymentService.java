@@ -50,12 +50,10 @@ public class DeploymentService {
             throw new ResourceNotFoundException("Invalid application url: " + url);
         }
 
-        Application app = applicationService.getApplication(resource).getValue();
-
         if (!accessService.hasReadAccess(resource, context)) {
             throw new PermissionDeniedException();
         }
 
-        return app;
+        return applicationService.getApplication(resource).getValue();
     }
 }

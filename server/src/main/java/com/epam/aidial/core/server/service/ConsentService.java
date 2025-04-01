@@ -15,6 +15,7 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public class ConsentService {
@@ -32,34 +33,23 @@ public class ConsentService {
         ArrayDeque<String> queue = new ArrayDeque<>();
         queue.offer(deploymentId);
         seen.add(deploymentId);
-        Set<String> securedApps = new HashSet<>();
-        Set<String> regularApps = new HashSet<>();
-        ReviewConsentResponse response = new ReviewConsentResponse();
+        Consent newConsent = new Consent();
         while (!queue.isEmpty()) {
             deploymentId = queue.poll();
             Deployment deployment = deploymentService.findDeployment(context, deploymentId);
             boolean consentRequired = isConsentRequired(deployment);
-            response.getConsent().getDeployments().get(deploymentId).setConsentRequired(consentRequired);
-            if (consentRequired) {
-                securedApps.add(deploymentId);
-            } else {
-                regularApps.add(deploymentId);
-            }
-            Consent.Deployment current = new Consent.Deployment();
+            Consent.Deployment current = newConsent.getDeployments().computeIfAbsent(deploymentId, key -> new Consent.Deployment());
+            current.setConsentRequired(consentRequired);
             for (String dependency : deployment.getDependencies()) {
                 if (seen.add(dependency)) {
-                    Consent.Deployment dependentDeployment = new Consent.Deployment();
-                    dependentDeployment.setName(dependency);
-                    current.getDependencies().add(dependency);
-                    response.getConsent().getDeployments().put(dependency, dependentDeployment);
                     queue.offer(dependency);
                 }
             }
         }
 
-        Consent consent = readConsent(context, deploymentId);
-        response.setAccepted(hasAccepted(consent, securedApps, regularApps));
-        return response;
+        Consent prevConsent = readConsent(context, deploymentId);
+        boolean accepted = Objects.equals(prevConsent, newConsent);
+        return new ReviewConsentResponse(newConsent, accepted);
     }
 
     public void acceptConsent(ProxyContext context, String deploymentId, Consent consent) {
@@ -100,24 +90,6 @@ public class ConsentService {
         ResourceDescriptor descriptor = getResourceDescription(context, deploymentId);
         String consent = resourceService.getResource(descriptor);
         return ProxyUtil.convertToObject(consent, Consent.class);
-    }
-
-    private static boolean hasAccepted(Consent consent, Set<String> securedApps, Set<String> regularApps) {
-        if (consent == null) {
-            return false;
-        }
-        for (Consent.Deployment deployment : consent.getDeployments().values()) {
-            if (deployment.isConsentRequired()) {
-                if (!securedApps.contains(deployment.getName())) {
-                    return false;
-                }
-            } else {
-                if (!regularApps.contains(deployment.getName())) {
-                    return false;
-                }
-            }
-        }
-        return true;
     }
 
     private static boolean isConsentRequired(Deployment deployment) {
