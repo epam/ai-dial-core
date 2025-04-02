@@ -197,16 +197,16 @@ class TokenUsageParserTest {
                 """, 119, 1420, 1024, 1539);
     }
 
-    private void valid(String body, long completion, long prompt, long cached_prompt, long total) {
+    private void valid(String body, long completion, long prompt, long cachedPrompt, long total) {
         TokenUsage usage = TokenUsageParser.parse(Buffer.buffer(body));
         Assertions.assertNotNull(usage);
         Assertions.assertEquals(usage.getCompletionTokens(), completion);
         Assertions.assertEquals(usage.getPromptTokens(), prompt);
         Assertions.assertEquals(usage.getTotalTokens(), total);
-        long actual_cached_prompt = 0;
+        long actualCachedPrompt = 0;
         if (usage.getPromptTokenDetail() != null) {
-          actual_cached_prompt = usage.getPromptTokenDetail().getCachedTokens();
+            actualCachedPrompt = usage.getPromptTokenDetail().getCachedTokens();
         }
-        Assertions.assertEquals(actual_cached_prompt, cached_prompt);
+        Assertions.assertEquals(actualCachedPrompt, cachedPrompt);
     }
 }
