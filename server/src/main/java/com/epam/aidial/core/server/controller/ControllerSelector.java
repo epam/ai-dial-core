@@ -83,6 +83,8 @@ public class ControllerSelector {
 
     private static final Pattern CONFIG = Pattern.compile("^/v1/ops/config/reload$");
 
+    private static final Pattern USER_CONSENT = Pattern.compile("^/v1/consent/(?<id>.+?)$");
+
     static {
         // GET routes
         get(PATTERN_DEPLOYMENT, (proxy, context, pathMatcher) -> {
@@ -179,6 +181,11 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         });
         get(USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
+        get(USER_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.requestConsent(deploymentId);
+        });
         get(APP_SCHEMAS, (proxy, context, pathMatcher) -> {
             ApplicationTypeSchemaController controller = new ApplicationTypeSchemaController(context);
             String operation = pathMatcher.group(1);
@@ -309,6 +316,11 @@ public class ControllerSelector {
             };
         });
         post(CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
+        post(USER_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.acceptConsent(deploymentId);
+        });
         // DELETE routes
         delete(PATTERN_FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);

@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
@@ -36,19 +37,26 @@ public class ApplicationController {
     private final AccessService accessService;
     private final ApplicationService applicationService;
 
+    private final DeploymentService deploymentService;
+
     public ApplicationController(ProxyContext context) {
         this.context = context;
         this.vertx = context.getProxy().getVertx();
         this.encryptionService = context.getProxy().getEncryptionService();
         this.accessService = context.getProxy().getAccessService();
         this.applicationService = context.getProxy().getApplicationService();
+        this.deploymentService = context.getProxy().getDeploymentService();
     }
 
     public Future<?> getApplication(String applicationId) {
         boolean propertyFilteringRequired = !applicationId.equals(context.getDecodedSourceDeployment());
-        DeploymentController.selectDeployment(context, applicationId, propertyFilteringRequired, true)
+        vertx.executeBlocking(() -> deploymentService.findDeployment(context, applicationId), false)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
+                        if (propertyFilteringRequired) {
+                            application = ApplicationTypeSchemaUtils.filterCustomClientProperties(context.getConfig(), application);
+                        }
+                        application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
                         return application;
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);

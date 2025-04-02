@@ -12,7 +12,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
-import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
@@ -99,7 +98,11 @@ public class DeploymentPostController {
     }
 
     private Future<?> handleDeployment(String deploymentId, String deploymentApi) {
-        return DeploymentController.selectDeployment(context, deploymentId, false, true)
+        return proxy.getVertx().executeBlocking(() -> proxy.getDeploymentService().findDeployment(context, deploymentId), false)
+                .compose(dep -> proxy.getVertx().executeBlocking(() -> {
+                    proxy.getConsentService().verifyUserConsent(context, dep);
+                    return dep;
+                }, false))
                 .map(dep -> {
                     if (dep.getEndpoint() == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
@@ -109,6 +112,10 @@ public class DeploymentPostController {
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
                     if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
                         throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
+                    }
+
+                    if (dep instanceof Application app) {
+                        dep = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), app);
                     }
 
                     context.setTraceOperation("Send request to %s deployment".formatted(dep.getName()));

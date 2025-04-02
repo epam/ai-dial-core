@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
-import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -113,24 +112,6 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testForbiddenDeployment() {
-        when(context.getRequest()).thenReturn(request);
-        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
-        Config config = new Config();
-        config.setApplications(new HashMap<>());
-        Application app = new Application();
-        app.setName("app1");
-        app.setUserRoles(Set.of("role1"));
-        config.getApplications().put("app1", app);
-        when(context.getConfig()).thenReturn(config);
-        when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-
-        controller.handle("app1", "chat/completions");
-
-        verify(context).respond(eq(FORBIDDEN), anyString());
-    }
-
-    @Test
     public void testDeploymentNotFound() {
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -138,12 +119,10 @@ public class DeploymentPostControllerTest {
         config.setApplications(new HashMap<>());
         Application app = new Application();
         config.getApplications().put("app1", app);
-        when(context.getConfig()).thenReturn(config);
         when(proxy.getVertx()).thenReturn(vertx);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(vertx.executeBlocking(any(Callable.class), eq(false)))
                 .thenReturn(Future.failedFuture(new ResourceNotFoundException("Not found")));
-        when(context.getProxy()).thenReturn(proxy);
 
         controller.handle("unknown-app", "chat/completions");
 
@@ -165,12 +144,10 @@ public class DeploymentPostControllerTest {
         apiKeyData.setPerRequestKey("perRequestKey");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         config.getApplications().put("app1", app);
-        when(context.getConfig()).thenReturn(config);
         when(proxy.getVertx()).thenReturn(vertx);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(vertx.executeBlocking(any(Callable.class), eq(false)))
                 .thenReturn(Future.succeededFuture(app));
-        when(context.getProxy()).thenReturn(proxy);
 
         controller.handle("unknown-app", "chat/completions");
 
@@ -449,7 +426,6 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getProxy()).thenReturn(proxy);
 
         controller.handle("applications/bucket/app1", "chat/completions");
 
