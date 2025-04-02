@@ -6,11 +6,11 @@ import lombok.Data;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class PromptTokenDetails {
+public class PromptTokensDetails {
     @JsonAlias({"cached_tokens", "cachedTokens"})
     private long cachedTokens;
 
-    public void increase(PromptTokenDetails other) {
+    public void increase(PromptTokensDetails other) {
         if (other == null) {
             return;
         }
