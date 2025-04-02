@@ -7,13 +7,13 @@ import lombok.Data;
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PromptTokenDetails {
-  @JsonAlias({"cached_tokens", "cachedTokens"})
-  private long cachedTokens;
+    @JsonAlias({"cached_tokens", "cachedTokens"})
+    private long cachedTokens;
 
-  public void increase(PromptTokenDetails other) {
-    if (other == null) {
-      return;
+    public void increase(PromptTokenDetails other) {
+        if (other == null) {
+            return;
+        }
+        cachedTokens += other.cachedTokens;
     }
-    cachedTokens += other.cachedTokens;
-  }
 }

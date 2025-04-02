@@ -30,7 +30,7 @@ public class TokenUsage {
         totalTokens += other.totalTokens;
         if (promptTokenDetail == null) {
             promptTokenDetail = other.promptTokenDetail;
-        } else{
+        } else {
             promptTokenDetail.increase(other.promptTokenDetail);
         }
         aggCost(other.aggCost);
