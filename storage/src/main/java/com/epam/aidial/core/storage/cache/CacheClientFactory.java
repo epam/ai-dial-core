@@ -29,6 +29,8 @@ public class CacheClientFactory {
         CredentialsResolver credentialsResolver = null;
         if (provider == CacheProvider.AWS_ELASTI_CACHE) {
             credentialsResolver = createElastiCacheCredResolver(providerSettings);
+        } else if (provider == CacheProvider.GCP_MEMORY_STORE) {
+            credentialsResolver = createGcpCredResolver(providerSettings);
         }
 
         ConfigSupport support = new RedisConfigSupport();
@@ -43,7 +45,7 @@ public class CacheClientFactory {
         return Redisson.create(config);
     }
 
-    private CredentialsResolver createElastiCacheCredResolver(JsonNode providerSettings) {
+    private static CredentialsResolver createElastiCacheCredResolver(JsonNode providerSettings) {
         String userId = Objects.requireNonNull(providerSettings.get("userId"), "AIM user must be provided").asText();
         String region = Objects.requireNonNull(providerSettings.get("region"), "AWS region ID must be provided").asText();
         String clusterName = Objects.requireNonNull(providerSettings.get("clusterName"), "Redis cluster name must be provided").asText();
@@ -51,6 +53,11 @@ public class CacheClientFactory {
         IamAuthTokenRequest iamAuthTokenRequest = new IamAuthTokenRequest(userId, clusterName, region, serverless);
         AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
         return new AwsCredentialsResolver(userId, iamAuthTokenRequest, awsCredentialsProvider);
+    }
+
+    private static CredentialsResolver createGcpCredResolver(JsonNode providerSettings) {
+        String accountName = Objects.requireNonNull(providerSettings.get("accountName"), "AIM account name must be provided").asText();
+        return new GcpCredentialsResolver(accountName);
     }
 
 }
