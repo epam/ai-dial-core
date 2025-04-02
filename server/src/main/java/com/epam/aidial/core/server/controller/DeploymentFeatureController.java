@@ -44,10 +44,10 @@ public class DeploymentFeatureController {
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()
         return proxy.getVertx().executeBlocking(() -> proxy.getDeploymentService().findDeployment(context, deploymentId), false).map(dep -> {
-            String endpoint = endpointGetter.apply(dep);
             if (dep instanceof Application application) {
                 dep = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
             }
+            String endpoint = endpointGetter.apply(dep);
             context.setDeployment(dep);
             context.getRequest().body()
                     .onSuccess(requestBody -> handleRequestBody(endpoint, requireEndpoint, requestBody))
