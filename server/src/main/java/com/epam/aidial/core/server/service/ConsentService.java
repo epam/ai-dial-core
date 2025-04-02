@@ -34,10 +34,14 @@ public class ConsentService {
         queue.offer(deploymentId);
         seen.add(deploymentId);
         Consent newConsent = new Consent();
+        boolean noneConsentRequired = true;
         while (!queue.isEmpty()) {
             deploymentId = queue.poll();
             Deployment deployment = deploymentService.findDeployment(context, deploymentId);
             boolean consentRequired = isConsentRequired(deployment);
+            if (consentRequired) {
+                noneConsentRequired = false;
+            }
             Consent.Deployment current = newConsent.getDeployments().computeIfAbsent(deploymentId, key -> new Consent.Deployment());
             current.setConsentRequired(consentRequired);
             for (String dependency : deployment.getDependencies()) {
@@ -46,7 +50,10 @@ public class ConsentService {
                 }
             }
         }
-
+        if (noneConsentRequired) {
+            // no deployments required user consent
+            return new ReviewConsentResponse(null, true);
+        }
         Consent prevConsent = readConsent(context, deploymentId);
         boolean accepted = Objects.equals(prevConsent, newConsent);
         return new ReviewConsentResponse(newConsent, accepted);
