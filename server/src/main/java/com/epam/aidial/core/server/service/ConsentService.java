@@ -19,6 +19,9 @@ import java.util.Objects;
 import java.util.Set;
 
 public class ConsentService {
+
+    private static final ReviewConsentResponse ACCEPTED_CONSENT_RESPONSE = new ReviewConsentResponse(null, true);
+
     private final DeploymentService deploymentService;
 
     private final ResourceService resourceService;
@@ -52,10 +55,13 @@ public class ConsentService {
         }
         if (noneConsentRequired) {
             // no deployments required user consent
-            return new ReviewConsentResponse(null, true);
+            return ACCEPTED_CONSENT_RESPONSE;
         }
         Consent prevConsent = readConsent(context, deploymentId);
         boolean accepted = Objects.equals(prevConsent, newConsent);
+        if (accepted) {
+            return ACCEPTED_CONSENT_RESPONSE;
+        }
         return new ReviewConsentResponse(newConsent, accepted);
     }
 

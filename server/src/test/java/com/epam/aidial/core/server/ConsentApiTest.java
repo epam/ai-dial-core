@@ -83,6 +83,12 @@ public class ConsentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testRequestConsent_WhenNoDeploymentsHaveConsentRequired() {
+        var resp = send(HttpMethod.GET, "/v1/consent/app", null, null, "api-key", "proxyKey1");
+        verify(resp, 200, "{\"accepted\":true}");
+    }
+
+    @Test
     public void testAcceptConsent_WhenConsentIsInvalid() {
         var resp = send(HttpMethod.POST, "/v1/consent/secured-app", null, "", "Authorization", "user");
         verify(resp, 400);
