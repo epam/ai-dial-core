@@ -148,11 +148,11 @@ class TokenUsageParserTest {
 
                 data: {"id":"eb69ae53-055b-4182-af8f-47f5f3ce810c","object":"chat.completion.chunk","created":1714665540,"model":"dbrx-instruct-032724","choices":[{"index":0,"delta":{"role":"assistant","content":"."},"finish_reason":null}],"usage":{"prompt_tokens":226,"completion_tokens":26,"total_tokens":252}}
 
-                data: {"id":"eb69ae53-055b-4182-af8f-47f5f3ce810c","object":"chat.completion.chunk","created":1714665540,"model":"dbrx-instruct-032724","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":226,"completion_tokens":26,"total_tokens":252}}
+                data: {"id":"eb69ae53-055b-4182-af8f-47f5f3ce810c","object":"chat.completion.chunk","created":1714665540,"model":"dbrx-instruct-032724","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":226,"completion_tokens":26,"total_tokens":252,"prompt_tokens_details":{"cached_tokens": 100,"audio_tokens": 0}}}
 
                 data: [DONE]
 
-                """, 26, 226, 0, 252);
+                """, 26, 226, 100, 252);
     }
 
     @Test
