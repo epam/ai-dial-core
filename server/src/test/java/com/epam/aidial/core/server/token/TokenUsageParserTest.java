@@ -204,8 +204,8 @@ class TokenUsageParserTest {
         Assertions.assertEquals(usage.getPromptTokens(), prompt);
         Assertions.assertEquals(usage.getTotalTokens(), total);
         long actualCachedPrompt = 0;
-        if (usage.getPromptTokensDetail() != null) {
-            actualCachedPrompt = usage.getPromptTokensDetail().getCachedTokens();
+        if (usage.getPromptTokensDetails() != null) {
+            actualCachedPrompt = usage.getPromptTokensDetails().getCachedTokens();
         }
         Assertions.assertEquals(actualCachedPrompt, cachedPrompt);
     }
