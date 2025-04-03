@@ -2,6 +2,7 @@ package com.epam.aidial.core.storage.cache;
 
 import com.google.cloud.iam.credentials.v1.GenerateAccessTokenResponse;
 import com.google.cloud.iam.credentials.v1.IamCredentialsClient;
+import com.google.cloud.iam.credentials.v1.IamCredentialsSettings;
 import com.google.protobuf.Duration;
 import com.google.protobuf.Timestamp;
 import lombok.SneakyThrows;
@@ -32,7 +33,8 @@ public class GcpCredentialsResolver implements CredentialsResolver {
     @SneakyThrows
     public GcpCredentialsResolver(String accountName) {
         this.accountName = accountName;
-        this.iamClient = IamCredentialsClient.create();
+        IamCredentialsSettings settings = IamCredentialsSettings.newHttpJsonBuilder().build();
+        this.iamClient = IamCredentialsClient.create(settings);
     }
 
     @Override
