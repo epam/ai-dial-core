@@ -163,8 +163,8 @@ public class CollectRequestApplicationFilesFnTest {
                     "$schema": "https://dial.epam.com/application_type_schemas/schema#",
                     "$id": "https://dial.epam.com/custom_application_schemas/dial-rag-app-runner",
                     "dial:applicationTypeDisplayName": "DIAL RAG",
-                    "dial:applicationTypeCompletionEndpoint": "http://dial-rag-app-runner.dial-development.svc.cluster.local/openai/deployments/dial-rag-app-runner/chat/completions",
-                    "dial:applicationTypeEditorUrl": "https://dev-dial-rag-app-runner.staging.deltixhub.io",
+                    "dial:applicationTypeCompletionEndpoint": "https://somewhere.com/openai/deployments/dial-rag-app-runner/chat/completions",
+                    "dial:applicationTypeEditorUrl": "https://somewhere.com",
                     "$defs": {},
                     "properties": {
                         "rag_files": {
