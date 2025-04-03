@@ -15,6 +15,9 @@ public class TokenUsage {
     private long promptTokens;
     @JsonAlias({"total_tokens", "totalTokens"})
     private long totalTokens;
+    @JsonAlias({"prompt_tokens_details", "promptsTokenDetails"})
+    private PromptTokensDetails promptTokensDetails;
+
     private BigDecimal cost;
     private BigDecimal aggCost;
 
@@ -25,6 +28,11 @@ public class TokenUsage {
         completionTokens += other.completionTokens;
         promptTokens += other.promptTokens;
         totalTokens += other.totalTokens;
+        if (promptTokensDetails == null) {
+            promptTokensDetails = other.promptTokensDetails;
+        } else {
+            promptTokensDetails.increase(other.promptTokensDetails);
+        }
         aggCost(other.aggCost);
     }
 
@@ -43,6 +51,7 @@ public class TokenUsage {
     public String toString() {
         return "completion=" + completionTokens
                 + ", prompt=" + promptTokens
+                + (promptTokensDetails != null ? ", cached_prompt=" + promptTokensDetails.getCachedTokens() : "")
                 + ", total=" + totalTokens;
     }
 }

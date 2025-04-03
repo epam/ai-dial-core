@@ -104,10 +104,6 @@ public class DeploymentPostController {
                     return dep;
                 }, false))
                 .map(dep -> {
-                    if (dep.getEndpoint() == null) {
-                        throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
-                    }
-
                     Features features = dep.getFeatures();
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
                     if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
@@ -116,6 +112,10 @@ public class DeploymentPostController {
 
                     if (dep instanceof Application app) {
                         dep = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), app);
+                    }
+
+                    if (dep.getEndpoint() == null) {
+                        throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
                     context.setTraceOperation("Send request to %s deployment".formatted(dep.getName()));
