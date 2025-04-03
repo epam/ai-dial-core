@@ -143,6 +143,64 @@ public class CollectRequestApplicationFilesFnTest {
     }
 
     @Test
+    void apply_appendsFilesToApiKeyData_whenApplicationHasCustomSchemaId_AndSchemaDescribesArray() {
+        when(proxy.getAccessService()).thenReturn(accessService);
+        when(proxy.getResourceService()).thenReturn(resourceService);
+        when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getConfig()).thenReturn(config);
+        String[] ragFiles = {
+                "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext",
+                "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext"
+        };
+        when(context.getDeployment()).thenReturn(application);
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("rag_files", ragFiles);
+        application.setApplicationProperties(customProps);
+
+        String schemaWithArray = """
+                {
+                    "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                    "$id": "https://dial.epam.com/custom_application_schemas/dial-rag-app-runner",
+                    "dial:applicationTypeDisplayName": "DIAL RAG",
+                    "dial:applicationTypeCompletionEndpoint": "http://dial-rag-app-runner.dial-development.svc.cluster.local/openai/deployments/dial-rag-app-runner/chat/completions",
+                    "dial:applicationTypeEditorUrl": "https://dev-dial-rag-app-runner.staging.deltixhub.io",
+                    "$defs": {},
+                    "properties": {
+                        "rag_files": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "dial:file": true,
+                                "format": "dial-file-encoded"
+                            },
+                            "dial:meta": {
+                                "dial:propertyKind": "server",
+                                "dial:propertyOrder": 1
+                            }
+                        }
+                    },
+                    "required": [
+                        "rag_files"
+                    ]
+                }
+                """;
+        when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schemaWithArray);
+        when(accessService.hasReadAccess(any(), any())).thenReturn(true);
+        when(resourceService.hasResource(any())).thenReturn(true);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+
+        boolean result = fn.apply(tree);
+
+        assertFalse(result);
+        assertEquals(ragFiles.length, apiKeyData.getAttachedFiles().size());
+        for (String ragFile : ragFiles) {
+            assertNotNull(apiKeyData.getAttachedFiles().get(ragFile));
+        }
+    }
+
+    @Test
     void apply_throws_whenResourceServiceHasNoResource() {
         when(proxy.getResourceService()).thenReturn(resourceService);
         when(context.getConfig()).thenReturn(config);
