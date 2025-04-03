@@ -19,6 +19,9 @@ import java.util.Objects;
 import java.util.Set;
 
 public class ConsentService {
+
+    private static final ReviewConsentResponse ACCEPTED_CONSENT_RESPONSE = new ReviewConsentResponse(null, true);
+
     private final DeploymentService deploymentService;
 
     private final ResourceService resourceService;
@@ -34,10 +37,14 @@ public class ConsentService {
         queue.offer(deploymentId);
         seen.add(deploymentId);
         Consent newConsent = new Consent();
+        boolean noneConsentRequired = true;
         while (!queue.isEmpty()) {
             deploymentId = queue.poll();
             Deployment deployment = deploymentService.findDeployment(context, deploymentId);
             boolean consentRequired = isConsentRequired(deployment);
+            if (consentRequired) {
+                noneConsentRequired = false;
+            }
             Consent.Deployment current = newConsent.getDeployments().computeIfAbsent(deploymentId, key -> new Consent.Deployment());
             current.setConsentRequired(consentRequired);
             for (String dependency : deployment.getDependencies()) {
@@ -46,9 +53,15 @@ public class ConsentService {
                 }
             }
         }
-
+        if (noneConsentRequired) {
+            // no deployments required user consent
+            return ACCEPTED_CONSENT_RESPONSE;
+        }
         Consent prevConsent = readConsent(context, deploymentId);
         boolean accepted = Objects.equals(prevConsent, newConsent);
+        if (accepted) {
+            return ACCEPTED_CONSENT_RESPONSE;
+        }
         return new ReviewConsentResponse(newConsent, accepted);
     }
 
