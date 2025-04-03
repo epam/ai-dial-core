@@ -270,26 +270,42 @@ public class ConsentServiceTest {
         assertNotNull(response);
         verifyJson("""
                 {
-                  "accepted" : true,
-                  "consent" : {
-                    "deployments" : {
-                      "A" : {
-                        "consentRequired" : false
-                      },
-                      "B" : {
-                        "consentRequired" : false
-                      },
-                      "C" : {
-                        "consentRequired" : false
-                      },
-                      "X" : {
-                        "consentRequired" : true
-                      },
-                      "Y" : {
-                        "consentRequired" : true
-                      }
+                  "accepted" : true
+                }""", response);
+    }
+
+    @Test
+    public void testBuildConsent_WhenNoAppsHaveConsentRequired() {
+        String jsonConfig = """
+                {
+                  "applications": {
+                    "A": {
+                       "dependencies": ["B", "C", "X"]
+                    },
+                    "B": {
+                       "dependencies": ["X"]
+                    },
+                    "C": {
+                       "dependencies": ["Y"]
+                    },
+                    "X": {
+                       "dependencies": ["Y"]
+                    },
+                    "Y": {
+                       "dependencies": ["X"]
                     }
                   }
+                }
+                """;
+        Config config = buildConfig(jsonConfig);
+        when(context.getConfig()).thenReturn(config);
+        when(deploymentService.findDeployment(eq(context), anyString())).thenCallRealMethod();
+
+        ReviewConsentResponse response = service.buildConsent(context, "A");
+        assertNotNull(response);
+        verifyJson("""
+                {
+                  "accepted" : true
                 }""", response);
     }
 
