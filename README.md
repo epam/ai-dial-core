@@ -113,8 +113,9 @@ Priority order:
 | redis.singleServerConfig.address              |         -          |   Yes    |Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided. 
 | redis.clusterServersConfig.nodeAddresses      |         -          |   Yes    |Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.
 | redis.provider.*                              |         -          |    No    |Provider specific settings
-| redis.provider.name                           |         -          |   Yes    |Provider name. The valid values are `aws-elasti-cache`(see [instructions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html)).
+| redis.provider.name                           |         -          |   Yes    |Provider name. The valid values are `aws-elasti-cache`(see [instructions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html)), `gcp-memory-store`(see [instructions](https://cloud.google.com/memorystore/docs/cluster/access-control)).
 | redis.provider.userId                         |         -          |   Yes    | IAM-enabled user ID. **Note**. It's applied to `aws-elasti-cache`
+| redis.provider.accountName                    |         -          |   Yes    | The resource name of the service account for which the credentials are requested, in the following format: `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard character is required; replacing it with a project ID is invalid. **Note**. It's applied to `gcp-memory-store`
 | redis.provider.region                         |         -          |   Yes    | Geo region where the cache is located. **Note**. It's applied to `aws-elasti-cache` 
 | redis.provider.clusterName                    |         -          |   Yes    | Redis cluster name. **Note**. It's applied to `aws-elasti-cache`
 | redis.provider.serverless                     |         -          |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
