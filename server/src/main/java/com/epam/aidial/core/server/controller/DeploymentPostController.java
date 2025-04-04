@@ -256,7 +256,9 @@ public class DeploymentPostController {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(request.method())
-                .setTraceOperation(context.getTraceOperation());
+                .setTraceOperation(context.getTraceOperation())
+                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
+                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
 
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)

@@ -8,6 +8,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -33,13 +34,17 @@ public class AccessTokenValidator {
     private final ConcurrentMap<String, Future<UserInfoResult>> userInfoCache = new ConcurrentHashMap<>();
 
     public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, HttpClient client) {
+        this(idpConfig, vertx, client, new HttpClientOptions());
+    }
+
+    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, HttpClient client, HttpClientOptions clientOptions) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
         }
         GetUserRoleFunctionFactory factory = new GetUserRoleFunctionFactory(client);
         for (String idpKey : idpConfig.fieldNames()) {
-            providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, client, jwksUrl -> {
+            providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, client, clientOptions, jwksUrl -> {
                 try {
                     return new UrlJwkProvider(new URL(jwksUrl));
                 } catch (MalformedURLException e) {

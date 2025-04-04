@@ -28,6 +28,7 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
@@ -45,7 +46,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Callable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
@@ -259,6 +259,8 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(context.getProxy()).thenReturn(proxy);
 
         Model model = new Model();
         model.setName("name");
@@ -297,6 +299,8 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(context.getProxy()).thenReturn(proxy);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
 
         Model model = new Model();
         model.setName("name");

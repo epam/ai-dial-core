@@ -93,7 +93,9 @@ public class DeploymentFeatureController {
     private void sendRequest(String endpoint) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
-                .setMethod(context.getRequest().method());
+                .setMethod(context.getRequest().method())
+                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
+                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
 
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)
