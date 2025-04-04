@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.MergeChunks;
@@ -107,6 +108,12 @@ public class GfLogStore implements LogStore {
             append(entry, Long.toString(tokenUsage.getPromptTokens()), true);
             append(entry, ",\"total_tokens\":", false);
             append(entry, Long.toString(tokenUsage.getTotalTokens()), true);
+            if (tokenUsage.getPromptTokensDetails() != null) {
+                PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
+                append(entry, ",\"prompt_token_details\":{\"cached_tokens\":", false);
+                append(entry, Long.toString(details.getCachedTokens()), true);
+                append(entry, "}", false);
+            }
             if (tokenUsage.getCost() != null) {
                 append(entry, ",\"deployment_price\":", false);
                 append(entry, tokenUsage.getCost().toString(), true);

@@ -35,12 +35,24 @@ public class DialFileKeyword implements Keyword {
         private final Boolean value;
         private final Boolean isServerProp;
 
+        private static JsonNode findMetaNode(JsonSchema schema) {
+            JsonNode metaNode = schema.getSchemaNode().get("dial:meta");
+            if (metaNode != null) {
+                return metaNode;
+            }
+            JsonSchema parentSchema = schema.getParentSchema();
+            if (parentSchema != null) {
+                return findMetaNode(parentSchema);
+            }
+            return null;
+        }
+
         public DialFileCollectorValidator(SchemaLocation schemaLocation, JsonNodePath evaluationPath, JsonNode schemaNode,
                                           JsonSchema parentSchema, Keyword keyword,
                                           ValidationContext validationContext, boolean suppressSubSchemaRetrieval) {
             super(schemaLocation, evaluationPath, schemaNode, parentSchema, ERROR_MESSAGE_TYPE, keyword, validationContext, suppressSubSchemaRetrieval);
             this.value = schemaNode.booleanValue();
-            JsonNode metaNode = parentSchema.getSchemaNode().get("dial:meta");
+            JsonNode metaNode = findMetaNode(parentSchema);
             JsonNode propertyKindNode = (metaNode != null) ? metaNode.get("dial:propertyKind") : null;
             this.isServerProp = (propertyKindNode != null) && propertyKindNode.asText().equalsIgnoreCase("server");
         }

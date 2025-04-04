@@ -51,4 +51,6 @@ public class Features {
      */
     @JsonAlias({"autoCachingSupported", "auto_caching_supported"})
     private Boolean autoCachingSupported;
+    @JsonAlias({"consentRequired", "consent_required"})
+    private Boolean consentRequired;
 }
