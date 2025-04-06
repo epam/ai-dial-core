@@ -31,7 +31,6 @@ import java.io.InputStream;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -128,17 +127,16 @@ public class CodeInterpreterClient {
 
     @SneakyThrows
     private <R> R execute(CodeInterpreterSession session, String path, Object requestPayload, Class<R> responseType) {
-        CompletableFuture<R> resultFuture = new CompletableFuture<>();
-        AtomicReference<HttpClientRequest> requestReference = new AtomicReference<>();
+        AtomicReference<HttpClientRequest> reference = new AtomicReference<>();
 
-        RequestOptions requestOptions = new RequestOptions()
+        RequestOptions options = new RequestOptions()
                 .setMethod(HttpMethod.POST)
                 .setAbsoluteURI(createSessionUrl(session, path))
                 .setIdleTimeout(timeout);
 
-        client.request(requestOptions)
+        Future<R> future = client.request(options)
                 .compose(request -> {
-                    requestReference.set(request);
+                    reference.set(request);
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
 
                     if (session.getDeploymentType() == CodeInterpreterSession.DeploymentType.SESSION) {
@@ -158,22 +156,17 @@ public class CodeInterpreterClient {
                             });
                 })
                 .map(buffer -> ProxyUtil.convertToObject(buffer, responseType))
-                .onSuccess(resultFuture::complete)
-                .onFailure(resultFuture::completeExceptionally);
+                .timeout(timeout, TimeUnit.MILLISECONDS);
 
         try {
-            return resultFuture.get(timeout, TimeUnit.MILLISECONDS);
+            return Future.await(future);
         } catch (Throwable e) {
             if (e instanceof TimeoutException) {
-                HttpClientRequest request = requestReference.get();
+                HttpClientRequest request = reference.get();
 
                 if (request != null) {
                     request.reset();
                 }
-            }
-
-            if (e instanceof ExecutionException) {
-                e = e.getCause();
             }
 
             throw e;

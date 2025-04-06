@@ -9,6 +9,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.vertx.core.Future;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
@@ -136,17 +137,16 @@ public class ApplicationOperatorService {
                                  Function<String, R> responseMapper) {
         verifyActive();
 
-        CompletableFuture<R> resultFuture = new CompletableFuture<>();
-        AtomicReference<HttpClientRequest> requestReference = new AtomicReference<>();
+        AtomicReference<HttpClientRequest> reference = new AtomicReference<>();
 
-        RequestOptions requestOptions = new RequestOptions()
+        RequestOptions options = new RequestOptions()
                 .setMethod(method)
                 .setAbsoluteURI(endpoint + path)
                 .setIdleTimeout(timeout);
 
-        client.request(requestOptions)
+        Future<R> future = client.request(options)
                 .compose(request -> {
-                    requestReference.set(request);
+                    reference.set(request);
                     String body = requestMapper.apply(request);
                     return request.send((body == null) ? "" : body)
                             .compose(response -> { // must be inside to eliminate race condition for response.body()
@@ -161,22 +161,17 @@ public class ApplicationOperatorService {
                     String body = buffer.toString(StandardCharsets.UTF_8);
                     return responseMapper.apply(body);
                 })
-                .onSuccess(resultFuture::complete)
-                .onFailure(resultFuture::completeExceptionally);
+                .timeout(timeout, TimeUnit.MILLISECONDS);
 
         try {
-            return resultFuture.get(timeout, TimeUnit.MILLISECONDS);
+            return Future.await(future);
         } catch (Throwable e) {
             if (e instanceof TimeoutException) {
-                HttpClientRequest request = requestReference.get();
+                HttpClientRequest request = reference.get();
 
                 if (request != null) {
                     request.reset();
                 }
-            }
-
-            if (e instanceof ExecutionException) {
-                e = e.getCause();
             }
 
             throw e;
