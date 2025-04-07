@@ -28,7 +28,8 @@
     "idleTimeout": 300000,
     "connectTimeout": 10000,
     "keepAlive": true,
-    "maxPoolSize": 128
+    "maxPoolSize": 4096,
+    "maxWaitQueueSize": 0
   },
   "server": {
     "port": 8080,

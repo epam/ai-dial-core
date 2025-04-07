@@ -36,11 +36,13 @@ public class ApplicationOperatorService {
     private final HttpClient client;
     private final String endpoint;
     private final long timeout;
+    private final long connectTimeout;
 
     public ApplicationOperatorService(HttpClient client, JsonObject settings) {
         this.client = client;
         this.endpoint = "http://dial-app-controller-test.dial-development.svc.cluster.local";
         this.timeout = settings.getLong("controllerTimeout", 240000L);
+        this.connectTimeout = settings.getLong("controllerConnectTimeout", 10000L);
     }
 
     public boolean isActive() {
@@ -142,6 +144,7 @@ public class ApplicationOperatorService {
         RequestOptions options = new RequestOptions()
                 .setMethod(method)
                 .setAbsoluteURI(endpoint + path)
+                .setConnectTimeout(connectTimeout)
                 .setIdleTimeout(timeout);
 
         Future<R> future = client.request(options)

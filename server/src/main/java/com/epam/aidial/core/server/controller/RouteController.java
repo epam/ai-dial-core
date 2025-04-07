@@ -92,7 +92,9 @@ public class RouteController implements Controller {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(getEndpointUri(upstream))
                 .setMethod(request.method())
-                .setTraceOperation(context.getTraceOperation());
+                .setTraceOperation(context.getTraceOperation())
+                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
+                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
 
         return proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)

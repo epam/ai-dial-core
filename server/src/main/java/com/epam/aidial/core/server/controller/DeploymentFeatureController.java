@@ -43,7 +43,10 @@ public class DeploymentFeatureController {
 
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()
-        return DeploymentController.selectDeployment(context, deploymentId, false, true).map(dep -> {
+        return proxy.getVertx().executeBlocking(() -> proxy.getDeploymentService().findDeployment(context, deploymentId), false).map(dep -> {
+            if (dep instanceof Application application) {
+                dep = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
+            }
             String endpoint = endpointGetter.apply(dep);
             context.setDeployment(dep);
             context.getRequest().body()
@@ -90,7 +93,9 @@ public class DeploymentFeatureController {
     private void sendRequest(String endpoint) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
-                .setMethod(context.getRequest().method());
+                .setMethod(context.getRequest().method())
+                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
+                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
 
         proxy.getClient().request(options)
                 .onSuccess(this::handleProxyRequest)

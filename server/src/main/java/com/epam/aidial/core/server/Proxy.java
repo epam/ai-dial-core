@@ -14,6 +14,8 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ConsentService;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
@@ -37,6 +39,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -78,6 +81,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.HEAD);
 
     private final Vertx vertx;
+    private final HttpClientOptions clientOptions;
     private final HttpClient client;
     private final ConfigStore configStore;
     private final LogStore logStore;
@@ -101,6 +105,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final CodeInterpreterService codeInterpreterService;
     private final HeartbeatService heartbeatService;
     private final UpstreamCacheService upstreamCacheService;
+    private final ConsentService consentService;
+    private final DeploymentService deploymentService;
     private final String version;
 
     @Override

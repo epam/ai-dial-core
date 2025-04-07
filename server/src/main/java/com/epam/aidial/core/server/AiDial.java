@@ -11,6 +11,8 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ConsentService;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
@@ -101,12 +103,13 @@ public class AiDial {
             setupTracing(vertxOptions);
 
             vertx = Vertx.vertx(vertxOptions);
-            client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
+            HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
+            client = vertx.createHttpClient(clientOptions);
 
             LogStore logStore = new GfLogStore(vertx);
 
             if (accessTokenValidator == null) {
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client, clientOptions);
             }
 
             if (storage == null) {
@@ -147,11 +150,16 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new, upstreamCacheService);
 
-            proxy = new Proxy(vertx, client, configStore, logStore,
+            DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService);
+
+            ConsentService consentService = new ConsentService(deploymentService, resourceService);
+
+            proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService, version());
+                    notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
+                    consentService, deploymentService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
