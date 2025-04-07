@@ -103,12 +103,13 @@ public class AiDial {
             setupTracing(vertxOptions);
 
             vertx = Vertx.vertx(vertxOptions);
-            client = vertx.createHttpClient(new HttpClientOptions(settings("client")));
+            HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
+            client = vertx.createHttpClient(clientOptions);
 
             LogStore logStore = new GfLogStore(vertx);
 
             if (accessTokenValidator == null) {
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client);
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client, clientOptions);
             }
 
             if (storage == null) {
@@ -153,7 +154,7 @@ public class AiDial {
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
-            proxy = new Proxy(vertx, client, configStore, logStore,
+            proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,

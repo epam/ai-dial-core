@@ -12,6 +12,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
@@ -70,6 +71,7 @@ public class IdentityProvider {
     private final Vertx vertx;
 
     private final HttpClient client;
+    private final HttpClientOptions clientOptions;
 
     // the duration is how many milliseconds success JWK result should be stored in the cache
     private final long positiveCacheExpirationMs;
@@ -94,11 +96,17 @@ public class IdentityProvider {
 
     public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
+        this(settings, vertx, client, new HttpClientOptions(), jwkProviderSupplier, factory);
+    }
+
+    public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client, HttpClientOptions clientOptions,
+                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
         }
         this.vertx = vertx;
         this.client = client;
+        this.clientOptions = clientOptions;
 
         positiveCacheExpirationMs = settings.getLong("positiveCacheExpirationMs", TimeUnit.MINUTES.toMillis(10));
         negativeCacheExpirationMs = settings.getLong("negativeCacheExpirationMs", TimeUnit.SECONDS.toMillis(10));
@@ -344,7 +352,10 @@ public class IdentityProvider {
     Future<ExtractedClaims> extractClaimsFromUserInfo(String accessToken) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(userInfoUrl)
-                .setMethod(HttpMethod.GET);
+                .setMethod(HttpMethod.GET)
+                .setConnectTimeout(clientOptions.getConnectTimeout())
+                .setIdleTimeout(clientOptions.getIdleTimeout());
+
         Promise<ExtractedClaims> promise = Promise.promise();
         client.request(options).onFailure(promise::fail).onSuccess(request -> {
             request.putHeader(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
