@@ -10,6 +10,7 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -702,7 +703,7 @@ public class ResourceService implements AutoCloseable {
                 ? Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE))
                 : null;
         String resourceType = meta.getUserMetadata().get(RESOURCE_TYPE_ATTRIBUTE);
-        String author = meta.getUserMetadata().get(AUTHOR_ATTRIBUTE);
+        String author = decode(meta.getUserMetadata().get(AUTHOR_ATTRIBUTE));
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
         if (createdAt == null && meta.getCreationDate() != null) {
@@ -867,10 +868,29 @@ public class ResourceService implements AutoCloseable {
             metadata.put(RESOURCE_TYPE_ATTRIBUTE, resourceType);
         }
         if (author != null) {
-            metadata.put(AUTHOR_ATTRIBUTE, author);
+            metadata.put(AUTHOR_ATTRIBUTE, encode(author));
         }
 
         return metadata;
+    }
+
+    private static String encode(String val) {
+        if (val == null) {
+            return null;
+        }
+        return Base58.encode(val.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decode(String val) {
+        if (val == null) {
+            return null;
+        }
+        try {
+            return new String(Base58.decode(val), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // support historical records which were not encoded
+            return val;
+        }
     }
 
     private static String extractEtag(BlobMetadata meta) {
