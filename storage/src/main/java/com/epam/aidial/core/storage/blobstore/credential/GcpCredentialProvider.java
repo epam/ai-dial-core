@@ -2,6 +2,7 @@ package com.epam.aidial.core.storage.blobstore.credential;
 
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.Files;
 import lombok.SneakyThrows;
 import org.jclouds.domain.Credentials;
@@ -10,6 +11,7 @@ import org.jclouds.googlecloud.GoogleCredentialsFromJson;
 import java.io.File;
 import java.time.Instant;
 import java.util.Date;
+import java.util.function.LongSupplier;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -22,6 +24,8 @@ public class GcpCredentialProvider implements CredentialProvider {
     private AccessToken accessToken;
 
     private GoogleCredentials googleCredentials;
+
+    private LongSupplier clock;
 
     /**
      *
@@ -39,7 +43,14 @@ public class GcpCredentialProvider implements CredentialProvider {
         } else {
             // use temporary credential provided by GCP
             this.googleCredentials = GoogleCredentials.getApplicationDefault();
+            this.clock = System::currentTimeMillis;
         }
+    }
+
+    @VisibleForTesting
+    GcpCredentialProvider(GoogleCredentials googleCredentials, LongSupplier clock) {
+        this.clock = clock;
+        this.googleCredentials = googleCredentials;
     }
 
     @Override
@@ -52,8 +63,8 @@ public class GcpCredentialProvider implements CredentialProvider {
 
     @SneakyThrows
     private synchronized Credentials getTemporaryCredentials() {
-        Date expireAt = Date.from(Instant.ofEpochMilli(System.currentTimeMillis() - EXPIRATION_WINDOW_IN_MS));
-        if (accessToken == null || expireAt.after(accessToken.getExpirationTime())) {
+        Date date = Date.from(Instant.ofEpochMilli(clock.getAsLong() - EXPIRATION_WINDOW_IN_MS));
+        if (accessToken == null || accessToken.getExpirationTime().after(date)) {
             accessToken = googleCredentials.refreshAccessToken();
         }
         return new Credentials("", accessToken.getTokenValue());
