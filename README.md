@@ -42,7 +42,7 @@ Build the project with Gradle and Java 17:
 Run the project with Gradle:
 
 ```
-./gradlew run
+./gradlew :server:run
 ```
 
 Or run `com.epam.aidial.core.AIDial` class from your favorite IDE.
