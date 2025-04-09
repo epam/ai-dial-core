@@ -50,8 +50,8 @@ public class AzureCredentialProvider implements CredentialProvider {
     }
 
     private synchronized Credentials getTemporaryCredentials() {
-        OffsetDateTime date = now.get().minusSeconds(EXPIRATION_WINDOW_IN_SEC);
-        if (accessToken == null || accessToken.getExpiresAt().isAfter(date)) {
+        OffsetDateTime date = now.get().plusSeconds(EXPIRATION_WINDOW_IN_SEC);
+        if (accessToken == null || date.isAfter(accessToken.getExpiresAt())) {
             accessToken = defaultCredential.getTokenSync(tokenRequestContext);
         }
         return new Credentials("", accessToken.getToken());

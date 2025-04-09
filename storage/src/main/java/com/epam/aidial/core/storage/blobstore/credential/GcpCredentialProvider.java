@@ -63,8 +63,8 @@ public class GcpCredentialProvider implements CredentialProvider {
 
     @SneakyThrows
     private synchronized Credentials getTemporaryCredentials() {
-        Date date = Date.from(Instant.ofEpochMilli(clock.getAsLong() - EXPIRATION_WINDOW_IN_MS));
-        if (accessToken == null || accessToken.getExpirationTime().after(date)) {
+        Date date = Date.from(Instant.ofEpochMilli(clock.getAsLong() + EXPIRATION_WINDOW_IN_MS));
+        if (accessToken == null || date.after(accessToken.getExpirationTime())) {
             accessToken = googleCredentials.refreshAccessToken();
         }
         return new Credentials("", accessToken.getTokenValue());
