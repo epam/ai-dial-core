@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.security;
 
-import com.epam.aidial.core.server.util.Base58;
+import com.epam.aidial.core.storage.util.Base58;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
