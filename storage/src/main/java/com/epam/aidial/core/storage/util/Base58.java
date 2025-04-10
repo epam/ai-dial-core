@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.storage.util;
 
 /*
  * Copyright 2011 Google Inc.
