@@ -223,22 +223,20 @@ public class AccessService {
 
     public Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (!(context.getDeployment() instanceof Application application)) {
-            return Map.of();
-        }
-        if (!application.hasApplicationTypeSchemaId()) {
-            return Map.of();
-        }
-        List<ResourceDescriptor> applicationFiles = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, context.getProxy().getEncryptionService(),
-                context.getProxy().getResourceService());
-        String location = BucketBuilder.buildInitiatorBucket(context);
-        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
-        for (ResourceDescriptor resource : resources) {
-            if (resource.getBucketLocation().equals(location) && applicationFiles.contains(resource)) {
-                result.put(resource, ResourceAccessType.READ_ONLY);
+        if (context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
+            List<ResourceDescriptor> applicationFiles = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, context.getProxy().getEncryptionService(),
+                    context.getProxy().getResourceService());
+            String location = BucketBuilder.buildInitiatorBucket(context);
+            Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+            for (ResourceDescriptor resource : resources) {
+                if (resource.getBucketLocation().equals(location) && applicationFiles.contains(resource)) {
+                    result.put(resource, ResourceAccessType.READ_ONLY);
+                }
             }
+            return result;
+        } else {
+            return Map.of();
         }
-        return result;
     }
 
     public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
