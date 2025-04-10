@@ -233,7 +233,6 @@ public class AccessService {
                     result.put(resource, ResourceAccessType.READ_ONLY);
                 }
             }
-
             return result;
         } else {
             return Map.of();
