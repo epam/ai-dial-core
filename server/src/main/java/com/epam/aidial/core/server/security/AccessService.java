@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.security;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -7,6 +8,7 @@ import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -47,7 +49,8 @@ public class AccessService {
             this::getReviewAccess,
             this::getPublicAccess,
             this::getSharedAccess,
-            AccessService::getAppSelfAccess);
+            AccessService::getAppSelfAccess,
+            this::getOwnResourcesAccessForChainedSchemaRichApplication);
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
@@ -216,6 +219,24 @@ public class AccessService {
         }
 
         return result;
+    }
+
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        if (context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
+            List<ResourceDescriptor> applicationFiles = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, context.getProxy().getEncryptionService(),
+                    context.getProxy().getResourceService());
+            String location = BucketBuilder.buildInitiatorBucket(context);
+            Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+            for (ResourceDescriptor resource : resources) {
+                if (resource.getBucketLocation().equals(location) && applicationFiles.contains(resource)) {
+                    result.put(resource, ResourceAccessType.READ_ONLY);
+                }
+            }
+            return result;
+        } else {
+            return Map.of();
+        }
     }
 
     public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
