@@ -327,7 +327,7 @@ public class PublicationService {
         }
 
         // publication must contain resources or rule or both
-        if ((publication.getResources() == null || publication.getResources().isEmpty()) && publication.getRules() == null) {
+        if (publication.getResources().isEmpty() && publication.getRules() == null) {
             throw new IllegalArgumentException("Publication must have at least one resource or rule");
         }
 
@@ -381,6 +381,9 @@ public class PublicationService {
     }
 
     private void addCustomApplicationRelatedFiles(ProxyContext context, Publication publication) {
+        if (publication.getResources().isEmpty()) {
+            return;
+        }
         List<String> existingUrls = publication.getResources().stream()
                 .map(Publication.Resource::getSourceUrl)
                 .toList();
