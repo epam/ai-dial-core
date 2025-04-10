@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.data;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -25,6 +27,7 @@ public class Publication {
     String targetFolder;
     Status status;
     Long createdAt;
+    @JsonSetter(nulls = Nulls.SKIP)
     List<Resource> resources = List.of();
     Set<ResourceTypes> resourceTypes;
     List<Rule> rules;
