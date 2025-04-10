@@ -10,11 +10,13 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import lombok.Builder;
 import lombok.Getter;
@@ -56,6 +58,8 @@ import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
+
+    private static final String BASE58_PREFIX = "base58_";
     // Default ETag for old records
     public static final String DEFAULT_ETAG = "0";
     private static final String BODY_ATTRIBUTE = "body";
@@ -224,7 +228,7 @@ public class ResourceService implements AutoCloseable {
             if (metadata != null) {
                 createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
                 updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
-                author = metadata.get(AUTHOR_ATTRIBUTE);
+                author = decode(metadata.get(AUTHOR_ATTRIBUTE));
             }
 
             if (createdAt == null && meta.getCreationDate() != null) {
@@ -702,7 +706,7 @@ public class ResourceService implements AutoCloseable {
                 ? Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE))
                 : null;
         String resourceType = meta.getUserMetadata().get(RESOURCE_TYPE_ATTRIBUTE);
-        String author = meta.getUserMetadata().get(AUTHOR_ATTRIBUTE);
+        String author = decode(meta.getUserMetadata().get(AUTHOR_ATTRIBUTE));
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
         if (createdAt == null && meta.getCreationDate() != null) {
@@ -867,10 +871,40 @@ public class ResourceService implements AutoCloseable {
             metadata.put(RESOURCE_TYPE_ATTRIBUTE, resourceType);
         }
         if (author != null) {
-            metadata.put(AUTHOR_ATTRIBUTE, author);
+            metadata.put(AUTHOR_ATTRIBUTE, encode(author));
         }
 
         return metadata;
+    }
+
+    @VisibleForTesting
+    static String encode(String val) {
+        if (isAllAscii(val)) {
+            return val;
+        }
+        return BASE58_PREFIX + Base58.encode(val.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static boolean isAllAscii(String input) {
+        if (input == null) {
+            return true;
+        }
+        for (int i = 0; i < input.length(); i++) {
+            int c = input.charAt(i);
+            if (c > 0x7F) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @VisibleForTesting
+    static String decode(String val) {
+        if (val == null || !val.startsWith(BASE58_PREFIX)) {
+            return val;
+        }
+        String decoded = val.substring(BASE58_PREFIX.length());
+        return new String(Base58.decode(decoded), StandardCharsets.UTF_8);
     }
 
     private static String extractEtag(BlobMetadata meta) {
