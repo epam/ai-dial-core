@@ -25,7 +25,7 @@ public class Publication {
     String targetFolder;
     Status status;
     Long createdAt;
-    List<Resource> resources;
+    List<Resource> resources = List.of();
     Set<ResourceTypes> resourceTypes;
     List<Rule> rules;
     String etag;

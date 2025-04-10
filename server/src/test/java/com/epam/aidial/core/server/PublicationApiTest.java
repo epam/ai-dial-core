@@ -30,6 +30,20 @@ class PublicationApiTest extends ResourceBaseTest {
             }
             """;
 
+    private static final String PUBLICATION_REQUEST_WITH_RULES_ONLY = """
+            {
+              "name": "Publication name",
+              "targetFolder": "public/folder/",
+              "rules": [
+                {
+                  "source": "roles",
+                  "function": "EQUAL",
+                  "targets": ["user"]
+                }
+              ]
+            }
+            """;
+
     private static final String PUBLICATION_REQUEST_WITH_FILE = """
             {
               "name": "Publication name",
@@ -148,6 +162,13 @@ class PublicationApiTest extends ResourceBaseTest {
 
         response = send(HttpMethod.GET, "/v1/conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
                 null, null, "authorization", "admin");
+        verify(response, 200);
+    }
+
+    @Test
+    void testPublicationCreation_OnlyRules() {
+
+        var response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST_WITH_RULES_ONLY);
         verify(response, 200);
     }
 
