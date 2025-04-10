@@ -221,7 +221,7 @@ public class AccessService {
         return result;
     }
 
-    private Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (!(context.getDeployment() instanceof Application application)) {
             return Map.of();

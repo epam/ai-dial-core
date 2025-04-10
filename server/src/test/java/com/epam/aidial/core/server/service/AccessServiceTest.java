@@ -1,16 +1,24 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -204,5 +212,90 @@ public class AccessServiceTest {
                 }
                 """));
         assertTrue(service.canCreateCodeApps(context));
+    }
+
+    @Test
+    public void testGetOwnResourcesAccessForChainedSchemaRichApplication_ApplicationHasTypeSchemaId() {
+        Application application = mock(Application.class);
+        when(application.hasApplicationTypeSchemaId()).thenReturn(true);
+        when(context.getDeployment()).thenReturn(application);
+
+        String initiatorBucket = "Users/user-sub-id/";
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", initiatorBucket, false);
+
+        Config config = mock(Config.class);
+        when(context.getConfig()).thenReturn(config);
+
+        Proxy proxy = mock(Proxy.class);
+        when(context.getProxy()).thenReturn(proxy);
+        when(proxy.getEncryptionService()).thenReturn(encryptionService);
+        ResourceService resourceService = mock(ResourceService.class);
+        when(proxy.getResourceService()).thenReturn(resourceService);
+
+
+        try (MockedStatic<ApplicationTypeSchemaUtils> appSchemaUtilsMock = Mockito.mockStatic(ApplicationTypeSchemaUtils.class);
+               MockedStatic<BucketBuilder> bucketBuilderMock = Mockito.mockStatic(BucketBuilder.class)) {
+
+            List<ResourceDescriptor> applicationFiles = List.of(resource);
+            appSchemaUtilsMock.when(() -> ApplicationTypeSchemaUtils.getFiles(
+                            config, application, encryptionService, resourceService))
+                    .thenReturn(applicationFiles);
+
+            bucketBuilderMock.when(() -> BucketBuilder.buildInitiatorBucket(context))
+                    .thenReturn(initiatorBucket);
+
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                    new JsonObject("""
+                            {
+                             "admin": {
+                                "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                             },
+                             "createCodeAppRoles": ["admin"]
+                            }
+                            """));
+
+            Map<ResourceDescriptor, Set<ResourceAccessType>> result =
+                    accessService.getOwnResourcesAccessForChainedSchemaRichApplication(Set.of(resource), context);
+
+            assertTrue(result.containsKey(resource));
+            assertEquals(ResourceAccessType.READ_ONLY, result.get(resource));
+        }
+    }
+
+    @Test
+    public void testGetOwnResourcesAccessForChainedSchemaRichApplication_ApplicationHasNoTypeSchemaId() {
+        Application application = mock(Application.class);
+        when(application.hasApplicationTypeSchemaId()).thenReturn(false);
+        when(context.getDeployment()).thenReturn(application);
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getOwnResourcesAccessForChainedSchemaRichApplication(Set.of(resource), context);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void testGetOwnResourcesAccessForChainedSchemaRichApplication_NotAnApplication() {
+        Deployment application = mock(Deployment.class);
+        when(context.getDeployment()).thenReturn(application);
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getOwnResourcesAccessForChainedSchemaRichApplication(Set.of(resource), context);
+
+        assertTrue(result.isEmpty());
     }
 }
