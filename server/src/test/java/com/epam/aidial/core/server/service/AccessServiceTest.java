@@ -234,7 +234,7 @@ public class AccessServiceTest {
 
 
         try (MockedStatic<ApplicationTypeSchemaUtils> appSchemaUtilsMock = Mockito.mockStatic(ApplicationTypeSchemaUtils.class);
-               MockedStatic<BucketBuilder> bucketBuilderMock = Mockito.mockStatic(BucketBuilder.class)) {
+                MockedStatic<BucketBuilder> bucketBuilderMock = Mockito.mockStatic(BucketBuilder.class)) {
 
             List<ResourceDescriptor> applicationFiles = List.of(resource);
             appSchemaUtilsMock.when(() -> ApplicationTypeSchemaUtils.getFiles(
