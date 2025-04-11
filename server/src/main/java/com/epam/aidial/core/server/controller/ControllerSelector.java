@@ -85,6 +85,8 @@ public class ControllerSelector {
 
     private static final Pattern USER_CONSENT = Pattern.compile("^/v1/consent/(?<id>.+?)$");
 
+    private static final Pattern PATTERN_TIME = Pattern.compile("^/v1/time$");
+
     static {
         // GET routes
         get(PATTERN_DEPLOYMENT, (proxy, context, pathMatcher) -> {
@@ -195,6 +197,10 @@ public class ControllerSelector {
                 case "schema" -> controller::handleGetSchema;
                 default -> null;
             };
+        });
+        get(PATTERN_TIME, (proxy, context, pathMatcher) -> {
+            TimeController controller = new TimeController(context);
+            return controller::getCurrentTime;
         });
 
         // POST routes
