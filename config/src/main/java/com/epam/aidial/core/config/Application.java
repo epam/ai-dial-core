@@ -129,5 +129,8 @@ public class Application extends Deployment {
         this.setFunction(source.getFunction());
         this.setApplicationProperties(source.getApplicationProperties());
         this.setApplicationTypeSchemaId(source.getApplicationTypeSchemaId());
+        this.setAuthor(source.getAuthor());
+        this.setCreatedAt(source.getCreatedAt());
+        this.setUpdatedAt(source.getUpdatedAt());
     }
 }
