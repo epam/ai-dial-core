@@ -7,7 +7,7 @@ import java.util.Set;
 
 @Getter
 public class ApplicationTypeSchemaValidationException extends RuntimeException {
-    private Set<ValidationMessage> validationMessages = Set.of();
+    public Set<ValidationMessage> validationMessages = Set.of();
 
     public ApplicationTypeSchemaValidationException(String message, Set<ValidationMessage> validationMessages) {
         super(message);

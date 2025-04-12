@@ -1209,4 +1209,41 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         Assertions.assertEquals(200, response.status());
     }
 
+    @Test
+    void testApplicationWithTypeSchemaCreationAndThenUpdate_Ok_WhenApplicationPropertiesCreatedEmptyAndThenUpdated() {
+
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_files", null, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "application_properties" : null,
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_files", null, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "application_properties" : {
+                        "property1" : "test property11",
+                        "property2" : "test property21"
+                       },
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+    }
+
 }

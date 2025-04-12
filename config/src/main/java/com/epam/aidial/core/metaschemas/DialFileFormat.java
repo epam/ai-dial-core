@@ -17,6 +17,22 @@ public class DialFileFormat implements Format {
     @Override
     public boolean matches(ExecutionContext executionContext, ValidationContext validationContext, JsonNode value) {
         JsonType nodeType = TypeFactory.getValueNodeType(value, validationContext.getConfig());
+        return switch (nodeType) {
+            case STRING -> validateStringNode(validationContext, value);
+            case ARRAY -> {
+                for (JsonNode node : value) {
+                    if (!validateStringNode(validationContext, node)) {
+                        yield false;
+                    }
+                }
+                yield true;
+            }
+            default -> false;
+        };
+    }
+
+    private static boolean validateStringNode(ValidationContext validationContext, JsonNode value) {
+        JsonType nodeType = TypeFactory.getValueNodeType(value, validationContext.getConfig());
         if (nodeType != JsonType.STRING) {
             return false;
         }
