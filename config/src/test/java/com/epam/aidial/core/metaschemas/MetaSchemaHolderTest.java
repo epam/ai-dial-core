@@ -14,6 +14,7 @@ import java.util.Set;
 
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.CUSTOM_APPLICATION_META_SCHEMA_ID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MetaSchemaHolderTest {
@@ -80,7 +81,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -108,7 +109,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -135,7 +136,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -162,7 +163,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -199,7 +200,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -227,7 +228,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -280,7 +281,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -307,7 +308,7 @@ public class MetaSchemaHolderTest {
         JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
         Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
         assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                + " meta schema because of a single reason");
+                                                             + " meta schema because of a single reason");
     }
 
     @Test
@@ -357,6 +358,88 @@ public class MetaSchemaHolderTest {
                   "file": {\
                     "type": "string",\
                     "format": "dial-file-encoded",\
+                    "dial:meta": {\
+                      "dial:propertyKind": "client",\
+                      "dial:propertyOrder": 1\
+                    }\
+                  }\
+                },\
+                "required": ["file"]\
+                }""";
+        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
+        Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
+        assertTrue(metaSchemaValidationMessages.isEmpty(), "Custom schema should be valid against meta schema");
+    }
+
+
+    @Test
+    void customSchema_validatesAgainstMetaSchema_fails_wrongDialFileFormat() throws Exception {
+        final String customSchemaStr = """
+                {\
+                "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
+                "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
+                "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
+                "dial:applicationTypeDisplayName": "Specific Application Type",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
+                "properties": {\
+                  "file": {\
+                    "oneOf": [\
+                        {\
+                            "type": "string",\
+                            "format": "dial-file-encoded",\
+                            "dial:file": true\
+                        },\
+                        {\
+                            "type": "array",\
+                            "items": {\
+                                "type": "string",\
+                                "dial:file": true\
+                            }\
+                        },\
+                        {\
+                            "type": "null"\
+                        }],\
+                    "dial:meta": {\
+                      "dial:propertyKind": "client",\
+                      "dial:propertyOrder": 1\
+                    }\
+                  }\
+                },\
+                "required": ["file"]\
+                }""";
+        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
+        Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
+        assertFalse(metaSchemaValidationMessages.isEmpty(), "Custom schema should be invalid against meta schema with bad dial file format");
+    }
+
+    @Test
+    void customSchema_validatesAgainstMetaSchema_om_correctDialFileOneOfFormat() throws Exception {
+        final String customSchemaStr = """
+                {\
+                "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
+                "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
+                "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
+                "dial:applicationTypeDisplayName": "Specific Application Type",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
+                "properties": {\
+                  "file": {\
+                    "oneOf": [\
+                        {\
+                            "type": "string",\
+                            "format": "dial-file-encoded",\
+                            "dial:file": true\
+                        },\
+                        {\
+                            "type": "array",\
+                            "items": {\
+                                "type": "string",\
+                                "dial:file": true,\
+                                "format": "dial-file-encoded"\
+                            }\
+                        },\
+                        {\
+                            "type": "null"\
+                        }],\
                     "dial:meta": {\
                       "dial:propertyKind": "client",\
                       "dial:propertyOrder": 1\
