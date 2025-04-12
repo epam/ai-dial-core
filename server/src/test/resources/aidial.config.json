@@ -185,7 +185,7 @@
       "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
       "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
       "dial:applicationTypeDisplayName": "Specific Application Type",
-      "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",
+      "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
       "properties": {
         "property1": {
           "title": "Property 1",

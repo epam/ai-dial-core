@@ -42,7 +42,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "string",\
@@ -68,7 +68,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "string",\
@@ -91,7 +91,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "object",\
@@ -119,7 +119,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "string",\
@@ -146,7 +146,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "string",\
@@ -173,7 +173,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "foo": {\
                     "type": "object",\
@@ -210,7 +210,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "string",\
@@ -237,7 +237,7 @@ public class MetaSchemaHolderTest {
                 "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "string",\
@@ -263,7 +263,7 @@ public class MetaSchemaHolderTest {
                 "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "properties": {\
                   "file": {\
                     "type": "string",\
@@ -318,7 +318,7 @@ public class MetaSchemaHolderTest {
                 "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
                 "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
                 "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",\
+                "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
                 "dial:applicationTypeConfigurationEndpoint": "!wrong",\
                 "dial:applicationTypeRateEndpoint": "!wrong",\
                 "dial:applicationTypeTokenizeEndpoint": "!wrong",\
