@@ -182,15 +182,19 @@ public class ResourceController extends AccessControlBaseController {
     private void validateCustomApplication(Application application) {
         try {
             checkCreateCodeApp(application);
-            Config config = context.getConfig();
-            List<ResourceDescriptor> files = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService,
-                    resourceService);
-            files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
-                    .findAny().ifPresent(file -> {
-                        throw new HttpException(BAD_REQUEST, "No read access to file: " + file.getUrl());
-                    });
-        } catch (ValidationException | IllegalArgumentException | ApplicationTypeSchemaValidationException e) {
-            throw new HttpException(BAD_REQUEST, "Custom application validation failed", e);
+            if (application.getApplicationProperties() != null) {
+                Config config = context.getConfig();
+                List<ResourceDescriptor> files = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService,
+                        resourceService);
+                files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
+                        .findAny().ifPresent(file -> {
+                            throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
+                        });
+            }
+        } catch (IllegalArgumentException | ValidationException e) {
+            throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.getMessage()), e);
+        } catch (ApplicationTypeSchemaValidationException e) {
+            throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.validationMessages), e);
         } catch (ApplicationTypeResourceException e) {
             throw new HttpException(FORBIDDEN, "Failed to access application resource " + e.getResourceUri(), e);
         } catch (ApplicationTypeSchemaProcessingException e) {

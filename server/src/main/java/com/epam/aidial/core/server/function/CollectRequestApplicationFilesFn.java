@@ -42,7 +42,7 @@ public class CollectRequestApplicationFilesFn extends BaseRequestFunction<Object
         } catch (HttpException ex) {
             throw ex;
         } catch (ApplicationTypeResourceException ex) {
-            throw new HttpException(HttpStatus.FORBIDDEN, ex.getMessage());
+            throw new HttpException(HttpStatus.FORBIDDEN, ex.getMessage() + " : " + ex.getResourceUri());
         } catch (Exception e) {
             throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
         }

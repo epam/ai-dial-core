@@ -64,11 +64,15 @@ public class DialFileKeyword implements Keyword {
                 CollectorContext collectorContext = executionContext.getCollectorContext();
                 ListCollector<String> fileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                         .computeIfAbsent(ListCollector.FileCollectorType.ALL_FILES.getValue(), k -> new ListCollector<String>());
-                fileCollector.combine(List.of(jsonNode.asText()));
+                String nodeValue = jsonNode.asText();
+                if (nodeValue == null || nodeValue.isEmpty()) {
+                    return Set.of();
+                }
+                fileCollector.combine(List.of(nodeValue));
                 if (isServerProp) {
                     ListCollector<String> serverFileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                             .computeIfAbsent(ListCollector.FileCollectorType.ONLY_SERVER_FILES.getValue(), k -> new ListCollector<String>());
-                    serverFileCollector.combine(List.of(jsonNode.asText()));
+                    serverFileCollector.combine(List.of(nodeValue));
                 }
             }
             return Set.of();

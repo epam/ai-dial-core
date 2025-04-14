@@ -19,24 +19,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class DialFileFormatTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String customSchemaStr = "{"
-            + "\"$schema\": \"https://dial.epam.com/application_type_schemas/schema#\","
-            + "\"$id\": \"https://mydial.epam.com/custom_application_schemas/specific_application_type\","
-            + "\"dial:applicationTypeEditorUrl\": \"https://mydial.epam.com/specific_application_type_editor\","
-            + "\"dial:applicationTypeDisplayName\": \"Specific Application Type\","
-            + "\"dial:applicationTypeCompletionEndpoint\": \"http://specific_application_service/opeani/v1/completion\","
-            + "\"properties\": {"
-            + "  \"file\": {"
-            + "    \"type\": \"string\","
-            + "    \"format\": \"dial-file-encoded\","
-            + "    \"dial:meta\": {"
-            + "      \"dial:propertyKind\": \"client\","
-            + "      \"dial:propertyOrder\": 1"
-            + "    }"
-            + "  }"
-            + "},"
-            + "\"required\": [\"file\"]"
-            + "}";
+    private static final String customSchemaStr = """
+            {\
+            "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
+            "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
+            "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
+            "dial:applicationTypeDisplayName": "Specific Application Type",\
+            "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",\
+            "properties": {\
+              "file": {\
+                "type": "string",\
+                "format": "dial-file-encoded",\
+                "dial:meta": {\
+                  "dial:propertyKind": "client",\
+                  "dial:propertyOrder": 1\
+                }\
+              }\
+            },\
+            "required": ["file"]\
+            }""";
     private JsonSchemaFactory schemaFactory;
 
     @BeforeEach
