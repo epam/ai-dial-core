@@ -188,7 +188,7 @@ public class ResourceController extends AccessControlBaseController {
                         resourceService);
                 files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
                         .findAny().ifPresent(file -> {
-                            throw new HttpException(BAD_REQUEST, "No read access to file: " + file.getUrl());
+                            throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
                         });
             }
         } catch (IllegalArgumentException | ValidationException e) {
