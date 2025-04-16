@@ -197,6 +197,9 @@ public class ApplicationService {
         List<Application> applications = new ArrayList<>();
         String nextToken = null;
 
+        log.info("start listing");
+        long startListingTs = System.currentTimeMillis();
+
         do {
             ResourceFolderMetadata folder = resourceService.getFolderMetadata(resource, nextToken, PAGE_SIZE, true);
             if (folder == null) {
@@ -208,6 +211,8 @@ public class ApplicationService {
             for (MetadataBase meta : folder.getItems()) {
                 if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceTypes.APPLICATION) {
                     try {
+                        long startGettingAppTs = System.currentTimeMillis();
+                        log.info("start getting application");
                         ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = getApplication(item).getValue();
                         boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
@@ -217,6 +222,7 @@ public class ApplicationService {
                         }
                         application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);
                         applications.add(application);
+                        log.info("end getting application: {}", System.currentTimeMillis() - startGettingAppTs);
                     } catch (ResourceNotFoundException ignore) {
                         // deleted while fetching
                     }
@@ -225,6 +231,8 @@ public class ApplicationService {
 
             nextToken = folder.getNextToken();
         } while (nextToken != null);
+
+        log.info("end listing: {}", System.currentTimeMillis() - startListingTs);
 
         return applications;
     }
