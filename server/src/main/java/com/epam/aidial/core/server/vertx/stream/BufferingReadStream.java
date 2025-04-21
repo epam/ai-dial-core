@@ -181,11 +181,14 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     private synchronized void handleEnd(Void ignored) {
         ended = true;
-        endStream.tryComplete();
         if (streamHandlerFuture == null) {
+            endStream.tryComplete();
             notifyOnEnd(ignored);
         } else {
-            streamHandlerFuture.onComplete(ignore -> notifyOnEnd(ignored));
+            streamHandlerFuture.onComplete(ignore -> {
+                endStream.tryComplete();
+                notifyOnEnd(ignored);
+            });
         }
     }
 
