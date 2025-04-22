@@ -409,7 +409,7 @@ public class DeploymentPostController {
                 .endOnSuccess(false)
                 .to(response)
                 .onSuccess(ignored -> handleResponse(responseStream))
-                .onFailure(this::handleResponseError);
+                .onFailure(error -> handleResponseError(error, responseStream));
     }
 
     private boolean isRetriableError(int statusCode) {
@@ -562,34 +562,23 @@ public class DeploymentPostController {
     /**
      * Called when proxy failed to send response to the client.
      */
-    private void handleResponseError(Throwable error) {
+    private void handleResponseError(Throwable error, BufferingReadStream responseStream) {
         log.warn("Can't send response to client. Trace: {}. Span: {}. Error:",
                 context.getTraceId(), context.getSpanId(), error);
-
-        context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-        finalizeRequest();
-    }
-
-    private static boolean isValidDeploymentApi(Deployment deployment, String deploymentApi) {
-        ModelType type = switch (deploymentApi) {
-            case "completions" -> ModelType.COMPLETION;
-            case "chat/completions" -> ModelType.CHAT;
-            case "embeddings" -> ModelType.EMBEDDING;
-            default -> null;
-        };
-
-        if (type == null) {
-            return false;
-        }
-
-        // Models support all APIs
-        if (deployment instanceof Model model) {
-            return type == model.getType();
-        }
-
-        // Assistants and applications only support chat API
-        return type == ModelType.CHAT;
+        // make sure we collect token usage in case if client accidentally closed the connection
+        responseStream.endStreamFuture()
+                .onFailure(ignore -> {
+                    context.getProxyRequest().reset(); // drop connection to stop origin response
+                })
+                .compose(ignore -> {
+                    Buffer responseBody = context.getResponseStream().getContent();
+                    context.setResponseBody(responseBody);
+                    context.setResponseBodyTimestamp(System.currentTimeMillis());
+                    return collectTokenUsage(responseBody);
+                })
+                .onSuccess(ignored -> proxy.getLogStore().save(context))
+                .onComplete(ignored -> finalizeRequest());
     }
 
     private static String buildUri(ProxyContext context) {

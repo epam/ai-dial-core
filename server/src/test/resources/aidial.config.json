@@ -134,6 +134,13 @@
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
       ],
       "userRoles": ["power-user"]
+    },
+    "gpt-3-turbo": {
+      "type": "chat",
+      "endpoint" : "http://localhost:4848/chat/completions",
+      "upstreams": [
+        {"endpoint": "http://localhost:7001", "key": "modelKey"}
+      ]
     }
   },
   "keys": {
@@ -164,7 +171,8 @@
         "forecast": {},
         "calculator": {},
         "search-assistant": {},
-        "app": {}
+        "app": {},
+        "gpt-3-turbo": {"minute": "100", "day": "1000"}
       }
     },
     "vstore_user": {
