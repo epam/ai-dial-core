@@ -33,6 +33,9 @@ public class Application extends Deployment {
         return applicationTypeSchemaId != null;
     }
 
+    @JsonIgnore
+    public Boolean IsInvalidApplication = null;
+
     @Data
     @Accessors(chain = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -111,6 +114,7 @@ public class Application extends Deployment {
 
     public Application(Application source) {
         super();
+        this.setIsInvalidApplication(source.getIsInvalidApplication());
         this.setName(source.getName());
         this.setEndpoint(source.getEndpoint());
         this.setDisplayName(source.getDisplayName());

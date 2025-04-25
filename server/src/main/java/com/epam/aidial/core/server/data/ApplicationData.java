@@ -23,6 +23,9 @@ public class ApplicationData extends DeploymentData {
     }
 
     @Nullable
+    public Boolean IsInvalidApplication = null;
+
+    @Nullable
     private Map<String, Object> applicationProperties; //all custom application properties will land there
 
     @Nullable
