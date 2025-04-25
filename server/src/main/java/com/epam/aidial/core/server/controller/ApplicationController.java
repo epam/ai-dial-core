@@ -13,9 +13,12 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
+import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -49,15 +52,11 @@ public class ApplicationController {
     }
 
     public Future<?> getApplication(String applicationId) {
-        boolean propertyFilteringRequired = !applicationId.equals(context.getDecodedSourceDeployment());
         vertx.executeBlocking(() -> deploymentService.findDeployment(context, applicationId), false)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
-                        if (propertyFilteringRequired) {
-                            application = ApplicationTypeSchemaUtils.filterCustomClientProperties(context.getConfig(), application);
-                        }
-                        application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
-                        return application;
+                        boolean propertyFilteringRequired = !applicationId.equals(context.getDecodedSourceDeployment());
+                        return modifySchemaRichApplication(application, propertyFilteringRequired);
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
@@ -66,6 +65,20 @@ public class ApplicationController {
                 .onFailure(this::respondError);
 
         return Future.succeededFuture();
+    }
+
+    private Application modifySchemaRichApplication(Application application, boolean propertyFilteringRequired) {
+        try {
+            if (propertyFilteringRequired) {
+                application = ApplicationTypeSchemaUtils.filterCustomClientProperties(context.getConfig(), application);
+            }
+            application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
+        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+            log.error("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+            application.setApplicationProperties(null);
+            application.setIsInvalidApplication(true);
+        }
+        return application;
     }
 
     public Future<?> getApplications() {
@@ -77,10 +90,7 @@ public class ApplicationController {
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
                     boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), UrlUtil.decodePath(application.getName()));
-                    if (!applicationRequestInfoAboutItSelf) {
-                        application = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
-                    }
-                    application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application);
+                    application = this.modifySchemaRichApplication(application, applicationRequestInfoAboutItSelf);
                     list.add(application);
                 }
             }
