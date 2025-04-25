@@ -55,8 +55,8 @@ public class ApplicationController {
         vertx.executeBlocking(() -> deploymentService.findDeployment(context, applicationId), false)
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
-                        boolean propertyFilteringRequired = !applicationId.equals(context.getDecodedSourceDeployment());
-                        return modifySchemaRichApplication(application, propertyFilteringRequired);
+                        boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
+                        return modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
