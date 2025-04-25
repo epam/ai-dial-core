@@ -12,10 +12,13 @@ import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
+import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
@@ -131,12 +134,7 @@ public class ApplicationService {
 
             if (meta instanceof ResourceItemMetadata) {
                 try {
-                    Application application = getApplication(resource).getValue();
-                    boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(),
-                            resource.getDecodedUrl());
-                    if (!applicationRequestInfoAboutItSelf) {
-                        application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, application);
-                    }
+                    Application application = extractApplicationFromResource(resource, resource, context, meta);
                     list.add(application);
                 } catch (ResourceNotFoundException ignore) {
                     // skip shared app which might be deleted incidentally
@@ -209,13 +207,7 @@ public class ApplicationService {
                 if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceTypes.APPLICATION) {
                     try {
                         ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-                        Application application = getApplication(item).getValue();
-                        boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
-                                resource.getDecodedUrl());
-                        if (applicationRequestInfoAboutItSelf) {
-                            application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
-                        }
-                        application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);
+                        Application application = extractApplicationFromResource(resource, item, ctx, meta);
                         applications.add(application);
                     } catch (ResourceNotFoundException ignore) {
                         // deleted while fetching
@@ -227,6 +219,26 @@ public class ApplicationService {
         } while (nextToken != null);
 
         return applications;
+    }
+
+    private Application extractApplicationFromResource(ResourceDescriptor resource, ResourceDescriptor item, ProxyContext ctx, MetadataBase meta) {
+        Application application = getApplication(item).getValue();
+        return modifySchemRichApplication(resource, ctx, application, item);
+    }
+
+    private static Application modifySchemRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application, ResourceDescriptor item) {
+        try {
+            boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
+                    resource.getDecodedUrl());
+            if (applicationRequestInfoAboutItSelf) {
+                application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
+            }
+            application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);
+        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+            application.setApplicationProperties(null);
+            application.setIsInvalidApplication(true);
+        }
+        return application;
     }
 
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author, Application application) {
@@ -671,8 +683,8 @@ public class ApplicationService {
 
     private String encodeTargetFolder(ResourceDescriptor resource, String id) {
         String location = resource.getBucketLocation()
-                + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR
-                + id + ResourceDescriptor.PATH_SEPARATOR;
+                          + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR
+                          + id + ResourceDescriptor.PATH_SEPARATOR;
 
         String name = encryptionService.encrypt(location);
         return ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, name, location, null).getUrl();

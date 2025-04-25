@@ -34,7 +34,7 @@ public class Application extends Deployment {
     }
 
     @JsonIgnore
-    public Boolean IsInvalidApplication = null;
+    public Boolean isInvalidApplication = null;
 
     @Data
     @Accessors(chain = true)
