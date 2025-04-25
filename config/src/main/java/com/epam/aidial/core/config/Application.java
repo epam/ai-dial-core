@@ -3,6 +3,7 @@ package com.epam.aidial.core.config;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
@@ -33,8 +34,8 @@ public class Application extends Deployment {
         return applicationTypeSchemaId != null;
     }
 
-    @JsonIgnore
-    public Boolean isInvalidApplication = null;
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Boolean isInvalidApplication = null;
 
     @Data
     @Accessors(chain = true)
