@@ -90,7 +90,7 @@ public class ApplicationController {
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
                     boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), UrlUtil.decodePath(application.getName()));
-                    application = this.modifySchemaRichApplication(application, applicationRequestInfoAboutItSelf);
+                    application = this.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     list.add(application);
                 }
             }
