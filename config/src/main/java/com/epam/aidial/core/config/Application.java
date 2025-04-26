@@ -3,6 +3,7 @@ package com.epam.aidial.core.config;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
@@ -32,6 +33,16 @@ public class Application extends Deployment {
     public Boolean hasApplicationTypeSchemaId() {
         return applicationTypeSchemaId != null;
     }
+
+    /**
+     * Indicates whether the application is invalid.
+     * Only applicable for schema-rich applications.
+     * Set to true when validation fails (e.g., missing required properties or schema violations).
+     * Null when the application is valid.
+     * This is a read-only property (not parsed from JSON).
+     */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Boolean invalid = null;
 
     @Data
     @Accessors(chain = true)
@@ -111,6 +122,7 @@ public class Application extends Deployment {
 
     public Application(Application source) {
         super();
+        this.setInvalid(source.getInvalid());
         this.setName(source.getName());
         this.setEndpoint(source.getEndpoint());
         this.setDisplayName(source.getDisplayName());

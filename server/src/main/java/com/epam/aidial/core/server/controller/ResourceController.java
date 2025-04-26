@@ -164,7 +164,14 @@ public class ResourceController extends AccessControlBaseController {
             features.setTokenizeEndpoint(null);
             features.setTruncatePromptEndpoint(null);
         }
-        return ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+        try {
+            return ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+            log.error("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+            application.setApplicationProperties(null);
+            application.setInvalid(true);
+            return application;
+        }
     }
 
     private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescriptor descriptor, EtagHeader etag) {

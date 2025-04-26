@@ -25,6 +25,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.getMetaschemaBuilder;
 
-
+@Slf4j
 @UtilityClass
 public class ApplicationTypeSchemaUtils {
 
@@ -292,5 +293,19 @@ public class ApplicationTypeSchemaUtils {
                 ((ObjectNode) parent).put(fieldName, replacement);
             }
         }
+    }
+
+    public static Application modifySchemaRichApplication(Application application, boolean propertyFilteringRequired, ProxyContext context) {
+        try {
+            if (propertyFilteringRequired) {
+                application = ApplicationTypeSchemaUtils.filterCustomClientProperties(context.getConfig(), application);
+            }
+            application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
+        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+            log.error("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+            application.setApplicationProperties(null);
+            application.setInvalid(true);
+        }
+        return application;
     }
 }

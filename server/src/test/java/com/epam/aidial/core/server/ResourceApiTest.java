@@ -1,5 +1,10 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
@@ -9,6 +14,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Slf4j
@@ -422,5 +428,103 @@ class ResourceApiTest extends ResourceBaseTest {
                   }
                 """);
         Assertions.assertEquals(400, response.status());
+    }
+
+    @Test
+    void testApplicationWithTypeSchemaGet_ReturnedInvalid_WhenAppDoesNotConformToSchema() {
+        //create valid app
+        Response response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt", null, """
+                  Test1
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt", null, """
+                  Test2
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", null, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt",
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        //share valid app
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail",
+                      "permissions": [ "READ" ]
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        //broke the app
+        ResourceDescriptor descriptor =
+                ResourceDescriptorFactory.fromAnyUrl("applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", this.dial.getEncryptionService());
+
+        this.dial.getResourceService().putResource(descriptor, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {},
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """, EtagHeader.ANY);
+
+        //making get request from other user and check invalid flag
+
+        response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", null, null, "Api-key", "proxyKey2");
+
+        verifyJsonNotExact(response, 200, """
+                {
+                    "user_roles" : [ "Admin" ],
+                    "display_name" : "test_app",
+                    "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                    "description" : "My application description",
+                    "forward_auth_token" : false,
+                    "defaults" : { },
+                    "interceptors" : [ ],
+                    "description_keywords" : [ ],
+                    "max_retry_attempts" : 1,
+                    "author" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore",
+                    "dependencies" : [ ],
+                    "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                    "invalid" : true
+                }
+                """);
     }
 }
