@@ -89,6 +89,7 @@ public class AiDial {
 
     private BlobStorage storage;
     private ResourceService resourceService;
+    private EncryptionService encryptionService;
 
     private LongSupplier clock = System::currentTimeMillis;
     private Supplier<String> generator = () -> UUID.randomUUID().toString().replace("-", "");
@@ -116,7 +117,7 @@ public class AiDial {
                 Storage storageConfig = Json.decodeValue(settings("storage").toBuffer(), Storage.class);
                 storage = new BlobStorage(storageConfig);
             }
-            EncryptionService encryptionService = new EncryptionService(settings("encryption"));
+            encryptionService = new EncryptionService(settings("encryption"));
 
             redis = CacheClientFactory.create(toJsonNode(settings("redis")));
 
