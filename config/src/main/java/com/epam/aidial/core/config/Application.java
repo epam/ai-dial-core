@@ -34,8 +34,15 @@ public class Application extends Deployment {
         return applicationTypeSchemaId != null;
     }
 
+    /**
+     * Indicates whether the application is invalid.
+     * Only applicable for schema-rich applications.
+     * Set to true when validation fails (e.g., missing required properties or schema violations).
+     * Null when the application is valid.
+     * This is a read-only property (not parsed from JSON).
+     */
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
-    private Boolean isInvalidApplication = null;
+    private Boolean invalid = null;
 
     @Data
     @Accessors(chain = true)
@@ -115,7 +122,7 @@ public class Application extends Deployment {
 
     public Application(Application source) {
         super();
-        this.setIsInvalidApplication(source.getIsInvalidApplication());
+        this.setInvalid(source.getInvalid());
         this.setName(source.getName());
         this.setEndpoint(source.getEndpoint());
         this.setDisplayName(source.getDisplayName());

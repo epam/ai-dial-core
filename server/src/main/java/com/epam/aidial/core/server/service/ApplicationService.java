@@ -237,7 +237,7 @@ public class ApplicationService {
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
             log.error("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
             application.setApplicationProperties(null);
-            application.setIsInvalidApplication(true);
+            application.setInvalid(true);
         }
         return application;
     }
