@@ -684,8 +684,8 @@ public class ApplicationService {
 
     private String encodeTargetFolder(ResourceDescriptor resource, String id) {
         String location = resource.getBucketLocation()
-                          + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR
-                          + id + ResourceDescriptor.PATH_SEPARATOR;
+                + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR
+                + id + ResourceDescriptor.PATH_SEPARATOR;
 
         String name = encryptionService.encrypt(location);
         return ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, name, location, null).getUrl();
