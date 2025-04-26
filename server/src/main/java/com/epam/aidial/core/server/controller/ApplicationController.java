@@ -31,6 +31,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import static com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils.modifySchemaRichApplication;
+
 @Slf4j
 public class ApplicationController {
 
@@ -56,7 +58,7 @@ public class ApplicationController {
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
-                        return modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
+                        return modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf, context);
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
@@ -67,19 +69,7 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-    private Application modifySchemaRichApplication(Application application, boolean propertyFilteringRequired) {
-        try {
-            if (propertyFilteringRequired) {
-                application = ApplicationTypeSchemaUtils.filterCustomClientProperties(context.getConfig(), application);
-            }
-            application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
-        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
-            log.error("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
-            application.setApplicationProperties(null);
-            application.setInvalid(true);
-        }
-        return application;
-    }
+
 
     public Future<?> getApplications() {
         Config config = context.getConfig();
@@ -90,7 +80,7 @@ public class ApplicationController {
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
                     boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), UrlUtil.decodePath(application.getName()));
-                    application = this.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
+                    application = modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf, context);
                     list.add(application);
                 }
             }

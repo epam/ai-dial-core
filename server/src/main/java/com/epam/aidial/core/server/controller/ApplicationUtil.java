@@ -13,7 +13,7 @@ public class ApplicationUtil {
 
     public ApplicationData mapApplication(Application application) {
         ApplicationData data = new ApplicationData();
-        data.setIsInvalidApplication(application.getInvalid());
+        data.setInvalid(application.getInvalid());
         data.setId(application.getName());
         data.setApplication(application.getName());
         data.setDisplayName(application.getDisplayName());
