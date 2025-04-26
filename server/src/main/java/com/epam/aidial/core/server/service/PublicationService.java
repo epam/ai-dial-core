@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.UserMetadata;
@@ -27,6 +28,7 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.util.Collection;
@@ -44,6 +46,7 @@ import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils.replaceCustomAppFiles;
 
+@Slf4j
 @RequiredArgsConstructor
 public class PublicationService {
 
@@ -402,29 +405,85 @@ public class PublicationService {
                         return Stream.empty();
                     }
                     String targetFolder = PublicationUtil.buildTargetFolderForCustomAppFiles(resource.getTargetUrl(), encryption);
-                    return ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, encryption, resourceService)
-                            .stream()
-                            .filter(sourceDescriptor -> !existingUrls.contains(sourceDescriptor.getUrl()) && !sourceDescriptor.isPublic())
-                            .map(sourceDescriptor -> {
-                                String fileName = sourceDescriptor.getName();
-                                int count = fileNameCounter.getOrDefault(fileName, 0) + 1;
-                                fileNameCounter.put(fileName, count);
 
-                                if (count > 1) {
-                                    fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
+                    Stream<ResourceDescriptor> allDescriptors = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, encryption, resourceService)
+                            .stream()
+                            .flatMap(sourceDescriptor -> {
+                                // Handle folders by recursively getting all files
+                                if (sourceDescriptor.isFolder()) {
+                                    return getFilesFromFolder(sourceDescriptor);
                                 }
 
-                                return new Publication.Resource()
-                                        .setAction(resource.getAction())
-                                        .setSourceUrl(sourceDescriptor.getUrl())
-                                        .setTargetUrl(ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE,
-                                                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PATH_SEPARATOR,
-                                                targetFolder + fileName).getUrl());
+                                return Stream.of(sourceDescriptor);
                             });
+
+                    // First filter for distinct files before applying other filters
+                    return allDescriptors
+                            .distinct()
+                            .filter(sourceDescriptor -> !existingUrls.contains(sourceDescriptor.getUrl()) && !sourceDescriptor.isPublic())
+                            .map(sourceDescriptor -> createResourceWithUniqueFileName(sourceDescriptor,
+                                    targetFolder, fileNameCounter, resource.getAction()));
                 })
                 .toList();
 
         publication.getResources().addAll(linkedResourcesToPublish);
+    }
+
+    private Stream<ResourceDescriptor> getFilesFromFolder(ResourceDescriptor folderDescriptor) {
+        try {
+            // Get metadata for all files in the folder (recursively)
+            ResourceFolderMetadata folderMetadata =
+                     resourceService.getFolderMetadata(folderDescriptor, null, 1000, true);
+
+            if (folderMetadata == null || folderMetadata.getItems() == null) {
+                return Stream.empty();
+            }
+
+            // Process files directly
+            Stream<ResourceDescriptor> fileDescriptors = folderMetadata.getItems().stream()
+                    .filter(item -> item.getNodeType() != NodeType.FOLDER)
+                    .map(item -> ResourceDescriptorFactory.fromPrivateUrl(item.getUrl(), encryption));
+
+            // If resourceService.getMetadata with recursive=true doesn't actually return all nested files,
+            // we need to recursively process subfolders
+            Stream<ResourceDescriptor> subfolderFiles = folderMetadata.getItems().stream()
+                    .filter(item -> item.getNodeType() == NodeType.FOLDER)
+                    .map(item -> ResourceDescriptorFactory.fromPrivateUrl(item.getUrl(), encryption))
+                    .flatMap(this::getFilesFromFolder);
+
+            // Combine files from current folder and all subfolders
+            return Stream.concat(fileDescriptors, subfolderFiles);
+        } catch (Exception e) {
+            // Log error but continue processing
+            log.warn("Failed to process folder: {}", folderDescriptor.getUrl(), e);
+            return Stream.empty();
+        }
+    }
+
+
+    private Publication.Resource createResourceWithUniqueFileName(ResourceDescriptor sourceDescriptor,
+                                                                  String targetFolder,
+                                                                  Map<String, Integer> fileNameCounter,
+                                                                  Publication.ResourceAction action) {
+        String fileName = sourceDescriptor.getName();
+        int count = fileNameCounter.getOrDefault(fileName, 0) + 1;
+        fileNameCounter.put(fileName, count);
+
+        if (count > 1) {
+            // Add counter to filename while preserving extension
+            fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
+        }
+
+        String targetUrl = ResourceDescriptorFactory.fromDecoded(
+                sourceDescriptor.getType(),
+                ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PATH_SEPARATOR,
+                targetFolder + fileName).getUrl();
+
+        return new Publication.Resource()
+                .setAction(action)
+                .setSourceUrl(sourceDescriptor.getUrl())
+                .setTargetUrl(targetUrl);
     }
 
     private void validateResourceForAddition(ProxyContext context, Publication.Resource resource, String targetFolder,

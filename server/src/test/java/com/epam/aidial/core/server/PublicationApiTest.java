@@ -1727,4 +1727,121 @@ class PublicationApiTest extends ResourceBaseTest {
         verify(response, 200);
 
     }
+
+    @Test
+    void testApplicationWithTypeSchemaPublish_Ok_FolderWithSubfolder() {
+        Response response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/test_file1.txt".formatted(bucket), null, """
+                  Test1
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/test_file2.txt".formatted(bucket), null, """
+                  Test2
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/abc/test_file1.txt".formatted(bucket), null, """
+                  Test3
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/abc/test_file2.txt".formatted(bucket), null, """
+                  Test4
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/%s/test_app2".formatted(bucket), null, """
+                  {
+                      "displayName": "test_app2",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/%s/xyz/"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """.formatted(bucket));
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/%s/test_app2",
+                          "targetUrl": "applications/public/folder/with_apps/test_app2"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        String correctResponse = """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name" : "Publication of my application",
+                  "targetFolder" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                            "action" : "ADD",
+                            "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app2",
+                            "targetUrl" : "applications/public/folder/with_apps/test_app2",
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file1_2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file1_2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file2_2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file2_2.txt"
+                  } ],
+                  "resourceTypes" : [ "FILE", "APPLICATION" ],
+                  "rules" : [ {
+                    "function" : "TRUE",
+                    "source" : "roles",
+                    "targets" : null
+                  } ],
+                  "author" : "EPM-RTC-GPT"
+                }""";
+
+
+        verifyJsonNotExact(response,
+                200, correctResponse);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+    }
 }
