@@ -566,7 +566,10 @@ public class FileApiTest extends ResourceBaseTest {
                                                "contentType" : "application/x-binary"
                                              }
                                             """, response.body());
-                                    Assertions.assertNotNull(response.getHeader(HttpHeaders.ETAG));
+                                    String etag = response.getHeader(HttpHeaders.ETAG);
+                                    Assertions.assertNotNull(etag);
+                                    Assertions.assertFalse(etag.startsWith("\""));
+                                    Assertions.assertFalse(etag.endsWith("\""));
 
                                     checkpoint.flag();
                                     promise.complete();
