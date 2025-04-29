@@ -27,6 +27,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
+import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
@@ -290,7 +291,7 @@ public class ResourceService implements AutoCloseable {
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
                 .setAuthor(result.author)
-                .setEtag(result.etag());
+                .setEtag(result.etag);
     }
 
     public boolean hasResource(ResourceDescriptor descriptor) {
@@ -483,11 +484,12 @@ public class ResourceService implements AutoCloseable {
             flushToBlobStore(redisKey);
 
             MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
+            List<MultipartPart> parts = resourceUpload.getParts();
 
             long updatedAt = resourceUpload.getUpdatedAt();
             Long createdAt = resourceUpload.getCreatedAt();
 
-            String etag = blobStore.completeMultipartUpload(multipartUpload, resourceUpload.getParts());
+            String etag = EtagHeader.unquote(blobStore.completeMultipartUpload(multipartUpload, parts));
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
@@ -909,7 +911,7 @@ public class ResourceService implements AutoCloseable {
 
     private static String extractEtag(BlobMetadata meta) {
         Map<String, String> attributes = meta.getUserMetadata();
-        return attributes.getOrDefault(ETAG_ATTRIBUTE, meta.getETag());
+        return attributes.getOrDefault(ETAG_ATTRIBUTE, EtagHeader.unquote(meta.getETag()));
     }
 
     @Builder

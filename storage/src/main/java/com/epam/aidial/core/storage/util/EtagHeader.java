@@ -93,6 +93,10 @@ public class EtagHeader {
         return new EtagHeader(ifMatchTags, ifNoneMatchTags, method);
     }
 
+    public static String unquote(String etag) {
+        return StringUtils.strip(etag, "\"");
+    }
+
     @Nullable
     private static Set<String> parseIfNoneMatch(@Nullable String value) {
         if (ANY_TAG.equals(value)) {
@@ -116,7 +120,7 @@ public class EtagHeader {
 
     private static Set<String> parseTagValue(String value) {
         return Arrays.stream(value.split(","))
-                .map(tag -> StringUtils.strip(tag, "\""))
+                .map(EtagHeader::unquote)
                 .collect(Collectors.toUnmodifiableSet());
     }
 
