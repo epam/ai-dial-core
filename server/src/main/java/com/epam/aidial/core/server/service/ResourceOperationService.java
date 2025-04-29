@@ -92,6 +92,39 @@ public class ResourceOperationService {
         }
     }
 
+    public void copyResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
+        if (source.isFolder() || destination.isFolder()) {
+            throw new IllegalArgumentException("Copying folders is not supported");
+        }
+
+        String sourceResourceUrl = source.getUrl();
+        String destinationResourceUrl = destination.getUrl();
+
+        if (!resourceService.hasResource(source)) {
+            throw new IllegalArgumentException("Source resource does not exist: " + sourceResourceUrl);
+        }
+
+        if (!ALLOWED_RESOURCES.contains(source.getType())) {
+            throw new IllegalArgumentException("Source resource type is not supported: " + source.getType());
+        }
+
+        if (!source.getType().equals(destination.getType())) {
+            throw new IllegalArgumentException("Source and destination resources must have same type");
+        }
+
+        if (destination.getType() == APPLICATION) {
+            applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
+                // do nothing
+            });
+        } else {
+            boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
+            if (!copied) {
+                throw new IllegalArgumentException("Can't copy resource %s to %s, because destination resource already exists"
+                        .formatted(sourceResourceUrl, destinationResourceUrl));
+            }
+        }
+    }
+
     public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag) {
         verifyResourceToDelete(resource);
         MutableObject<Boolean> deleted = new MutableObject<>();
