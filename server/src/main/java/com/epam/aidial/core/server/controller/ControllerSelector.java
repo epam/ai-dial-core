@@ -66,7 +66,7 @@ public class ControllerSelector {
     private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
     private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
-    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move|subscribe)$");
+    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move|copy|subscribe)$");
 
     private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/(?<id>.+?)/limits$");
 
@@ -268,6 +268,7 @@ public class ControllerSelector {
 
             return switch (operation) {
                 case "move" -> controller::move;
+                case "copy" -> controller::copy;
                 case "subscribe" -> controller::subscribe;
                 default -> null;
             };
