@@ -140,10 +140,10 @@ public class SchemaRichApplicationPublicationService {
 
     private static Publication.Resource createResourceForFileAndFolderDescriptor(ResourceDescriptor sourceFileDescriptor,
                                                                           ResourceDescriptor sourceFolderDescriptor,
-                                                                          String targetSubFolderUrl,
+                                                                          String targetFolderUrl,
                                                                           Publication.ResourceAction action) {
-        String itemPath = sourceFolderDescriptor.getRelativePath(sourceFileDescriptor);
-        String targetUrl = targetSubFolderUrl + ResourceDescriptor.PATH_SEPARATOR + itemPath;
+        String relativeFilePath = sourceFolderDescriptor.getRelativePath(sourceFileDescriptor);
+        String targetUrl = targetFolderUrl + ResourceDescriptor.PATH_SEPARATOR + relativeFilePath;
         return new Publication.Resource()
                 .setAction(action)
                 .setSourceUrl(sourceFileDescriptor.getUrl())
