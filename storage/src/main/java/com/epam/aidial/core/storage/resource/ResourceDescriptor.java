@@ -208,6 +208,30 @@ public class ResourceDescriptor {
         return new ResourceDescriptor(type, name, parentFolders, bucketName, bucketLocation, isFolder);
     }
 
+    /**
+     * Calculates the relative path of a file within a folder.
+     *
+     * @param fileDescriptor The file descriptor to calculate the relative path for.
+     * @return The relative path of the file within the folder.
+     */
+    public String getRelativePath(ResourceDescriptor fileDescriptor) {
+        if (!this.isFolder) {
+            throw new IllegalStateException("Current resource must be a folder to calculate relative paths.");
+        }
+        if (!fileDescriptor.getBucketName().equals(this.bucketName)) {
+            throw new IllegalArgumentException("File descriptor must belong to the same bucket as the folder.");
+        }
+
+        String folderPath = this.getAbsoluteFilePath();
+        String filePath = fileDescriptor.getAbsoluteFilePath();
+
+        if (!filePath.startsWith(folderPath)) {
+            throw new IllegalArgumentException("File descriptor is not within the folder.");
+        }
+
+        return filePath.substring(folderPath.length());
+    }
+
     @Override
     public String toString() {
         return getUrl();

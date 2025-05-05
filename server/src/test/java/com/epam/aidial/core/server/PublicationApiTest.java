@@ -1809,23 +1809,23 @@ class PublicationApiTest extends ResourceBaseTest {
                           }, {
                             "action" : "ADD",
                             "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file1.txt",
-                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file1.txt",
-                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file1.txt"
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/abc/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/abc/test_file1.txt"
                           }, {
                             "action" : "ADD",
                             "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file2.txt",
-                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file2.txt",
-                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file2.txt"
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/abc/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/abc/test_file2.txt"
                           }, {
                             "action" : "ADD",
                             "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file1.txt",
-                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file1_2.txt",
-                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file1_2.txt"
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/test_file1.txt"
                           }, {
                             "action" : "ADD",
                             "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file2.txt",
-                            "targetUrl" : "files/public/folder/with_apps/.test_app2/test_file2_2.txt",
-                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/test_file2_2.txt"
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/test_file2.txt"
                   } ],
                   "resourceTypes" : [ "FILE", "APPLICATION" ],
                   "rules" : [ {

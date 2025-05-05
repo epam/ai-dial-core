@@ -12,12 +12,11 @@ import com.epam.aidial.core.server.data.ResourceUrl;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
+import com.epam.aidial.core.server.service.schemarichapps.SchemaRichApplicationPublicationService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.UserMetadata;
@@ -41,7 +40,6 @@ import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils.replaceCustomAppFiles;
@@ -61,6 +59,7 @@ public class PublicationService {
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
             ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
+    private final SchemaRichApplicationPublicationService schemaRichApplicationPublicationService;
     private final EncryptionService encryption;
     private final ResourceService resourceService;
     private final AccessService accessService;
@@ -352,7 +351,7 @@ public class PublicationService {
         publication.setStatus(Publication.Status.PENDING);
         publication.setAuthor(context.getUserDisplayName());
 
-        addCustomApplicationRelatedFiles(context, publication);
+        schemaRichApplicationPublicationService.addCustomApplicationRelatedFiles(context, publication);
 
         Set<String> urls = new HashSet<>();
         for (Publication.Resource resource : publication.getResources()) {
@@ -381,109 +380,6 @@ public class PublicationService {
         }
 
         validateRules(publication);
-    }
-
-    private void addCustomApplicationRelatedFiles(ProxyContext context, Publication publication) {
-        if (publication.getResources().isEmpty()) {
-            return;
-        }
-        List<String> existingUrls = publication.getResources().stream()
-                .map(Publication.Resource::getSourceUrl)
-                .toList();
-
-        Map<String, Integer> fileNameCounter = new HashMap<>();
-
-        List<Publication.Resource> linkedResourcesToPublish = publication.getResources().stream()
-                .filter(resource -> resource.getAction() != Publication.ResourceAction.DELETE)
-                .flatMap(resource -> {
-                    ResourceDescriptor source = ResourceDescriptorFactory.fromAnyUrl(resource.getSourceUrl(), encryption);
-                    if (source.getType() != ResourceTypes.APPLICATION) {
-                        return Stream.empty();
-                    }
-                    Application application = applicationService.getApplication(source).getValue();
-                    if (application.getApplicationTypeSchemaId() == null) {
-                        return Stream.empty();
-                    }
-                    String targetFolder = PublicationUtil.buildTargetFolderForCustomAppFiles(resource.getTargetUrl(), encryption);
-
-                    Stream<ResourceDescriptor> allDescriptors = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, encryption, resourceService)
-                            .stream()
-                            .flatMap(sourceDescriptor -> {
-                                // Handle folders by recursively getting all files
-                                if (sourceDescriptor.isFolder()) {
-                                    return getFilesFromFolder(sourceDescriptor);
-                                }
-
-                                return Stream.of(sourceDescriptor);
-                            });
-
-                    // First filter for distinct files before applying other filters
-                    return allDescriptors
-                            .distinct()
-                            .filter(sourceDescriptor -> !existingUrls.contains(sourceDescriptor.getUrl()) && !sourceDescriptor.isPublic())
-                            .map(sourceDescriptor -> createResourceWithUniqueFileName(sourceDescriptor,
-                                    targetFolder, fileNameCounter, resource.getAction()));
-                })
-                .toList();
-
-        publication.getResources().addAll(linkedResourcesToPublish);
-    }
-
-    private Stream<ResourceDescriptor> getFilesFromFolder(ResourceDescriptor folderDescriptor) {
-        try {
-            // Get metadata for all files in the folder (recursively)
-            ResourceFolderMetadata folderMetadata =
-                     resourceService.getFolderMetadata(folderDescriptor, null, 1000, true);
-
-            if (folderMetadata == null || folderMetadata.getItems() == null) {
-                return Stream.empty();
-            }
-
-            // Process files directly
-            Stream<ResourceDescriptor> fileDescriptors = folderMetadata.getItems().stream()
-                    .filter(item -> item.getNodeType() != NodeType.FOLDER)
-                    .map(item -> ResourceDescriptorFactory.fromPrivateUrl(item.getUrl(), encryption));
-
-            // If resourceService.getMetadata with recursive=true doesn't actually return all nested files,
-            // we need to recursively process subfolders
-            Stream<ResourceDescriptor> subfolderFiles = folderMetadata.getItems().stream()
-                    .filter(item -> item.getNodeType() == NodeType.FOLDER)
-                    .map(item -> ResourceDescriptorFactory.fromPrivateUrl(item.getUrl(), encryption))
-                    .flatMap(this::getFilesFromFolder);
-
-            // Combine files from current folder and all subfolders
-            return Stream.concat(fileDescriptors, subfolderFiles);
-        } catch (Exception e) {
-            // Log error but continue processing
-            log.warn("Failed to process folder: {}", folderDescriptor.getUrl(), e);
-            return Stream.empty();
-        }
-    }
-
-
-    private Publication.Resource createResourceWithUniqueFileName(ResourceDescriptor sourceDescriptor,
-                                                                  String targetFolder,
-                                                                  Map<String, Integer> fileNameCounter,
-                                                                  Publication.ResourceAction action) {
-        String fileName = sourceDescriptor.getName();
-        int count = fileNameCounter.getOrDefault(fileName, 0) + 1;
-        fileNameCounter.put(fileName, count);
-
-        if (count > 1) {
-            // Add counter to filename while preserving extension
-            fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
-        }
-
-        String targetUrl = ResourceDescriptorFactory.fromDecoded(
-                sourceDescriptor.getType(),
-                ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PATH_SEPARATOR,
-                targetFolder + fileName).getUrl();
-
-        return new Publication.Resource()
-                .setAction(action)
-                .setSourceUrl(sourceDescriptor.getUrl())
-                .setTargetUrl(targetUrl);
     }
 
     private void validateResourceForAddition(ProxyContext context, Publication.Resource resource, String targetFolder,
