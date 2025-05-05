@@ -38,7 +38,7 @@ public class SchemaRichApplicationPublicationService {
             return;
         }
 
-        List<String> existingUrls = publication.getResources().stream()
+        List<String> otherSourceUrlsFromRequest = publication.getResources().stream()
                 .map(Publication.Resource::getSourceUrl)
                 .toList();
 
@@ -46,7 +46,7 @@ public class SchemaRichApplicationPublicationService {
 
         List<Publication.Resource> newResources = publication.getResources().stream()
                 .filter(resource -> resource.getAction() != Publication.ResourceAction.DELETE)
-                .flatMap(resource -> replaceApplicationWithItsFilesAndFolders(context, resource, existingUrls, fileNamesTaken))
+                .flatMap(resource -> replaceApplicationWithItsFilesAndFolders(context, resource, otherSourceUrlsFromRequest, fileNamesTaken))
                 .toList();
 
         publication.getResources().addAll(newResources);
@@ -70,7 +70,7 @@ public class SchemaRichApplicationPublicationService {
     }
 
     private Stream<Publication.Resource> replaceApplicationWithItsFilesAndFolders(ProxyContext context, Publication.Resource pubicationResource,
-                                                                                  List<String> existingUrls, Map<String, Integer> fileNamesTaken) {
+                                                                                  List<String> otherSourceUrlsFromRequest, Map<String, Integer> fileNamesTaken) {
         ResourceDescriptor resourceToPublish = ResourceDescriptorFactory.fromAnyUrl(pubicationResource.getSourceUrl(), encryptionService);
         if (resourceToPublish.getType() != ResourceTypes.APPLICATION) {
             return Stream.empty();
@@ -85,7 +85,7 @@ public class SchemaRichApplicationPublicationService {
 
         List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), applicationToPublish, encryptionService, resourceService)
                 .stream()
-                .filter(descriptor -> !existingUrls.contains(descriptor.getUrl()))
+                .filter(descriptor -> !otherSourceUrlsFromRequest.contains(descriptor.getUrl()))
                 .toList();
 
         Stream<Publication.Resource> folderDescriptors = applicationsOwnDescriptors.stream()
