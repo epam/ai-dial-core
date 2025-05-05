@@ -110,9 +110,9 @@ public class SchemaRichApplicationPublicationService {
     }
 
     private static Publication.Resource createSingleFileResourceWithUniqueName(ResourceDescriptor sourceFileDescriptor,
-                                                                        String targetFolderUrl,
-                                                                        Map<String, Integer> fileNamesTaken,
-                                                                        Publication.ResourceAction action) {
+                                                                               String targetFolderUrl,
+                                                                               Map<String, Integer> fileNamesTaken,
+                                                                               Publication.ResourceAction action) {
         String targetUrl = uniqueTargetResourceUrl(sourceFileDescriptor, targetFolderUrl, fileNamesTaken);
 
         return new Publication.Resource()
@@ -139,9 +139,9 @@ public class SchemaRichApplicationPublicationService {
     }
 
     private static Publication.Resource createResourceForFileAndFolderDescriptor(ResourceDescriptor sourceFileDescriptor,
-                                                                          ResourceDescriptor sourceFolderDescriptor,
-                                                                          String targetFolderUrl,
-                                                                          Publication.ResourceAction action) {
+                                                                                 ResourceDescriptor sourceFolderDescriptor,
+                                                                                 String targetFolderUrl,
+                                                                                 Publication.ResourceAction action) {
         String relativeFilePath = sourceFolderDescriptor.getRelativePath(sourceFileDescriptor);
         String targetUrl = targetFolderUrl + ResourceDescriptor.PATH_SEPARATOR + relativeFilePath;
         return new Publication.Resource()
