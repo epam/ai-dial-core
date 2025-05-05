@@ -358,4 +358,35 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                 null, null, "authorization", "admin");
         verify(response, 200, CONVERSATION_BODY_1);
     }
+
+    @Test
+    void testCopyResourceWorkflow() {
+        // upload resource
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
+        // verify resource can be downloaded
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+
+        // verify copy operation
+        response = send(HttpMethod.POST, "/v1/ops/resource/copy", null, """
+                {
+                   "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                   "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
+                }
+                """);
+        verify(response, 200);
+
+        // verify old resource still exists
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+
+        // verify new resource can be downloaded
+        response = resourceRequest(HttpMethod.GET, "/folder2/conversation2");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+        // verify the resource has the same author
+        response = metadata("/folder2/conversation2");
+        verifyNotExact(response, 200, "\"author\":\"EPM-RTC-GPT\"");
+    }
 }
