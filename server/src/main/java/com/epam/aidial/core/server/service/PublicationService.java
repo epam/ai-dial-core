@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.data.ResourceUrl;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.schemarichapps.ApplicationResourcesReplacementService;
 import com.epam.aidial.core.server.service.schemarichapps.PublicationEnrichmentService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -42,7 +43,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
-import static com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils.replaceCustomAppFiles;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -69,6 +69,7 @@ public class PublicationService {
     private final ResourceOperationService resourceOperationService;
     private final Supplier<String> ids;
     private final LongSupplier clock;
+    private final ApplicationResourcesReplacementService applicationResourcesReplacementService;
 
     public static boolean isReviewBucket(ResourceDescriptor resource) {
         return resource.isPrivate() && resource.getBucketLocation().contains(PUBLICATIONS_NAME);
@@ -549,7 +550,7 @@ public class PublicationService {
 
             if (from.getType() == ResourceTypes.APPLICATION) {
                 applicationService.copyApplication(from, to, null, false, app -> {
-                    replaceCustomAppFiles(app, replacementLinks);
+                    applicationResourcesReplacementService.replaceSchemaRichAppFiles(app, to.getUrl(), replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
@@ -591,7 +592,7 @@ public class PublicationService {
 
             if (from.getType() == ResourceTypes.APPLICATION) {
                 applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, app -> {
-                    replaceCustomAppFiles(app, replacementLinks);
+                    applicationResourcesReplacementService.replaceSchemaRichAppFiles(app, to.getUrl(), replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });

@@ -70,7 +70,7 @@ public class PublicationEnrichmentService {
         return !resourceDescriptor.isFolder() && resourceDescriptor.getType() == ResourceTypes.APPLICATION;
     }
 
-    private String buildTargetFolderForCustomAppFiles(String targetUrl) {
+    public String getTargetFolderForCustomAppFiles(String targetUrl) {
         ResourceDescriptor targetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(targetUrl, encryptionService);
         if (targetResourceDescriptor.isFolder()) {
             throw new IllegalArgumentException("Target url must be a file");
@@ -99,7 +99,7 @@ public class PublicationEnrichmentService {
             return Stream.empty();
         }
 
-        String targetFolder = buildTargetFolderForCustomAppFiles(pubicationResource.getTargetUrl());
+        String targetFolder = getTargetFolderForCustomAppFiles(pubicationResource.getTargetUrl());
 
         List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), applicationToPublish, encryptionService, resourceService)
                 .stream()

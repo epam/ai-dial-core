@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
+import com.epam.aidial.core.server.service.schemarichapps.ApplicationResourcesReplacementService;
 import com.epam.aidial.core.server.service.schemarichapps.PublicationEnrichmentService;
 import com.epam.aidial.core.server.service.schemarichapps.ResourceListingService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -142,8 +143,11 @@ public class AiDial {
             ResourceListingService resourceListingService = new ResourceListingService(encryptionService, resourceService);
             PublicationEnrichmentService publicationEnrichmentService = new PublicationEnrichmentService(applicationService, encryptionService,
                     resourceService, resourceListingService, configStore);
+            ApplicationResourcesReplacementService
+                    applicationResourcesReplacementService =
+                    new ApplicationResourcesReplacementService(configStore, encryptionService, resourceService, publicationEnrichmentService);
             PublicationService publicationService = new PublicationService(publicationEnrichmentService, encryptionService, resourceService, accessService,
-                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
+                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock, applicationResourcesReplacementService);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
