@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server;
 
+import java.util.List;
+
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -1730,29 +1732,22 @@ class PublicationApiTest extends ResourceBaseTest {
 
     @Test
     void testApplicationWithTypeSchemaPublish_Ok_FolderWithSubfolder() {
-        Response response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/test_file1.txt".formatted(bucket), null, """
-                  Test1
-                """);
 
-        Assertions.assertEquals(200, response.status());
+        List<String> filePaths = List.of(
+                "/v1/files/%s/xyz/test_file1.txt",
+                "/v1/files/%s/xyz/test_file2.txt",
+                "/v1/files/%s/xyz/abc/test_file1.txt",
+                "/v1/files/%s/xyz/abc/test_file2.txt",
+                "/v1/files/%s/some/xyz/abc/test_file1.txt",
+                "/v1/files/%s/some/xyz/abc/test_file2.txt",
+                "/v1/files/%s/another/xyz"
+        );
 
-        response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/test_file2.txt".formatted(bucket), null, """
-                  Test2
-                """);
-
-        Assertions.assertEquals(200, response.status());
-
-        response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/abc/test_file1.txt".formatted(bucket), null, """
-                  Test3
-                """);
-
-        Assertions.assertEquals(200, response.status());
-
-        response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/abc/test_file2.txt".formatted(bucket), null, """
-                  Test4
-                """);
-
-        Assertions.assertEquals(200, response.status());
+        Response response;
+        for (String filePath : filePaths) {
+            response = upload(HttpMethod.PUT, filePath.formatted(bucket), null, "Test");
+            Assertions.assertEquals(200, response.status());
+        }
 
         response = send(HttpMethod.PUT, "/v1/applications/%s/test_app2".formatted(bucket), null, """
                   {
@@ -1762,7 +1757,7 @@ class PublicationApiTest extends ResourceBaseTest {
                         "property1": "test property1",
                         "property2": "test property2",
                         "property3": [
-                                "files/%s/xyz/"
+                                "files/%s/xyz/", "files/%s/some/xyz/", "files/%s/another/xyz"
                         ]
                        },
                        "userRoles": [
@@ -1772,7 +1767,7 @@ class PublicationApiTest extends ResourceBaseTest {
                        "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
                        "description": "My application description"
                   }
-                """.formatted(bucket));
+                """.formatted(bucket, bucket, bucket));
         Assertions.assertEquals(200, response.status());
 
         response = operationRequest("/v1/ops/publication/create", """
@@ -1826,8 +1821,24 @@ class PublicationApiTest extends ResourceBaseTest {
                             "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file2.txt",
                             "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/test_file2.txt",
                             "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/test_file2.txt"
-                  } ],
-                  "resourceTypes" : [ "FILE", "APPLICATION" ],
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/abc/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_2/abc/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/abc/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/abc/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_2/abc/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/abc/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/another/xyz",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_3",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_3"
+                          }
+                  ],
+                  "resourceTypes" : [ "APPLICATION", "FILE" ],
                   "rules" : [ {
                     "function" : "TRUE",
                     "source" : "roles",
