@@ -1,13 +1,13 @@
 package com.epam.aidial.core.server;
 
-import java.util.List;
-
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 class PublicationApiTest extends ResourceBaseTest {
 
