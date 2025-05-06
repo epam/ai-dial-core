@@ -38,7 +38,7 @@ public class PublicationEnrichmentService {
             return;
         }
 
-        List<String> otherSourceUrlsFromRequest = publication.getResources().stream()
+        List<String> sourceUrlsFromRequest = publication.getResources().stream()
                 .map(Publication.Resource::getSourceUrl)
                 .toList();
 
@@ -46,10 +46,16 @@ public class PublicationEnrichmentService {
 
         List<Publication.Resource> newResources = publication.getResources().stream()
                 .filter(resource -> resource.getAction() != Publication.ResourceAction.DELETE)
-                .flatMap(resource -> getApplicationFilesAndFolders(resource, otherSourceUrlsFromRequest, fileNamesTaken))
+                .filter(this::isApplicationResource)
+                .flatMap(resource -> getApplicationFilesAndFolders(resource, sourceUrlsFromRequest, fileNamesTaken))
                 .toList();
 
         publication.getResources().addAll(newResources);
+    }
+
+    private boolean isApplicationResource(Publication.Resource resource) {
+        ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resource.getSourceUrl(), encryptionService);
+        return !resourceDescriptor.isFolder() && resourceDescriptor.getType() == ResourceTypes.APPLICATION;
     }
 
     private String buildTargetFolderForCustomAppFiles(String targetUrl) {
