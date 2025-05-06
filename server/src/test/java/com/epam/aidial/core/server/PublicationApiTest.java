@@ -2,6 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Assertions;
@@ -1731,7 +1732,7 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testApplicationWithTypeSchemaPublish_Ok_FolderWithSubfolder() {
+    void testApplicationWithTypeSchemaPublish_Ok_FolderWithSubfolder() throws JsonProcessingException {
 
         List<String> filePaths = List.of(
                 "/v1/files/%s/xyz/test_file1.txt",
@@ -1848,11 +1849,36 @@ class PublicationApiTest extends ResourceBaseTest {
                 }""";
 
 
-        verifyJsonNotExact(response,
-                200, correctResponse);
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode resources = responseJson.get("resources");
+
+        for (int i = 1; i < resources.size(); i++) {
+            String reviewUrl = resources.get(i).get("reviewUrl").asText();
+            if (reviewUrl.startsWith("files/")) {
+                Response fileResponse = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
+                Assertions.assertEquals(200, fileResponse.status(), "File should exist at review path: " + reviewUrl);
+                Assertions.assertEquals("Test", fileResponse.body().trim(), "File content should match original");
+            }
+        }
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verify(response, 200);
 
+        // After approval, verify files exist at target paths
+        for (int i = 1; i < resources.size(); i++) {
+            String targetUrl = resources.get(i).get("targetUrl").asText();
+            if (targetUrl.startsWith("files/")) {
+
+                Response fileResponse = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+                Assertions.assertEquals(200, fileResponse.status(), "File should exist at target path: " + targetUrl);
+                Assertions.assertEquals("Test", fileResponse.body().trim(), "File content should match original");
+
+                fileResponse = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "user");
+                Assertions.assertEquals(200, fileResponse.status(), "File should be accessible to users with proper permissions");
+            }
+        }
     }
+
 }
