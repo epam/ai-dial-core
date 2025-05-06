@@ -44,22 +44,20 @@ public class ApplicationResourcesReplacementService {
         Map<String, String> resultMapping = new HashMap<>();
 
         for (ResourceDescriptor resource : applicationOwnResources) {
-            if (!resource.isFolder()) {
-                // Exact match for file descriptors
-                String replacement = replacementLinks.get(resource.getUrl());
-                if (replacement == null) {
-                    throw new IllegalStateException("Missing replacement link for file: " + resource.getUrl());
-                }
-                resultMapping.put(resource.getUrl(), extractFirstPathComponent(targetApplicationResourceFolderUrl, replacement));
-            } else {
-                // Match the first entry where the original resource path starts with the folder path
-                String folderPath = resource.getUrl();
-                Map.Entry<String, String> matchingEntry = replacementLinks.entrySet().stream()
-                        .filter(entry -> entry.getKey().startsWith(folderPath))
+            String resourceUrl = resource.getUrl();
+            if (resource.isFolder()) {
+                String folderReplacement = replacementLinks.entrySet().stream()
+                        .filter(entry -> entry.getKey().startsWith(resourceUrl))
+                        .map(Map.Entry::getValue)
                         .findFirst()
-                        .orElseThrow(() -> new IllegalStateException("Missing replacement link for folder: " + folderPath));
-
-                resultMapping.put(folderPath, extractFirstPathComponent(targetApplicationResourceFolderUrl, matchingEntry.getValue()) + ResourceDescriptor.PATH_SEPARATOR);
+                        .orElseThrow(() -> new IllegalStateException("Missing replacement link for folder: " + resourceUrl));
+                resultMapping.put(resourceUrl, extractFirstPathComponent(targetApplicationResourceFolderUrl, folderReplacement) + ResourceDescriptor.PATH_SEPARATOR);
+            } else {
+                String fileReplacement = replacementLinks.get(resourceUrl);
+                if (fileReplacement == null) {
+                    throw new IllegalStateException("Missing replacement link for file: " + resourceUrl);
+                }
+                resultMapping.put(resourceUrl, extractFirstPathComponent(targetApplicationResourceFolderUrl, fileReplacement));
             }
         }
 
@@ -70,18 +68,13 @@ public class ApplicationResourcesReplacementService {
         int basePathIndex = fullPath.indexOf(basePath);
         if (basePathIndex == -1) {
             throw new IllegalStateException(
-                    "Inconsistent paths processed while updating application own resources - base path '" + basePath + "' not found in full path '" + fullPath + "'");
+                    "Base path '" + basePath + "' not found in full path '" + fullPath + "'");
         }
 
-        // Extract the part of the path before basePath
         String prefixPath = fullPath.substring(0, basePathIndex);
-
-        // Extract the relative path after basePath
         String relativePath = fullPath.substring(basePathIndex + basePath.length());
-        String[] pathComponents = relativePath.split(ResourceDescriptor.PATH_SEPARATOR, 2);
+        String firstComponent = relativePath.split(ResourceDescriptor.PATH_SEPARATOR, 2)[0];
 
-        // Construct the valid full path
-        String firstComponent = pathComponents.length > 0 ? pathComponents[0] : relativePath;
         return prefixPath + basePath + firstComponent;
     }
 
