@@ -1881,4 +1881,113 @@ class PublicationApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    void testApplicationWithTypeSchemaPublish_Ok_FilesInRootOfUserBucket() throws JsonProcessingException {
+
+        List<String> filePaths = List.of(
+                "/v1/files/%s/test.txt",
+                "/v1/files/%s/test/test.txt"
+        );
+
+        Response response;
+        for (String filePath : filePaths) {
+            response = upload(HttpMethod.PUT, filePath.formatted(bucket), null, "Test");
+            Assertions.assertEquals(200, response.status());
+        }
+
+        response = send(HttpMethod.PUT, "/v1/applications/%s/test_app3".formatted(bucket), null, """
+                  {
+                      "displayName": "test_app2",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/%s/test.txt", "files/%s/test/test.txt"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """.formatted(bucket, bucket));
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/%s/test_app3",
+                          "targetUrl": "applications/public/abc_app"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        String correctResponse = """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name" : "Publication of my application",
+                  "targetFolder" : "public/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                            "action" : "ADD",
+                            "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app3",
+                            "targetUrl" : "applications/public/abc_app",
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/abc_app"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test.txt",
+                            "targetUrl" : "files/public/.abc_app/test.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test/test.txt",
+                            "targetUrl" : "files/public/.abc_app/test_2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test_2.txt"
+                          }
+                  ],
+                  "resourceTypes" : [ "APPLICATION", "FILE" ],
+                  "author" : "EPM-RTC-GPT"
+                }""";
+
+
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode resources = responseJson.get("resources");
+
+        for (int i = 1; i < resources.size(); i++) {
+            String reviewUrl = resources.get(i).get("reviewUrl").asText();
+            if (reviewUrl.startsWith("files/")) {
+                Response fileResponse = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
+                Assertions.assertEquals(200, fileResponse.status(), "File should exist at review path: " + reviewUrl);
+                Assertions.assertEquals("Test", fileResponse.body().trim(), "File content should match original");
+            }
+        }
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        // After approval, verify files exist at target paths
+        for (int i = 1; i < resources.size(); i++) {
+            String targetUrl = resources.get(i).get("targetUrl").asText();
+            if (targetUrl.startsWith("files/")) {
+
+                Response fileResponse = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+                Assertions.assertEquals(200, fileResponse.status(), "File should exist at target path: " + targetUrl);
+                Assertions.assertEquals("Test", fileResponse.body().trim(), "File content should match original");
+
+                fileResponse = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "user");
+                Assertions.assertEquals(200, fileResponse.status(), "File should be accessible to users with proper permissions");
+            }
+        }
+    }
+
 }
