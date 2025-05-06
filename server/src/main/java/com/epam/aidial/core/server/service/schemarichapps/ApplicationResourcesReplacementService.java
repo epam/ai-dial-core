@@ -28,7 +28,7 @@ public class ApplicationResourcesReplacementService {
         this.resourceService = resourceService;
     }
 
-    public void replaceSchemaRichAppFiles(Application application, String targetApplicationUrl, Map<String, String> replacementLinks) {
+    public void replaceSchemaRichAppOwnResources(Application application, String targetApplicationUrl, Map<String, String> replacementLinks) {
         if (application.getApplicationTypeSchemaId() == null) {
             return;
         }

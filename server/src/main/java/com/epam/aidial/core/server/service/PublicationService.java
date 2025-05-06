@@ -550,7 +550,7 @@ public class PublicationService {
 
             if (from.getType() == ResourceTypes.APPLICATION) {
                 applicationService.copyApplication(from, to, null, false, app -> {
-                    applicationResourcesReplacementService.replaceSchemaRichAppFiles(app, to.getUrl(), replacementLinks);
+                    applicationResourcesReplacementService.replaceSchemaRichAppOwnResources(app, to.getUrl(), replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
@@ -592,7 +592,7 @@ public class PublicationService {
 
             if (from.getType() == ResourceTypes.APPLICATION) {
                 applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, app -> {
-                    applicationResourcesReplacementService.replaceSchemaRichAppFiles(app, to.getUrl(), replacementLinks);
+                    applicationResourcesReplacementService.replaceSchemaRichAppOwnResources(app, to.getUrl(), replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
