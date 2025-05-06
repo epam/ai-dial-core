@@ -14,26 +14,25 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.epam.aidial.core.server.service.schemarichapps.TargetFolderUtil.getTargetFolderForCustomAppFiles;
+
 public class ApplicationResourcesReplacementService {
 
     private final ConfigStore configStore;
     private final EncryptionService encryptionService;
     private final ResourceService resourceService;
-    private final PublicationEnrichmentService publicationEnrichmentService;
 
-    public ApplicationResourcesReplacementService(ConfigStore configStore, EncryptionService encryptionService, ResourceService resourceService,
-                                                  PublicationEnrichmentService publicationEnrichmentService) {
+    public ApplicationResourcesReplacementService(ConfigStore configStore, EncryptionService encryptionService, ResourceService resourceService) {
         this.configStore = configStore;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
-        this.publicationEnrichmentService = publicationEnrichmentService;
     }
 
     public void replaceSchemaRichAppFiles(Application application, String targetApplicationUrl, Map<String, String> replacementLinks) {
         if (application.getApplicationTypeSchemaId() == null) {
             return;
         }
-        String targetApplicationResourceFolderUrl = publicationEnrichmentService.getTargetFolderForCustomAppFiles(targetApplicationUrl);
+        String targetApplicationResourceFolderUrl = getTargetFolderForCustomAppFiles(targetApplicationUrl, encryptionService);
         replacementLinks = extractApplicationOwnResourcesMapping(application, targetApplicationResourceFolderUrl, replacementLinks);
         applyApplicationOwnResourcesMapping(application, replacementLinks);
     }
@@ -67,7 +66,7 @@ public class ApplicationResourcesReplacementService {
         return resultMapping;
     }
 
-    private String extractFirstPathComponent(String basePath, String fullPath) {
+    private static String extractFirstPathComponent(String basePath, String fullPath) {
         int basePathIndex = fullPath.indexOf(basePath);
         if (basePathIndex == -1) {
             throw new IllegalStateException(

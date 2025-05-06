@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import static com.epam.aidial.core.server.service.schemarichapps.TargetFolderUtil.getTargetFolderForCustomAppFiles;
+
 public class PublicationEnrichmentService {
 
     private final ApplicationService applicationService;
@@ -70,23 +72,6 @@ public class PublicationEnrichmentService {
         return !resourceDescriptor.isFolder() && resourceDescriptor.getType() == ResourceTypes.APPLICATION;
     }
 
-    public String getTargetFolderForCustomAppFiles(String targetUrl) {
-        ResourceDescriptor targetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(targetUrl, encryptionService);
-        if (targetResourceDescriptor.isFolder()) {
-            throw new IllegalArgumentException("Target url must be a file");
-        }
-        if (targetResourceDescriptor.getType() != ResourceTypes.APPLICATION) {
-            throw new IllegalArgumentException("Target url must be an application type");
-        }
-        String appName = targetResourceDescriptor.getName();
-        String appPath = targetResourceDescriptor.getParentPath();
-        if (appPath == null) {
-            return "." + appName + ResourceDescriptor.PATH_SEPARATOR;
-        } else {
-            return appPath + ResourceDescriptor.PATH_SEPARATOR + "." + appName + ResourceDescriptor.PATH_SEPARATOR;
-        }
-    }
-
     private Stream<Publication.Resource> getApplicationFilesAndFolders(Publication.Resource pubicationResource,
                                                                        List<String> otherSourceUrlsFromRequest, Map<String, Integer> fileNamesTaken) {
         ResourceDescriptor resourceToPublish = ResourceDescriptorFactory.fromAnyUrl(pubicationResource.getSourceUrl(), encryptionService);
@@ -99,7 +84,7 @@ public class PublicationEnrichmentService {
             return Stream.empty();
         }
 
-        String targetFolder = getTargetFolderForCustomAppFiles(pubicationResource.getTargetUrl());
+        String targetFolder = getTargetFolderForCustomAppFiles(pubicationResource.getTargetUrl(), encryptionService);
 
         List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), applicationToPublish, encryptionService, resourceService)
                 .stream()

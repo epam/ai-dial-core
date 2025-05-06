@@ -145,7 +145,7 @@ public class AiDial {
                     resourceService, resourceListingService, configStore);
             ApplicationResourcesReplacementService
                     applicationResourcesReplacementService =
-                    new ApplicationResourcesReplacementService(configStore, encryptionService, resourceService, publicationEnrichmentService);
+                    new ApplicationResourcesReplacementService(configStore, encryptionService, resourceService);
             PublicationService publicationService = new PublicationService(publicationEnrichmentService, encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, resourceOperationService, generator, clock, applicationResourcesReplacementService);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
