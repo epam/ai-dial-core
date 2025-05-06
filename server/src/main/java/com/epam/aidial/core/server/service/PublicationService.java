@@ -12,7 +12,7 @@ import com.epam.aidial.core.server.data.ResourceUrl;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.schemarichapps.SchemaRichApplicationPublicationService;
+import com.epam.aidial.core.server.service.schemarichapps.PublicationEnrichmentService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -59,7 +59,7 @@ public class PublicationService {
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
             ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
 
-    private final SchemaRichApplicationPublicationService schemaRichApplicationPublicationService;
+    private final PublicationEnrichmentService publicationEnrichmentService;
     private final EncryptionService encryption;
     private final ResourceService resourceService;
     private final AccessService accessService;
@@ -351,7 +351,7 @@ public class PublicationService {
         publication.setStatus(Publication.Status.PENDING);
         publication.setAuthor(context.getUserDisplayName());
 
-        schemaRichApplicationPublicationService.addCustomApplicationRelatedFiles(context, publication);
+        publicationEnrichmentService.enrichPublicationWithCustomApplicationFiles(context, publication);
 
         Set<String> urls = new HashSet<>();
         for (Publication.Resource resource : publication.getResources()) {

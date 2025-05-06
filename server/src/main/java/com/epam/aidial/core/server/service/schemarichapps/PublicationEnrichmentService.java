@@ -18,22 +18,22 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class SchemaRichApplicationPublicationService {
+public class PublicationEnrichmentService {
 
     private final ApplicationService applicationService;
     private final EncryptionService encryptionService;
     private final ResourceService resourceService;
-    private final FolderService folderService;
+    private final ResourceListingService resourceListingService;
 
-    public SchemaRichApplicationPublicationService(ApplicationService applicationService, EncryptionService encryptionService, ResourceService resourceService,
-                                                   FolderService folderService) {
+    public PublicationEnrichmentService(ApplicationService applicationService, EncryptionService encryptionService, ResourceService resourceService,
+                                        ResourceListingService resourceListingService) {
         this.applicationService = applicationService;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
-        this.folderService = folderService;
+        this.resourceListingService = resourceListingService;
     }
 
-    public void addCustomApplicationRelatedFiles(ProxyContext context, Publication publication) {
+    public void enrichPublicationWithCustomApplicationFiles(ProxyContext context, Publication publication) {
         if (publication.getResources().isEmpty()) {
             return;
         }
@@ -46,7 +46,7 @@ public class SchemaRichApplicationPublicationService {
 
         List<Publication.Resource> newResources = publication.getResources().stream()
                 .filter(resource -> resource.getAction() != Publication.ResourceAction.DELETE)
-                .flatMap(resource -> replaceApplicationWithItsFilesAndFolders(context, resource, otherSourceUrlsFromRequest, fileNamesTaken))
+                .flatMap(resource -> applicationFilesAndFolders(context, resource, otherSourceUrlsFromRequest, fileNamesTaken))
                 .toList();
 
         publication.getResources().addAll(newResources);
@@ -69,8 +69,8 @@ public class SchemaRichApplicationPublicationService {
         }
     }
 
-    private Stream<Publication.Resource> replaceApplicationWithItsFilesAndFolders(ProxyContext context, Publication.Resource pubicationResource,
-                                                                                  List<String> otherSourceUrlsFromRequest, Map<String, Integer> fileNamesTaken) {
+    private Stream<Publication.Resource> applicationFilesAndFolders(ProxyContext context, Publication.Resource pubicationResource,
+                                                                    List<String> otherSourceUrlsFromRequest, Map<String, Integer> fileNamesTaken) {
         ResourceDescriptor resourceToPublish = ResourceDescriptorFactory.fromAnyUrl(pubicationResource.getSourceUrl(), encryptionService);
         if (resourceToPublish.getType() != ResourceTypes.APPLICATION) {
             return Stream.empty();
@@ -90,30 +90,30 @@ public class SchemaRichApplicationPublicationService {
 
         Stream<Publication.Resource> folderDescriptors = applicationsOwnDescriptors.stream()
                 .filter(ResourceDescriptor::isFolder)
-                .flatMap(folder -> createFolderResourcesWithUniqueName(folder, targetFolder, fileNamesTaken, pubicationResource.getAction()));
+                .flatMap(folder -> createResourcesForFolderFiles(folder, targetFolder, fileNamesTaken, pubicationResource.getAction()));
 
         Stream<Publication.Resource> fileDescriptors = applicationsOwnDescriptors.stream()
                 .filter(descriptor -> !descriptor.isFolder())
-                .map(file -> createSingleFileResourceWithUniqueName(file, targetFolder, fileNamesTaken, pubicationResource.getAction()));
+                .map(file -> createResourceForStandaloneFile(file, targetFolder, fileNamesTaken, pubicationResource.getAction()));
 
         return Stream.concat(folderDescriptors, fileDescriptors);
     }
 
-    private Stream<Publication.Resource> createFolderResourcesWithUniqueName(ResourceDescriptor sourceFolderDescriptor, String targetFolderUrl,
-                                                                             Map<String, Integer> fileNamesTaken, Publication.ResourceAction action) {
-        String targetSubFolderUrl = uniqueTargetResourceUrl(sourceFolderDescriptor, targetFolderUrl, fileNamesTaken);
-        return folderService.getFilesFromFolderWithSubFolders(sourceFolderDescriptor)
+    private Stream<Publication.Resource> createResourcesForFolderFiles(ResourceDescriptor sourceFolderDescriptor, String targetFolderUrl,
+                                                                       Map<String, Integer> fileNamesTaken, Publication.ResourceAction action) {
+        String targetSubFolderUrl = createUniqueTargetResourceUrl(sourceFolderDescriptor, targetFolderUrl, fileNamesTaken);
+        return resourceListingService.listFilesFromFolderWithSubFolders(sourceFolderDescriptor)
                 .map(sourceFileDescriptor ->
-                        createResourceForFileAndFolderDescriptor(
+                        createResourceForFileInFolder(
                                 sourceFileDescriptor, sourceFolderDescriptor, targetSubFolderUrl, action)
                 );
     }
 
-    private static Publication.Resource createSingleFileResourceWithUniqueName(ResourceDescriptor sourceFileDescriptor,
-                                                                               String targetFolderUrl,
-                                                                               Map<String, Integer> fileNamesTaken,
-                                                                               Publication.ResourceAction action) {
-        String targetUrl = uniqueTargetResourceUrl(sourceFileDescriptor, targetFolderUrl, fileNamesTaken);
+    private static Publication.Resource createResourceForStandaloneFile(ResourceDescriptor sourceFileDescriptor,
+                                                                        String targetFolderUrl,
+                                                                        Map<String, Integer> fileNamesTaken,
+                                                                        Publication.ResourceAction action) {
+        String targetUrl = createUniqueTargetResourceUrl(sourceFileDescriptor, targetFolderUrl, fileNamesTaken);
 
         return new Publication.Resource()
                 .setAction(action)
@@ -121,7 +121,7 @@ public class SchemaRichApplicationPublicationService {
                 .setTargetUrl(targetUrl);
     }
 
-    private static String uniqueTargetResourceUrl(ResourceDescriptor sourceDescriptor, String targetFolderUrl, Map<String, Integer> fileNamesTaken) {
+    private static String createUniqueTargetResourceUrl(ResourceDescriptor sourceDescriptor, String targetFolderUrl, Map<String, Integer> fileNamesTaken) {
         String fileName = sourceDescriptor.getName();
         int count = fileNamesTaken.getOrDefault(fileName, 0) + 1;
         fileNamesTaken.put(fileName, count);
@@ -138,10 +138,10 @@ public class SchemaRichApplicationPublicationService {
                 targetFolderUrl + fileName).getUrl();
     }
 
-    private static Publication.Resource createResourceForFileAndFolderDescriptor(ResourceDescriptor sourceFileDescriptor,
-                                                                                 ResourceDescriptor sourceFolderDescriptor,
-                                                                                 String targetFolderUrl,
-                                                                                 Publication.ResourceAction action) {
+    private static Publication.Resource createResourceForFileInFolder(ResourceDescriptor sourceFileDescriptor,
+                                                                      ResourceDescriptor sourceFolderDescriptor,
+                                                                      String targetFolderUrl,
+                                                                      Publication.ResourceAction action) {
         String relativeFilePath = sourceFolderDescriptor.getRelativePath(sourceFileDescriptor);
         String targetUrl = targetFolderUrl + ResourceDescriptor.PATH_SEPARATOR + relativeFilePath;
         return new Publication.Resource()

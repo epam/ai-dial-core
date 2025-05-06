@@ -13,17 +13,17 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class FolderService {
+public class ResourceListingService {
 
     private final EncryptionService encryption;
     private final ResourceService resourceService;
 
-    public FolderService(EncryptionService encryption, ResourceService resourceService) {
+    public ResourceListingService(EncryptionService encryption, ResourceService resourceService) {
         this.encryption = encryption;
         this.resourceService = resourceService;
     }
 
-    public Stream<ResourceDescriptor> getFilesFromFolderWithSubFolders(ResourceDescriptor folderDescriptor) {
+    public Stream<ResourceDescriptor> listFilesFromFolderWithSubFolders(ResourceDescriptor folderDescriptor) {
         if (!folderDescriptor.isFolder()) {
             return Stream.empty();
         }

@@ -23,8 +23,8 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
-import com.epam.aidial.core.server.service.schemarichapps.SchemaRichApplicationPublicationService;
-import com.epam.aidial.core.server.service.schemarichapps.FolderService;
+import com.epam.aidial.core.server.service.schemarichapps.PublicationEnrichmentService;
+import com.epam.aidial.core.server.service.schemarichapps.ResourceListingService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -139,10 +139,10 @@ public class AiDial {
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
                     resourceService, invitationService, shareService, lockService);
-            FolderService folderService = new FolderService(encryptionService, resourceService);
-            SchemaRichApplicationPublicationService schemaRichApplicationPublicationService = new SchemaRichApplicationPublicationService(applicationService, encryptionService,
-                    resourceService, folderService);
-            PublicationService publicationService = new PublicationService(schemaRichApplicationPublicationService, encryptionService, resourceService, accessService,
+            ResourceListingService resourceListingService = new ResourceListingService(encryptionService, resourceService);
+            PublicationEnrichmentService publicationEnrichmentService = new PublicationEnrichmentService(applicationService, encryptionService,
+                    resourceService, resourceListingService);
+            PublicationService publicationService = new PublicationService(publicationEnrichmentService, encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, redis, resourceService,
