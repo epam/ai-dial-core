@@ -33,7 +33,7 @@ public class PublicationEnrichmentService {
         this.configStore = configStore;
     }
 
-    public void enrichPublicationWithCustomApplicationFiles(Publication publication) {
+    public void enrichPublicationWithSchemaRichApplicationFiles(Publication publication) {
         if (publication.getResources().isEmpty()) {
             return;
         }
