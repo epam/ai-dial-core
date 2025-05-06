@@ -351,7 +351,7 @@ public class PublicationService {
         publication.setStatus(Publication.Status.PENDING);
         publication.setAuthor(context.getUserDisplayName());
 
-        publicationEnrichmentService.enrichPublicationWithCustomApplicationFiles(context, publication);
+        publicationEnrichmentService.enrichPublicationWithCustomApplicationFiles(publication);
 
         Set<String> urls = new HashSet<>();
         for (Publication.Resource resource : publication.getResources()) {

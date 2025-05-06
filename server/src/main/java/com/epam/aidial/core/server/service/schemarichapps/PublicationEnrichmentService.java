@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.Publication;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -15,25 +15,25 @@ import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 public class PublicationEnrichmentService {
 
     private final ApplicationService applicationService;
     private final EncryptionService encryptionService;
     private final ResourceService resourceService;
     private final ResourceListingService resourceListingService;
+    private final ConfigStore configStore;
 
     public PublicationEnrichmentService(ApplicationService applicationService, EncryptionService encryptionService, ResourceService resourceService,
-                                        ResourceListingService resourceListingService) {
+                                        ResourceListingService resourceListingService, ConfigStore configStore) {
         this.applicationService = applicationService;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
         this.resourceListingService = resourceListingService;
+        this.configStore = configStore;
     }
 
-    public void enrichPublicationWithCustomApplicationFiles(ProxyContext context, Publication publication) {
+    public void enrichPublicationWithCustomApplicationFiles(Publication publication) {
         if (publication.getResources().isEmpty()) {
             return;
         }
@@ -46,7 +46,7 @@ public class PublicationEnrichmentService {
 
         List<Publication.Resource> newResources = publication.getResources().stream()
                 .filter(resource -> resource.getAction() != Publication.ResourceAction.DELETE)
-                .flatMap(resource -> applicationFilesAndFolders(context, resource, otherSourceUrlsFromRequest, fileNamesTaken))
+                .flatMap(resource -> applicationFilesAndFolders(resource, otherSourceUrlsFromRequest, fileNamesTaken))
                 .toList();
 
         publication.getResources().addAll(newResources);
@@ -69,7 +69,7 @@ public class PublicationEnrichmentService {
         }
     }
 
-    private Stream<Publication.Resource> applicationFilesAndFolders(ProxyContext context, Publication.Resource pubicationResource,
+    private Stream<Publication.Resource> applicationFilesAndFolders(Publication.Resource pubicationResource,
                                                                     List<String> otherSourceUrlsFromRequest, Map<String, Integer> fileNamesTaken) {
         ResourceDescriptor resourceToPublish = ResourceDescriptorFactory.fromAnyUrl(pubicationResource.getSourceUrl(), encryptionService);
         if (resourceToPublish.getType() != ResourceTypes.APPLICATION) {
@@ -83,7 +83,7 @@ public class PublicationEnrichmentService {
 
         String targetFolder = buildTargetFolderForCustomAppFiles(pubicationResource.getTargetUrl());
 
-        List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), applicationToPublish, encryptionService, resourceService)
+        List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), applicationToPublish, encryptionService, resourceService)
                 .stream()
                 .filter(descriptor -> !otherSourceUrlsFromRequest.contains(descriptor.getUrl()))
                 .toList();
