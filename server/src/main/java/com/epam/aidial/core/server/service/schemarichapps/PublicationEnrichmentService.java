@@ -1,10 +1,5 @@
 package com.epam.aidial.core.server.service.schemarichapps;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Stream;
-
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.Publication;
@@ -15,6 +10,11 @@ import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 public class PublicationEnrichmentService {
 
@@ -46,7 +46,7 @@ public class PublicationEnrichmentService {
 
         List<Publication.Resource> newResources = publication.getResources().stream()
                 .filter(resource -> resource.getAction() != Publication.ResourceAction.DELETE)
-                .flatMap(resource -> applicationFilesAndFolders(resource, otherSourceUrlsFromRequest, fileNamesTaken))
+                .flatMap(resource -> getApplicationFilesAndFolders(resource, otherSourceUrlsFromRequest, fileNamesTaken))
                 .toList();
 
         publication.getResources().addAll(newResources);
@@ -69,8 +69,8 @@ public class PublicationEnrichmentService {
         }
     }
 
-    private Stream<Publication.Resource> applicationFilesAndFolders(Publication.Resource pubicationResource,
-                                                                    List<String> otherSourceUrlsFromRequest, Map<String, Integer> fileNamesTaken) {
+    private Stream<Publication.Resource> getApplicationFilesAndFolders(Publication.Resource pubicationResource,
+                                                                       List<String> otherSourceUrlsFromRequest, Map<String, Integer> fileNamesTaken) {
         ResourceDescriptor resourceToPublish = ResourceDescriptorFactory.fromAnyUrl(pubicationResource.getSourceUrl(), encryptionService);
         if (resourceToPublish.getType() != ResourceTypes.APPLICATION) {
             return Stream.empty();
