@@ -134,7 +134,13 @@ public class PublicationEnrichmentService {
 
         if (count > 1) {
             // Add counter to filename while preserving extension
-            fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
+            if (fileName.contains(".")) {
+                // File has extension
+                fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
+            } else {
+                // File has no extension
+                fileName = fileName + "_" + count;
+            }
         }
 
         return ResourceDescriptorFactory.fromDecoded(
