@@ -1972,7 +1972,8 @@ class PublicationApiTest extends ResourceBaseTest {
                   "application_properties" : {
                     "property1" : "test property1",
                     "property2" : "test property2",
-                    "property3" : [ "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test.txt", "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test_2.txt" ]
+                    "property3" : [ "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test.txt",
+                    "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test_2.txt" ]
                   },
                   "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
                 }""";
@@ -2130,7 +2131,8 @@ class PublicationApiTest extends ResourceBaseTest {
                   "application_properties" : {
                     "property1" : "test property1",
                     "property2" : "test property2",
-                    "property3" : [ "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.test/test/", "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.test/test_2" ]
+                    "property3" : [ "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.test/test/",
+                    "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.test/test_2" ]
                   },
                   "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
                 }""";
