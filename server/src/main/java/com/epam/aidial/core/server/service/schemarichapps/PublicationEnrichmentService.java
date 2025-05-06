@@ -8,6 +8,8 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 
@@ -49,6 +51,16 @@ public class PublicationEnrichmentService {
                 .filter(this::isApplicationResource)
                 .flatMap(resource -> getApplicationFilesAndFolders(resource, sourceUrlsFromRequest, fileNamesTaken))
                 .toList();
+
+        // Check for duplicates in newResources (overlap folder's content with files alone)
+        Map<String, Publication.Resource> sourceUrlMap = new HashMap<>();
+        for (Publication.Resource resource : newResources) {
+            String sourceUrl = resource.getSourceUrl();
+            if (sourceUrlMap.containsKey(sourceUrl)) {
+                throw new HttpException(HttpStatus.BAD_REQUEST,  "Duplicate source URL found: " + sourceUrl);
+            }
+            sourceUrlMap.put(sourceUrl, resource);
+        }
 
         publication.getResources().addAll(newResources);
     }
