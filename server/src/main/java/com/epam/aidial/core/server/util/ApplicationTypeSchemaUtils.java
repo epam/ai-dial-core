@@ -14,10 +14,7 @@ import com.epam.aidial.core.server.validation.ListCollector;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
@@ -210,18 +207,6 @@ public class ApplicationTypeSchemaUtils {
         return application;
     }
 
-    public static void replaceCustomAppFiles(Application application, Map<String, String> replacementLinks) {
-        if (application.getApplicationTypeSchemaId() == null) {
-            return;
-        }
-        JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
-        replaceLinksInJsonNode(customProperties, replacementLinks, null, null);
-        Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
-        });
-
-        application.setApplicationProperties(customPropertiesMap);
-    }
-
     public static List<ResourceDescriptor> getServerFiles(Config config, Application application, EncryptionService encryptionService,
                                                           ResourceService resourceService) {
         return getFiles(config, application, encryptionService, resourceService, ListCollector.FileCollectorType.ONLY_SERVER_FILES);
@@ -269,29 +254,6 @@ public class ApplicationTypeSchemaUtils {
             throw e;
         } catch (Exception e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of files attached to the custom app", e);
-        }
-    }
-
-    public static void replaceLinksInJsonNode(JsonNode node, Map<String, String> replacementLinks, JsonNode parent, String fieldName) {
-        if (node.isObject()) {
-            node.fields().forEachRemaining(entry -> replaceLinksInJsonNode(entry.getValue(), replacementLinks, node, entry.getKey()));
-        } else if (node.isArray()) {
-            for (int i = 0; i < node.size(); i++) {
-                JsonNode childNode = node.get(i);
-                if (childNode.isTextual()) {
-                    String replacement = replacementLinks.get(childNode.textValue());
-                    if (replacement != null) {
-                        ((ArrayNode) node).set(i, replacement);
-                    }
-                } else {
-                    replaceLinksInJsonNode(childNode, replacementLinks, node, String.valueOf(i));
-                }
-            }
-        } else if (node.isTextual()) {
-            String replacement = replacementLinks.get(node.textValue());
-            if (replacement != null && parent.isObject()) {
-                ((ObjectNode) parent).put(fieldName, replacement);
-            }
         }
     }
 
