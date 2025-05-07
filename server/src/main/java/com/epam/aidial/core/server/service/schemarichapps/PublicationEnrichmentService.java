@@ -105,7 +105,7 @@ public class PublicationEnrichmentService {
     private Stream<Publication.Resource> createResourcesForFolderFiles(ResourceDescriptor sourceFolderDescriptor, String targetFolderUrl,
                                                                        Map<String, Integer> fileNamesTaken, Publication.ResourceAction action) {
         String targetSubFolderUrl = createUniqueTargetResourceUrl(sourceFolderDescriptor, targetFolderUrl, fileNamesTaken);
-        return resourceListingService.listFilesFromFolderWithSubFolders(sourceFolderDescriptor)
+        return resourceListingService.listPrivateFilesFromFolderWithSubFolders(sourceFolderDescriptor)
                 .map(sourceFileDescriptor ->
                         createResourceForFileInFolder(
                                 sourceFileDescriptor, sourceFolderDescriptor, targetSubFolderUrl, action)

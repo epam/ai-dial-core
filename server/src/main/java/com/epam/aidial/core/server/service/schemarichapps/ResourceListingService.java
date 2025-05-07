@@ -23,7 +23,7 @@ public class ResourceListingService {
         this.resourceService = resourceService;
     }
 
-    public Stream<ResourceDescriptor> listFilesFromFolderWithSubFolders(ResourceDescriptor folderDescriptor) {
+    public Stream<ResourceDescriptor> listPrivateFilesFromFolderWithSubFolders(ResourceDescriptor folderDescriptor) {
         if (!folderDescriptor.isFolder()) {
             return Stream.empty();
         }
