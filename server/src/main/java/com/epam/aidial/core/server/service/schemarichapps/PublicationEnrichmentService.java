@@ -8,11 +8,15 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.NodeType;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
+import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,20 +24,19 @@ import java.util.stream.Stream;
 
 import static com.epam.aidial.core.server.service.schemarichapps.SchemaRichApplicationPublicationUtils.getTargetFolderForCustomAppFiles;
 
+@Slf4j
 public class PublicationEnrichmentService {
 
     private final ApplicationService applicationService;
     private final EncryptionService encryptionService;
     private final ResourceService resourceService;
-    private final ResourceListingService resourceListingService;
     private final ConfigStore configStore;
 
     public PublicationEnrichmentService(ApplicationService applicationService, EncryptionService encryptionService, ResourceService resourceService,
-                                        ResourceListingService resourceListingService, ConfigStore configStore) {
+                                        ConfigStore configStore) {
         this.applicationService = applicationService;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
-        this.resourceListingService = resourceListingService;
         this.configStore = configStore;
     }
 
@@ -105,7 +108,7 @@ public class PublicationEnrichmentService {
     private Stream<Publication.Resource> createResourcesForFolderFiles(ResourceDescriptor sourceFolderDescriptor, String targetFolderUrl,
                                                                        Map<String, Integer> fileNamesTaken, Publication.ResourceAction action) {
         String targetSubFolderUrl = createUniqueTargetResourceUrl(sourceFolderDescriptor, targetFolderUrl, fileNamesTaken);
-        return resourceListingService.listPrivateFilesFromFolderWithSubFolders(sourceFolderDescriptor)
+        return listPrivateFilesFromFolderWithSubFolders(sourceFolderDescriptor)
                 .map(sourceFileDescriptor ->
                         createResourceForFileInFolder(
                                 sourceFileDescriptor, sourceFolderDescriptor, targetSubFolderUrl, action)
@@ -157,6 +160,39 @@ public class PublicationEnrichmentService {
                 .setAction(action)
                 .setSourceUrl(sourceFileDescriptor.getUrl())
                 .setTargetUrl(targetUrl);
+    }
+
+    public Stream<ResourceDescriptor> listPrivateFilesFromFolderWithSubFolders(ResourceDescriptor folderDescriptor) {
+        if (!folderDescriptor.isFolder()) {
+            return Stream.empty();
+        }
+
+        List<ResourceDescriptor> fileDescriptors = new ArrayList<>();
+        String nextToken = null;
+
+        do {
+            try {
+                ResourceFolderMetadata folderMetadata =
+                        resourceService.getFolderMetadata(folderDescriptor, nextToken, 1000, true);
+
+                if (folderMetadata == null || folderMetadata.getItems() == null) {
+                    break;
+                }
+
+                // Process all files in this page
+                folderMetadata.getItems().stream()
+                        .filter(item -> item.getNodeType() != NodeType.FOLDER)
+                        .map(item -> ResourceDescriptorFactory.fromPrivateUrl(item.getUrl(), encryptionService))
+                        .forEach(fileDescriptors::add);
+
+                nextToken = folderMetadata.getNextToken();
+            } catch (Exception e) {
+                log.warn("Failed to list files in folder while publishing: {}", folderDescriptor.getUrl(), e);
+                throw new RuntimeException(e);
+            }
+        } while (nextToken != null);
+
+        return fileDescriptors.stream();
     }
 
 }
