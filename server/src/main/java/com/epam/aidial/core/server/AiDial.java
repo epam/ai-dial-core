@@ -23,8 +23,6 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
-import com.epam.aidial.core.server.service.schemarichapps.ApplicationResourcesReplacementService;
-import com.epam.aidial.core.server.service.schemarichapps.PublicationEnrichmentService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -139,13 +137,8 @@ public class AiDial {
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
                     resourceService, invitationService, shareService, lockService);
-            PublicationEnrichmentService publicationEnrichmentService = new PublicationEnrichmentService(applicationService, encryptionService,
-                    resourceService, configStore);
-            ApplicationResourcesReplacementService
-                    applicationResourcesReplacementService =
-                    new ApplicationResourcesReplacementService(configStore, encryptionService, resourceService);
-            PublicationService publicationService = new PublicationService(publicationEnrichmentService, encryptionService, resourceService, accessService,
-                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock, applicationResourcesReplacementService);
+            PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
+                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock, configStore);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
