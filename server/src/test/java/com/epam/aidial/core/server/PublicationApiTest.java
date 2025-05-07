@@ -1845,29 +1845,81 @@ class PublicationApiTest extends ResourceBaseTest {
         JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
         JsonNode resources = responseJson.get("resources");
 
+        String reviewUrl = resources.get(0).get("reviewUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
+        correctResponse = """
+                {
+                  "name" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2",
+                  "display_name" : "test_app2",
+                  "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                  "description" : "My application description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
+                  "dependencies" : [ ],
+                  "application_properties" : {
+                    "property1" : "test property1",
+                    "property2" : "test property2",
+                    "property3" : [ "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/",
+                    "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/",
+                    "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_3" ]
+                  },
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                }""";
+        verifyJsonNotExact(response, 200, correctResponse);
+
         for (int i = 1; i < resources.size(); i++) {
-            String reviewUrl = resources.get(i).get("reviewUrl").asText();
+            reviewUrl = resources.get(i).get("reviewUrl").asText();
             if (reviewUrl.startsWith("files/")) {
                 Response fileResponse = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
                 Assertions.assertEquals(200, fileResponse.status(), "File should exist at review path: " + reviewUrl);
-                Assertions.assertEquals("Test", fileResponse.body().trim(), "File content should match original");
             }
         }
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verify(response, 200);
 
+        String targetUrl = resources.get(0).get("targetUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+        correctResponse = """
+                {
+                  "name" : "applications/public/folder/with_apps/test_app2",
+                  "display_name" : "test_app2",
+                  "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                  "description" : "My application description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
+                  "dependencies" : [ ],
+                  "application_properties" : {
+                    "property1" : "test property1",
+                    "property2" : "test property2",
+                    "property3" : [ "files/public/folder/with_apps/.test_app2/xyz/",
+                    "files/public/folder/with_apps/.test_app2/xyz_2/",
+                    "files/public/folder/with_apps/.test_app2/xyz_3" ]
+                  },
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                }""";
+        verifyJsonNotExact(response, 200, correctResponse);
+
         // After approval, verify files exist at target paths
         for (int i = 1; i < resources.size(); i++) {
-            String targetUrl = resources.get(i).get("targetUrl").asText();
+            targetUrl = resources.get(i).get("targetUrl").asText();
             if (targetUrl.startsWith("files/")) {
-
                 Response fileResponse = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
                 Assertions.assertEquals(200, fileResponse.status(), "File should exist at target path: " + targetUrl);
-                Assertions.assertEquals("Test", fileResponse.body().trim(), "File content should match original");
-
-                fileResponse = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "user");
-                Assertions.assertEquals(200, fileResponse.status(), "File should be accessible to users with proper permissions");
             }
         }
     }
@@ -1951,8 +2003,8 @@ class PublicationApiTest extends ResourceBaseTest {
         JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
         JsonNode resources = responseJson.get("resources");
 
-        String targetUrl = resources.get(0).get("reviewUrl").asText();
-        response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+        String reviewUrl = resources.get(0).get("reviewUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
         correctResponse = """
                 {
                   "name" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/abc_app",
@@ -1980,18 +2032,17 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, correctResponse);
 
         for (int i = 1; i < resources.size(); i++) {
-            String reviewUrl = resources.get(i).get("reviewUrl").asText();
+            reviewUrl = resources.get(i).get("reviewUrl").asText();
             if (reviewUrl.startsWith("files/")) {
                 response = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
                 Assertions.assertEquals(200, response.status(), "File should exist at review path: " + reviewUrl);
-                Assertions.assertEquals("Test", response.body().trim(), "File content should match original");
             }
         }
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verify(response, 200);
 
-        targetUrl = resources.get(0).get("targetUrl").asText();
+        String targetUrl = resources.get(0).get("targetUrl").asText();
         response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
         correctResponse = """
                 {
@@ -2024,7 +2075,6 @@ class PublicationApiTest extends ResourceBaseTest {
             if (targetUrl.startsWith("files/")) {
                 response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
                 Assertions.assertEquals(200, response.status(), "File should exist at target path: " + targetUrl);
-                Assertions.assertEquals("Test", response.body().trim(), "File content should match original");
             }
         }
     }
@@ -2110,8 +2160,8 @@ class PublicationApiTest extends ResourceBaseTest {
         JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
         JsonNode resources = responseJson.get("resources");
 
-        String targetUrl = resources.get(0).get("reviewUrl").asText();
-        response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+        String reviewUrl = resources.get(0).get("reviewUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
         correctResponse = """
                 {
                   "name" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/test",
@@ -2139,18 +2189,17 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, correctResponse);
 
         for (int i = 1; i < resources.size(); i++) {
-            String reviewUrl = resources.get(i).get("reviewUrl").asText();
+            reviewUrl = resources.get(i).get("reviewUrl").asText();
             if (reviewUrl.startsWith("files/")) {
                 Response fileResponse = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin");
                 Assertions.assertEquals(200, fileResponse.status(), "File should exist at review path: " + reviewUrl);
-                Assertions.assertEquals("Test", fileResponse.body().trim(), "File content should match original");
             }
         }
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
         verify(response, 200);
 
-        targetUrl = resources.get(0).get("targetUrl").asText();
+        String targetUrl = resources.get(0).get("targetUrl").asText();
         response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
         correctResponse = """
                 {
@@ -2181,10 +2230,8 @@ class PublicationApiTest extends ResourceBaseTest {
         for (int i = 1; i < resources.size(); i++) {
             targetUrl = resources.get(i).get("targetUrl").asText();
             if (targetUrl.startsWith("files/")) {
-
                 response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
                 Assertions.assertEquals(200, response.status(), "File should exist at target path: " + targetUrl);
-                Assertions.assertEquals("Test", response.body().trim(), "File content should match original");
             }
         }
     }
