@@ -556,7 +556,7 @@ public class PublicationService {
 
             if (from.getType() == ResourceTypes.APPLICATION) {
                 applicationService.copyApplication(from, to, null, false, app -> {
-                    replaceSchemaRichAppOwnResources(app, to.getUrl(), replacementLinks);
+                    applicationService.replaceSchemaRichAppOwnResources(app, to.getUrl(), replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
@@ -598,7 +598,7 @@ public class PublicationService {
 
             if (from.getType() == ResourceTypes.APPLICATION) {
                 applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, app -> {
-                    replaceSchemaRichAppOwnResources(app, to.getUrl(), replacementLinks);
+                    applicationService.replaceSchemaRichAppOwnResources(app, to.getUrl(), replacementLinks);
                     app.setReference(ApplicationUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
@@ -863,87 +863,6 @@ public class PublicationService {
         } while (nextToken != null);
 
         return fileDescriptors.stream();
-    }
-
-    public void replaceSchemaRichAppOwnResources(Application application, String targetApplicationUrl, Map<String, String> replacementLinks) {
-        if (application.getApplicationTypeSchemaId() == null) {
-            return;
-        }
-        String targetApplicationResourceFolderUrl = getTargetFolderForCustomAppFiles(targetApplicationUrl, encryption);
-        replacementLinks = extractApplicationOwnResourcesMapping(application, targetApplicationResourceFolderUrl, replacementLinks);
-        applyApplicationOwnResourcesMapping(application, replacementLinks);
-    }
-
-    private Map<String, String> extractApplicationOwnResourcesMapping(Application application, String targetApplicationResourceFolderUrl, Map<String, String> replacementLinks) {
-        List<ResourceDescriptor> applicationOwnResources = ApplicationTypeSchemaUtils.getFiles(
-                configStore.get(), application, encryption, resourceService);
-
-        Map<String, String> resultMapping = new HashMap<>();
-
-        for (ResourceDescriptor resource : applicationOwnResources) {
-            String resourceUrl = resource.getUrl();
-            if (resource.isFolder()) {
-                String folderReplacement = replacementLinks.entrySet().stream()
-                        .filter(entry -> entry.getKey().startsWith(resourceUrl))
-                        .map(Map.Entry::getValue)
-                        .findFirst()
-                        .orElseThrow(() -> new IllegalStateException("Missing replacement link for folder: " + resourceUrl));
-                resultMapping.put(resourceUrl, extractFirstPathComponent(targetApplicationResourceFolderUrl, folderReplacement) + ResourceDescriptor.PATH_SEPARATOR);
-            } else {
-                String fileReplacement = replacementLinks.get(resourceUrl);
-                if (fileReplacement == null) {
-                    throw new IllegalStateException("Missing replacement link for file: " + resourceUrl);
-                }
-                resultMapping.put(resourceUrl, extractFirstPathComponent(targetApplicationResourceFolderUrl, fileReplacement));
-            }
-        }
-
-        return resultMapping;
-    }
-
-    private static String extractFirstPathComponent(String basePath, String fullPath) {
-        int basePathIndex = fullPath.indexOf(basePath);
-        if (basePathIndex == -1) {
-            throw new IllegalStateException(
-                    "Base path '" + basePath + "' not found in full path '" + fullPath + "'");
-        }
-
-        String prefixPath = fullPath.substring(0, basePathIndex);
-        String relativePath = fullPath.substring(basePathIndex + basePath.length());
-        String firstComponent = relativePath.split(ResourceDescriptor.PATH_SEPARATOR, 2)[0];
-
-        return prefixPath + basePath + firstComponent;
-    }
-
-    private static void applyApplicationOwnResourcesMapping(Application application, Map<String, String> replacementLinks) {
-        JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
-        replaceTextNodes(customProperties, replacementLinks, null, null);
-        Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
-        });
-        application.setApplicationProperties(customPropertiesMap);
-    }
-
-    private static void replaceTextNodes(JsonNode node, Map<String, String> replacementMap, JsonNode parent, String fieldName) {
-        if (node.isObject()) {
-            node.fields().forEachRemaining(entry -> replaceTextNodes(entry.getValue(), replacementMap, node, entry.getKey()));
-        } else if (node.isArray()) {
-            for (int i = 0; i < node.size(); i++) {
-                JsonNode childNode = node.get(i);
-                if (childNode.isTextual()) {
-                    String replacement = replacementMap.get(childNode.textValue());
-                    if (replacement != null) {
-                        ((ArrayNode) node).set(i, replacement);
-                    }
-                } else {
-                    replaceTextNodes(childNode, replacementMap, node, String.valueOf(i));
-                }
-            }
-        } else if (node.isTextual()) {
-            String replacement = replacementMap.get(node.textValue());
-            if (replacement != null && parent.isObject()) {
-                ((ObjectNode) parent).put(fieldName, replacement);
-            }
-        }
     }
 
     public static String getTargetFolderForCustomAppFiles(String targetUrl, EncryptionService encryptionService) {

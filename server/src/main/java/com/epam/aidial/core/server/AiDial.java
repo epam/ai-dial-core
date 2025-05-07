@@ -130,7 +130,7 @@ public class AiDial {
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationService applicationService = new ApplicationService(vertx, redis, apiKeyStore, encryptionService,
-                    resourceService, lockService, operatorService, generator, settings("applications"));
+                    resourceService, lockService, operatorService, generator, settings("applications"), configStore);
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService, configStore);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
