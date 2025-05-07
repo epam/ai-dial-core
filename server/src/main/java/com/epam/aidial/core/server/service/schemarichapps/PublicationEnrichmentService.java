@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import static com.epam.aidial.core.server.service.schemarichapps.TargetFolderUtil.getTargetFolderForCustomAppFiles;
+import static com.epam.aidial.core.server.service.schemarichapps.SchemaRichApplicationPublicationUtils.getTargetFolderForCustomAppFiles;
 
 public class PublicationEnrichmentService {
 

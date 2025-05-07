@@ -7,7 +7,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass
-public class TargetFolderUtil {
+public class SchemaRichApplicationPublicationUtils {
     public static String getTargetFolderForCustomAppFiles(String targetUrl, EncryptionService encryptionService) {
         ResourceDescriptor targetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(targetUrl, encryptionService);
         if (targetResourceDescriptor.isFolder()) {

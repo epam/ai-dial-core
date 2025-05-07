@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.epam.aidial.core.server.service.schemarichapps.TargetFolderUtil.getTargetFolderForCustomAppFiles;
+import static com.epam.aidial.core.server.service.schemarichapps.SchemaRichApplicationPublicationUtils.getTargetFolderForCustomAppFiles;
 
 public class ApplicationResourcesReplacementService {
 
