@@ -9,6 +9,8 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.HashMap;
 import java.util.List;
@@ -80,10 +82,33 @@ public class ApplicationResourcesReplacementService {
 
     private static void applyApplicationOwnResourcesMapping(Application application, Map<String, String> replacementLinks) {
         JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
-        JsonUtils.replaceTextNodes(customProperties, replacementLinks, null, null);
+        replaceTextNodes(customProperties, replacementLinks, null, null);
         Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
         });
         application.setApplicationProperties(customPropertiesMap);
+    }
+
+    private static void replaceTextNodes(JsonNode node, Map<String, String> replacementMap, JsonNode parent, String fieldName) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> replaceTextNodes(entry.getValue(), replacementMap, node, entry.getKey()));
+        } else if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) {
+                JsonNode childNode = node.get(i);
+                if (childNode.isTextual()) {
+                    String replacement = replacementMap.get(childNode.textValue());
+                    if (replacement != null) {
+                        ((ArrayNode) node).set(i, replacement);
+                    }
+                } else {
+                    replaceTextNodes(childNode, replacementMap, node, String.valueOf(i));
+                }
+            }
+        } else if (node.isTextual()) {
+            String replacement = replacementMap.get(node.textValue());
+            if (replacement != null && parent.isObject()) {
+                ((ObjectNode) parent).put(fieldName, replacement);
+            }
+        }
     }
 
 }
