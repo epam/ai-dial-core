@@ -74,7 +74,7 @@ public class ControllerSelector {
 
     private static final Pattern USER_INFO = Pattern.compile("^/v1/user/info$");
 
-    private static final Pattern APP_SCHEMAS = Pattern.compile("^/v1/application_type_schemas/(schemas|schema|meta_schema)?");
+    private static final Pattern APP_SCHEMAS = Pattern.compile("^/v1/application_type_schemas/(schemas|schema|meta_schema)$");
     private static final Pattern CODE_INTERPRETER = Pattern.compile("^/v1/ops/code_interpreter/"
             + "(open_session|close_session|get_session|"
             + "execute_code|"
