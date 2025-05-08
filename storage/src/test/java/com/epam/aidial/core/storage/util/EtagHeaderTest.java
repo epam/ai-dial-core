@@ -3,6 +3,7 @@ package com.epam.aidial.core.storage.util;
 
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,19 +14,21 @@ class EtagHeaderTest {
     void testEtag() {
         EtagHeader etag = EtagHeader.fromHeader("123", null, "POST");
         etag.validate("123");
+        Assertions.assertThrows(HttpException.class, () -> etag.validate("\"123\""));
     }
 
     @Test
     void testEtagWithQuotes() {
         EtagHeader etag = EtagHeader.fromHeader("\"123\"", null, "POST");
-        etag.validate("123");
+        etag.validate("\"123\"");
+        Assertions.assertThrows(HttpException.class, () -> etag.validate("123"));
     }
 
     @Test
     void testEtagList() {
         EtagHeader etag = EtagHeader.fromHeader("\"123\",\"234\"", null, "POST");
-        etag.validate("123");
-        etag.validate("234");
+        etag.validate("\"123\"");
+        etag.validate("\"234\"");
     }
 
     @Test

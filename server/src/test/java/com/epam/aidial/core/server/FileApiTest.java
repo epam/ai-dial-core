@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class FileApiTest extends ResourceBaseTest {
 
     private static final String TEST_FILE_CONTENT = "Test file content";
-    private static final String TEST_FILE_ETAG = "ac79653edeb65ab5563585f2d5f14fe9";
+    private static final String TEST_FILE_ETAG = "\"ac79653edeb65ab5563585f2d5f14fe9\"";
 
     @Test
     public void testBucket(Vertx vertx, VertxTestContext context) {
@@ -246,7 +246,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -442,7 +442,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -568,8 +568,8 @@ public class FileApiTest extends ResourceBaseTest {
                                             """, response.body());
                                     String etag = response.getHeader(HttpHeaders.ETAG);
                                     Assertions.assertNotNull(etag);
-                                    Assertions.assertFalse(etag.startsWith("\""));
-                                    Assertions.assertFalse(etag.endsWith("\""));
+                                    Assertions.assertTrue(etag.startsWith("\""));
+                                    Assertions.assertTrue(etag.endsWith("\""));
 
                                     checkpoint.flag();
                                     promise.complete();
@@ -830,7 +830,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-GPT",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -936,7 +936,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1017,7 +1017,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1086,7 +1086,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1166,7 +1166,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -1199,7 +1199,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -1310,7 +1310,7 @@ public class FileApiTest extends ResourceBaseTest {
                                                       "resourceType" : "FILE",
                                                       "createdAt" : "@ignore",
                                                       "updatedAt" : "@ignore",
-                                                      "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                                      "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                                       "author" : "EPM-RTC-RAIL",
                                                       "contentLength" : 17,
                                                       "contentType" : "binary/octet-stream"
@@ -1385,7 +1385,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1433,7 +1433,7 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(8);
         WebClient client = WebClient.create(vertx);
         String newContent = "NEW CONTENT";
-        String newEtag = "bb6ed8b95d44dba4f8e4a99ebaca9a00";
+        String newEtag = "\"bb6ed8b95d44dba4f8e4a99ebaca9a00\"";
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -1607,7 +1607,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "resourceType":"FILE",
                                       "createdAt":"@ignore",
                                       "updatedAt":"@ignore",
-                                      "etag":"bb6ed8b95d44dba4f8e4a99ebaca9a00",
+                                      "etag":"\\"bb6ed8b95d44dba4f8e4a99ebaca9a00\\"",
                                       "contentLength":11,
                                       "contentType":"text/custom",
                                       "author": "EPM-RTC-RAIL"
