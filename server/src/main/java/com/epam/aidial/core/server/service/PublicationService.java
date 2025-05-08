@@ -800,7 +800,7 @@ public class PublicationService {
         fileNamesTaken.put(fileName, count);
 
         if (count > 1) {
-            if (sourceDescriptor.isFolder() || fileName.contains(".")) {
+            if (sourceDescriptor.isFolder() || !fileName.contains(".")) {
                 // File has no extension or folder
                 fileName = fileName + "_" + count;
             } else {
