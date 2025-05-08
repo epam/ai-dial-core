@@ -771,15 +771,16 @@ public class ApplicationService {
 
         for (ResourceDescriptor resource : applicationOwnResources) {
             String resourceUrl = resource.getUrl();
+            String decodedResourceUrl = UrlUtil.decodePath(resourceUrl);
             if (resource.isFolder()) {
                 String replacement = replacementLinks.entrySet().stream()
-                        .filter(entry -> entry.getKey().startsWith(UrlUtil.decodePath(resourceUrl)))
+                        .filter(entry -> entry.getKey().startsWith(decodedResourceUrl))
                         .map(Map.Entry::getValue)
                         .findFirst()
                         .orElseThrow(() -> new IllegalStateException("Missing replacement link for folder: " + resourceUrl));
                 resultMapping.put(resourceUrl, extractTargetPath(targetApplicationResourceFolderUrl, replacement) + ResourceDescriptor.PATH_SEPARATOR);
             } else {
-                String replacement = replacementLinks.get(UrlUtil.decodePath(resourceUrl));
+                String replacement = replacementLinks.get(decodedResourceUrl);
                 if (replacement == null) {
                     throw new IllegalStateException("Missing replacement link for file: " + resourceUrl);
                 }
