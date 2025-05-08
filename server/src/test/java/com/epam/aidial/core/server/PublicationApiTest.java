@@ -2313,8 +2313,8 @@ class PublicationApiTest extends ResourceBaseTest {
                      }, {
                        "action" : "ADD",
                        "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/abc/Unt%2026__0.0.1",
-                       "targetUrl" : "files/public/.xyz%20app%204/Unt%2026__0.0.1_2",
-                       "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.xyz%20app%204/Unt%2026__0.0.1_2"
+                       "targetUrl" : "files/public/.xyz%20app%204/Unt%2026__0.0_2.1",
+                       "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.xyz%20app%204/Unt%2026__0.0_2.1"
                      } ],
                   "resourceTypes" : [ "APPLICATION", "FILE" ],
                   "author" : "EPM-RTC-GPT"
