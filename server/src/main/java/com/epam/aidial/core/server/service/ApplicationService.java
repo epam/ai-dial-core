@@ -772,25 +772,26 @@ public class ApplicationService {
         for (ResourceDescriptor resource : applicationOwnResources) {
             String resourceUrl = resource.getUrl();
             if (resource.isFolder()) {
-                String folderReplacement = replacementLinks.entrySet().stream()
-                        .filter(entry -> entry.getKey().startsWith(resourceUrl))
+                String replacement = replacementLinks.entrySet().stream()
+                        .filter(entry -> entry.getKey().startsWith(UrlUtil.decodePath(resourceUrl)))
                         .map(Map.Entry::getValue)
                         .findFirst()
                         .orElseThrow(() -> new IllegalStateException("Missing replacement link for folder: " + resourceUrl));
-                resultMapping.put(resourceUrl, extractFirstPathComponent(targetApplicationResourceFolderUrl, folderReplacement) + ResourceDescriptor.PATH_SEPARATOR);
+                resultMapping.put(resourceUrl, extractTargetPath(targetApplicationResourceFolderUrl, replacement) + ResourceDescriptor.PATH_SEPARATOR);
             } else {
-                String fileReplacement = replacementLinks.get(resourceUrl);
-                if (fileReplacement == null) {
+                String replacement = replacementLinks.get(UrlUtil.decodePath(resourceUrl));
+                if (replacement == null) {
                     throw new IllegalStateException("Missing replacement link for file: " + resourceUrl);
                 }
-                resultMapping.put(resourceUrl, extractFirstPathComponent(targetApplicationResourceFolderUrl, fileReplacement));
+                resultMapping.put(resourceUrl, extractTargetPath(targetApplicationResourceFolderUrl, replacement));
             }
         }
 
         return resultMapping;
     }
 
-    private static String extractFirstPathComponent(String basePath, String fullPath) {
+    private static String extractTargetPath(String basePath, String fullPathEncoded) {
+        String fullPath = UrlUtil.decodePath(fullPathEncoded);
         int basePathIndex = fullPath.indexOf(basePath);
         if (basePathIndex == -1) {
             throw new IllegalStateException(
@@ -801,7 +802,7 @@ public class ApplicationService {
         String relativePath = fullPath.substring(basePathIndex + basePath.length());
         String firstComponent = relativePath.split(ResourceDescriptor.PATH_SEPARATOR, 2)[0];
 
-        return prefixPath + basePath + firstComponent;
+        return UrlUtil.encodePath(prefixPath + basePath + firstComponent);
     }
 
     public static void applyApplicationOwnResourcesMapping(Application application, Map<String, String> replacementLinks) {

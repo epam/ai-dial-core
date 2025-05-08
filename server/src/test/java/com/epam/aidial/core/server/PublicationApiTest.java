@@ -2,6 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -2234,6 +2235,94 @@ class PublicationApiTest extends ResourceBaseTest {
                 Assertions.assertEquals(200, response.status(), "File should exist at target path: " + targetUrl);
             }
         }
+    }
+
+    @Test
+    void testApplicationWithTypeSchemaPublish_Ok_MindMapCase() {
+
+        List<String> filePaths = List.of(
+                "Unt 26__0.0.1/generate.json",
+                "Unt 26__0.0.1/nodes/1743404608.101931_1.json",
+                "abc/Unt 26__0.0.1"
+        );
+        String basePath = "/v1/files/%s/appdata/mindmap/".formatted(bucket);
+        Response response;
+        for (String filePath : filePaths) {
+            String resourceUrl = basePath + UrlUtil.encodePath(filePath);
+            response = upload(HttpMethod.PUT, resourceUrl, null, "Test");
+            Assertions.assertEquals(200, response.status());
+        }
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202", null, """
+                  {
+                      "displayName": "test%20app%202",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/Unt%2026__0.0.1/",
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/abc/Unt%2026__0.0.1"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202",
+                          "targetUrl": "applications/public/xyz%20app%204"
+                        }
+                      ]
+                    }
+                """);
+        String correctResponse = """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name" : "Publication of my application",
+                  "targetFolder" : "public/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                       "action" : "ADD",
+                       "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202",
+                       "targetUrl" : "applications/public/xyz%20app%204",
+                       "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/xyz%20app%204"
+                     }, {
+                       "action" : "ADD",
+                       "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/Unt%2026__0.0.1/generate.json",
+                       "targetUrl" : "files/public/.xyz%20app%204/Unt%2026__0.0.1/generate.json",
+                       "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.xyz%20app%204/Unt%2026__0.0.1/generate.json"
+                     }, {
+                       "action" : "ADD",
+                       "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/Unt%2026__0.0.1/nodes/1743404608.101931_1.json",
+                       "targetUrl" : "files/public/.xyz%20app%204/Unt%2026__0.0.1/nodes/1743404608.101931_1.json",
+                       "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.xyz%20app%204/Unt%2026__0.0.1/nodes/1743404608.101931_1.json"
+                     }, {
+                       "action" : "ADD",
+                       "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/abc/Unt%2026__0.0.1",
+                       "targetUrl" : "files/public/.xyz%20app%204/Unt%2026__0.0.1_2",
+                       "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.xyz%20app%204/Unt%2026__0.0.1_2"
+                     } ],
+                  "resourceTypes" : [ "APPLICATION", "FILE" ],
+                  "author" : "EPM-RTC-GPT"
+                }""";
+
+
+        verifyJsonNotExact(response, 200, correctResponse);
+
     }
 
 }
