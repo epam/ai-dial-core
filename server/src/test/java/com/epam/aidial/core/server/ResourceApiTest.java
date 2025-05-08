@@ -85,7 +85,7 @@ class ResourceApiTest extends ResourceBaseTest {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "CREATE",
                   "timestamp" : "@ignore",
-                  "etag" : "70edd26b3686de5efcdae93fcc87c2bb"
+                  "etag" : "\\"70edd26b3686de5efcdae93fcc87c2bb\\""
                 }
                 """, events.take());
 
@@ -94,7 +94,7 @@ class ResourceApiTest extends ResourceBaseTest {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "UPDATE",
                   "timestamp" : "@ignore",
-                  "etag" : "82833ed7a10a4f99253fccdef4091ad9"
+                  "etag" : "\\"82833ed7a10a4f99253fccdef4091ad9\\""
                 }
                 """, events.take());
 
@@ -115,33 +115,33 @@ class ResourceApiTest extends ResourceBaseTest {
         verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
-        verifyNotExact(response, 200, "\"etag\":\"70edd26b3686de5efcdae93fcc87c2bb\"");
-        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+        verifyNotExact(response, 200, "\"etag\":\"\\\"70edd26b3686de5efcdae93fcc87c2bb\\\"\"");
+        assertEquals("\"70edd26b3686de5efcdae93fcc87c2bb\"", response.headers().get("etag"));
         assertEquals("etag", response.headers().get("access-control-expose-headers"));
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
-        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+        assertEquals("\"70edd26b3686de5efcdae93fcc87c2bb\"", response.headers().get("etag"));
         assertEquals("etag", response.headers().get("access-control-expose-headers"));
 
         response = metadata("/folder/conversation");
-        verifyNotExact(response, 200, "\"etag\":\"70edd26b3686de5efcdae93fcc87c2bb\"");
+        verifyNotExact(response, 200, "\"etag\":\"\\\"70edd26b3686de5efcdae93fcc87c2bb\\\"\"");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "123");
         verifyNotExact(response, 412, "If-match condition is failed for etag");
 
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "70edd26b3686de5efcdae93fcc87c2bb");
-        verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
-        assertEquals("82833ed7a10a4f99253fccdef4091ad9", response.headers().get("etag"));
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "\"70edd26b3686de5efcdae93fcc87c2bb\"");
+        verifyNotExact(response, 200, "\"etag\":\"\\\"82833ed7a10a4f99253fccdef4091ad9\\\"\"");
+        assertEquals("\"82833ed7a10a4f99253fccdef4091ad9\"", response.headers().get("etag"));
         assertEquals("etag", response.headers().get("access-control-expose-headers"));
 
         response = metadata("/folder/conversation");
-        verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
+        verifyNotExact(response, 200, "\"etag\":\"\\\"82833ed7a10a4f99253fccdef4091ad9\\\"\"");
 
         response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "123");
         verifyNotExact(response, 412, "If-match condition is failed for etag");
 
-        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "82833ed7a10a4f99253fccdef4091ad9");
+        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "\"82833ed7a10a4f99253fccdef4091ad9\"");
         verify(response, 200, "");
     }
 
@@ -218,11 +218,11 @@ class ResourceApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "unsupported");
         verifyNotExact(response, 200, CONVERSATION_BODY_1);
 
-        response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "70edd26b3686de5efcdae93fcc87c2bb");
+        response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "\"70edd26b3686de5efcdae93fcc87c2bb\"");
         assertEquals(304, response.status());
-        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+        assertEquals("\"70edd26b3686de5efcdae93fcc87c2bb\"", response.headers().get("etag"));
 
-        response = resourceRequest(HttpMethod.PUT, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "70edd26b3686de5efcdae93fcc87c2bb");
+        response = resourceRequest(HttpMethod.PUT, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "\"70edd26b3686de5efcdae93fcc87c2bb\"");
         assertEquals(412, response.status());
     }
 
