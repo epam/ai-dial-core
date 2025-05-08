@@ -800,13 +800,12 @@ public class PublicationService {
         fileNamesTaken.put(fileName, count);
 
         if (count > 1) {
-            // Add counter to filename while preserving extension
-            if (fileName.contains(".")) {
+            if (sourceDescriptor.isFolder() || !fileName.contains(".")) {
+                // File has no extension or folder
+                fileName = fileName + "_" + count;
+            } else {
                 // File has extension
                 fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
-            } else {
-                // File has no extension
-                fileName = fileName + "_" + count;
             }
         }
 
