@@ -10,9 +10,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.config.Credentials;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.Base64;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -58,7 +60,9 @@ public class AzureCredentialsResolverTest {
                 ts = 30;
             }
             expired = to(ts);
-            return new AccessToken(Integer.toString(next), expired);
+            byte[] payload = ("{\"oid\":\"" + next + "\"}").getBytes(StandardCharsets.UTF_8);
+            String token = "header." + new String(Base64.getEncoder().encode(payload)) + ".signature";
+            return new AccessToken(token, expired);
         });
         InetSocketAddress address = new InetSocketAddress(8080);
         CompletionStage<Credentials> stage = resolver.resolve(address);

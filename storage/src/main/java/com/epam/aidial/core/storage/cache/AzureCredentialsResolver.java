@@ -5,15 +5,20 @@ import com.azure.core.credential.TokenRequestContext;
 import com.azure.identity.DefaultAzureCredential;
 import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.redisson.config.Credentials;
 import org.redisson.config.CredentialsResolver;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 
+@SuppressWarnings("checkstyle:LineLength")
 public class AzureCredentialsResolver implements CredentialsResolver {
 
     private static final long EXPIRATION_WINDOW_IN_SEC = 10;
@@ -44,9 +49,33 @@ public class AzureCredentialsResolver implements CredentialsResolver {
         OffsetDateTime date = now.get().plusSeconds(EXPIRATION_WINDOW_IN_SEC);
         if (expiresAt == null || date.isAfter(expiresAt)) {
             AccessToken accessToken = defaultCredential.getTokenSync(TOKEN_REQUEST_CONTEXT);
+            String token = accessToken.getToken();
+            String userName = extractUsernameFromToken(token);
             expiresAt = accessToken.getExpiresAt();
-            future = CompletableFuture.completedFuture(new Credentials(null, accessToken.getToken()));
+            future = CompletableFuture.completedFuture(new Credentials(userName, token));
         }
         return future;
     }
+
+    /**
+     * @see <a href="https://github.com/Azure/azure-sdk-for-java/blob/main/sdk/identity/azure-identity/src/samples/Azure-Cache-For-Redis/Jedis/Azure-AAD-Authentication-With-Jedis.md">Implementation details</a>
+     */
+    private static String extractUsernameFromToken(String token) {
+        String[] parts = token.split("\\.");
+        String base64 = parts[1];
+
+        switch (base64.length() % 4) {
+            case 2 -> base64 += "==";
+            case 3 -> base64 += "=";
+            default -> {
+            }
+        }
+
+        byte[] jsonBytes = Base64.getDecoder().decode(base64);
+        String json = new String(jsonBytes, StandardCharsets.UTF_8);
+        JsonObject jwt = JsonParser.parseString(json).getAsJsonObject();
+
+        return jwt.get("oid").getAsString();
+    }
+
 }
