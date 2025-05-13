@@ -29,6 +29,10 @@ public class Application extends Deployment {
     @JsonAlias({"applicationTypeSchemaId", "application_type_schema_id"})
     private URI applicationTypeSchemaId;
 
+    private String viewerUrl;
+
+    private String editorUrl;
+
     @JsonIgnore
     public Boolean hasApplicationTypeSchemaId() {
         return applicationTypeSchemaId != null;
