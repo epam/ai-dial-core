@@ -759,9 +759,7 @@ public class PublicationService {
 
         String targetFolder = getTargetFolderForCustomAppFiles(pubicationResource.getTargetUrl(), encryption);
 
-        List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), applicationToPublish, encryption, resourceService)
-                .stream()
-                .toList();
+        List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), applicationToPublish, encryption, resourceService);
 
         Stream<Publication.Resource> folderDescriptors = applicationsOwnDescriptors.stream()
                 .filter(ResourceDescriptor::isFolder)
