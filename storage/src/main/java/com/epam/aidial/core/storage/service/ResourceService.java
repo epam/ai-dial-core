@@ -879,23 +879,10 @@ public class ResourceService implements AutoCloseable {
 
     @VisibleForTesting
     static String encode(String val) {
-        if (isAllAscii(val)) {
+        if (StringUtils.isEmpty(val)) {
             return val;
         }
         return BASE58_PREFIX + Base58.encode(val.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static boolean isAllAscii(String input) {
-        if (input == null) {
-            return true;
-        }
-        for (int i = 0; i < input.length(); i++) {
-            int c = input.charAt(i);
-            if (c > 0x7F) {
-                return false;
-            }
-        }
-        return true;
     }
 
     @VisibleForTesting
