@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.CopyResourcesRequest;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
@@ -107,6 +108,61 @@ public class ResourceOperationController {
                         resourceOperationService.moveResource(source, destination, request.isOverwrite());
                         return null;
                     }), false);
+                })
+                .onSuccess(ignore -> context.respond(HttpStatus.OK))
+                .onFailure(this::handleServiceError);
+
+        return Future.succeededFuture();
+    }
+
+    public Future<?> copy() {
+        context.getRequest()
+                .body()
+                .compose(buffer -> {
+                    CopyResourcesRequest request;
+                    try {
+                        request = ProxyUtil.convertToObject(buffer, CopyResourcesRequest.class);
+                    } catch (Exception e) {
+                        throw new IllegalArgumentException("bad request body");
+                    }
+
+                    String sourceUrl = request.getSourceUrl();
+                    if (sourceUrl == null) {
+                        throw new IllegalArgumentException("sourceUrl must be provided");
+                    }
+
+                    String destinationUrl = request.getDestinationUrl();
+                    if (destinationUrl == null) {
+                        throw new IllegalArgumentException("destinationUrl must be provided");
+                    }
+
+                    ResourceDescriptor source = ResourceDescriptorFactory.fromAnyUrl(sourceUrl, encryptionService);
+                    ResourceDescriptor destination = ResourceDescriptorFactory.fromAnyUrl(destinationUrl, encryptionService);
+
+                    if (!source.getType().equals(destination.getType())) {
+                        throw new IllegalArgumentException("source and destination resources must have same type");
+                    }
+
+                    if (source.getUrl().equals(destination.getUrl())) {
+                        throw new IllegalArgumentException("source and destination resources must have different urls");
+                    }
+
+                    Set<ResourceDescriptor> resources = Set.of(source, destination);
+                    Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
+                            accessService.lookupPermissions(resources, context);
+
+                    if (!permissions.get(source).contains(ResourceAccessType.READ)) {
+                        throw new PermissionDeniedException("no read access to source resource");
+                    }
+
+                    if (!permissions.get(destination).contains(ResourceAccessType.WRITE)) {
+                        throw new PermissionDeniedException("no write access to destination resource");
+                    }
+
+                    return vertx.executeBlocking(() -> {
+                        resourceOperationService.copyResource(source, destination, request.isOverwrite());
+                        return null;
+                    }, false);
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);

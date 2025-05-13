@@ -3,6 +3,9 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -1244,6 +1247,156 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   }
                 """);
         Assertions.assertEquals(200, response.status());
+    }
+
+    @Test
+    void testOpenAiApplicationWithTypeSchemaGet_ReturnedInvalid_WhenAppDoesNotConformToSchema() {
+        //create valid app
+        Response response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt", null, """
+                  Test1
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt", null, """
+                  Test2
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", null, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt",
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        //share valid app
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail",
+                      "permissions": [ "READ" ]
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        //broke the app
+        ResourceDescriptor descriptor =
+                ResourceDescriptorFactory.fromAnyUrl("applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", this.dial.getEncryptionService());
+
+        this.dial.getResourceService().putResource(descriptor, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {},
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """, EtagHeader.ANY);
+
+        //making get request from other user and check invalid flag
+
+        response = send(HttpMethod.GET, "/openai/applications", null, null, "Api-key", "proxyKey2");
+
+        verifyJsonNotExact(response, 200, """
+                  {
+                     "data" : [ {
+                     "id" : "app",
+                     "application" : "app",
+                     "display_name" : "10k",
+                     "icon_url" : "http://localhost:7001/logo10k.png",
+                     "description" : "Some description of the application for testing",
+                     "reference" : "app",
+                     "owner" : "organization-owner",
+                     "object" : "application",
+                     "status" : "succeeded",
+                     "created_at" : "@ignore",
+                     "updated_at" : "@ignore",
+                     "features" : {
+                       "rate" : true,
+                       "tokenize" : false,
+                       "truncate_prompt" : false,
+                       "configuration" : true,
+                       "system_prompt" : false,
+                       "tools" : false,
+                       "seed" : false,
+                       "url_attachments" : false,
+                       "folder_attachments" : false,
+                       "allow_resume" : true,
+                       "accessible_by_per_request_key" : true,
+                       "content_parts" : false,
+                       "temperature" : true,
+                       "addons" : true,
+                       "cache" : false,
+                       "auto_caching" : false
+                     },
+                     "defaults" : { },
+                     "description_keywords" : [ ],
+                     "max_retry_attempts" : 1
+                   }, {
+                     "display_name" : "test_app",
+                     "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                     "description" : "My application description",
+                     "owner" : "EPM-RTC-GPT",
+                     "object" : "application",
+                     "status" : "succeeded",
+                     "created_at" : "@ignore",
+                     "updated_at" : "@ignore",
+                     "features" : {
+                       "rate" : false,
+                       "tokenize" : false,
+                       "truncate_prompt" : false,
+                       "configuration" : false,
+                       "system_prompt" : true,
+                       "tools" : false,
+                       "seed" : false,
+                       "url_attachments" : false,
+                       "folder_attachments" : false,
+                       "allow_resume" : true,
+                       "accessible_by_per_request_key" : true,
+                       "content_parts" : false,
+                       "temperature" : true,
+                       "addons" : true,
+                       "cache" : false,
+                       "auto_caching" : false
+                     },
+                     "defaults" : { },
+                     "description_keywords" : [ ],
+                     "max_retry_attempts" : 1,
+                     "invalid" : true,
+                     "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                   } ],
+                   "object" : "list"
+                }
+                """);
     }
 
 }

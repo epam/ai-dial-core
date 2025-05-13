@@ -27,6 +27,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
+import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
@@ -61,7 +62,7 @@ public class ResourceService implements AutoCloseable {
 
     private static final String BASE58_PREFIX = "base58_";
     // Default ETag for old records
-    public static final String DEFAULT_ETAG = "0";
+    public static final String DEFAULT_ETAG = "\"0\"";
     private static final String BODY_ATTRIBUTE = "body";
     private static final String CONTENT_TYPE_ATTRIBUTE = "content_type";
     private static final String CONTENT_LENGTH_ATTRIBUTE = "content_length";
@@ -290,7 +291,7 @@ public class ResourceService implements AutoCloseable {
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
                 .setAuthor(result.author)
-                .setEtag(result.etag());
+                .setEtag(result.etag);
     }
 
     public boolean hasResource(ResourceDescriptor descriptor) {
@@ -483,11 +484,12 @@ public class ResourceService implements AutoCloseable {
             flushToBlobStore(redisKey);
 
             MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
+            List<MultipartPart> parts = resourceUpload.getParts();
 
             long updatedAt = resourceUpload.getUpdatedAt();
             Long createdAt = resourceUpload.getCreatedAt();
 
-            String etag = blobStore.completeMultipartUpload(multipartUpload, resourceUpload.getParts());
+            String etag = blobStore.completeMultipartUpload(multipartUpload, parts);
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
@@ -775,7 +777,7 @@ public class ResourceService implements AutoCloseable {
         }
 
         byte[] body = fields.getOrDefault(BODY_ATTRIBUTE, ArrayUtils.EMPTY_BYTE_ARRAY);
-        String etag = RedisUtil.redisToString(fields.get(ETAG_ATTRIBUTE), DEFAULT_ETAG);
+        String etag = EtagHeader.quoteIfNeeded(RedisUtil.redisToString(fields.get(ETAG_ATTRIBUTE), DEFAULT_ETAG));
         String contentType = RedisUtil.redisToString(fields.get(CONTENT_TYPE_ATTRIBUTE), null);
         Long contentLength = RedisUtil.redisToLong(fields.get(CONTENT_LENGTH_ATTRIBUTE));
         Long createdAt = RedisUtil.redisToLong(fields.get(CREATED_AT_ATTRIBUTE));
@@ -879,23 +881,10 @@ public class ResourceService implements AutoCloseable {
 
     @VisibleForTesting
     static String encode(String val) {
-        if (isAllAscii(val)) {
+        if (StringUtils.isEmpty(val)) {
             return val;
         }
         return BASE58_PREFIX + Base58.encode(val.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static boolean isAllAscii(String input) {
-        if (input == null) {
-            return true;
-        }
-        for (int i = 0; i < input.length(); i++) {
-            int c = input.charAt(i);
-            if (c > 0x7F) {
-                return false;
-            }
-        }
-        return true;
     }
 
     @VisibleForTesting
@@ -909,7 +898,8 @@ public class ResourceService implements AutoCloseable {
 
     private static String extractEtag(BlobMetadata meta) {
         Map<String, String> attributes = meta.getUserMetadata();
-        return attributes.getOrDefault(ETAG_ATTRIBUTE, meta.getETag());
+        String etag = attributes.get(ETAG_ATTRIBUTE);
+        return (etag == null) ? meta.getETag() : EtagHeader.quoteIfNeeded(etag);
     }
 
     @Builder
