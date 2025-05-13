@@ -22,15 +22,14 @@ public class CacheClientFactory {
         }
 
         JsonNode providerSettings = conf.get("provider");
-        CacheProvider provider = null;
-        if (providerSettings != null) {
-            provider = CacheProvider.from(providerSettings.get("name").asText());
-        }
         CredentialsResolver credentialsResolver = null;
-        if (provider == CacheProvider.AWS_ELASTI_CACHE) {
-            credentialsResolver = createElastiCacheCredResolver(providerSettings);
-        } else if (provider == CacheProvider.GCP_MEMORY_STORE) {
-            credentialsResolver = createGcpCredResolver(providerSettings);
+        if (providerSettings != null) {
+            CacheProvider provider = CacheProvider.from(providerSettings.get("name").asText());
+            credentialsResolver = switch (provider) {
+                case AWS_ELASTI_CACHE -> createElastiCacheCredResolver(providerSettings);
+                case GCP_MEMORY_STORE -> createGcpCredResolver(providerSettings);
+                case AZURE_REDIS_CACHE -> createAzureCredResolver();
+            };
         }
 
         ConfigSupport support = new RedisConfigSupport();
@@ -58,6 +57,10 @@ public class CacheClientFactory {
     private static CredentialsResolver createGcpCredResolver(JsonNode providerSettings) {
         String accountName = Objects.requireNonNull(providerSettings.get("accountName"), "AIM account name must be provided").asText();
         return new GcpCredentialsResolver(accountName);
+    }
+
+    private static CredentialsResolver createAzureCredResolver() {
+        return new AzureCredentialsResolver();
     }
 
 }
