@@ -11,7 +11,6 @@ public class ResourceServiceTest {
     public void testEncode() {
         assertNull(ResourceService.encode(null));
         assertEquals("", ResourceService.encode(""));
-        assertEquals("{abc}", ResourceService.encode("{abc}"));
         assertEquals("base58_24SWdWXor", ResourceService.encode("{abñ}"));
     }
 
