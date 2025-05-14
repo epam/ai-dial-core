@@ -729,7 +729,10 @@ public class PublicationService {
         for (Publication.Resource resource : newResources) {
             String sourceUrl = resource.getSourceUrl();
             if (sourceUrlMap.containsKey(sourceUrl)) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, "Duplicate source URL found: " + sourceUrl);
+                throw new HttpException(HttpStatus.BAD_REQUEST, "Handling resource twice while publishing application's own resources: " + sourceUrl);
+            }
+            if (sourceUrlsFromRequest.contains(sourceUrl)) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "Application own resource was already present in the publication request: " + sourceUrl);
             }
             sourceUrlMap.put(sourceUrl, resource);
         }
@@ -756,10 +759,7 @@ public class PublicationService {
 
         String targetFolder = getTargetFolderForCustomAppFiles(pubicationResource.getTargetUrl(), encryption);
 
-        List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), applicationToPublish, encryption, resourceService)
-                .stream()
-                .filter(descriptor -> !otherSourceUrlsFromRequest.contains(descriptor.getUrl()))
-                .toList();
+        List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), applicationToPublish, encryption, resourceService);
 
         Stream<Publication.Resource> folderDescriptors = applicationsOwnDescriptors.stream()
                 .filter(ResourceDescriptor::isFolder)

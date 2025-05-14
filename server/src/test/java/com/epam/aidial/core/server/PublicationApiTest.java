@@ -2325,4 +2325,65 @@ class PublicationApiTest extends ResourceBaseTest {
 
     }
 
+    @Test
+    void testApplicationWithTypeSchemaPublish_BadRequest_SchemaRichDuplicateFile() {
+
+        List<String> filePaths = List.of(
+                "Unt 26__0.0.1/generate.json",
+                "Unt 26__0.0.1/nodes/1743404608.101931_1.json",
+                "abc/Unt 26__0.0.1"
+        );
+        String basePath = "/v1/files/%s/appdata/mindmap/".formatted(bucket);
+        Response response;
+        for (String filePath : filePaths) {
+            String resourceUrl = basePath + UrlUtil.encodePath(filePath);
+            response = upload(HttpMethod.PUT, resourceUrl, null, "Test");
+            Assertions.assertEquals(200, response.status());
+        }
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202", null, """
+                  {
+                      "displayName": "test%20app%202",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/Unt%2026__0.0.1/",
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/abc/Unt%2026__0.0.1"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202",
+                          "targetUrl": "applications/public/xyz%20app%204"
+                        },
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/abc/Unt%2026__0.0.1",
+                          "targetUrl": "files/public/Unt%2026__0.0.1"
+                        }
+                      ]
+                    }
+                """);
+
+        verify(response, 400);
+
+    }
+
 }
