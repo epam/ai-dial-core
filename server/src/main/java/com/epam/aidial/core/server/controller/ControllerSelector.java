@@ -62,7 +62,7 @@ public class ControllerSelector {
     private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
     private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
     private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/(?<id>[a-zA-Z0-9]+)$");
-    private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
+    private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject|update)$");
     private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
     private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
 
@@ -255,6 +255,7 @@ public class ControllerSelector {
                 case "delete" -> controller::deletePublication;
                 case "approve" -> controller::approvePublication;
                 case "reject" -> controller::rejectPublication;
+                case "update" -> controller::updatePublication;
                 default -> null;
             };
         });

@@ -110,6 +110,25 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    public Future<?> updatePublication() {
+        context.getRequest()
+                .body()
+                .compose(body -> {
+                    Publication publication = ProxyUtil.convertToObject(body, Publication.class);
+                    if (!isAdmin()) {
+                        throw new HttpException(HttpStatus.FORBIDDEN, "Only admin can update publications");
+                    }
+                    if (publication.getResources() == null || publication.getResources().isEmpty()) {
+                        throw new HttpException(HttpStatus.BAD_REQUEST, "Publication must have resources to update");
+                    }
+                    return vertx.executeBlocking(() -> publicationService.updatePublication(context, publication), false);
+                })
+                .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
+                .onFailure(error -> respondError("Can't update publication", error));
+
+        return Future.succeededFuture();
+    }
+
     public Future<?> approvePublication() {
         context.getRequest()
                 .body()
