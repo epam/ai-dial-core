@@ -194,9 +194,7 @@ public class PublicationService {
     }
 
     public Publication deletePublication(ResourceDescriptor resource) {
-        if (resource.getType() != ResourceTypes.PUBLICATION || resource.isPublic() || resource.isFolder() || resource.getParentPath() != null) {
-            throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
-        }
+        validatePublicationResourceDescriptor(resource);
 
         resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
@@ -318,7 +316,7 @@ public class PublicationService {
     private void updatePublicPublications(Publication publication) {
         resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
             Map<String, Publication> publications = decodePublications(body);
-            publications.put(publication.getUrl(), newMetadata(publication));
+            publications.computeIfPresent(publication.getUrl(), (k, v) -> newMetadata(publication));
             return encodePublications(publications);
         });
     }
@@ -381,9 +379,7 @@ public class PublicationService {
 
     @Nullable
     public Publication rejectPublication(ResourceDescriptor resource, RejectPublicationRequest request) {
-        if (resource.isFolder() || resource.isPublic() || resource.getParentPath() != null) {
-            throw new IllegalArgumentException("Bad publication url: " + resource.getUrl());
-        }
+        validatePublicationResourceDescriptor(resource);
 
         MutableObject<Publication> reference = new MutableObject<>();
         resourceService.computeResource(publications(resource), body -> {
