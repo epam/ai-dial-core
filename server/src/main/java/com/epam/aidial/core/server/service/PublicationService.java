@@ -240,18 +240,19 @@ public class PublicationService {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         String bucket = encryption.encrypt(bucketLocation);
 
-        boolean isAdmin = accessService.hasAdminAccess(context);
         String reviewBucket = getReviewBucket(publicationResource);
 
-        validatePublicationResources(context, publication, bucket, reviewBucket, isAdmin);
+        validatePublicationResources(context, publication, bucket, reviewBucket, true);
 
         validatePublicationResourceDescriptor(publicationResource);
 
-        MutableObject<Publication> reference = new MutableObject<>();
         List<Publication.Resource> reviewResourcesToAdd = new ArrayList<>();
         List<Publication.Resource> reviewResourcesToDelete = new ArrayList<>();
         List<Pair<String, String>> reviewResourcesToMove = new ArrayList<>();
-        resourceService.computeResource(publications(publicationResource), body -> {
+        ResourceDescriptor publicationsFile = publications(publicationResource);
+
+        try (var ignore = resourceService.lockResource(publicationsFile)) {
+            String body = resourceService.getResource(publicationsFile, EtagHeader.ANY, false);
             Map<String, Publication> publications = decodePublications(body);
             Publication existingPublication = publications.get(publicationResource.getUrl());
 
@@ -285,31 +286,41 @@ public class PublicationService {
                 }
             }
 
+            // move renamed target resources in the review bucket
+            for (Pair<String, String> pair : reviewResourcesToMove) {
+                ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(pair.getLeft(), encryption);
+                ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(pair.getRight(), encryption);
+                resourceOperationService.moveResource(from, to, false);
+            }
+
+            // delete removed resources from the review bucket
+            for (Publication.Resource reviewResource : reviewResourcesToDelete) {
+                ResourceDescriptor resource = ResourceDescriptorFactory.fromPrivateUrl(reviewResource.getReviewUrl(), encryption);
+                resourceService.deleteResource(resource, EtagHeader.ANY);
+            }
+
+            // copy new resources to the review bucket
+            copySourceToReviewResources(reviewResourcesToAdd);
+
+            // update public publications to be viewed by admin
+            updatePublicPublications(publication);
+
+            // update user publications
             existingPublication.setRules(publication.getRules());
             existingPublication.setTargetFolder(publication.getTargetFolder());
             existingPublication.setResources(publication.getResources());
+            resourceService.putResource(publicationsFile, encodePublications(publications), EtagHeader.ANY, null, false);
 
+            return existingPublication;
+        }
+    }
 
-            reference.setValue(existingPublication);
+    private void updatePublicPublications(Publication publication) {
+        resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
+            Map<String, Publication> publications = decodePublications(body);
+            publications.put(publication.getUrl(), newMetadata(publication));
             return encodePublications(publications);
         });
-
-        Publication updatedPublication = reference.getValue();
-
-        for (Pair<String, String> pair : reviewResourcesToMove) {
-            ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(pair.getLeft(), encryption);
-            ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(pair.getRight(), encryption);
-            resourceOperationService.moveResource(from, to, false);
-        }
-
-        for (Publication.Resource reviewResource : reviewResourcesToDelete) {
-            ResourceDescriptor resource = ResourceDescriptorFactory.fromPrivateUrl(reviewResource.getReviewUrl(), encryption);
-            resourceService.deleteResource(resource, EtagHeader.ANY);
-        }
-
-        copySourceToReviewResources(reviewResourcesToAdd);
-
-        return updatedPublication;
     }
 
     private String getReviewBucket(ResourceDescriptor publicationResource) {
