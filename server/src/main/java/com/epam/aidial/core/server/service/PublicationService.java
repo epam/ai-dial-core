@@ -300,14 +300,14 @@ public class PublicationService {
             // copy new resources to the review bucket
             copySourceToReviewResources(reviewResourcesToAdd);
 
-            // update public publications to be viewed by admin
-            updatePublicPublications(publication);
-
             // update user publications
             existingPublication.setRules(publication.getRules());
             existingPublication.setTargetFolder(publication.getTargetFolder());
             existingPublication.setResources(publication.getResources());
             resourceService.putResource(publicationsFile, encodePublications(publications), EtagHeader.ANY, null, false);
+
+            // update public publications to be viewed by admin
+            updatePublicPublications(publication);
 
             return existingPublication;
         }
