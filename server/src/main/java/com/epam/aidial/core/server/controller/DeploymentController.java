@@ -124,6 +124,10 @@ public class DeploymentController {
             data.setAutoCaching(features.getAutoCachingSupported());
         }
 
+        if (features.getParallelToolCallsSupported() != null) {
+            data.setParallelToolCalls(features.getParallelToolCallsSupported());
+        }
+
         return data;
     }
 }
