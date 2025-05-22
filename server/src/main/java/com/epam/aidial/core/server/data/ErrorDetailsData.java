@@ -10,6 +10,7 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ErrorDetailsData {
     private String message;
+    private String displayMessage;
     private String type;
     private String param;
     private String code;

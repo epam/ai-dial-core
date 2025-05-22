@@ -7,6 +7,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import org.apache.commons.lang3.math.NumberUtils;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TokenRateLimit {
@@ -40,7 +43,36 @@ public class TokenRateLimit {
             long weekRetryAfter = week.retryAfter(limit.getWeek());
             long monthRetryAfter = month.retryAfter(limit.getMonth());
             long retryAfter = NumberUtils.max(minuteRetryAfter, dayRetryAfter, weekRetryAfter, monthRetryAfter);
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, retryAfter);
+            List<String> limits = new ArrayList<>();
+            StringBuilder displayError = new StringBuilder("You've exceeded your");
+            if (monthTotal >= limit.getMonth()) {
+                limits.add("monthly");
+            }
+            if (weekTotal >= limit.getWeek()) {
+                limits.add("weekly");
+            }
+            if (dayTotal >= limit.getDay()) {
+                limits.add("daily");
+            }
+            if (minuteTotal >= limit.getMinute()) {
+                limits.add("minutely");
+            }
+            for (int i = 0; i < limits.size(); i++) {
+                if (i > 0) {
+                    if (i == limits.size() - 1) {
+                        displayError.append(" and ");
+                    } else {
+                        displayError.append(',');
+                    }
+                }
+                displayError.append(' ');
+                displayError.append(limits.get(i));
+            }
+            displayError.append(" token limit");
+            if (limits.size() > 1) {
+                displayError.append('s');
+            }
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter);
         } else {
             return RateLimitResult.SUCCESS;
         }
