@@ -382,7 +382,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "temperature" : true,
                                 "addons" : true,
                                 "cache" : false,
-                                "auto_caching" : false
+                                "auto_caching" : false,
+                                "parallel_tool_calls" : true
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -414,7 +415,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "temperature" : true,
                               "addons" : true,
                               "cache" : false,
-                              "auto_caching" : false
+                              "auto_caching" : false,
+                              "parallel_tool_calls" : true
                             },
                             "defaults" : { },
                             "description_keywords":[],
@@ -461,7 +463,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "temperature" : true,
                                 "addons" : true,
                                 "cache" : false,
-                                "auto_caching" : false
+                                "auto_caching" : false,
+                                "parallel_tool_calls" : true
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -493,7 +496,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "temperature" : true,
                               "addons" : true,
                               "cache" : false,
-                              "auto_caching" : false
+                              "auto_caching" : false,
+                              "parallel_tool_calls" : true
                             },
                             "defaults" : { },
                             "description_keywords":[],
@@ -616,7 +620,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "temperature" : true,
                                 "addons" : true,
                                 "cache" : false,
-                                "auto_caching" : false
+                                "auto_caching" : false,
+                                "parallel_tool_calls" : true
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -650,7 +655,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "temperature" : true,
                               "addons" : true,
                               "cache" : false,
-                              "auto_caching" : false
+                              "auto_caching" : false,
+                              "parallel_tool_calls" : true
                             },
                             "defaults" : { },
                             "description_keywords" : [ ],
@@ -682,7 +688,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "temperature" : true,
                               "addons" : true,
                               "cache" : false,
-                              "auto_caching" : false
+                              "auto_caching" : false,
+                              "parallel_tool_calls" : true
                             },
                             "defaults" : { },
                             "description_keywords":[],
@@ -732,7 +739,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "temperature" : true,
                                 "addons" : true,
                                 "cache" : false,
-                                "auto_caching" : false
+                                "auto_caching" : false,
+                                "parallel_tool_calls" : true
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -788,7 +796,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "temperature" : true,
                         "addons" : true,
                         "cache" : false,
-                        "auto_caching" : false
+                        "auto_caching" : false,
+                        "parallel_tool_calls" : true
                     },
                     "defaults":{},
                     "description_keywords":[],
@@ -832,7 +841,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "temperature" : true,
                                 "addons" : true,
                                 "cache" : false,
-                                "auto_caching" : false
+                                "auto_caching" : false,
+                                "parallel_tool_calls" : true
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -864,7 +874,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "temperature" : true,
                               "addons" : true,
                               "cache" : false,
-                              "auto_caching" : false
+                              "auto_caching" : false,
+                              "parallel_tool_calls" : true
                             },
                             "defaults" : { },
                             "description_keywords":[],
@@ -1356,7 +1367,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "temperature" : true,
                        "addons" : true,
                        "cache" : false,
-                       "auto_caching" : false
+                       "auto_caching" : false,
+                       "parallel_tool_calls" : true
                      },
                      "defaults" : { },
                      "description_keywords" : [ ],
@@ -1386,7 +1398,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "temperature" : true,
                        "addons" : true,
                        "cache" : false,
-                       "auto_caching" : false
+                       "auto_caching" : false,
+                       "parallel_tool_calls" : true
                      },
                      "defaults" : { },
                      "description_keywords" : [ ],
