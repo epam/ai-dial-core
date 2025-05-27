@@ -15,6 +15,7 @@ public class MetaSchemaHolder {
     public static final String APPLICATION_TYPE_EDITOR_URL = "dial:applicationTypeEditorUrl";
     public static final String APPLICATION_TYPE_VIEWER_URL = "dial:applicationTypeViewerUrl";
     public static final String APPLICATION_TYPE_DISPLAY_NAME = "dial:applicationTypeDisplayName";
+    public static final String APPLICATION_TYPE_ICON_URL = "dial:applicationTypeIconUrl";
     public static final String APPLICATION_TYPE_COMPLETION_ENDPOINT = "dial:applicationTypeCompletionEndpoint";
     public static final String APPLICATION_TYPE_CONFIGURATION_ENDPOINT = "dial:applicationTypeConfigurationEndpoint";
     public static final String APPLICATION_TYPE_RATE_ENDPOINT = "dial:applicationTypeRateEndpointEndpoint";
@@ -39,6 +40,7 @@ public class MetaSchemaHolder {
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_EDITOR_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_VIEWER_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_DISPLAY_NAME))
+                .keyword(new NonValidationKeyword(APPLICATION_TYPE_ICON_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_COMPLETION_ENDPOINT))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_CONFIGURATION_ENDPOINT))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_RATE_ENDPOINT))
