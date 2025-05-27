@@ -106,6 +106,9 @@ public class ApplicationTypeSchemaController {
                 if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_EDITOR_URL)) {
                     filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_EDITOR_URL, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_EDITOR_URL));
                 }
+                if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_ICON_URL)) {
+                    filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_ICON_URL, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_ICON_URL));
+                }
 
                 filteredSchemas.add(filteredNode);
             }
