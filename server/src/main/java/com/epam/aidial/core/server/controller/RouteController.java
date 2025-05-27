@@ -224,6 +224,7 @@ public class RouteController implements Controller {
         ErrorData rateLimitError = new ErrorData();
         rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
         rateLimitError.getError().setMessage(result.errorMessage());
+        rateLimitError.getError().setDisplayMessage(result.displayErrorMessage());
 
         log.error("Rate limit error {}. Project: {}. User sub: {}. Route: {}. Trace: {}. Span: {}", result.errorMessage(),
                 context.getProject(), context.getUserSub(), context.getRoute().getName(), context.getTraceId(),
