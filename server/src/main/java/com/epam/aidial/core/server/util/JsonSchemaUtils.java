@@ -41,14 +41,16 @@ public class JsonSchemaUtils {
             JsonNode propNode = propertiesNode.get(fieldName);
             if (propNode.has("$ref")) {
                 String ref = propNode.get("$ref").asText();
-                if (ref.startsWith("#/")) {
-                    JsonNode targetNode = resolveRef(schemaNode, ref);
-                    if (targetNode != null && targetNode.isObject()) {
-                        ObjectNode merged = mergeNodes(targetNode, propNode);
-                        newPropertiesNode.set(fieldName, merged);
-                        clearReferencedNode(schemaNode, ref);
-                        modified = true;
-                    }
+                // Only handle local refs; skip foreign refs
+                if (!ref.startsWith("#/")) {
+                    continue;
+                }
+                JsonNode targetNode = resolveRef(schemaNode, ref);
+                if (targetNode != null && targetNode.isObject()) {
+                    ObjectNode merged = mergeNodes(targetNode, propNode);
+                    newPropertiesNode.set(fieldName, merged);
+                    clearReferencedNode(schemaNode, ref);
+                    modified = true;
                 }
             }
         }
