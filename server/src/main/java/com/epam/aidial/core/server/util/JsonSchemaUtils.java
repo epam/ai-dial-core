@@ -12,6 +12,22 @@ public class JsonSchemaUtils {
 
     private static final String PROPERTIES = "properties";
 
+    /**
+     * Resolves all first-level $ref references in the "properties" section of a JSON schema.
+     *
+     * <p>
+     * For each property with a $ref, this method:
+     * <ul>
+     *   <li>Finds the referenced node using the JSON Pointer in the $ref.</li>
+     *   <li>Merges the referenced node into the property, preserving any additional fields on the property itself (except $ref).</li>
+     *   <li>Replaces the referenced node in the schema with an empty object.</li>
+     * </ul>
+     * If no first-level property contains a $ref, the schema is returned unchanged.
+     *
+     * @param schema the JSON schema as a string
+     * @return the rewritten schema as a string with first-level $ref in properties resolved
+     * @throws JsonProcessingException if the schema cannot be parsed
+     */
     public static String extractTopLevelRefs(String schema) throws JsonProcessingException {
         JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
         if (!hasTopLevelRefs(schemaNode)) {
