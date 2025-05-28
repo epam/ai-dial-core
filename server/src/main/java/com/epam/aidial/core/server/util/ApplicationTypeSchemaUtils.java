@@ -139,14 +139,12 @@ public class ApplicationTypeSchemaUtils {
                 }
             }
 
-            // Fast return if nothing was modified
-            if (!modified) {
-                return schema;
+            if (modified) {
+                ((ObjectNode) schemaNode).set("properties", newPropertiesNode);
+                return ProxyUtil.MAPPER.writeValueAsString(schemaNode);
             }
-
-            ((ObjectNode) schemaNode).set("properties", newPropertiesNode);
         }
-        return ProxyUtil.MAPPER.writeValueAsString(schemaNode);
+        return schema;
     }
 
     @FunctionalInterface
