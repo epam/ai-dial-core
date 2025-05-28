@@ -10,6 +10,8 @@ import com.networknt.schema.ValidationContext;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_FILE_FORMAT;
+
 public class DialFileFormat implements Format {
 
     private static final Pattern PATTERN = Pattern.compile("^files/([a-zA-Z0-9]+)/((?:(?:[a-zA-Z0-9()_\\-.~]|%[a-zA-Z0-9]{2})+/?)+)$");
@@ -43,6 +45,6 @@ public class DialFileFormat implements Format {
 
     @Override
     public String getName() {
-        return "dial-file-encoded";
+        return DIAL_FILE_FORMAT;
     }
 }

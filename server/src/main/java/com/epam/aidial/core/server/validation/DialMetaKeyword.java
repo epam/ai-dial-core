@@ -17,10 +17,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_META_KEYWORD;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.PROPERTY_KIND;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.PROPERTY_KIND_CLIENT;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.PROPERTY_KIND_SERVER;
+
 public class DialMetaKeyword implements Keyword {
     @Override
     public String getValue() {
-        return "dial:meta";
+        return DIAL_META_KEYWORD;
     }
 
     @Override
@@ -30,7 +35,7 @@ public class DialMetaKeyword implements Keyword {
     }
 
     private static class DialMetaCollectorValidator extends BaseJsonValidator {
-        private static final ErrorMessageType ERROR_MESSAGE_TYPE = () -> "dial:meta";
+        private static final ErrorMessageType ERROR_MESSAGE_TYPE = () -> DIAL_META_KEYWORD;
 
         String propertyKindString;
 
@@ -38,7 +43,7 @@ public class DialMetaKeyword implements Keyword {
                                           JsonSchema parentSchema, Keyword keyword,
                                           ValidationContext validationContext, boolean suppressSubSchemaRetrieval) {
             super(schemaLocation, evaluationPath, schemaNode, parentSchema, ERROR_MESSAGE_TYPE, keyword, validationContext, suppressSubSchemaRetrieval);
-            propertyKindString = schemaNode.get("dial:propertyKind").asText();
+            propertyKindString = schemaNode.get(PROPERTY_KIND).asText();
         }
 
         @Override
@@ -47,11 +52,11 @@ public class DialMetaKeyword implements Keyword {
 
             CollectorContext collectorContext = executionContext.getCollectorContext();
             ListCollector<String> serverPropsCollector = (ListCollector<String>) collectorContext.getCollectorMap()
-                    .computeIfAbsent("server", k -> new ListCollector<String>());
+                    .computeIfAbsent(PROPERTY_KIND_SERVER, k -> new ListCollector<String>());
             ListCollector<String> clientPropsCollector = (ListCollector<String>) collectorContext
-                    .getCollectorMap().computeIfAbsent("client", k -> new ListCollector<String>());
+                    .getCollectorMap().computeIfAbsent(PROPERTY_KIND_CLIENT, k -> new ListCollector<String>());
             String propertyName = jsonNodePath.getName(-1);
-            if (Objects.equals(propertyKindString, "server")) {
+            if (Objects.equals(propertyKindString, PROPERTY_KIND_SERVER)) {
                 serverPropsCollector.combine(List.of(propertyName));
             } else {
                 clientPropsCollector.combine(List.of(propertyName));

@@ -23,6 +23,11 @@ public class MetaSchemaHolder {
     public static final String PROPERTY_KIND = "dial:propertyKind";
     public static final String PROPERTY_ORDER = "dial:propertyOrder";
     public static final String APPLICATION_TYPE_ID_FIELD = "$id";
+    public static final String DIAL_FILE_KEYWORD = "dial:file";
+    public static final String DIAL_META_KEYWORD = "dial:meta";
+    public static final String PROPERTY_KIND_SERVER = "server";
+    public static final String PROPERTY_KIND_CLIENT = "client";
+    public static final String DIAL_FILE_FORMAT = "dial-file-encoded";
 
     public static String getCustomApplicationMetaSchema() {
         try (InputStream inputStream = MetaSchemaHolder.class.getClassLoader()
@@ -30,7 +35,7 @@ public class MetaSchemaHolder {
             assert inputStream != null;
             return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load custom application meta schema", e);
+            throw new MetaSchemaLoadException("Failed to load custom application meta schema", e);
         }
     }
 
@@ -48,5 +53,11 @@ public class MetaSchemaHolder {
                 .keyword(new NonValidationKeyword(PROPERTY_ORDER))
                 .keyword(new NonValidationKeyword("$defs"))
                 .format(new DialFileFormat());
+    }
+
+    public static class MetaSchemaLoadException extends RuntimeException {
+        public MetaSchemaLoadException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

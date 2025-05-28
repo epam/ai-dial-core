@@ -15,8 +15,7 @@ public class JsonSchemaUtils {
     /**
      * Resolves all first-level $ref references in the "properties" section of a JSON schema.
      *
-     * <p>
-     * For each property with a $ref, this method:
+     * <p>For each property with a $ref, this method:
      * <ul>
      *   <li>Finds the referenced node using the JSON Pointer in the $ref.</li>
      *   <li>Merges the referenced node into the property, preserving any additional fields on the property itself (except $ref).</li>

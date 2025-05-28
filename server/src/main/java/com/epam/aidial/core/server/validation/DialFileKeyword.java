@@ -16,11 +16,15 @@ import com.networknt.schema.ValidationMessage;
 import java.util.List;
 import java.util.Set;
 
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_FILE_KEYWORD;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_META_KEYWORD;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.PROPERTY_KIND;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.PROPERTY_KIND_SERVER;
 
 public class DialFileKeyword implements Keyword {
     @Override
     public String getValue() {
-        return "dial:file";
+        return DIAL_FILE_KEYWORD;
     }
 
     @Override
@@ -30,13 +34,13 @@ public class DialFileKeyword implements Keyword {
     }
 
     private static class DialFileCollectorValidator extends BaseJsonValidator {
-        private static final ErrorMessageType ERROR_MESSAGE_TYPE = () -> "dial:file";
+        private static final ErrorMessageType ERROR_MESSAGE_TYPE = () -> DIAL_FILE_KEYWORD;
 
         private final Boolean value;
         private final Boolean isServerProp;
 
         private static JsonNode findMetaNode(JsonSchema schema) {
-            JsonNode metaNode = schema.getSchemaNode().get("dial:meta");
+            JsonNode metaNode = schema.getSchemaNode().get(DIAL_META_KEYWORD);
             if (metaNode != null) {
                 return metaNode;
             }
@@ -53,14 +57,14 @@ public class DialFileKeyword implements Keyword {
             super(schemaLocation, evaluationPath, schemaNode, parentSchema, ERROR_MESSAGE_TYPE, keyword, validationContext, suppressSubSchemaRetrieval);
             this.value = schemaNode.booleanValue();
             JsonNode metaNode = findMetaNode(parentSchema);
-            JsonNode propertyKindNode = (metaNode != null) ? metaNode.get("dial:propertyKind") : null;
-            this.isServerProp = (propertyKindNode != null) && propertyKindNode.asText().equalsIgnoreCase("server");
+            JsonNode propertyKindNode = (metaNode != null) ? metaNode.get(PROPERTY_KIND) : null;
+            this.isServerProp = (propertyKindNode != null) && propertyKindNode.asText().equalsIgnoreCase(PROPERTY_KIND_SERVER);
         }
 
         @Override
         @SuppressWarnings("unchecked")
         public Set<ValidationMessage> validate(ExecutionContext executionContext, JsonNode jsonNode, JsonNode jsonNode1, JsonNodePath jsonNodePath) {
-            if (value) {
+            if (Boolean.TRUE.equals(value)) {
                 CollectorContext collectorContext = executionContext.getCollectorContext();
                 ListCollector<String> fileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                         .computeIfAbsent(ListCollector.FileCollectorType.ALL_FILES.getValue(), k -> new ListCollector<String>());
@@ -69,7 +73,7 @@ public class DialFileKeyword implements Keyword {
                     return Set.of();
                 }
                 fileCollector.combine(List.of(nodeValue));
-                if (isServerProp) {
+                if (Boolean.TRUE.equals(isServerProp)) {
                     ListCollector<String> serverFileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                             .computeIfAbsent(ListCollector.FileCollectorType.ONLY_SERVER_FILES.getValue(), k -> new ListCollector<String>());
                     serverFileCollector.combine(List.of(nodeValue));
