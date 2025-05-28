@@ -105,28 +105,25 @@ public class ApplicationTypeSchemaUtils {
             ObjectNode propertiesNode = (ObjectNode) schemaNode.get("properties");
             ObjectNode newPropertiesNode = propertiesNode.deepCopy();
             boolean modified = false;
+
             for (Iterator<String> it = propertiesNode.fieldNames(); it.hasNext(); ) {
                 String fieldName = it.next();
                 JsonNode propNode = propertiesNode.get(fieldName);
                 if (propNode.has("$ref")) {
                     String ref = propNode.get("$ref").asText();
                     if (ref.startsWith("#/")) {
-                        String pointer = ref.substring(1); // remove leading '#'
-                        JsonNode targetNode = schemaNode.at(pointer);
+                        JsonNode targetNode = schemaNode.at(ref.substring(1));
                         if (targetNode != null && targetNode.isObject()) {
                             ObjectNode merged = ProxyUtil.MAPPER.createObjectNode();
-                            // Copy all fields from referenced node
                             targetNode.fields().forEachRemaining(e -> merged.set(e.getKey(), e.getValue()));
-                            // Copy all fields from property except $ref (overrides referenced fields)
                             propNode.fields().forEachRemaining(e -> {
-                                if (!e.getKey().equals("$ref")) {
+                                if (!"$ref".equals(e.getKey())) {
                                     merged.set(e.getKey(), e.getValue());
                                 }
                             });
                             newPropertiesNode.set(fieldName, merged);
-                            // Clear the referenced node if possible
-                            // Only clear if parent is an ObjectNode and not root
-                            String[] pathParts = pointer.split("/");
+
+                            String[] pathParts = ref.substring(1).split("/");
                             if (pathParts.length > 1) {
                                 JsonNode parent = schemaNode;
                                 for (int i = 1; i < pathParts.length - 1; i++) {
@@ -141,12 +138,12 @@ public class ApplicationTypeSchemaUtils {
                     }
                 }
             }
+
             if (modified) {
                 ((ObjectNode) schemaNode).set("properties", newPropertiesNode);
             }
         }
-        String rewrittenSchema = ProxyUtil.MAPPER.writeValueAsString(schemaNode);
-        return rewrittenSchema;
+        return ProxyUtil.MAPPER.writeValueAsString(schemaNode);
     }
 
     @FunctionalInterface
