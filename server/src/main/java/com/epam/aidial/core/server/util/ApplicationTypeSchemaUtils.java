@@ -15,17 +15,12 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SchemaValidatorsConfig;
 import com.networknt.schema.ValidationMessage;
-import com.networknt.schema.walk.JsonSchemaWalkListener;
-import com.networknt.schema.walk.WalkEvent;
-import com.networknt.schema.walk.WalkFlow;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -33,7 +28,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -94,7 +88,7 @@ public class ApplicationTypeSchemaUtils {
             return result;
         } catch (ApplicationTypeSchemaValidationException e) {
             throw e;
-        } catch (Throwable e) {
+        } catch (Exception e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to filter custom properties", e);
         }
     }
@@ -246,21 +240,25 @@ public class ApplicationTypeSchemaUtils {
             }
             List<ResourceDescriptor> result = new ArrayList<>();
             for (String item : propsCollector.collect()) {
-                try {
-                    ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
-                    if (!descriptor.isFolder() && !resourceService.hasResource(descriptor)) {
-                        throw new ApplicationTypeResourceException("Resource listed as dependent to the application not found or inaccessible", item);
-                    }
-                    result.add(descriptor);
-                } catch (IllegalArgumentException e) {
-                    throw new ApplicationTypeResourceException("Failed to get resource descriptor for url", item, e);
-                }
+                addResourceDescriptor(result, item, encryptionService, resourceService);
             }
             return result;
         } catch (ApplicationTypeSchemaValidationException | ApplicationTypeResourceException e) {
             throw e;
         } catch (Exception e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of files attached to the custom app", e);
+        }
+    }
+
+    private static void addResourceDescriptor(List<ResourceDescriptor> result, String item, EncryptionService encryptionService, ResourceService resourceService) {
+        try {
+            ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
+            if (!descriptor.isFolder() && !resourceService.hasResource(descriptor)) {
+                throw new ApplicationTypeResourceException("Resource listed as dependent to the application not found or inaccessible", item);
+            }
+            result.add(descriptor);
+        } catch (IllegalArgumentException e) {
+            throw new ApplicationTypeResourceException("Failed to get resource descriptor for url", item, e);
         }
     }
 
