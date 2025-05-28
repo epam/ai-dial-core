@@ -101,7 +101,6 @@ public class ApplicationTypeSchemaUtils {
 
     private static String extractTopLevelRefs(String schema) throws JsonProcessingException {
         JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
-        JsonNode definitionsNode = schemaNode.has("definitions") ? schemaNode.get("definitions") : null;
         if (schemaNode.has("properties") && schemaNode.get("properties").isObject()) {
             ObjectNode propertiesNode = (ObjectNode) schemaNode.get("properties");
             ObjectNode newPropertiesNode = propertiesNode.deepCopy();
@@ -111,23 +110,31 @@ public class ApplicationTypeSchemaUtils {
                 JsonNode propNode = propertiesNode.get(fieldName);
                 if (propNode.has("$ref")) {
                     String ref = propNode.get("$ref").asText();
-                    if (ref.startsWith("#/definitions/") && definitionsNode != null) {
-                        String defName = ref.substring("#/definitions/".length());
-                        JsonNode defNode = definitionsNode.get(defName);
-                        if (defNode != null && defNode.isObject()) {
+                    if (ref.startsWith("#/")) {
+                        String pointer = ref.substring(1); // remove leading '#'
+                        JsonNode targetNode = schemaNode.at(pointer);
+                        if (targetNode != null && targetNode.isObject()) {
                             ObjectNode merged = ProxyUtil.MAPPER.createObjectNode();
-                            // Copy all fields from definition
-                            defNode.fields().forEachRemaining(e -> merged.set(e.getKey(), e.getValue()));
-                            // Copy all fields from property except $ref (overrides definition fields)
+                            // Copy all fields from referenced node
+                            targetNode.fields().forEachRemaining(e -> merged.set(e.getKey(), e.getValue()));
+                            // Copy all fields from property except $ref (overrides referenced fields)
                             propNode.fields().forEachRemaining(e -> {
                                 if (!e.getKey().equals("$ref")) {
                                     merged.set(e.getKey(), e.getValue());
                                 }
                             });
                             newPropertiesNode.set(fieldName, merged);
-                            // Clear the referenced definition
-                            if (definitionsNode instanceof ObjectNode) {
-                                ((ObjectNode) definitionsNode).set(defName, ProxyUtil.MAPPER.createObjectNode());
+                            // Clear the referenced node if possible
+                            // Only clear if parent is an ObjectNode and not root
+                            String[] pathParts = pointer.split("/");
+                            if (pathParts.length > 1) {
+                                JsonNode parent = schemaNode;
+                                for (int i = 1; i < pathParts.length - 1; i++) {
+                                    parent = parent.path(pathParts[i]);
+                                }
+                                if (parent.isObject()) {
+                                    ((ObjectNode) parent).set(pathParts[pathParts.length - 1], ProxyUtil.MAPPER.createObjectNode());
+                                }
                             }
                             modified = true;
                         }
