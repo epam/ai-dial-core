@@ -139,9 +139,12 @@ public class ApplicationTypeSchemaUtils {
                 }
             }
 
-            if (modified) {
-                ((ObjectNode) schemaNode).set("properties", newPropertiesNode);
+            // Fast return if nothing was modified
+            if (!modified) {
+                return schema;
             }
+
+            ((ObjectNode) schemaNode).set("properties", newPropertiesNode);
         }
         return ProxyUtil.MAPPER.writeValueAsString(schemaNode);
     }
