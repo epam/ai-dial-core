@@ -26,4 +26,5 @@ public class FeaturesData {
     private boolean addons = true;
     private boolean cache = false;
     private boolean autoCaching = false;
+    private boolean parallelToolCalls = true;
 }

@@ -53,4 +53,7 @@ public class Features {
     private Boolean autoCachingSupported;
     @JsonAlias({"consentRequired", "consent_required"})
     private Boolean consentRequired;
+
+    @JsonAlias({"parallelToolCallsSupported", "parallel_tool_calls_supported"})
+    private Boolean parallelToolCallsSupported;
 }
