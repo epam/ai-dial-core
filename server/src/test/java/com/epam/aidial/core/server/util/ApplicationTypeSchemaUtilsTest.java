@@ -422,4 +422,54 @@ public class ApplicationTypeSchemaUtilsTest {
         Assertions.assertEquals(serverFiles.get(0), resultAll.get(1).getUrl());
         Assertions.assertEquals(serverFiles.get(1), resultAll.get(2).getUrl());
     }
+
+    @Test
+    public void getServerFiles_returnsListOfServerProperties_whenRefInSchema() {
+        final String schema = """
+                {
+                  "$schema" : "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id" : "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeEditorUrl" : "https://mydial.epam.com/specific_application_type_editor",
+                  "dial:applicationTypeDisplayName" : "Specific Application Type",
+                  "dial:applicationTypeCompletionEndpoint" : "http://specific_application_service/opeani/v1/completion",
+                  "definitions" : {
+                            "ExampleDef": {
+                              "properties": {
+                                  "str" : {
+                                      "type": "string"
+                                  }
+                              },
+                              "required": [
+                                  "str"
+                              ],
+                              "title": "ExampleDef",
+                              "type": "object"
+                          }
+                  },
+                  "properties" : {
+                      "obj": {
+                         "$ref": "#/definitions/ExampleDef",
+                         "description": "Example config",
+                         "dial:meta" : {
+                            "dial:propertyKind" : "server",
+                            "dial:propertyOrder" : 1
+                         }
+                      }
+                  },
+                  "required" : [ "obj" ]
+                }""";
+
+        final Map<String, Object> customProperties = Map.of(
+                "obj",
+                Map.of("str", "test"));
+
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        application.setApplicationProperties(customProperties);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+
+        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
+            Assertions.assertEquals(customProperties, properties);
+            Assertions.assertTrue(appendApplicationPropertiesHeader);
+        });
+    }
 }

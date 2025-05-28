@@ -15,12 +15,17 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.SchemaValidatorsConfig;
 import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.walk.JsonSchemaWalkListener;
+import com.networknt.schema.walk.WalkEvent;
+import com.networknt.schema.walk.WalkFlow;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +33,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -68,7 +74,8 @@ public class ApplicationTypeSchemaUtils {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> filterProperties(Map<String, Object> applicationProperties, String schema, String collectorName) {
         try {
-            JsonSchema appSchema = SCHEMA_FACTORY.getSchema(schema);
+            String rewrittenSchema = extractTopLevelRefs(schema);
+            JsonSchema appSchema = SCHEMA_FACTORY.getSchema(rewrittenSchema);
             CollectorContext collectorContext = new CollectorContext();
             String applicationPropertiesJson = ProxyUtil.MAPPER.writeValueAsString(applicationProperties);
             Set<ValidationMessage> validationResult = appSchema.validate(applicationPropertiesJson, InputFormat.JSON,
@@ -90,6 +97,49 @@ public class ApplicationTypeSchemaUtils {
         } catch (Throwable e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to filter custom properties", e);
         }
+    }
+
+    private static String extractTopLevelRefs(String schema) throws JsonProcessingException {
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
+        JsonNode definitionsNode = schemaNode.has("definitions") ? schemaNode.get("definitions") : null;
+        if (schemaNode.has("properties") && schemaNode.get("properties").isObject()) {
+            ObjectNode propertiesNode = (ObjectNode) schemaNode.get("properties");
+            ObjectNode newPropertiesNode = propertiesNode.deepCopy();
+            boolean modified = false;
+            for (Iterator<String> it = propertiesNode.fieldNames(); it.hasNext(); ) {
+                String fieldName = it.next();
+                JsonNode propNode = propertiesNode.get(fieldName);
+                if (propNode.has("$ref")) {
+                    String ref = propNode.get("$ref").asText();
+                    if (ref.startsWith("#/definitions/") && definitionsNode != null) {
+                        String defName = ref.substring("#/definitions/".length());
+                        JsonNode defNode = definitionsNode.get(defName);
+                        if (defNode != null && defNode.isObject()) {
+                            ObjectNode merged = ProxyUtil.MAPPER.createObjectNode();
+                            // Copy all fields from definition
+                            defNode.fields().forEachRemaining(e -> merged.set(e.getKey(), e.getValue()));
+                            // Copy all fields from property except $ref (overrides definition fields)
+                            propNode.fields().forEachRemaining(e -> {
+                                if (!e.getKey().equals("$ref")) {
+                                    merged.set(e.getKey(), e.getValue());
+                                }
+                            });
+                            newPropertiesNode.set(fieldName, merged);
+                            // Clear the referenced definition
+                            if (definitionsNode instanceof ObjectNode) {
+                                ((ObjectNode) definitionsNode).set(defName, ProxyUtil.MAPPER.createObjectNode());
+                            }
+                            modified = true;
+                        }
+                    }
+                }
+            }
+            if (modified) {
+                ((ObjectNode) schemaNode).set("properties", newPropertiesNode);
+            }
+        }
+        String rewrittenSchema = ProxyUtil.MAPPER.writeValueAsString(schemaNode);
+        return rewrittenSchema;
     }
 
     @FunctionalInterface
