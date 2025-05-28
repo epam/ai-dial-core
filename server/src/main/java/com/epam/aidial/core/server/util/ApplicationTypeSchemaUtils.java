@@ -74,7 +74,7 @@ public class ApplicationTypeSchemaUtils {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> filterProperties(Map<String, Object> applicationProperties, String schema, String collectorName) {
         try {
-            String rewrittenSchema = extractTopLevelRefs(schema);
+            String rewrittenSchema = JsonSchemaUtils.extractTopLevelRefs(schema);
             JsonSchema appSchema = SCHEMA_FACTORY.getSchema(rewrittenSchema);
             CollectorContext collectorContext = new CollectorContext();
             String applicationPropertiesJson = ProxyUtil.MAPPER.writeValueAsString(applicationProperties);
@@ -97,54 +97,6 @@ public class ApplicationTypeSchemaUtils {
         } catch (Throwable e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to filter custom properties", e);
         }
-    }
-
-    private static String extractTopLevelRefs(String schema) throws JsonProcessingException {
-        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
-        if (schemaNode.has("properties") && schemaNode.get("properties").isObject()) {
-            ObjectNode propertiesNode = (ObjectNode) schemaNode.get("properties");
-            ObjectNode newPropertiesNode = propertiesNode.deepCopy();
-            boolean modified = false;
-
-            for (Iterator<String> it = propertiesNode.fieldNames(); it.hasNext(); ) {
-                String fieldName = it.next();
-                JsonNode propNode = propertiesNode.get(fieldName);
-                if (propNode.has("$ref")) {
-                    String ref = propNode.get("$ref").asText();
-                    if (ref.startsWith("#/")) {
-                        JsonNode targetNode = schemaNode.at(ref.substring(1));
-                        if (targetNode != null && targetNode.isObject()) {
-                            ObjectNode merged = ProxyUtil.MAPPER.createObjectNode();
-                            targetNode.fields().forEachRemaining(e -> merged.set(e.getKey(), e.getValue()));
-                            propNode.fields().forEachRemaining(e -> {
-                                if (!"$ref".equals(e.getKey())) {
-                                    merged.set(e.getKey(), e.getValue());
-                                }
-                            });
-                            newPropertiesNode.set(fieldName, merged);
-
-                            String[] pathParts = ref.substring(1).split("/");
-                            if (pathParts.length > 1) {
-                                JsonNode parent = schemaNode;
-                                for (int i = 1; i < pathParts.length - 1; i++) {
-                                    parent = parent.path(pathParts[i]);
-                                }
-                                if (parent.isObject()) {
-                                    ((ObjectNode) parent).set(pathParts[pathParts.length - 1], ProxyUtil.MAPPER.createObjectNode());
-                                }
-                            }
-                            modified = true;
-                        }
-                    }
-                }
-            }
-
-            if (modified) {
-                ((ObjectNode) schemaNode).set("properties", newPropertiesNode);
-                return ProxyUtil.MAPPER.writeValueAsString(schemaNode);
-            }
-        }
-        return schema;
     }
 
     @FunctionalInterface
