@@ -65,6 +65,14 @@ public class UrlUtil {
         return new String(DECODER.decode(path.getBytes(Charset.defaultCharset())));
     }
 
+    public String tryDecodePath(String path) {
+        try {
+            return decodePath(path);
+        } catch (RuntimeException e) {
+            return path; // Return original path if decoding fails
+        }
+    }
+
     public boolean isAbsoluteUrl(String url) {
         return ABSOLUTE_URL_PATTERN.matcher(url).find();
     }
