@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -8,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.Sets;
 import lombok.Data;
 
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,23 +26,23 @@ public class SharedResources {
                 .collect(Collectors.toList());
     }
 
-    public void addSharedResources(Map<String, Set<ResourceAccessType>> sharedResources) {
-        Map<String, Set<ResourceAccessType>> resourcesMap = ShareService.sharedResourcesToMap(resources);
-        sharedResources.forEach((url, permissions) -> {
-            Set<ResourceAccessType> existingPermissions = resourcesMap.get(url);
-            if (existingPermissions == null) {
-                existingPermissions = EnumSet.noneOf(ResourceAccessType.class);
-                this.resources.add(new SharedResource(url, existingPermissions));
+    public void addSharedResources(List<SharedResource> sharedResources) {
+        Map<String, SharedResource> resourcesMap = resources.stream().collect(Collectors.toMap(SharedResource::getUrl, r -> r));
+        for (SharedResource sharedResource : sharedResources) {
+            SharedResource existingResource = resourcesMap.get(sharedResource.getUrl());
+            if (existingResource == null) {
+                this.resources.add(sharedResource);
+            } else {
+                existingResource.getPermissions().addAll(sharedResource.getPermissions());
+                existingResource.setCanReshare(sharedResource.isCanReshare());
             }
-
-            existingPermissions.addAll(permissions);
-        });
+        }
     }
 
     public Set<ResourceAccessType> findPermissions(String url) {
         return resources.stream()
-                .filter(resource -> url.equals(resource.url()))
-                .map(SharedResource::permissions)
+                .filter(resource -> url.equals(resource.getUrl()))
+                .map(SharedResource::getPermissions)
                 .reduce(Set.of(), Sets::union);
     }
 }

@@ -1235,7 +1235,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   ]
                 }
                 """);
-        verify(response, 400, "Resource conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/conversation does not belong to the user");
+        verify(response, 400, "Resource conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/conversation is not allowed to be shared by the user");
     }
 
     @Test

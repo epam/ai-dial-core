@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 public class ShareResourcesRequest {
     Set<SharedResource> resources;
     InvitationType invitationType;
+    int maxAcceptedUsers = Integer.MAX_VALUE;
 
     @JsonCreator
     public ShareResourcesRequest(

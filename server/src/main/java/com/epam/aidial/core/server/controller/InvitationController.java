@@ -48,16 +48,8 @@ public class InvitationController {
         if (accept) {
             proxy.getVertx()
                     .executeBlocking(() -> {
-                        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-                        String bucket = encryptionService.encrypt(bucketLocation);
-                        ResourceDescriptor invitationResource = invitationService.getInvitationResource(invitationId);
-                        if (invitationResource == null) {
-                            throw new ResourceNotFoundException();
-                        }
-                        return lockService.underBucketLock(invitationResource.getBucketLocation(), () -> {
-                            shareService.acceptSharedResources(bucket, bucketLocation, invitationId);
-                            return null;
-                        });
+                        shareService.acceptSharedResources(context, invitationId);
+                        return null;
                     }, false)
                     .onSuccess(ignore -> context.respond(HttpStatus.OK))
                     .onFailure(error -> {
