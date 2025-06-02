@@ -12,7 +12,33 @@ There are two types of credential providers supported:
 
 ### Required Permissions
 
-Refer to [S3 Permissions](/docs/s3-permissions.md) to see the minimal S3 bucket permissions required by DIAL Core.
+Configure the following permissions for your S3 bucket for DIAL Core to work properly: 
+
+```json
+{
+    "Statement": [
+        {
+            "Action": [
+                "s3:PutObjectAcl",
+                "s3:PutObject",
+                "s3:ListBucketMultipartUploads",
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:GetBucketLocation",
+                "s3:DeleteObject",
+                "s3:AbortMultipartUpload"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:s3:::your-dial-core-storage-bucket/*",
+                "arn:aws:s3:::your-dial-core-storage-bucket"
+            ],
+            "Sid": ""
+        }
+    ],
+    "Version": "2012-10-17"
+}
+```
 
 ### User credentials
 
