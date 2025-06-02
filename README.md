@@ -146,6 +146,8 @@ There are two types of credential providers supported:
 
 Set `storage.credential` to Secret Access Key  and `storage.identity` -  Access Key ID.
 
+Refer to [S3 Permissions](/docs/s3-permissions.md) to see the minimal S3 bucket permissions required by DIAL Core.
+
 #### Temporary credentials
 
 Follow [instructions](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) to setup your pod in AWS EKS.
