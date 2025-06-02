@@ -57,7 +57,12 @@ There are two types of credential providers supported:
 
 ### Required Permissions
 
-Refer to [GCP IAM Roles](/docs/gcp-iam-roles.md) to see the minimal bucket permissions required by DIAL Core.
+Configure the following minimal set of permissions for your bucket for DIAL Core to work properly:
+
+* Storage Bucket Viewer (roles/storage.bucketViewer)
+* Storage Object User (roles/storage.objectUser)
+
+> Refer to [Google Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) to learn about IAM roles.
 
 ### User credentials
 
