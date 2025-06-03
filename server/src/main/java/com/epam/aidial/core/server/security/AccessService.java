@@ -20,13 +20,7 @@ import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -75,13 +69,30 @@ public class AccessService {
         return result;
     }
 
+    public static boolean isPublishedSystemResource(ResourceDescriptor resource) {
+        String url = resource.getUrl();
+        if (url == null) {
+            return false;
+        }
+
+        String[] segments = url.split(ResourceDescriptor.PATH_SEPARATOR, 0);
+        for (String segment : segments) {
+            if (segment.startsWith(".")) return true;
+        }
+        return false;
+    }
+
     public boolean hasReadAccess(ResourceDescriptor resource, ProxyContext context) {
+        if (isPublishedSystemResource(resource) && Objects.equals(context.getSourceDeployment(), "user")) return false;
+
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
                 lookupPermissions(Set.of(resource), context, Set.of(ResourceAccessType.READ));
         return permissions.get(resource).contains(ResourceAccessType.READ);
     }
 
     public boolean hasWriteAccess(ResourceDescriptor resource, ProxyContext context) {
+        if (isPublishedSystemResource(resource) && Objects.equals(context.getSourceDeployment(), "user")) return false;
+
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
                 lookupPermissions(Set.of(resource), context, Set.of(ResourceAccessType.WRITE));
         return permissions.get(resource).contains(ResourceAccessType.WRITE);
