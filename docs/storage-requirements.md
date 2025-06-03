@@ -57,7 +57,7 @@ There are two types of credential providers supported:
 
 ### Required Permissions
 
-Configure the following minimal set of permissions for your bucket for DIAL Core to work properly:
+Configure the following minimal set of permissions for your Google Cloud Storage bucket for DIAL Core to work properly:
 
 * Storage Bucket Viewer (roles/storage.bucketViewer)
 * Storage Object User (roles/storage.objectUser)
@@ -128,6 +128,19 @@ This example demonstrates the properties to be overridden:
     }
   }
 }
+```
+
+### Required Configurations
+
+Follow these guidelineds to configure Azure Blob Storage to work with DIAL Core:
+
+1. Create [User Assigned Managed Identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities?pivots=identity-mi-methods-azp#create-a-user-assigned-managed-identity) in Azure for the application.
+2. Assign a [Contributor](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles) role for the User Assigned Managed Identity.
+3. If you deploy DIAL in Kubernetes, use `azure.workload.identity/client-id` with the value of the ID of your User Assigned Managed Identity in Azure.
+
+```yaml
+# Example
+azure.workload.identity/client-id: "%%AZURE_WORKLOAD_IDENTITY_CLIENT_ID%%"
 ```
 
 ## Redis
