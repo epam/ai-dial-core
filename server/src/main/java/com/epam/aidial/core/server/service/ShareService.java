@@ -88,11 +88,18 @@ public class ShareService {
 
         Set<MetadataBase> resultMetadata = new HashSet<>();
         for (ResourceDescriptor resource : shareResources) {
-            String sharedResource = resourceService.getResource(resource);
-            SharedResources sharedResources = ProxyUtil.convertToObject(sharedResource, SharedResources.class);
+            String state = resourceService.getResource(resource);
+            SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedResources != null) {
-                Map<String, Set<ResourceAccessType>> links = sharedResourcesToMap(sharedResources.getResources());
-                resultMetadata.addAll(linksToMetadata(links));
+                for (SharedResource sharedResource : sharedResources.getResources()) {
+                    ResourceDescriptor sharedResourceDescriptor = ResourceDescriptorFactory.fromPrivateUrl(sharedResource.getUrl(), encryptionService);
+                    MetadataBase metadata = sharedResourceDescriptor.isFolder()
+                            ? new ResourceFolderMetadata(sharedResourceDescriptor)
+                            : new ResourceItemMetadata(sharedResourceDescriptor);
+                    metadata.setPermissions(sharedResource.getPermissions());
+                    metadata.setCanReshare(sharedResource.isCanReshare());
+                    resultMetadata.add(metadata);
+                }
             }
         }
 
@@ -192,7 +199,7 @@ public class ShareService {
             List<SharedResource> ownerResources = new ArrayList<>();
             for (SharedResource sharedResource : links) {
                 ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
-                if (!(bucket.equals(resource.getBucketName()) || resharedResourceUrls.contains(sharedResource.getUrl()))) {
+                if (!(bucket.equals(resource.getBucketName()) || resharedResourceUrls.contains(resource.getUrl()))) {
                     throw new IllegalArgumentException("Resource %s is not allowed to be shared by the user".formatted(resource.getUrl()));
                 }
                 if (resharedResourceUrls.contains(sharedResource.getUrl()) && sharedResource.getPermissions().contains(ResourceAccessType.WRITE)) {
@@ -583,7 +590,8 @@ public class ShareService {
             Set<ResourceAccessType> permissions = EnumSet.noneOf(ResourceAccessType.class);
             permissions.addAll(sharedWithMe.findPermissions(distLink));
             permissions.addAll(permissionsToAdd);
-            boolean canReshare = sharedWithMe.getResources().stream().anyMatch(sharedResource -> sharedResource.getUrl().equals(sourceLink));
+            boolean canReshare = sharedWithMe.getResources().stream()
+                    .anyMatch(sharedResource -> sharedResource.getUrl().equals(sourceLink) && sharedResource.isCanReshare());
             sharedWithMe.getResources().removeIf(resource -> distLink.equals(resource.getUrl()));
 
             sharedWithMe.getResources().add(new SharedResource(distLink, permissions, canReshare));

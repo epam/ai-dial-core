@@ -24,4 +24,6 @@ public abstract class MetadataBase {
     private ResourceType resourceType;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Set<ResourceAccessType> permissions;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean canReshare;
 }
