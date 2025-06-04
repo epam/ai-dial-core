@@ -98,7 +98,7 @@ public class InvitationService {
     public void acceptInvitation(String invitationId, String userLocation, Consumer<Invitation> handler) {
         ResourceDescriptor resource = getInvitationResource(invitationId);
         if (resource == null) {
-            throw new IllegalArgumentException("Invalid invitation ID: " + invitationId);
+            throw invitationNotFound(invitationId);
         }
         MutableObject<RuntimeException> errorRef = new MutableObject<>();
         resourceService.computeResource(resource, state -> {
@@ -132,7 +132,7 @@ public class InvitationService {
     }
 
     private static ResourceNotFoundException invitationNotFound(String invitationId) {
-        return new ResourceNotFoundException(invitationId);
+        return new ResourceNotFoundException("Invitation %s is not found".formatted(invitationId));
     }
 
     public void deleteInvitation(String bucket, String invitationId) {
