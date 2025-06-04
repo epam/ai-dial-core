@@ -22,6 +22,7 @@ allprojects {
 
     checkstyle {
         configDirectory = file("$rootProject.projectDir/checkstyle")
+        toolVersion '10.25.0'
     }
 
     repositories {
