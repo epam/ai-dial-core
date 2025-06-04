@@ -2471,4 +2471,138 @@ class PublicationApiTest extends ResourceBaseTest {
         verify(response, 400);
     }
 
+    @Test
+    void testPublicationUpdateAfterSourceIsRemoved() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        // Create initial publication
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
+        verifyJson(response, 200, PUBLICATION_RESPONSE);
+
+        response = resourceRequest(HttpMethod.DELETE, "/my/folder/conversation");
+        verify(response, 200);
+
+        // Update as admin
+        response = operationRequest("/v1/ops/publication/update", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetFolder": "public/folder/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation2"
+                    }
+                  ]
+                }
+                """.formatted(bucket), "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name": "Publication name",
+                  "targetFolder" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "action": "ADD",
+                    "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                    "targetUrl" : "conversations/public/folder/conversation2",
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2"
+                   } ],
+                  "resourceTypes" : [ "CONVERSATION" ],
+                  "author" : "EPM-RTC-GPT"
+                }
+                """);
+
+        // Approve the publication
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        // Try to update approved publication
+        response = operationRequest("/v1/ops/publication/update", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/%s/my/folder/conversation",
+                      "targetUrl": "conversations/public/folder/conversation3"
+                    }
+                  ]
+                }
+                """.formatted(bucket), "authorization", "admin");
+        verify(response, 400);
+    }
+
+    @Test
+    void testUpdatePublication_ReplaceLinks() throws Exception {
+        Response response = upload(HttpMethod.PUT, "/v1/files/" + bucket + "/file", null, "text data");
+        verify(response, 200);
+        String conversationTemplate = """
+                {
+                "id": "%s",
+                "name": "display_name",
+                "model": {"id": "model_id"},
+                "prompt": "system prompt",
+                "temperature": 1,
+                "folderId": "%s",
+                "messages": [{
+                    "role": "user",
+                    "content": "what's the file?",
+                    "custom_content": {
+                        "attachments": [
+                          {
+                            "type": "text/markdown",
+                            "title": "title",
+                            "url": "%s"
+                          }
+                        ]
+                    }
+                }],
+                "selectedAddons": ["R", "T", "G"],
+                "assistantModelId": "assistantId",
+                "lastActivityDate": 4848683153
+                }
+                """;
+        JsonNode fileResponse = ProxyUtil.MAPPER.readTree(response.body());
+        String conversation = conversationTemplate.formatted("conversation_id", "folder1", fileResponse.get("url").asText());
+
+        response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation1", conversation);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST_WITH_FILE.formatted(bucket, "1", "1", "ADD_IF_ABSENT", bucket));
+        verify(response, 200);
+
+        // Update as admin
+        response = operationRequest("/v1/ops/publication/update", """
+            {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+              "name": "Publication name",
+              "targetFolder": "public/folder/",
+              "resources": [
+                {
+                  "action": "ADD",
+                  "sourceUrl": "conversations/%s/my/folder/conversation%s",
+                  "targetUrl": "conversations/public/folder/conversation%s"
+                },
+                {
+                  "action": "ADD",
+                  "sourceUrl": "files/%s/file",
+                  "targetUrl": "files/public/folder/new_file"
+                }
+              ]
+            }
+            """.formatted(bucket, "1", "1", bucket), "authorization", "admin");
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation1");
+        verifyJsonNotExact(response, 200, conversationTemplate.formatted("conversations/public/folder/conversation1",
+                "conversations/public/folder", "files/public/folder/new_file"));
+
+    }
+
 }

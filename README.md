@@ -136,102 +136,7 @@ AI DIAL Core stores user data in the following storages:
 * **Blob Storage** keeps permanent data.
 * **Redis** keeps volatile in-memory data for fast access.
 
-### AWS S3 Blob Store
-
-There are two types of credential providers supported:
-- User credentials. You can create a service principle and authenticate using its secret from the Azure console.
-- Temporary credentials with [IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html).
-
-#### User credentials
-
-Set `storage.credential` to Secret Access Key  and `storage.identity` -  Access Key ID.
-
-#### Temporary credentials
-
-Follow [instructions](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) to setup your pod in AWS EKS.
-`storage.credential` and `storage.identity` must be unset.
-
-### Google Cloud Storage
-
-There are two types of credential providers supported:
- - User credentials. You can create a service account and authenticate using its private key obtained from the Developer console.
- - Temporary credentials. Application default credentials (ADC).
-
-#### User credentials
-
-Set `storage.credential` to a path to the private key JSON file and `storage.identity` must be unset. Refer to the example below:
-
-```
-{
-  "type": "service_account",
-  "project_id": "<your_project_id>",
-  "private_key_id": "<your_project_key_id>",
-  "private_key": "-----BEGIN PRIVATE KEY-----\n<your_private_key>\n-----END PRIVATE KEY-----\n",
-  "client_email": "gcp-dial-core@<your_project_id>.iam.gserviceaccount.com",
-  "client_id": "<client_id>",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/gcp-dial-core.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
-```
-Otherwise, `storage.credential` is a private key in PEM format and `storage.identity` is a client's email address.
-
-#### Temporary credentials
-
-Follow [instructions](https://cloud.google.com/kubernetes-engine/docs/concepts/workload-identity) to setup your pod in GKE.
-`storage.credential` and `storage.identity` must be unset.
-JClouds property `jclouds.oauth.credential-type` should be set to `bearerTokenCredentials`, refer to the below example.
-
-```
-{
-  "storage": {
-    "overrides": {
-      "jclouds.oauth.credential-type": "bearerTokenCredentials"
-    }
-  }
-}
-```
-
-### Azure Blob Store
-
-There are two types of credential providers supported:
-- User credentials. You can create a service principle and authenticate using its secret from the Azure console.
-- Temporary credentials with Azure AD Workload Identity.
-
-#### User credentials
-
-Set `storage.credential` to the service principle secret and `storage.identity` - service principle ID.
-
-#### Temporary credentials
-
-Follow [instructions](https://azure.github.io/azure-workload-identity/docs/) to setup your pod in Azure k8s.
-`storage.credential` and `storage.identity` must be unset.
-
-This example demonstrates the properties to be overridden:
-
-```
-{
-  "storage": {
-    "endpoint": "https://<Azure Blob storage account>.blob.core.windows.net"
-    "overrides": {
-      "jclouds.azureblob.auth": "azureAd",
-      "jclouds.oauth.credential-type": "bearerTokenCredentials"
-    }
-  }
-}
-```
-
-### Redis
-
-Redis can be used as a cache with volatile-* eviction policies:
-```
-maxmemory 4G
-maxmemory-policy volatile-lfu
-```
-
-> **Note**: Redis will be strictly required in the upcoming releases 0.8+.
+> Refer to [Storage Requirements](docs/storage-requirements.md) to learn more.
 
 ### Dynamic settings
 
@@ -260,7 +165,7 @@ Dynamic settings can include the following parameters:
 | assistant.assistants.<assistant_name>          | `iconUrl`: Icon path for the AI DIAL assistant on UI.<br />`description`: Brief AI DIAL assistant description.<br />`displayName`: AI DIAL assistant name on UI.<br />`inputAttachmentTypes`: A list of allowed MIME types for the input attachments.<br />`maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity) <br/> `forwardAuthToken`: If flag is set to `true` forward Http header with authorization token to chat completion endpoint of the assistant. <br />`userRoles`: a specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.<br />`descriptionKeywords`: a list of keywords describes the assistant, e.g. `code-gen`, `text2image`.  <br />`author`: the assistant's developer.  <br />`createdAt`: the date of the assistant creation. <br />`updatedAt`: the date of the last assistant update.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | assistant.assistants.<assistant_name>.defaults | Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | applications                                   | A list of deployed AI DIAL Applications and their parameters:<br />`<application_name>`: Unique application name.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| applications.<application_name>                | `endpoint`: AI DIAL Application API for chat completions. **Note**. It should be unset if `applicationTypeSchemaId` is set<br />`iconUrl`: Icon path for the AI DIAL Application on UI.<br />`description`: Brief AI DIAL Application description.<br />`displayName`: AI DIAL Application name on UI.<br />`inputAttachmentTypes`: A list of allowed MIME types for the input attachments.<br />`maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity) <br/> `forwardAuthToken`: If flag is set to `true` forward Http header with authorization token to chat completion endpoint of the application. <br />`userRoles`: a specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.<br />`descriptionKeywords`: a list of keywords describes the application, e.g. `code-gen`, `text2image`. <br />`maxRetryAttempts`: max retry attempts to route a single user request to the application's endpoint. <br />`author`: the application's developer.  <br />`createdAt`: the date of the application creation. <br />`updatedAt`: the date of the last application update. <br/> `dependencies`: a list of dependent deployments which the application may use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| applications.<application_name>                | `endpoint`: AI DIAL Application API for chat completions. **Note**. It should be unset if `applicationTypeSchemaId` is set<br />`iconUrl`: Icon path for the AI DIAL Application on UI.<br />`description`: Brief AI DIAL Application description.<br />`displayName`: AI DIAL Application name on UI.<br />`inputAttachmentTypes`: A list of allowed MIME types for the input attachments.<br />`maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity) <br/> `forwardAuthToken`: If flag is set to `true` forward Http header with authorization token to chat completion endpoint of the application. <br />`userRoles`: a specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.<br />`descriptionKeywords`: a list of keywords describes the application, e.g. `code-gen`, `text2image`. <br />`maxRetryAttempts`: max retry attempts to route a single user request to the application's endpoint. <br />`author`: the application's developer.  <br />`createdAt`: the date of the application creation. <br />`updatedAt`: the date of the last application update. <br/> `dependencies`: a list of dependent deployments which the application may use.<br/> `viewerUrl`: an optional field with a URL of the application's custom UI.<br/> `editoUrl`: an optional field with a URL of the application's custom builder UI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | applications.<application_name>.defaults       | Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | applications.<application_name>.interceptors   | A list of interceptors to be triggered for the given application. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | applications.<application_name>.features       | `rateEndpoint`: endpoint for rate requests *(exposed by DIAL Core as `<deployment name>/rate`)*.<br />`tokenizeEndpoint`: endpoint for requests to the model tokenizer *(exposed by DIAL Core as `<deployment name>/tokenize`)*.<br />`truncatePromptEndpoint`: endpoint for truncating prompt requests *(exposed by DIAL Core as `<deployment name>/truncate_prompt`)*.<br />`systemPromptSupported`: does the application support system prompt (default is `true`).<br />`toolsSupported`: does the application support tools (default is `false`).<br />`seedSupported`: does the application support `seed` request parameter (default is `false`).<br />`urlAttachmentsSupported`: does the application support attachments with URLs (default is `false`).<br />`folderAttachmentsSupported`: does the application support folder attachments (default is `false`)<br />`configurationEndpoint`: the endpoint to request application configuration parameters as JSON schema *(exposed by DIAL Core as `<deployment name>/configuration`)*.<br />`accessibleByPerRequestKey`: indicates whether the deployment is accessible using a per-request API key (default is `true`).<br />`contentPartsSupported`: indicates whether the deployment supports requests with content parts or not (default is `false`). <br /> `consentRequired`: indicates whether the application requires user consent before use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |

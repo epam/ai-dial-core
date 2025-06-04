@@ -113,7 +113,7 @@ public class ProxyContext {
             this.traceId = apiKeyData.getTraceId();
             this.parentSpanId = apiKeyData.getSpanId();
             this.sourceDeployment = apiKeyData.getSourceDeployment();
-            this.decodedSourceDeployment = sourceDeployment != null ? UrlUtil.decodePath(sourceDeployment) : null;
+            this.decodedSourceDeployment = sourceDeployment != null ? UrlUtil.tryDecodePath(sourceDeployment) : null;
         } else {
             initExtractedClaims(extractedClaims, apiKeyData.getOriginalKey());
             this.traceId = traceId;

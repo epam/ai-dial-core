@@ -19,6 +19,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,6 +33,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
+@Slf4j
 public class AccessService {
 
     private final EncryptionService encryptionService;
@@ -334,12 +336,16 @@ public class AccessService {
     }
 
     private void expandMetadata(MetadataBase metadata, Map<ResourceDescriptor, MetadataBase> result) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
-        result.put(resource, metadata);
-        if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
-            for (MetadataBase item : folderMetadata.getItems()) {
-                expandMetadata(item, result);
+        try {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
+            result.put(resource, metadata);
+            if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
+                for (MetadataBase item : folderMetadata.getItems()) {
+                    expandMetadata(item, result);
+                }
             }
+        } catch (Exception error) {
+            log.warn("Unable to expand resource metadata {} due to the error: ", metadata.getUrl(), error);
         }
     }
 
