@@ -103,15 +103,20 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        vertx.executeBlocking(() -> resourceService.getMetadata(descriptor, token, limit, recursive), false)
-                .onSuccess(result -> {
-                    if (result == null) {
-                        context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
-                    } else {
+        vertx.executeBlocking(() -> {
+                    MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
+                    if (result != null) {
                         accessService.filterForbidden(context, descriptor, result);
                         if (context.getBooleanRequestQueryParam("permissions")) {
                             accessService.populatePermissions(context, List.of(result));
                         }
+                    }
+                    return result;
+                }, false)
+                .onSuccess(result -> {
+                    if (result == null) {
+                        context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
+                    } else {
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
