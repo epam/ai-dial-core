@@ -136,12 +136,16 @@ Follow these guidelineds to configure Azure Blob Storage to work with DIAL Core:
 
 1. Create [User Assigned Managed Identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities?pivots=identity-mi-methods-azp#create-a-user-assigned-managed-identity) in Azure for the application.
 2. Assign a [Contributor](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles) role for the User Assigned Managed Identity.
-3. If you deploy DIAL in Kubernetes, use `azure.workload.identity/client-id` with the value of the ID of your User Assigned Managed Identity in Azure.
+3. If you deploy DIAL in Kubernetes, use Azure Workload Identity. `azurerm_federated_identity_credential` enables to connect the identity to the Kubernetes service account: provide issuer URL (OIDC provider AKS) and a subject (specific service account and namespace). This allows applications in Kubernetes cluster to authenticae in Azure without secrets using federated token exchange.
+ * Create and annotate service account in Kubernetes. After you create resources in Azure, add the following to the application's manifest:
 
-```yaml
-# Example
-azure.workload.identity/client-id: "%%AZURE_WORKLOAD_IDENTITY_CLIENT_ID%%"
-```
+    ```bash
+    yamlcore:  enabled: true  serviceAccount:    create: true    annotations:      azure.workload.identity/client-id: "%%AZURE_WORKLOAD_IDENTITY_CLIENT_ID%%"
+    ```
+    
+    * Create a Service Account in Kubernetes which will be used by the application's pods.
+    * Add annotation to the Service Account `azure.workload.identity/client-id`, in which you supply the Client ID of the Managed Identity you have created (AZURE_WORKLOAD_IDENTITY_CLIENT_ID). This annotation tells the Workload Identity which Azure Managed Identity should be used to authorise access to Azure resources from pods.
+
 
 ## Redis
 
