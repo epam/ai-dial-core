@@ -1,19 +1,32 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.storage.data.ResourceAccessType;
+import lombok.Data;
 
 import java.util.EnumSet;
 import java.util.Set;
 
-public record SharedResource(
-        String url,
-        Set<ResourceAccessType> permissions) {
+@Data
+public class SharedResource {
+    String url;
+    Set<ResourceAccessType> permissions;
+    boolean canReshare;
+
+    public SharedResource() {
+    }
+
+    public SharedResource(String url, Set<ResourceAccessType> permissions, boolean canReshare) {
+        this.url = url;
+        this.permissions = permissions;
+        this.canReshare = canReshare;
+    }
+
     public SharedResource withUrl(String url) {
-        return new SharedResource(url, permissions);
+        return new SharedResource(url, permissions, canReshare);
     }
 
     public SharedResource withPermissions(Set<ResourceAccessType> permissions) {
-        return new SharedResource(url, permissions);
+        return new SharedResource(url, permissions, canReshare);
     }
 
     public SharedResource withReadIfNoPermissions() {
