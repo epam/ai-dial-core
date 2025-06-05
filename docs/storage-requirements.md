@@ -39,6 +39,7 @@ Configure the following permissions for your S3 bucket for DIAL Core to work pro
     "Version": "2012-10-17"
 }
 ```
+**Note**: These permissions assume that a bucket is already created. To allow DIAL Core to create buckets, set in [Static Settings](https://github.com/epam/ai-dial-core?tab=readme-ov-file#static-settings) of DIAL Core the value of `storage.createBucket` to `true`and extend permissions accordingly.
 
 ### User credentials
 
@@ -57,12 +58,14 @@ There are two types of credential providers supported:
 
 ### Required Permissions
 
-Configure the following minimal set of permissions for your bucket for DIAL Core to work properly:
+Configure the following minimal set of permissions for your Google Cloud Storage bucket for DIAL Core to work properly:
 
 * Storage Bucket Viewer (roles/storage.bucketViewer)
 * Storage Object User (roles/storage.objectUser)
 
 > Refer to [Google Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) to learn about IAM roles.
+
+**Note**: These permissions assume that a bucket is already created. To allow DIAL Core to create buckets, set in [Static Settings](https://github.com/epam/ai-dial-core?tab=readme-ov-file#static-settings) of DIAL Core the value of `storage.createBucket` to `true`and extend permissions accordingly.
 
 ### User credentials
 
@@ -106,6 +109,12 @@ JClouds property `jclouds.oauth.credential-type` should be set to `bearerTokenCr
 There are two types of credential providers supported:
 - User credentials. You can create a service principle and authenticate using its secret from the Azure console.
 - Temporary credentials with Azure AD Workload Identity.
+
+### Required Permissions
+
+Create a [Storage Blob Data Contributor](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/storage#storage-blob-data-contributor) role for your Azure Storage Account and assign this role for your [User Assigned Managed Identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities?pivots=identity-mi-methods-azp#create-a-user-assigned-managed-identity).
+
+**Note**: In this scenario we assume that Storage Account is already created. To allow DIAL Core to create Storage Accounts, set in [Static Settings](https://github.com/epam/ai-dial-core?tab=readme-ov-file#static-settings) of DIAL Core the value of `storage.createBucket` to `true`and extend permissions accordingly.
 
 ### User credentials
 
