@@ -148,6 +148,11 @@ public class ResourceDescriptor {
         return !isPublic();
     }
 
+    public boolean isSystem() {
+        return Arrays.stream(this.getUrl().split(ResourceDescriptor.PATH_SEPARATOR, 0))
+                .noneMatch(segment -> segment.startsWith("."));
+    }
+
     /**
      *  Returns the parent path of the resource if any.
      */

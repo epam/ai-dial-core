@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -21,7 +20,13 @@ import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -164,19 +169,6 @@ public class AccessService {
         return Map.of();
     }
 
-    private static boolean isPublishedSystemResource(ResourceDescriptor resource) {
-        String url = resource.getUrl();
-        if (url == null) {
-            return false;
-        }
-
-        String[] segments = url.split(ResourceDescriptor.PATH_SEPARATOR, 0);
-        for (String segment : segments) {
-            if (segment.startsWith(".")) return true;
-        }
-        return false;
-    }
-
     /**
      * Returns USER permissions to the provided public resources.
      *
@@ -186,16 +178,14 @@ public class AccessService {
      */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        var key = Optional.ofNullable(context.getKey()).map(Key::getKey).orElse(null);
-        var map = new HashMap<ResourceDescriptor, Set<ResourceAccessType>>();
-        for (var resource : ruleService.getAllowedPublicResources(context, resources)) {
-            if (isPublishedSystemResource(resource) && key == null) {
-                map.put(resource, Set.of());
-            } else {
-                map.put(resource, ResourceAccessType.READ_ONLY);
-            }
+        if (context.getApiKeyData().getPerRequestKey() == null) {
+            resources = resources.stream()
+                    .filter(ResourceDescriptor::isSystem)
+                    .collect(Collectors.toUnmodifiableSet());
         }
-        return map;
+
+        return ruleService.getAllowedPublicResources(context, resources).stream()
+                .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.READ_ONLY));
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
