@@ -202,7 +202,8 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ]
+                    "permissions" : [ "READ" ],
+                    "canReshare": false
                     } ]
                 }
                 """);
