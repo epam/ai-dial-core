@@ -39,6 +39,7 @@ Configure the following permissions for your S3 bucket for DIAL Core to work pro
     "Version": "2012-10-17"
 }
 ```
+**Note**: These permissions assume that a bucket is already created. To allow DIAL Core to create buckets, set in [Static Settings](https://github.com/epam/ai-dial-core?tab=readme-ov-file#static-settings) of DIAL Core the value of `storage.createBucket` to `true`and extend permissions accordingly.
 
 ### User credentials
 
@@ -63,6 +64,8 @@ Configure the following minimal set of permissions for your Google Cloud Storage
 * Storage Object User (roles/storage.objectUser)
 
 > Refer to [Google Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-roles) to learn about IAM roles.
+
+**Note**: These permissions assume that a bucket is already created. To allow DIAL Core to create buckets, set in [Static Settings](https://github.com/epam/ai-dial-core?tab=readme-ov-file#static-settings) of DIAL Core the value of `storage.createBucket` to `true`and extend permissions accordingly.
 
 ### User credentials
 
@@ -107,6 +110,12 @@ There are two types of credential providers supported:
 - User credentials. You can create a service principle and authenticate using its secret from the Azure console.
 - Temporary credentials with Azure AD Workload Identity.
 
+### Required Permissions
+
+Create a [Storage Blob Data Contributor](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/storage#storage-blob-data-contributor) role for your Azure Storage Account and assign this role for your [User Assigned Managed Identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities?pivots=identity-mi-methods-azp#create-a-user-assigned-managed-identity).
+
+**Note**: In this scenario we assume that Storage Account is already created. To allow DIAL Core to create Storage Accounts, set in [Static Settings](https://github.com/epam/ai-dial-core?tab=readme-ov-file#static-settings) of DIAL Core the value of `storage.createBucket` to `true`and extend permissions accordingly.
+
 ### User credentials
 
 Set `storage.credential` to the service principle secret and `storage.identity` - service principle ID.
@@ -129,21 +138,6 @@ This example demonstrates the properties to be overridden:
   }
 }
 ```
-
-### Required Configurations
-
-Follow these guidelineds to configure Azure Blob Storage to work with DIAL Core:
-
-1. Create [User Assigned Managed Identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities?pivots=identity-mi-methods-azp#create-a-user-assigned-managed-identity) in Azure for the application.
-2. Assign a [Contributor](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles) role for the User Assigned Managed Identity.
-3. If you deploy DIAL in Kubernetes, use Azure Workload Identity. `azurerm_federated_identity_credential` enables to connect the identity to the Kubernetes service account: provide issuer URL (OIDC provider AKS) and a subject (specific service account and namespace). This allows applications in Kubernetes cluster to authenticae in Azure without secrets using federated token exchange.
-
-    * Add annotation to the Service Account `azure.workload.identity/client-id`, in which you supply the Client ID of the Managed Identity you have created (AZURE_WORKLOAD_IDENTITY_CLIENT_ID). This annotation tells the Workload Identity which Azure Managed Identity should be used to authorise access to Azure resources from pods.
-    
-     ```bash
-     yamlcore:  enabled: true  serviceAccount:    create: true    annotations:      azure.workload.identity/client-id: "%%AZURE_WORKLOAD_IDENTITY_CLIENT_ID%%"
-     ```
-
 
 ## Redis
 
