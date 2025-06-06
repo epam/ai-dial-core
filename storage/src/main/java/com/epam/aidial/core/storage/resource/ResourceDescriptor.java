@@ -8,6 +8,7 @@ import lombok.Getter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 @Getter
@@ -149,7 +150,7 @@ public class ResourceDescriptor {
     }
 
     public boolean isSystem() {
-        return Arrays.stream(this.getUrl().split(ResourceDescriptor.PATH_SEPARATOR, 0))
+        return Stream.concat(parentFolders.stream(), Stream.of(name))
                 .noneMatch(segment -> segment.startsWith("."));
     }
 
