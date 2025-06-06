@@ -8,7 +8,6 @@ import lombok.Getter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 @Getter
@@ -147,11 +146,6 @@ public class ResourceDescriptor {
 
     public boolean isPrivate() {
         return !isPublic();
-    }
-
-    public boolean isSystem() {
-        return Stream.concat(parentFolders.stream(), Stream.of(name))
-                .noneMatch(segment -> segment.startsWith("."));
     }
 
     /**

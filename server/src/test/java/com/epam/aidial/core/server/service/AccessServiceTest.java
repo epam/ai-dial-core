@@ -15,8 +15,12 @@ import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.json.JsonObject;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -25,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -91,6 +96,132 @@ public class AccessServiceTest {
 
         assertTrue(result.isEmpty());
     }
+
+    static Stream<Arguments> hiddenFolderTestCases() {
+        return Stream.of(
+                Arguments.of(".quick_app_name_0.0.1", true),
+                Arguments.of(".mind_map_name_0.0.2", true),
+                Arguments.of(".hidden_folder", true),
+                Arguments.of("normal_folder", false),
+                Arguments.of("folder.with.dots", false),
+                Arguments.of("", false),
+                Arguments.of("folder_starting_with_dot.", false)
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("hiddenFolderTestCases")
+    void shouldIdentifyHiddenFolders(String folderName, boolean expectedResult) {
+        ResourceDescriptor resource = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                folderName,
+                List.of(),
+                "test-bucket",
+                "test-location",
+                false
+        );
+
+        assertEquals(expectedResult, AccessService.isPublishedApplicationSystemResource(resource));
+    }
+
+
+    static Stream<Arguments> filesInHiddenFoldersTestCases() {
+        return Stream.of(
+                Arguments.of(List.of(".quick_app_name_0.0.1"), true),
+                Arguments.of(List.of("normal_folder", ".hidden_subfolder"), true),
+                Arguments.of(List.of(".hidden", "subfolder", "nested"), true),
+                Arguments.of(List.of("normal_folder"), false),
+                Arguments.of(List.of("folder1", "folder2", "folder3"), false),
+                Arguments.of(List.of(), false)
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("filesInHiddenFoldersTestCases")
+    void shouldIdentifyFilesInHiddenFolders(List<String> parentFolders, boolean expectedResult) {
+        ResourceDescriptor resource = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "document.json",
+                parentFolders,
+                "bucket",
+                "Users/user/",
+                false
+        );
+
+        assertEquals(expectedResult, AccessService.isPublishedApplicationSystemResource(resource));
+    }
+
+    @Test
+    void shouldFilterPublishedSystemResourcesFromPublicAccess() {
+        ProxyContext context = mock(ProxyContext.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getUserSub()).thenReturn("user");
+        when(context.getSourceDeployment()).thenReturn("source");
+
+        JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of()));
+        var accessService = new AccessService(encryptionService, shareService, ruleService, settings);
+
+        ResourceDescriptor hiddenResource = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "file.json",
+                List.of(".quick_app_name_0.0.1"),
+                "bucket",
+                "Users/user/",
+                false
+        );
+        ResourceDescriptor normalResource = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "normal_file.json",
+                List.of("Documents"),
+                "bucket",
+                "Users/user/",
+                false
+        );
+        Set<ResourceDescriptor> resources = Set.of(hiddenResource, normalResource);
+        Set<ResourceDescriptor> allowedResources = Set.of(normalResource);
+
+        when(ruleService.getAllowedPublicResources(context, allowedResources))
+                .thenReturn(allowedResources);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> userPermissions =
+                accessService.lookupPermissions(resources, context);
+
+        assertFalse(userPermissions.get(hiddenResource).contains(ResourceAccessType.WRITE));
+        assertFalse(userPermissions.get(hiddenResource).contains(ResourceAccessType.READ));
+        assertFalse(userPermissions.get(normalResource).contains(ResourceAccessType.WRITE));
+        assertTrue(userPermissions.get(normalResource).contains(ResourceAccessType.READ));
+    }
+
+    @Test
+    void shouldAllowPublishedSystemResourcesForApplicationContext() {
+        ProxyContext context = mock(ProxyContext.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getProject()).thenReturn("TEST-PROJECT");
+
+        JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of()));
+        var accessService = new AccessService(encryptionService, shareService, ruleService, settings);
+
+        ResourceDescriptor hiddenResource = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "file.json",
+                List.of(".quick_app_name_0.0.1"),
+                "bucket",
+                "Users/user/",
+                false
+        );
+
+        Set<ResourceDescriptor> resources = Set.of(hiddenResource);
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> appPermissions =
+                accessService.lookupPermissions(resources, context);
+
+        assertTrue(appPermissions.get(hiddenResource).contains(ResourceAccessType.WRITE));
+        assertTrue(appPermissions.get(hiddenResource).contains(ResourceAccessType.READ));
+    }
+
 
     @Test
     public void testGetAppResourceAccess_AppDataFile() {
