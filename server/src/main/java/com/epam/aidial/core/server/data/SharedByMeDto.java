@@ -126,6 +126,9 @@ public class SharedByMeDto {
 
     @JsonIgnore
     public void updateLimit(String resourceUrl, ShareResourceLimit limit) {
+        if (limits == null) {
+            limits = new HashMap<>();
+        }
         limits.put(resourceUrl, limit);
     }
 
