@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.config.ShareResourceLimit;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -7,17 +8,21 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SharedByMeDto {
+    Map<String, ShareResourceLimit> limits;
     @JsonProperty("resourceToUsers")
     Map<String, Set<String>> readableResourceToUsers;
     Map<String, Set<String>> writableResourcesToUsers;
@@ -27,9 +32,12 @@ public class SharedByMeDto {
             @JsonProperty("resourceToUsers")
             Map<String, Set<String>> readableResourceToUsers,
             @JsonProperty("writableResourcesToUsers")
-            Map<String, Set<String>> writableResourcesToUsers) {
+            Map<String, Set<String>> writableResourcesToUsers,
+            @JsonProperty("limits")
+            Map<String, ShareResourceLimit> limits) {
         this.readableResourceToUsers = readableResourceToUsers;
         this.writableResourcesToUsers = Objects.requireNonNullElseGet(writableResourcesToUsers, HashMap::new);
+        this.limits = limits;
     }
 
     public Set<String> collectUsersForPermissions(String url, Set<ResourceAccessType> permissions) {
@@ -39,8 +47,8 @@ public class SharedByMeDto {
     }
 
     public void addUserToResource(SharedResource resource, String userLocation) {
-        Set<ResourceAccessType> permissions = resource.permissions();
-        String url = resource.url();
+        Set<ResourceAccessType> permissions = resource.getPermissions();
+        String url = resource.getUrl();
         for (ResourceAccessType permission : permissions) {
             Set<String> users = getUserMapForPermission(permission)
                     .computeIfAbsent(url, k -> new HashSet<>());
@@ -106,6 +114,22 @@ public class SharedByMeDto {
         }
 
         return result;
+    }
+
+    @JsonIgnore
+    public int getNumOfAcceptedUsers(String resourceUrl) {
+        Set<String> uniqueUsers = new HashSet<>();
+        uniqueUsers.addAll(readableResourceToUsers.getOrDefault(resourceUrl, Collections.emptySet()));
+        uniqueUsers.addAll(writableResourcesToUsers.getOrDefault(resourceUrl, Collections.emptySet()));
+        return uniqueUsers.size();
+    }
+
+    @JsonIgnore
+    public void updateLimit(String resourceUrl, ShareResourceLimit limit) {
+        if (limits == null) {
+            limits = new HashMap<>();
+        }
+        limits.put(resourceUrl, limit);
     }
 
     @JsonIgnore

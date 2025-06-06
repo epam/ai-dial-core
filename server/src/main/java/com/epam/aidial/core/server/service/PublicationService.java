@@ -311,9 +311,11 @@ public class PublicationService {
 
             // replace internal links in the resources
             for (Publication.Resource resource : publication.getResources()) {
-                ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
-                if (to.getType() == ResourceTypes.CONVERSATION) {
-                    resourceService.computeResource(to, conversationBody -> PublicationUtil.replaceConversationLinks(conversationBody, to, replacementLinks));
+                if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
+                    ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
+                    if (to.getType() == ResourceTypes.CONVERSATION) {
+                        resourceService.computeResource(to, conversationBody -> PublicationUtil.replaceConversationLinks(conversationBody, to, replacementLinks));
+                    }
                 }
             }
 

@@ -152,6 +152,10 @@
       "project": "EPM-RTC-RAIL",
       "role": "default"
     },
+    "proxyKey3": {
+      "project": "EPM-RTC-DIAL",
+      "role": "default"
+    },
     "vstore_user_key": {
       "project": "test",
       "role": "vstore_user"

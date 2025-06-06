@@ -14,6 +14,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -24,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -46,12 +48,13 @@ public class InvitationService {
         this.expirationInSeconds = settings.getInteger("ttlInSeconds", DEFAULT_INVITATION_TTL_IN_SECONDS);
     }
 
-    public Invitation createInvitation(String bucket, String location, List<SharedResource> resources, String userDisplayName) {
+    public Invitation createInvitation(String bucket, String location, List<SharedResource> resources, String userDisplayName, int maxAcceptedUsers, long ttl) {
         ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(ResourceTypes.INVITATION, bucket, location, INVITATION_RESOURCE_FILENAME);
         String invitationId = generateInvitationId(resource);
         Instant creationTime = Instant.now();
-        Instant expirationTime = Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS);
-        Invitation invitation = new Invitation(invitationId, resources, creationTime.toEpochMilli(), expirationTime.toEpochMilli(), userDisplayName);
+        Instant expirationTime = Instant.now().plus(ttl, ChronoUnit.SECONDS);
+        Invitation invitation = new Invitation(invitationId, resources, creationTime.toEpochMilli(),
+                expirationTime.toEpochMilli(), userDisplayName, maxAcceptedUsers, new HashSet<>());
 
         resourceService.computeResource(resource, state -> {
             InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
@@ -83,14 +86,53 @@ public class InvitationService {
             return null;
         }
 
-        Instant expireAt = Instant.ofEpochMilli(invitation.getExpireAt());
-        if (Instant.now().isAfter(expireAt)) {
+        if (invitation.isExpired()) {
             // invitation expired - we need to clean up state
             cleanUpExpiredInvitations(resource, List.of(invitationId));
             return null;
         }
 
         return invitation;
+    }
+
+    public void acceptInvitation(String invitationId, String userLocation, Consumer<Invitation> handler) {
+        ResourceDescriptor resource = getInvitationResource(invitationId);
+        if (resource == null) {
+            throw invitationNotFound(invitationId);
+        }
+        MutableObject<RuntimeException> errorRef = new MutableObject<>();
+        resourceService.computeResource(resource, state -> {
+            InvitationsMap invitations = ProxyUtil.convertToObject(state, InvitationsMap.class);
+            if (invitations == null) {
+                errorRef.setValue(invitationNotFound(invitationId));
+                return state;
+            }
+
+            Invitation invitation = invitations.getInvitations().get(invitationId);
+            if (invitation == null) {
+                errorRef.setValue(invitationNotFound(invitationId));
+                return state;
+            }
+            if (invitation.isExpired()) {
+                invitations.getInvitations().remove(invitationId);
+                errorRef.setValue(invitationNotFound(invitationId));
+                return ProxyUtil.convertToString(invitations);
+            }
+            invitation.getAcceptedUserLocations().add(userLocation);
+            if (invitation.getAcceptedUserLocations().size() > invitation.getMaxAcceptedUsers()) {
+                errorRef.setValue(new IllegalArgumentException("Limit is exceeded on the number of accepted users for the invitation: " + invitationId));
+                return state;
+            }
+            handler.accept(invitation);
+            return ProxyUtil.convertToString(invitations);
+        });
+        if (errorRef.getValue() != null) {
+            throw errorRef.getValue();
+        }
+    }
+
+    private static ResourceNotFoundException invitationNotFound(String invitationId) {
+        return new ResourceNotFoundException("Invitation %s is not found".formatted(invitationId));
     }
 
     public void deleteInvitation(String bucket, String invitationId) {
@@ -114,9 +156,8 @@ public class InvitationService {
         }
 
         Collection<Invitation> invitations = invitationMap.getInvitations().values();
-        Instant currentTime = Instant.now();
         Set<String> invitationsToEvict = invitations.stream()
-                .filter(invitation -> currentTime.isAfter(Instant.ofEpochMilli(invitation.getExpireAt())))
+                .filter(Invitation::isExpired)
                 .map(Invitation::getId)
                 .collect(Collectors.toSet());
 
@@ -147,12 +188,12 @@ public class InvitationService {
             for (Invitation invitation : invitationMap.values()) {
                 List<SharedResource> updatedResources = new ArrayList<>();
                 for (SharedResource sharedResource : invitation.getResources()) {
-                    Set<ResourceAccessType> permissions = linkToPermissions.get(sharedResource.url());
+                    Set<ResourceAccessType> permissions = linkToPermissions.get(sharedResource.getUrl());
                     if (permissions == null) {
                         updatedResources.add(sharedResource);
                     } else {
-                        sharedResource.permissions().removeAll(permissions);
-                        if (!sharedResource.permissions().isEmpty()) {
+                        sharedResource.getPermissions().removeAll(permissions);
+                        if (!sharedResource.getPermissions().isEmpty()) {
                             updatedResources.add(sharedResource);
                         }
                     }
@@ -182,7 +223,7 @@ public class InvitationService {
             for (Invitation invitation : invitationMap.values()) {
                 List<SharedResource> invitationResourceLinks = invitation.getResources();
                 Set<SharedResource> toMove = invitationResourceLinks.stream()
-                        .filter(sharedResource -> source.getUrl().equals(sharedResource.url()))
+                        .filter(sharedResource -> source.getUrl().equals(sharedResource.getUrl()))
                         .collect(Collectors.toUnmodifiableSet());
                 for (SharedResource sharedResource : toMove) {
                     invitationResourceLinks.remove(sharedResource);
