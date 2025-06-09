@@ -7,7 +7,9 @@ import lombok.Getter;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 @Getter
@@ -146,6 +148,24 @@ public class ResourceDescriptor {
 
     public boolean isPrivate() {
         return !isPublic();
+    }
+
+    /**
+     * Checks if a resource is a published application system resource that should be hidden from users.
+     *
+     * <p>Published application system resources are identified by:
+     * - Folders that start with a dot (.) - these are hidden folders containing published app versions
+     * - Files located within any folder that starts with a dot
+     * - Examples: ".quick_app_name_0.0.1/", ".mind_map_name_0.0.2/document.json"
+     *
+     * <p>These resources should only be accessible by applications (deployments), not by regular users.
+     *
+     * @return true if this is a published application system resource that should be hidden from users
+     */
+    public boolean isHidden() {
+        return Stream.concat(getParentFolders().stream(), Stream.of(getName()))
+                .filter(Objects::nonNull)
+                .anyMatch(folder -> folder.startsWith("."));
     }
 
     /**

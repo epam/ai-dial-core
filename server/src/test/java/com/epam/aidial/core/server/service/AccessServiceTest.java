@@ -15,7 +15,6 @@ import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.json.JsonObject;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -116,14 +115,13 @@ public class AccessServiceTest {
                 ResourceTypes.FILE,
                 folderName,
                 List.of(),
-                "test-bucket",
-                "test-location",
+                "bucket",
+                "public/",
                 false
         );
 
-        assertEquals(expectedResult, AccessService.isPublishedApplicationSystemResource(resource));
+        assertEquals(expectedResult, resource.isHidden());
     }
-
 
     static Stream<Arguments> filesInHiddenFoldersTestCases() {
         return Stream.of(
@@ -144,23 +142,23 @@ public class AccessServiceTest {
                 "document.json",
                 parentFolders,
                 "bucket",
-                "Users/user/",
+                "public/",
                 false
         );
 
-        assertEquals(expectedResult, AccessService.isPublishedApplicationSystemResource(resource));
+        assertEquals(expectedResult, resource.isHidden());
     }
 
     @Test
     void shouldFilterPublishedSystemResourcesFromPublicAccess() {
         ProxyContext context = mock(ProxyContext.class);
         ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setPerRequestKey("key");
+        apiKeyData.setPerRequestKey(null);
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(context.getUserSub()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
 
-        JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of()));
+        JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of(Map.of("source", "roles", "function", "EQUAL", "targets", List.of("admin")))));
         var accessService = new AccessService(encryptionService, shareService, ruleService, settings);
 
         ResourceDescriptor hiddenResource = new ResourceDescriptor(
@@ -168,7 +166,7 @@ public class AccessServiceTest {
                 "file.json",
                 List.of(".quick_app_name_0.0.1"),
                 "bucket",
-                "Users/user/",
+                "public/",
                 false
         );
         ResourceDescriptor normalResource = new ResourceDescriptor(
@@ -176,14 +174,14 @@ public class AccessServiceTest {
                 "normal_file.json",
                 List.of("Documents"),
                 "bucket",
-                "Users/user/",
+                "public/",
                 false
         );
         Set<ResourceDescriptor> resources = Set.of(hiddenResource, normalResource);
-        Set<ResourceDescriptor> allowedResources = Set.of(normalResource);
+        Set<ResourceDescriptor> normalResources = Set.of(normalResource);
 
-        when(ruleService.getAllowedPublicResources(context, allowedResources))
-                .thenReturn(allowedResources);
+        when(ruleService.getAllowedPublicResources(context, normalResources))
+                .thenReturn(normalResources);
 
         Map<ResourceDescriptor, Set<ResourceAccessType>> userPermissions =
                 accessService.lookupPermissions(resources, context);
@@ -209,7 +207,7 @@ public class AccessServiceTest {
                 "file.json",
                 List.of(".quick_app_name_0.0.1"),
                 "bucket",
-                "Users/user/",
+                "public/",
                 false
         );
 
@@ -221,7 +219,6 @@ public class AccessServiceTest {
         assertTrue(appPermissions.get(hiddenResource).contains(ResourceAccessType.WRITE));
         assertTrue(appPermissions.get(hiddenResource).contains(ResourceAccessType.READ));
     }
-
 
     @Test
     public void testGetAppResourceAccess_AppDataFile() {

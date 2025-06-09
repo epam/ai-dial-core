@@ -27,12 +27,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 
 @Slf4j
@@ -184,7 +182,7 @@ public class AccessService {
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (!isApplicationContext(context)) {
             resources = resources.stream()
-                    .filter(resource -> !isPublishedApplicationSystemResource(resource))
+                    .filter(resource -> !resource.isHidden())
                     .collect(Collectors.toUnmodifiableSet());
         }
 
@@ -195,25 +193,6 @@ public class AccessService {
     }
 
     /**
-     * Checks if a resource is a published application system resource that should be hidden from users.
-     *
-     * <p>Published application system resources are identified by:
-     * - Folders that start with a dot (.) - these are hidden folders containing published app versions
-     * - Files located within any folder that starts with a dot
-     * - Examples: ".quick_app_name_0.0.1/", ".mind_map_name_0.0.2/document.json"
-     *
-     * <p>These resources should only be accessible by applications (deployments), not by regular users.
-     *
-     * @param resource The resource descriptor to check
-     * @return true if this is a published application system resource that should be hidden from users
-     */
-    public static boolean isPublishedApplicationSystemResource(ResourceDescriptor resource) {
-        return Stream.concat(resource.getParentFolders().stream(), Stream.of(resource.getName()))
-                .filter(Objects::nonNull)
-                .anyMatch(folder -> folder.startsWith("."));
-    }
-
-    /**
      * Checks if the context represents an application rather than a user.
      * Applications should have access to their own published system resources.
      *
@@ -221,10 +200,7 @@ public class AccessService {
      * @return true if this appears to be an application context, false for user contexts
      */
     public static boolean isApplicationContext(ProxyContext context) {
-        return context.getApiKeyData() != null
-                && context.getApiKeyData().getPerRequestKey() != null
-                && context.getSourceDeployment() != null
-                && context.getUserSub() == null;
+        return context.getApiKeyData().getPerRequestKey() != null;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
