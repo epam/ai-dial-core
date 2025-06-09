@@ -5,7 +5,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
@@ -76,7 +75,7 @@ public class DeploymentPostController {
         this.context = context;
         this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, false),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
