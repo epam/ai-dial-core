@@ -261,6 +261,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(context.getProxy()).thenReturn(proxy);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         Model model = new Model();
         model.setName("name");
@@ -301,6 +302,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(context.getProxy()).thenReturn(proxy);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         Model model = new Model();
         model.setName("name");

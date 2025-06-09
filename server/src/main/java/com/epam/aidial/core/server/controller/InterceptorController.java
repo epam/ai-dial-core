@@ -39,7 +39,7 @@ public class InterceptorController {
     public InterceptorController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context),
+        this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context, true),
                 new CollectRequestAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context));
     }
