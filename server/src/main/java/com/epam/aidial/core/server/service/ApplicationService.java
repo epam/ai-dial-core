@@ -219,8 +219,10 @@ public class ApplicationService {
                         ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
                         Application application = extractApplicationFromResource(resource, item, ctx, meta);
                         applications.add(application);
-                    } catch (ResourceNotFoundException ignore) {
-                        // deleted while fetching
+                    } catch (Exception error) {
+                        if (!(error instanceof ResourceNotFoundException)) {
+                            log.warn("Error occurred while fetching application {}:", meta.getUrl(), error);
+                        }
                     }
                 }
             }
