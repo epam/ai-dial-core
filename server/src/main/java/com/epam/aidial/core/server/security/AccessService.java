@@ -338,6 +338,17 @@ public class AccessService {
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
+            if (!isApplicationContext(context)) {
+                Map<ResourceDescriptor, MetadataBase> allMetadata = new HashMap<>();
+                expandMetadata(folder, allMetadata);
+
+                List<MetadataBase> filtered = allMetadata.entrySet().stream()
+                        .filter(it -> !it.getKey().isHidden())
+                        .map(Map.Entry::getValue)
+                        .toList();
+
+                folder.setItems(filtered);
+            }
             ruleService.filterForbidden(context, descriptor, folder);
         }
     }
