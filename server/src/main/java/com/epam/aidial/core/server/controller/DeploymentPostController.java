@@ -75,7 +75,7 @@ public class DeploymentPostController {
         this.context = context;
         this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context, false),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),

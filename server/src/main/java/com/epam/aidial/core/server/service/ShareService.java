@@ -199,7 +199,7 @@ public class ShareService {
             List<SharedResource> ownerResources = new ArrayList<>();
             for (SharedResource sharedResource : links) {
                 ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
-                if (!(bucket.equals(resource.getBucketName()) || resharedResourceUrls.contains(resource.getUrl()))) {
+                if (!canShare(bucket, resource, resharedResourceUrls)) {
                     throw new IllegalArgumentException("Resource %s is not allowed to be shared by the user".formatted(resource.getUrl()));
                 }
                 if (resharedResourceUrls.contains(sharedResource.getUrl()) && sharedResource.getPermissions().contains(ResourceAccessType.WRITE)) {
@@ -219,6 +219,19 @@ public class ShareService {
         Invitation invitation = invitationService.createInvitation(bucket, bucketLocation, normalizedResourceLinks,
                 context.getUserDisplayName(), request.getMaxAcceptedUsers(), invitationTtl);
         return new InvitationLink(InvitationService.INVITATION_PATH_BASE + ResourceDescriptor.PATH_SEPARATOR + invitation.getId());
+    }
+
+    private boolean canShare(String bucket, ResourceDescriptor resource, Set<String> resharedResourceUrls) {
+        if (bucket.equals(resource.getBucketName())) {
+            return true;
+        }
+        while (resource != null) {
+            if (resharedResourceUrls.contains(resource.getUrl())) {
+                return true;
+            }
+            resource = resource.getParent();
+        }
+        return false;
     }
 
     private void validateShareResourcesRequest(ShareResourcesRequest request) {
