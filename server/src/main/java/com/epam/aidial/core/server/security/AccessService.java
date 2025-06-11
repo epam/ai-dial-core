@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -339,24 +340,31 @@ public class AccessService {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
             if (!isApplicationContext(context)) {
-                if (descriptor.isHidden()) {
-                    return;
-                }
-
-                Map<ResourceDescriptor, MetadataBase> allMetadata = new HashMap<>();
-                expandMetadata(folder, allMetadata);
-                allMetadata.remove(descriptor);
-                if (!allMetadata.isEmpty()) {
-                    List<MetadataBase> filtered = allMetadata.entrySet().stream()
-                            .filter(it -> !it.getKey().isHidden())
-                            .map(Map.Entry::getValue)
-                            .collect(Collectors.toList());
-
-                    folder.setItems(filtered);
+                if (folder.getItems() != null) {
+                    folder.setItems(folder.getItems().stream()
+                            .map(this::recursiveFilterHiddenResource)
+                            .filter(Objects::nonNull)
+                            .toList());
                 }
             }
             ruleService.filterForbidden(context, descriptor, folder);
         }
+    }
+
+    public MetadataBase recursiveFilterHiddenResource(MetadataBase metadata) {
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
+        if (resource.isHidden()) {
+            return null;
+        }
+        if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
+            List<MetadataBase> items = folderMetadata.getItems().stream()
+                    .map(this::recursiveFilterHiddenResource)
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            folderMetadata.setItems(items);
+        }
+        return metadata;
     }
 
     public void populatePermissions(ProxyContext context, Collection<MetadataBase> metadata) {

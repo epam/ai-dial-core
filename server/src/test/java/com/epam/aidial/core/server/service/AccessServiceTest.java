@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.json.JsonObject;
@@ -19,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +47,102 @@ public class AccessServiceTest {
 
     @Mock
     private ProxyContext context;
+
+    @Test
+    public void testFilterForbidden_PublicFolderWithHiddenOneItem_AdminAccess() {
+        ProxyContext context = mock(ProxyContext.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        ResourceDescriptor folderDescriptor = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "public/",
+                List.of(),
+                "public",
+                "public/",
+                true
+        );
+
+        ResourceDescriptor hiddenItem = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                ".hidden_file.txt",
+                List.of("public"),
+                "public",
+                "public/.hidden_file.txt",
+                false
+        );
+
+        ResourceDescriptor visibleItem = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "visible_file.txt",
+                List.of("public"),
+                "public",
+                "public/visible_file.txt",
+                false
+        );
+
+        ResourceFolderMetadata folderMetadata = new ResourceFolderMetadata(folderDescriptor);
+        folderMetadata.setItems(
+                List.of(
+                        new ResourceFolderMetadata().setPermissions(Set.of(ResourceAccessType.READ)).setUrl(hiddenItem.getUrl()),
+                        new ResourceFolderMetadata().setPermissions(Set.of(ResourceAccessType.READ)).setUrl(visibleItem.getUrl())
+                )
+        );
+
+        JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of()));
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, settings);
+        service.filterForbidden(context, folderDescriptor, folderMetadata);
+
+        assertEquals(2, folderMetadata.getItems().size());
+    }
+
+    @Test
+    public void testFilterForbidden_PublicFolderWithHiddenOneItem_NoAdminAccess() {
+        ProxyContext context = mock(ProxyContext.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        ResourceDescriptor folderDescriptor = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "public/",
+                List.of(),
+                "public",
+                "public/",
+                true
+        );
+
+        ResourceDescriptor hiddenItem = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                ".hidden_file.txt",
+                List.of("public"),
+                "public",
+                "public/.hidden_file.txt",
+                false
+        );
+
+        ResourceDescriptor visibleItem = new ResourceDescriptor(
+                ResourceTypes.FILE,
+                "visible_file.txt",
+                List.of("public"),
+                "public",
+                "public/visible_file.txt",
+                false
+        );
+
+        ResourceFolderMetadata folderMetadata = new ResourceFolderMetadata(folderDescriptor);
+        folderMetadata.setItems(
+                List.of(
+                        new ResourceFolderMetadata().setPermissions(Set.of(ResourceAccessType.READ)).setUrl(hiddenItem.getUrl()),
+                        new ResourceFolderMetadata().setPermissions(Set.of(ResourceAccessType.READ)).setUrl(visibleItem.getUrl())
+                )
+        );
+
+        JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of(Map.of("source", "roles", "function", "EQUAL", "targets", List.of("admin")))));
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, settings);
+        service.filterForbidden(context, folderDescriptor, folderMetadata);
+
+        assertEquals(1, folderMetadata.getItems().size());
+    }
 
     @Test
     public void testGetAppResourceAccess_RootFolder() {
@@ -304,8 +401,8 @@ public class AccessServiceTest {
         when(proxy.getResourceService()).thenReturn(resourceService);
 
 
-        try (MockedStatic<ApplicationTypeSchemaUtils> appSchemaUtilsMock = Mockito.mockStatic(ApplicationTypeSchemaUtils.class);
-                MockedStatic<BucketBuilder> bucketBuilderMock = Mockito.mockStatic(BucketBuilder.class)) {
+        try (MockedStatic<ApplicationTypeSchemaUtils> appSchemaUtilsMock = mockStatic(ApplicationTypeSchemaUtils.class);
+                MockedStatic<BucketBuilder> bucketBuilderMock = mockStatic(BucketBuilder.class)) {
 
             List<ResourceDescriptor> applicationFiles = List.of(resource);
             appSchemaUtilsMock.when(() -> ApplicationTypeSchemaUtils.getFiles(
