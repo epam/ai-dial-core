@@ -339,15 +339,21 @@ public class AccessService {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
             if (!isApplicationContext(context)) {
+                if (descriptor.isHidden()) {
+                    return;
+                }
+
                 Map<ResourceDescriptor, MetadataBase> allMetadata = new HashMap<>();
                 expandMetadata(folder, allMetadata);
+                allMetadata.remove(descriptor);
+                if (!allMetadata.isEmpty()) {
+                    List<MetadataBase> filtered = allMetadata.entrySet().stream()
+                            .filter(it -> !it.getKey().isHidden())
+                            .map(Map.Entry::getValue)
+                            .collect(Collectors.toList());
 
-                List<MetadataBase> filtered = allMetadata.entrySet().stream()
-                        .filter(it -> !it.getKey().isHidden())
-                        .map(Map.Entry::getValue)
-                        .toList();
-
-                folder.setItems(filtered);
+                    folder.setItems(filtered);
+                }
             }
             ruleService.filterForbidden(context, descriptor, folder);
         }
