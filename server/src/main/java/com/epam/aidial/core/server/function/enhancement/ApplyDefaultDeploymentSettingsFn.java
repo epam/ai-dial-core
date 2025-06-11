@@ -15,25 +15,14 @@ import java.util.Map;
 @Slf4j
 public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<ObjectNode> {
 
-    /**
-     * The flag is used to check interceptor index if it's defined (not equal to -1).
-     */
-    private final boolean checkInterceptorIndex;
-
-    public ApplyDefaultDeploymentSettingsFn(Proxy proxy, ProxyContext context, boolean checkInterceptorIndex) {
+    public ApplyDefaultDeploymentSettingsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.checkInterceptorIndex = checkInterceptorIndex;
     }
 
     @Override
     public Boolean apply(ObjectNode tree) {
-        ApiKeyData apiKeyData = context.getApiKeyData();
-        int interceptorIndex = apiKeyData.getInterceptorIndex();
         boolean applied = false;
-        // we want to apply the function only once in the interceptor's call chain.
-        // the model has no interceptors OR
-        // apply the function at the first interceptor
-        if (interceptorIndex == -1 || (checkInterceptorIndex && interceptorIndex == 0)) {
+        if (shouldApply(context)) {
 
             Deployment deployment = context.getDeployment();
             for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
@@ -47,5 +36,31 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
         }
 
         return applied;
+    }
+
+    /**
+     * The function determines if the call is made to:
+     *
+     * <ul>
+     *     <li>the first interceptor or</li>
+     *     <li>the deployment without interceptors or</li>
+     *     <li>the deployment from the interceptor</li>
+     * </ul>
+     */
+    private static boolean shouldApply(ProxyContext context) {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        int interceptorIndex = proxyApiKeyData.getInterceptorIndex();
+        if (interceptorIndex == 0) {
+            return true;
+        }
+        if (interceptorIndex == -1) {
+            ApiKeyData apiKeyData = context.getApiKeyData();
+            if (apiKeyData.isInterceptor()) {
+                // interceptor may call another deployment
+                return !context.getDeployment().getName().equals(context.getInitialDeployment());
+            }
+            return true;
+        }
+        return false;
     }
 }
