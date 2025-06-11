@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.enhancement;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -25,6 +26,10 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
         if (shouldApply(context)) {
 
             Deployment deployment = context.getDeployment();
+            if (deployment instanceof Interceptor) {
+                String deploymentId = context.getInitialDeployment();
+                deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
+            }
             for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
                 String key = e.getKey();
                 Object value = e.getValue();
