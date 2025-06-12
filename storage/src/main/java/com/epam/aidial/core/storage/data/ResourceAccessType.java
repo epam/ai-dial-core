@@ -6,7 +6,8 @@ import java.util.Set;
 
 public enum ResourceAccessType {
     READ,
-    WRITE;
+    WRITE,
+    SHARE;
 
     public static final Set<ResourceAccessType> ALL = Collections.unmodifiableSet(
             EnumSet.allOf(ResourceAccessType.class));
