@@ -104,7 +104,7 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         vertx.executeBlocking(() -> {
-            if (isShouldBeHidden(descriptor)) {
+            if (shouldHide(descriptor)) {
                 return null;
             }
             MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
