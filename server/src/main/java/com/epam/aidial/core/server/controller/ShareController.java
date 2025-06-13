@@ -67,8 +67,8 @@ public class ShareController {
         return Future.succeededFuture();
     }
 
-    public Future<?> listSharedResources() {
-        return context.getRequest()
+    public void listSharedResources() {
+        context.getRequest()
                 .body()
                 .compose(buffer -> {
                     ListSharedResourcesRequest request;
@@ -96,8 +96,8 @@ public class ShareController {
                 .onFailure(this::handleServiceError);
     }
 
-    public Future<?> createSharedResources() {
-        return context.getRequest()
+    public void createSharedResources() {
+        context.getRequest()
                 .body()
                 .compose(buffer -> {
                     ShareResourcesRequest request;
@@ -115,8 +115,8 @@ public class ShareController {
                 .onFailure(this::handleServiceError);
     }
 
-    public Future<?> discardSharedResources() {
-        return context.getRequest()
+    public void discardSharedResources() {
+        context.getRequest()
                 .body()
                 .compose(buffer -> {
                     ResourceLinkCollection request = getResourceLinkCollection(buffer, Operation.DISCARD);
@@ -132,8 +132,8 @@ public class ShareController {
                 .onFailure(this::handleServiceError);
     }
 
-    public Future<?> revokeSharedResources() {
-        return context.getRequest()
+    public void revokeSharedResources() {
+        context.getRequest()
                 .body()
                 .compose(buffer -> {
                     RevokeResourcesRequest request = getRevokeResourcesRequest(buffer, Operation.REVOKE);
@@ -154,8 +154,8 @@ public class ShareController {
                 .onFailure(this::handleServiceError);
     }
 
-    public Future<?> copySharedAccess() {
-        return context.getRequest()
+    public void copySharedAccess() {
+        context.getRequest()
                 .body()
                 .compose(buffer -> {
                     CopySharedAccessRequest request;

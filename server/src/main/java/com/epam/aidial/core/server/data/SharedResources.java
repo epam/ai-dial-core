@@ -34,7 +34,6 @@ public class SharedResources {
                 this.resources.add(sharedResource);
             } else {
                 existingResource.getPermissions().addAll(sharedResource.getPermissions());
-                existingResource.setCanReshare(sharedResource.isCanReshare());
             }
         }
     }
