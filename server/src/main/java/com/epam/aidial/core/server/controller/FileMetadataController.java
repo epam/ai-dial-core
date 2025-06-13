@@ -41,8 +41,7 @@ public class FileMetadataController extends AccessControlBaseController {
         }
 
         proxy.getVertx().executeBlocking(() -> {
-            var isShouldbeHidden = isShouldBeHidden(resource);
-            if (isShouldbeHidden) {
+            if (isShouldBeHidden(resource)) {
                 return null;
             }
             MetadataBase result = resourceService.getMetadata(resource, token, limit, recursive);
@@ -54,15 +53,13 @@ public class FileMetadataController extends AccessControlBaseController {
                 accessService.populatePermissions(context, List.of(result));
             }
             return result;
-        }, false)
-        .onSuccess(result -> {
+        }, false).onSuccess(result -> {
             if (result == null) {
                 context.respond(HttpStatus.NOT_FOUND);
             } else {
                 context.respond(HttpStatus.OK, getContentType(), result);
             }
-        })
-        .onFailure(error -> {
+        }).onFailure(error -> {
             log.warn("Can't list files: {}", resource.getUrl(), error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to list files by path %s".formatted(resource.getUrl()));

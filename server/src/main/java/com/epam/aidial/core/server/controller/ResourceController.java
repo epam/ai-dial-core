@@ -104,8 +104,7 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         vertx.executeBlocking(() -> {
-            var isShouldbeHidden = isShouldBeHidden(descriptor);
-            if (isShouldbeHidden) {
+            if (isShouldBeHidden(descriptor)) {
                 return null;
             }
             MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
@@ -117,15 +116,13 @@ public class ResourceController extends AccessControlBaseController {
                 accessService.populatePermissions(context, List.of(result));
             }
             return result;
-        }, false)
-        .onSuccess(result -> {
+        }, false).onSuccess(result -> {
             if (result == null) {
                 context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
             } else {
                 context.respond(HttpStatus.OK, getContentType(), result);
             }
-        })
-        .onFailure(error -> {
+        }).onFailure(error -> {
             log.warn("Can't list resource: {}", descriptor.getUrl(), error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
         });
