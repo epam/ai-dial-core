@@ -104,26 +104,31 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         vertx.executeBlocking(() -> {
-                    MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
-                    if (result != null) {
-                        accessService.filterForbidden(context, descriptor, result);
-                        if (context.getBooleanRequestQueryParam("permissions")) {
-                            accessService.populatePermissions(context, List.of(result));
-                        }
-                    }
-                    return result;
-                }, false)
-                .onSuccess(result -> {
-                    if (result == null) {
-                        context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
-                    } else {
-                        context.respond(HttpStatus.OK, getContentType(), result);
-                    }
-                })
-                .onFailure(error -> {
-                    log.warn("Can't list resource: {}", descriptor.getUrl(), error);
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-                });
+            var isShouldbeHidden = isShouldBeHidden(descriptor);
+            if (isShouldbeHidden) {
+                return null;
+            }
+            MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
+            if (result == null) {
+                return null;
+            }
+            accessService.filterForbidden(context, descriptor, result);
+            if (context.getBooleanRequestQueryParam("permissions")) {
+                accessService.populatePermissions(context, List.of(result));
+            }
+            return result;
+        }, false)
+        .onSuccess(result -> {
+            if (result == null) {
+                context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
+            } else {
+                context.respond(HttpStatus.OK, getContentType(), result);
+            }
+        })
+        .onFailure(error -> {
+            log.warn("Can't list resource: {}", descriptor.getUrl(), error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+        });
 
         return Future.succeededFuture();
     }
