@@ -37,12 +37,11 @@ public class SpanPathNormalizer implements SpanProcessor {
 
     @Override
     public void onEnd(ReadableSpan span) {
-
     }
 
     @Override
     public boolean isEndRequired() {
-        return false;
+        return true;
     }
 
     @Override
