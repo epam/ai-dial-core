@@ -12,10 +12,8 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -26,6 +24,7 @@ public class SharedByMeDto {
     @JsonProperty("resourceToUsers")
     Map<String, Set<String>> readableResourceToUsers;
     Map<String, Set<String>> writableResourcesToUsers;
+    Map<String, Set<String>> shareableResourcesToUsers;
 
     @JsonCreator
     public SharedByMeDto(
@@ -34,9 +33,12 @@ public class SharedByMeDto {
             @JsonProperty("writableResourcesToUsers")
             Map<String, Set<String>> writableResourcesToUsers,
             @JsonProperty("limits")
-            Map<String, ShareResourceLimit> limits) {
+            Map<String, ShareResourceLimit> limits,
+            @JsonProperty("shareableResourcesToUsers")
+            Map<String, Set<String>> shareableResourcesToUsers) {
         this.readableResourceToUsers = readableResourceToUsers;
         this.writableResourcesToUsers = Objects.requireNonNullElseGet(writableResourcesToUsers, HashMap::new);
+        this.shareableResourcesToUsers = Objects.requireNonNullElseGet(shareableResourcesToUsers, HashMap::new);
         this.limits = limits;
     }
 
@@ -137,6 +139,7 @@ public class SharedByMeDto {
         return switch (permission) {
             case READ -> readableResourceToUsers;
             case WRITE -> writableResourcesToUsers;
+            case SHARE -> shareableResourcesToUsers;
         };
     }
 }

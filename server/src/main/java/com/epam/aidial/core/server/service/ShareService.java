@@ -97,7 +97,6 @@ public class ShareService {
                             ? new ResourceFolderMetadata(sharedResourceDescriptor)
                             : new ResourceItemMetadata(sharedResourceDescriptor);
                     metadata.setPermissions(sharedResource.getPermissions());
-                    metadata.setCanReshare(sharedResource.isCanReshare());
                     resultMetadata.add(metadata);
                 }
             }
@@ -152,7 +151,7 @@ public class ShareService {
                         throw new IllegalArgumentException("All files in the application %s should belong to a requester".formatted(resource.getUrl()));
                     }
                     if (!filesFromRequest.contains(file.getUrl())) {
-                        newSharedResources.add(new SharedResource(file.getUrl(), sharedResource.getPermissions(), sharedResource.isCanReshare()));
+                        newSharedResources.add(new SharedResource(file.getUrl(), sharedResource.getPermissions()));
                     }
                 }
             }
@@ -192,19 +191,14 @@ public class ShareService {
             }
             Set<String> resharedResourceUrls = new HashSet<>();
             for (SharedResource sharedResource : existingSharedResources.getResources()) {
-                if (sharedResource.isCanReshare()) {
+                if (sharedResource.getPermissions().contains(ResourceAccessType.SHARE)) {
                     resharedResourceUrls.add(sharedResource.getUrl());
                 }
             }
             List<SharedResource> ownerResources = new ArrayList<>();
             for (SharedResource sharedResource : links) {
                 ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
-                if (!canShare(bucket, resource, resharedResourceUrls)) {
-                    throw new IllegalArgumentException("Resource %s is not allowed to be shared by the user".formatted(resource.getUrl()));
-                }
-                if (resharedResourceUrls.contains(sharedResource.getUrl()) && sharedResource.getPermissions().contains(ResourceAccessType.WRITE)) {
-                    throw new IllegalArgumentException("Re-shared resource is allowed to be shared with the permission READ only");
-                }
+                canShare(sharedResource, bucket, resource, resharedResourceUrls);
                 if (!uniqueLinks.add(resource.getUrl())) {
                     throw new IllegalArgumentException("Duplicated resource: %s".formatted(resource.getUrl()));
                 }
@@ -221,17 +215,21 @@ public class ShareService {
         return new InvitationLink(InvitationService.INVITATION_PATH_BASE + ResourceDescriptor.PATH_SEPARATOR + invitation.getId());
     }
 
-    private boolean canShare(String bucket, ResourceDescriptor resource, Set<String> resharedResourceUrls) {
+    private void canShare(SharedResource sharedResource, String bucket, ResourceDescriptor resource, Set<String> resharedResourceUrls) {
         if (bucket.equals(resource.getBucketName())) {
-            return true;
+            return;
         }
         while (resource != null) {
             if (resharedResourceUrls.contains(resource.getUrl())) {
-                return true;
+                if (sharedResource.getPermissions().contains(ResourceAccessType.WRITE)) {
+                    throw new IllegalArgumentException("Re-shared resource %s is not allowed to be shared with the permission WRITE"
+                            .formatted(sharedResource.getUrl()));
+                }
+                return;
             }
             resource = resource.getParent();
         }
-        return false;
+        throw new IllegalArgumentException("Resource %s is not allowed to be shared by the user".formatted(sharedResource.getUrl()));
     }
 
     private void validateShareResourcesRequest(ShareResourcesRequest request) {
@@ -241,6 +239,12 @@ public class ShareService {
         }
         Set<String> owners = new HashSet<>();
         for (SharedResource resource : sharedResources) {
+            if (resource.getPermissions() == null) {
+                resource.setPermissions(ResourceAccessType.READ_ONLY);
+            } else if (resource.getPermissions().size() == 1 && resource.getPermissions().contains(ResourceAccessType.SHARE)) {
+                throw new IllegalArgumentException("You're not allowed to share a resource with the permission SHARE only."
+                        + " This permission is allowed along with READ and/or WRITE");
+            }
             ResourceDescriptor descriptor = resourceFromUrl(resource.getUrl(), encryptionService);
             owners.add(descriptor.getBucketName());
         }
@@ -256,7 +260,7 @@ public class ShareService {
         resourceService.computeResource(sharedByMe, state -> {
             SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
             if (dto == null) {
-                dto = new SharedByMeDto(new HashMap<>(), new HashMap<>(), new HashMap<>());
+                dto = new SharedByMeDto(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
             }
             for (SharedResource resource : resources) {
                 dto.updateLimit(resource.getUrl(), limit);
@@ -329,7 +333,7 @@ public class ShareService {
                 String state = resourceService.getResource(sharedByMe);
                 SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
                 if (dto == null) {
-                    dto = new SharedByMeDto(new HashMap<>(), new HashMap<>(), new HashMap<>());
+                    dto = new SharedByMeDto(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
                 }
 
                 // add user location for each link
@@ -528,7 +532,6 @@ public class ShareService {
 
         ResourceType destinationResourceType = destination.getType();
         String destinationResourceLink = destination.getUrl();
-        String sourceResourceLink = source.getUrl();
         // source and destination resource type might be different
         sharedByMeResource = getShareResource(ResourceTypes.SHARED_BY_ME, destinationResourceType, bucket, location);
 
@@ -536,7 +539,7 @@ public class ShareService {
         resourceService.computeResource(sharedByMeResource, state -> {
             SharedByMeDto dto = ProxyUtil.convertToObject(state, SharedByMeDto.class);
             if (dto == null) {
-                dto = new SharedByMeDto(new HashMap<>(), new HashMap<>(), new HashMap<>());
+                dto = new SharedByMeDto(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
             }
 
             // add shared access to the destination resource
@@ -548,7 +551,7 @@ public class ShareService {
         // add each user shared access to the destination resource
         userPermissions.forEach((userLocation, permissions) -> {
             String userBucket = encryptionService.encrypt(userLocation);
-            addSharedResource(userBucket, userLocation, sourceResourceLink, destinationResourceLink, destinationResourceType, permissions);
+            addSharedResource(userBucket, userLocation, destinationResourceLink, destinationResourceType, permissions);
         });
     }
 
@@ -570,7 +573,7 @@ public class ShareService {
                 for (Iterator<SharedResource> iterator = sharedWithMe.getResources().iterator(); iterator.hasNext();) {
                     SharedResource sharedResource = iterator.next();
                     if (sharedResource.getUrl().equals(link)) {
-                        wasReshared.setValue(sharedResource.isCanReshare());
+                        wasReshared.setValue(sharedResource.getPermissions().contains(ResourceAccessType.SHARE));
                         sharedResource.getPermissions().removeAll(permissionsToRemove);
                         if (sharedResource.getPermissions().isEmpty()) {
                             iterator.remove();
@@ -590,7 +593,6 @@ public class ShareService {
     private void addSharedResource(
             String bucket,
             String location,
-            String sourceLink,
             String distLink,
             ResourceType resourceType,
             Set<ResourceAccessType> permissionsToAdd) {
@@ -603,11 +605,9 @@ public class ShareService {
             Set<ResourceAccessType> permissions = EnumSet.noneOf(ResourceAccessType.class);
             permissions.addAll(sharedWithMe.findPermissions(distLink));
             permissions.addAll(permissionsToAdd);
-            boolean canReshare = sharedWithMe.getResources().stream()
-                    .anyMatch(sharedResource -> sharedResource.getUrl().equals(sourceLink) && sharedResource.isCanReshare());
             sharedWithMe.getResources().removeIf(resource -> distLink.equals(resource.getUrl()));
 
-            sharedWithMe.getResources().add(new SharedResource(distLink, permissions, canReshare));
+            sharedWithMe.getResources().add(new SharedResource(distLink, permissions));
 
             return ProxyUtil.convertToString(sharedWithMe);
         });

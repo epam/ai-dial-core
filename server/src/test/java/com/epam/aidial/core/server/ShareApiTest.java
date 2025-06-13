@@ -113,8 +113,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ],
-                    "canReshare" : false
+                    "permissions" : [ "READ" ]
                     } ]
                 }
                 """);
@@ -251,8 +250,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "WRITE" ],
-                    "canReshare" : false
+                    "permissions" : [ "WRITE" ]
                     } ]
                 }
                 """);
@@ -544,8 +542,7 @@ public class ShareApiTest extends ResourceBaseTest {
                       "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation@",
                       "nodeType": "ITEM",
                       "resourceType": "CONVERSATION",
-                      "permissions": [ "READ" ],
-                      "canReshare" : false
+                      "permissions": [ "READ" ]
                     }
                   ]
                 }
@@ -693,8 +690,7 @@ public class ShareApiTest extends ResourceBaseTest {
                       "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2@",
                       "nodeType": "ITEM",
                       "resourceType": "CONVERSATION",
-                      "permissions": [ "READ" ],
-                      "canReshare" : false
+                      "permissions": [ "READ" ]
                     }
                   ]
                 }
@@ -1359,8 +1355,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ],
-                    "canReshare" : false
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -1369,8 +1364,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ],
-                    "canReshare" : false
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -1505,8 +1499,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/prompt",
                     "nodeType" : "ITEM",
                     "resourceType" : "PROMPT",
-                    "permissions" : [ "READ" ],
-                    "canReshare" : false
+                    "permissions" : [ "READ" ]
                     },
                     {
                     "name" : "conversation",
@@ -1515,8 +1508,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ],
-                    "canReshare" : false
+                    "permissions" : [ "READ" ]
                     }
                   ]
                 }
@@ -1914,6 +1906,21 @@ public class ShareApiTest extends ResourceBaseTest {
         var response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_1);
         verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
 
+        // you're not allowed to share with share permission only
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40",
+                      "permissions": ["SHARE"],
+                      "canReshare": true
+                    }
+                  ]
+                }
+                """);
+        verify(response, 400);
+
         // initialize share request
         response = operationRequest("/v1/ops/resource/share/create", """
                 {
@@ -1921,6 +1928,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "resources": [
                     {
                       "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40",
+                      "permissions": ["READ", "SHARE"],
                       "canReshare": true
                     }
                   ]
@@ -1945,7 +1953,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   "with": "me"
                 }
                 """, "Api-key", "proxyKey2");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
                     "name" : "conversation 1@",
@@ -1954,11 +1962,24 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ],
-                    "canReshare" : true
+                    "permissions" : [ "READ", "SHARE" ]
                     } ]
                 }
                 """);
+
+        // user 2 doesn't allow to share the resource with WRITE permission
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "permissions": ["WRITE"],
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
+                    }
+                  ]
+                }
+                """, "Api-key", "proxyKey2");
+        verify(response, 400);
 
         // initialize share request for user 3
         response = operationRequest("/v1/ops/resource/share/create", """
@@ -2000,7 +2021,7 @@ public class ShareApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
         verify(response, 403);
 
-        // verify user2 has access to the conversation
+        // verify user3 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey3");
         verify(response, 403);
 
