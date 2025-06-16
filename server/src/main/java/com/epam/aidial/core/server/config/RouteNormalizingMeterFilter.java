@@ -5,6 +5,10 @@ import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.config.MeterFilter;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * A Micrometer meter filter that normalizes HTTP paths in Vert.x server metrics for better aggregation and cardinality control.
+ * This filter transforms dynamic path segments into normalized route patterns to ensure consistent metric labeling across requests.
+ */
 @Slf4j
 public class RouteNormalizingMeterFilter implements MeterFilter {
 

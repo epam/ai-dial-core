@@ -318,6 +318,11 @@ public class AiDial {
             return;
         }
 
+        JsonObject oltp = metrics.toJson().getJsonObject("prometheusOptions", new JsonObject());
+        if (oltp == null || !oltp.getBoolean("enabled", false)) {
+            return;
+        }
+
         var otlpReg = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
 
