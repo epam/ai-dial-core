@@ -9,15 +9,20 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.util.RedisUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.redisson.api.RBucket;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
@@ -36,13 +41,18 @@ public class ApiKeyStore {
     public static final String API_KEY_DATA_BUCKET = "api_key_data";
     public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
-    private final ResourceService resourceService;
+    public static final Duration EXPIRE = Duration.ofMinutes(30);
 
     private final Vertx vertx;
+    private final RedissonClient redis;
+    private final LockService lockService;
+    private final String prefix;
 
-    public ApiKeyStore(ResourceService resourceService, Vertx vertx) {
-        this.resourceService = resourceService;
+    public ApiKeyStore(Vertx vertx, RedissonClient redis, LockService lockService, String prefix) {
         this.vertx = vertx;
+        this.redis = redis;
+        this.lockService = lockService;
+        this.prefix = prefix;
     }
 
     /**
@@ -58,16 +68,14 @@ public class ApiKeyStore {
      */
     public void assignPerRequestApiKey(ApiKeyData data) {
         String perRequestKey = generateKey();
-        ResourceDescriptor resource = toResource(perRequestKey);
         data.setPerRequestKey(perRequestKey);
         String json = ProxyUtil.convertToString(data);
-        try {
-            resourceService.putResource(resource, json, EtagHeader.NEW_ONLY);
-        } catch (HttpException exception) {
-            throw exception.getStatus() == HttpStatus.PRECONDITION_FAILED
-                    ? new IllegalStateException(String.format("API key %s already exists in the storage", perRequestKey))
-                    : exception;
+        String redisKey = toRedisKey(perRequestKey);
+        RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+        if (!bucket.setIfAbsent(json)) {
+            throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
         }
+        bucket.expire(EXPIRE);
     }
 
     public Future<Void> updatePerRequestApiKey(String key, Function<String, String> fn) {
@@ -76,9 +84,23 @@ public class ApiKeyStore {
             log.error("Error occurred at updating api key data: per request API key is undefined");
             return Future.failedFuture(error);
         }
-        ResourceDescriptor resource = toResource(key);
+        String redisKey = toRedisKey(key);
         return vertx.executeBlocking(() -> {
-            resourceService.computeResource(resource, fn);
+            try (var ignore = lockService.lock(redisKey)) {
+                RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+                String oldJson = bucket.get();
+                if (oldJson == null) {
+                    throw new IllegalArgumentException("Per request key is not found: " + key);
+                }
+
+                String newJson = fn.apply(oldJson);
+
+                if (Objects.equals(oldJson, newJson)) {
+                    return null;
+                }
+
+                bucket.set(newJson);
+            }
             return null;
         }, false);
     }
@@ -94,8 +116,12 @@ public class ApiKeyStore {
         if (apiKeyData != null) {
             return Future.succeededFuture(apiKeyData);
         }
-        ResourceDescriptor resource = toResource(key);
-        return vertx.executeBlocking(() -> ProxyUtil.convertToObject(resourceService.getResource(resource), ApiKeyData.class), false).compose(result -> {
+        String redisKey = toRedisKey(key);
+        return vertx.executeBlocking(() -> {
+            RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+            String json = bucket.get();
+            return ProxyUtil.convertToObject(json, ApiKeyData.class);
+        }, false).compose(result -> {
             if (result == null) {
                 return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Unknown api key"));
             }
@@ -113,8 +139,11 @@ public class ApiKeyStore {
     public Future<Boolean> invalidatePerRequestApiKey(ApiKeyData apiKeyData) {
         String apiKey = apiKeyData.getPerRequestKey();
         if (apiKey != null) {
-            ResourceDescriptor resource = toResource(apiKey);
-            return vertx.executeBlocking(() -> resourceService.deleteResource(resource, EtagHeader.ANY), false);
+            String redisKey = toRedisKey(apiKey);
+            return vertx.executeBlocking(() -> {
+                RBucket<String> bucket = redis.getBucket(redisKey);
+                return bucket.delete();
+            }, false);
         }
         return Future.succeededFuture(true);
     }
@@ -151,9 +180,10 @@ public class ApiKeyStore {
         }
     }
 
-    private static ResourceDescriptor toResource(String apiKey) {
-        return ResourceDescriptorFactory.fromDecoded(
+    private String toRedisKey(String apiKey) {
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.API_KEY_DATA, API_KEY_DATA_BUCKET, API_KEY_DATA_LOCATION, apiKey);
+        return RedisUtil.redisKey(resource, prefix);
     }
 
 }
