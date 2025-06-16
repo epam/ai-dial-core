@@ -50,4 +50,14 @@ public abstract class AccessControlBaseController {
      * @return a successful future to read the request body after its completion.
      */
     protected abstract Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess);
+
+    protected boolean shouldHide(ResourceDescriptor resource) {
+        if (resource.isHidden() && resource.isPublic()) {
+            if (context.getApiKeyData().getPerRequestKey() != null) {
+                return false;
+            }
+            return !proxy.getAccessService().hasAdminAccess(context);
+        }
+        return false;
+    }
 }
