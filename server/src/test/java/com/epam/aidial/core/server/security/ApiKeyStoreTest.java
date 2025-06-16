@@ -83,8 +83,7 @@ public class ApiKeyStoreTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        LockService lockService = new LockService(redissonClient, null);
-        store = new ApiKeyStore(vertx, redissonClient, lockService, null);
+        store = new ApiKeyStore(vertx, redissonClient, null);
     }
 
     @Test

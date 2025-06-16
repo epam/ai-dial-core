@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -45,13 +44,11 @@ public class ApiKeyStore {
 
     private final Vertx vertx;
     private final RedissonClient redis;
-    private final LockService lockService;
     private final String prefix;
 
-    public ApiKeyStore(Vertx vertx, RedissonClient redis, LockService lockService, String prefix) {
+    public ApiKeyStore(Vertx vertx, RedissonClient redis, String prefix) {
         this.vertx = vertx;
         this.redis = redis;
-        this.lockService = lockService;
         this.prefix = prefix;
     }
 
@@ -86,8 +83,9 @@ public class ApiKeyStore {
         }
         String redisKey = toRedisKey(key);
         return vertx.executeBlocking(() -> {
-            try (var ignore = lockService.lock(redisKey)) {
-                RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+            RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+            // lock free
+            while (true) {
                 String oldJson = bucket.get();
                 if (oldJson == null) {
                     throw new IllegalArgumentException("Per request key is not found: " + key);
@@ -95,11 +93,9 @@ public class ApiKeyStore {
 
                 String newJson = fn.apply(oldJson);
 
-                if (Objects.equals(oldJson, newJson)) {
-                    return null;
+                if (Objects.equals(oldJson, newJson) || bucket.compareAndSet(oldJson, newJson)) {
+                    break;
                 }
-
-                bucket.set(newJson);
             }
             return null;
         }, false);
