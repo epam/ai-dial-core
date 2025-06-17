@@ -17,7 +17,7 @@ public class RouteNormalizingMeterFilter implements MeterFilter {
         if (id.getName().startsWith("vertx.http.server")) {
             for (Tag tag : id.getTags()) {
                 if ("path".equals(tag.getKey())) {
-                    return id.withTag(Tag.of("route", SpanPathNormalizer.normalizePath(tag.getValue())));
+                    return id.withTag(Tag.of("route", PathNormalizerSpanProcessor.normalizePath(tag.getValue())));
                 }
             }
         }

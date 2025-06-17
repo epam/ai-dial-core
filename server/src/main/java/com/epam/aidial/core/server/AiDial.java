@@ -2,8 +2,8 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
-import com.epam.aidial.core.server.config.SpanPathNormalizer;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -37,8 +37,10 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import io.micrometer.core.instrument.Clock;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SpanProcessor;
@@ -318,16 +320,21 @@ public class AiDial {
             return;
         }
 
-        JsonObject oltp = metrics.toJson().getJsonObject("prometheusOptions", new JsonObject());
-        if (oltp == null || !oltp.getBoolean("enabled", false)) {
-            return;
+        MicrometerMetricsOptions micrometer = new MicrometerMetricsOptions(metrics.toJson());
+
+        JsonObject prometheus = metrics.toJson().getJsonObject("prometheusOptions", new JsonObject());
+        if (prometheus != null && prometheus.getBoolean("enabled", false)) {
+            var prometheusReg = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+            prometheusReg.config().meterFilter(new RouteNormalizingMeterFilter());
+            micrometer.setMicrometerRegistry(prometheusReg);
         }
 
-        var otlpReg = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
-        otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
-
-        MicrometerMetricsOptions micrometer = new MicrometerMetricsOptions(metrics.toJson());
-        micrometer.setMicrometerRegistry(otlpReg);
+        JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
+        if (oltp != null && oltp.getBoolean("enabled", false)) {
+            var otlpReg = new OtlpMeterRegistry(oltp::getString, Clock.SYSTEM);
+            otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
+            micrometer.setMicrometerRegistry(otlpReg);
+        }
 
         options.setMetricsOptions(micrometer);
     }
@@ -349,7 +356,7 @@ public class AiDial {
 
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
                 .addSpanProcessorCustomizer(((spanProcessor, configProperties) ->
-                        SpanProcessor.composite(new SpanPathNormalizer(), spanProcessor)))
+                        SpanProcessor.composite(new PathNormalizerSpanProcessor(), spanProcessor)))
                 .build()
                 .getOpenTelemetrySdk();
 

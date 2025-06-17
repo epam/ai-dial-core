@@ -13,7 +13,7 @@ import io.opentelemetry.sdk.trace.SpanProcessor;
  * SpanProcessor that normalizes HTTP paths using RouteTemplate definitions.
  * This ensures consistency between controller routing and metrics normalization.
  */
-public class SpanPathNormalizer implements SpanProcessor {
+public class PathNormalizerSpanProcessor implements SpanProcessor {
 
     private static final AttributeKey<String> URL_PATH = AttributeKey.stringKey("url.path");
     private static final AttributeKey<String> HTTP_ROUTE = AttributeKey.stringKey("http.route");
@@ -41,7 +41,7 @@ public class SpanPathNormalizer implements SpanProcessor {
 
     @Override
     public boolean isEndRequired() {
-        return true;
+        return false;
     }
 
     @Override
