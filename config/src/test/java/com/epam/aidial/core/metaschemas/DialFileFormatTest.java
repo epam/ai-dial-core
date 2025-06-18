@@ -8,18 +8,20 @@ import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.NonValidationKeyword;
 import com.networknt.schema.ValidationMessage;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.CUSTOM_APPLICATION_META_SCHEMA_ID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class DialFileFormatTest {
+class DialFileFormatTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String customSchemaStr = """
+    private static final String CUSTOM_SCHEMA = """
             {\
             "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
             "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
@@ -51,64 +53,44 @@ public class DialFileFormatTest {
                 .build();
     }
 
-    @Test
-    void sampleApplication_validatesAgainstSchema_ok() throws Exception {
-        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
-        JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
-        String sampleObjectStr = "{ \"file\": \"files/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/valid-file-path/valid-sub-path/valid%20file%20name.ext\" }";
-        JsonNode sampleObjectNode = MAPPER.readTree(sampleObjectStr);
-        Set<ValidationMessage> customSchemaValidationMessages = customSchema.validate(sampleObjectNode);
-        assertTrue(customSchemaValidationMessages.isEmpty(), "Sample app should be valid against custom schema");
+    static Stream<TestCase> fileValidationCases() {
+        return Stream.of(
+            new TestCase(
+                "{ \"file\": \"files/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/valid-file-path/valid-sub-path/valid%20file%20name.ext\" }",
+                true,
+                "Sample app should be valid against custom schema"
+            ),
+            new TestCase(
+                "{ \"file\": \"files/2pSUd9nfm2gTvgY9ZXj1Z5cSprWyXp8YpDR2EF1pzUxDxNDmKxBx4dK9BRT8xiHgXp/(TechDoc)%20WalletManager%20Overview.svg\" }",
+                true,
+                "Sample app should be valid against custom schema"
+            ),
+            new TestCase(
+                "{ \"file\": \"files/2pSUd9nfm2gTvgY9ZXj1Z5cSprWyXp8YpDR2EF1pzUxDxNDmKxBx4dK9BRT8xiHgXp/image059305%60'12.png\" }",
+                true,
+                "Sample app should be valid against custom schema"
+            ),
+            new TestCase(
+                "{ \"file\": \"\" }",
+                false,
+                "Sample app should be invalid against custom schema"
+            )
+        );
     }
 
-    @Test
-    void sampleApplicationWithRealFilenameWithBraces_validatesAgainstSchema_ok() throws Exception {
-        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
+    @ParameterizedTest
+    @MethodSource("fileValidationCases")
+    void fileField_validatesAgainstSchema_parametrized(TestCase testCase) throws Exception {
+        JsonNode customSchemaNode = MAPPER.readTree(CUSTOM_SCHEMA);
         JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
-        String sampleObjectStr = "{ \"file\": \"files/2pSUd9nfm2gTvgY9ZXj1Z5cSprWyXp8YpDR2EF1pzUxDxNDmKxBx4dK9BRT8xiHgXp/(TechDoc)%20WalletManager%20Overview.svg\" }";
-        JsonNode sampleObjectNode = MAPPER.readTree(sampleObjectStr);
-        Set<ValidationMessage> customSchemaValidationMessages = customSchema.validate(sampleObjectNode);
-        assertTrue(customSchemaValidationMessages.isEmpty(), "Sample app should be valid against custom schema");
+        JsonNode sampleObjectNode = MAPPER.readTree(testCase.sampleObjectStr());
+        Set<ValidationMessage> validationMessages = customSchema.validate(sampleObjectNode);
+        if (testCase.shouldBeValid()) {
+            assertTrue(validationMessages.isEmpty(), testCase.message());
+        } else {
+            assertEquals(1, validationMessages.size(), testCase.message());
+        }
     }
 
-
-    @Test
-    void sampleApplication_validatesAgainstSchema_failed_wrongBucket() throws Exception {
-        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
-        JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
-        String sampleObjectStr = "{ \"file\": \"files/wrong bucket/valid-file-path/valid%20file%20name.ext\" }";
-        JsonNode sampleObjectNode = MAPPER.readTree(sampleObjectStr);
-        Set<ValidationMessage> customSchemaValidationMessages = customSchema.validate(sampleObjectNode);
-        assertEquals(1, customSchemaValidationMessages.size(), "Sample app should be invalid against custom schema");
-    }
-
-    @Test
-    void sampleApplication_validatesAgainstSchema_failed_wrongPath() throws Exception {
-        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
-        JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
-        String sampleObjectStr = "{ \"file\": \"files/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/invalid file path/valid%20file%20name.ext\" }";
-        JsonNode sampleObjectNode = MAPPER.readTree(sampleObjectStr);
-        Set<ValidationMessage> customSchemaValidationMessages = customSchema.validate(sampleObjectNode);
-        assertEquals(1, customSchemaValidationMessages.size(), "Sample app should be invalid against custom schema");
-    }
-
-    @Test
-    void sampleApplication_validatesAgainstSchema_failed_wrongType() throws Exception {
-        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
-        JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
-        String sampleObjectStr = "{ \"file\": \"applications/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/valid-file-path/valid%20file%20name.ext\" }";
-        JsonNode sampleObjectNode = MAPPER.readTree(sampleObjectStr);
-        Set<ValidationMessage> customSchemaValidationMessages = customSchema.validate(sampleObjectNode);
-        assertEquals(1, customSchemaValidationMessages.size(), "Sample app should be invalid against custom schema");
-    }
-
-    @Test
-    void sampleApplication_validatesAgainstSchema_failed_empty() throws Exception {
-        JsonNode customSchemaNode = MAPPER.readTree(customSchemaStr);
-        JsonSchema customSchema = schemaFactory.getSchema(customSchemaNode);
-        String sampleObjectStr = "{ \"file\": \"\" }";
-        JsonNode sampleObjectNode = MAPPER.readTree(sampleObjectStr);
-        Set<ValidationMessage> customSchemaValidationMessages = customSchema.validate(sampleObjectNode);
-        assertEquals(1, customSchemaValidationMessages.size(), "Sample app should be invalid against custom schema");
-    }
+    private record TestCase(String sampleObjectStr, boolean shouldBeValid, String message) {}
 }
