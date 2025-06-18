@@ -2,6 +2,8 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
+import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -36,9 +38,12 @@ import com.epam.aidial.core.storage.service.TimerService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
+import io.micrometer.prometheus.PrometheusConfig;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -315,13 +320,21 @@ public class AiDial {
             return;
         }
 
-        JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
-        if (oltp == null || !oltp.getBoolean("enabled", false)) {
-            return;
+        MicrometerMetricsOptions micrometer = new MicrometerMetricsOptions(metrics.toJson());
+
+        JsonObject prometheus = metrics.toJson().getJsonObject("prometheusOptions", new JsonObject());
+        if (prometheus != null && prometheus.getBoolean("enabled", false)) {
+            var prometheusReg = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+            prometheusReg.config().meterFilter(new RouteNormalizingMeterFilter());
+            micrometer.setMicrometerRegistry(prometheusReg);
         }
 
-        MicrometerMetricsOptions micrometer = new MicrometerMetricsOptions(metrics.toJson());
-        micrometer.setMicrometerRegistry(new OtlpMeterRegistry(oltp::getString, Clock.SYSTEM));
+        JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
+        if (oltp != null && oltp.getBoolean("enabled", false)) {
+            var otlpReg = new OtlpMeterRegistry(oltp::getString, Clock.SYSTEM);
+            otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
+            micrometer.setMicrometerRegistry(otlpReg);
+        }
 
         options.setMetricsOptions(micrometer);
     }
@@ -340,7 +353,13 @@ public class AiDial {
         if (otlExporterEndpoint == null) {
             System.setProperty("otel.traces.exporter", "none");
         }
-        OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder().build().getOpenTelemetrySdk();
+
+        OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
+                .addSpanProcessorCustomizer(((spanProcessor, configProperties) ->
+                        SpanProcessor.composite(new PathNormalizerSpanProcessor(), spanProcessor)))
+                .build()
+                .getOpenTelemetrySdk();
+
         OpenTelemetryOptions otelOpts = new OpenTelemetryOptions(openTelemetry);
         otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
         vertxOptions.setTracingOptions(otelOpts);

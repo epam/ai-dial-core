@@ -3,12 +3,11 @@
     "workerPoolSize": 64,
     "metricsOptions": {
       "enabled": true,
-      "disabledMetricsCategories": ["http.server"],
       "jvmMetricsEnabled": true,
       "labels": [
         "HTTP_METHOD",
         "HTTP_CODE",
-        "HTTP_PATH"
+        "HTTP_ROUTE"
       ],
       "prometheusOptions": {
         "enabled": true,
