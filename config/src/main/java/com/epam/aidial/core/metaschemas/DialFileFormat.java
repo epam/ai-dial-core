@@ -12,7 +12,11 @@ import java.util.regex.Pattern;
 
 public class DialFileFormat implements Format {
 
-    private static final Pattern PATTERN = Pattern.compile("^files/([a-zA-Z0-9]+)/((?:(?:[a-zA-Z0-9()_\\-.~]|%[a-zA-Z0-9]{2})+/?)+)$");
+    // Updated regex: allows trailing slash for folders
+    private static final Pattern PATTERN = Pattern.compile(
+            "^files/[a-zA-Z0-9]+(?:/[a-zA-Z0-9()_\\-.~'%]+)*+/?$"
+    );
+    private static final int MAX_LENGTH = 4096;
 
     @Override
     public boolean matches(ExecutionContext executionContext, ValidationContext validationContext, JsonNode value) {
@@ -37,6 +41,9 @@ public class DialFileFormat implements Format {
             return false;
         }
         String nodeValue = value.textValue();
+        if (nodeValue.length() > MAX_LENGTH) {
+            return false;
+        }
         Matcher matcher = PATTERN.matcher(nodeValue);
         return matcher.matches();
     }
