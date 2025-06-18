@@ -55,6 +55,7 @@ class DialFileFormatTest {
 
     static Stream<TestCase> fileValidationCases() {
         return Stream.of(
+            // Existing cases
             new TestCase(
                 "{ \"file\": \"files/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/valid-file-path/valid-sub-path/valid%20file%20name.ext\" }",
                 true,
@@ -74,6 +75,32 @@ class DialFileFormatTest {
                 "{ \"file\": \"\" }",
                 false,
                 "Sample app should be invalid against custom schema"
+            ),
+            // Additional cases from testApplicationWithTypeSchemaPublish_Ok_FolderWithSubfolder
+            new TestCase(
+                "{ \"file\": \"files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file1.txt\" }",
+                true,
+                "Should be valid: nested file path"
+            ),
+            new TestCase(
+                "{ \"file\": \"files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file1.txt\" }",
+                true,
+                "Should be valid: file in subfolder"
+            ),
+            new TestCase(
+                "{ \"file\": \"files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/abc/test_file1.txt\" }",
+                true,
+                "Should be valid: deeply nested file"
+            ),
+            new TestCase(
+                "{ \"file\": \"files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/\" }",
+                true,
+                "Should be valid: deeply nested file"
+            ),
+            new TestCase(
+                "{ \"file\": \"files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/\" }",
+                true,
+                "Should be valid: folder path"
             )
         );
     }
