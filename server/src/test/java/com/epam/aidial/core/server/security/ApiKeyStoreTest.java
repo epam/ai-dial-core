@@ -4,11 +4,8 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.service.LockService;
-import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.service.TimerService;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -35,7 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,12 +43,6 @@ public class ApiKeyStoreTest {
 
     @Mock
     private Vertx vertx;
-
-    @Mock
-    private EncryptionService encryptionService;
-
-    @Mock
-    private BlobStorage blobStorage;
 
     private ApiKeyStore store;
 
@@ -93,11 +83,7 @@ public class ApiKeyStoreTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        LockService lockService = new LockService(redissonClient, null);
-        ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
-                lockService, settings, null);
-        store = new ApiKeyStore(resourceService, vertx);
+        store = new ApiKeyStore(vertx, redissonClient, null);
     }
 
     @Test

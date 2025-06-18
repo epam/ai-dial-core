@@ -1,5 +1,7 @@
 package com.epam.aidial.core.storage.util;
 
+import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -65,5 +67,10 @@ public class RedisUtil {
 
     public static byte[] toBytes(String input) {
         return input.getBytes(STRING_ENCODING);
+    }
+
+    public String redisKey(ResourceDescriptor descriptor, String prefix) {
+        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
+        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
 }

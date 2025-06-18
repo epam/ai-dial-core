@@ -75,7 +75,7 @@ public class DeploymentPostController {
         this.context = context;
         this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context, false),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
@@ -363,11 +363,12 @@ public class DeploymentPostController {
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream currentUpstream = upstreamRoute.get();
-        log.info("Received header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}",
+        log.info("Received header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}."
+                        + " Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(), currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
-                proxyResponse.statusCode(), proxyResponse.headers().size());
+                proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
@@ -451,13 +452,16 @@ public class DeploymentPostController {
                 if (tokenUsage == null) {
                     Pricing pricing = model.getPricing();
                     if (pricing == null || "token".equals(pricing.getUnit())) {
-                        log.warn("Can't find token usage. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}",
+                        Upstream currentUpstream = context.getUpstreamRoute().get();
+                        log.warn("Can't find token usage. Trace: {}. Span: {}. Project: {}. Deployment: {}."
+                                        + " Endpoint: {}. Upstream: {}. Status: {}. Length: {}. Upstream.extraData: {}",
                                 context.getTraceId(), context.getSpanId(),
                                 context.getProject(), context.getDeployment().getName(),
                                 context.getDeployment().getEndpoint(),
-                                context.getUpstreamRoute().get().getEndpoint(),
+                                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                                 context.getResponse().getStatusCode(),
-                                context.getResponseBody().length());
+                                context.getResponseBody().length(),
+                                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
                     }
                     tokenUsage = new TokenUsage();
                 }
@@ -500,13 +504,14 @@ public class DeploymentPostController {
         responseStream.end(response);
 
         proxy.getLogStore().save(context);
-
-        log.info("Sent response to client. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
-                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}",
+        Upstream currentUpstream = context.getUpstreamRoute().get();
+        log.info("Sent response to client. Trace: {}. Span: {}. Project: {}. Deployment: {}."
+                        + " Endpoint: {}. Upstream: {}. Status: {}. Length: {}."
+                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
                 context.getTraceId(), context.getSpanId(),
                 context.getProject(), context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(),
-                context.getUpstreamRoute().get().getEndpoint(),
+                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 context.getResponse().getStatusCode(),
                 context.getResponseBody().length(),
                 context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
@@ -514,7 +519,8 @@ public class DeploymentPostController {
                 context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
                 context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
                 context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
-                context.getTokenUsage() == null ? "n/a" : context.getTokenUsage());
+                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
+                currentUpstream == null ? "N/A" : currentUpstream.hashCode());
 
         finalizeRequest();
     }

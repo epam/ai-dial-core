@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -30,6 +31,7 @@ public class ApplyDefaultDeploymentSettingsFnTest {
     @Mock
     private ProxyContext context;
 
+    @InjectMocks
     private ApplyDefaultDeploymentSettingsFn fn;
 
     @Test
@@ -39,10 +41,9 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         model.setDefaults(defaults);
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
         when(context.getDeployment()).thenReturn(model);
         JsonNode result = ProxyUtil.MAPPER.readTree("{}");
-
-        fn = new ApplyDefaultDeploymentSettingsFn(proxy, context, false);
 
         assertTrue(fn.apply((ObjectNode) result));
         assertEquals(123, result.get("key2").asInt());
@@ -56,14 +57,36 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         Model model = new Model();
         Map<String, Object> defaults = Map.of("key1", true, "key2", 123, "key3", 0.45, "key4", "str");
         model.setDefaults(defaults);
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
-        apiKeyData.setInterceptorIndex(0);
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         when(context.getDeployment()).thenReturn(model);
         JsonNode result = ProxyUtil.MAPPER.readTree("{}");
 
-        fn = new ApplyDefaultDeploymentSettingsFn(proxy, context, true);
+        assertTrue(fn.apply((ObjectNode) result));
+        assertEquals(123, result.get("key2").asInt());
+        assertEquals(0.45, result.get("key3").asDouble());
+        assertEquals("str", result.get("key4").asText());
+        assertTrue(result.get("key1").asBoolean());
+    }
+
+    @Test
+    public void testWithModelWithInterceptors_WhenInterceptorCallAnotherDeployment() throws JsonProcessingException {
+        Model model = new Model();
+        Map<String, Object> defaults = Map.of("key1", true, "key2", 123, "key3", 0.45, "key4", "str");
+        model.setDefaults(defaults);
+        model.setName("tiny-model");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setInterceptors(List.of("interceptor1"));
+        apiKeyData.setInterceptorIndex(0);
+        apiKeyData.setPerRequestKey("perRequestKey");
+        apiKeyData.setInitialDeployment("model");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getInitialDeployment()).thenReturn("model");
+        when(context.getDeployment()).thenReturn(model);
+        JsonNode result = ProxyUtil.MAPPER.readTree("{}");
 
         assertTrue(fn.apply((ObjectNode) result));
         assertEquals(123, result.get("key2").asInt());
@@ -77,13 +100,11 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         Model model = new Model();
         Map<String, Object> defaults = Map.of("key1", true, "key2", 123, "key3", 0.45, "key4", "str");
         model.setDefaults(defaults);
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
-        apiKeyData.setInterceptorIndex(1);
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        proxyApiKeyData.setInterceptorIndex(1);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         JsonNode result = ProxyUtil.MAPPER.readTree("{}");
-
-        fn = new ApplyDefaultDeploymentSettingsFn(proxy, context, true);
 
         assertFalse(fn.apply((ObjectNode) result));
         assertTrue(result.isEmpty());
@@ -94,13 +115,17 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         Model model = new Model();
         Map<String, Object> defaults = Map.of("key1", true, "key2", 123, "key3", 0.45, "key4", "str");
         model.setDefaults(defaults);
+        model.setName("model");
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setInterceptors(List.of("interceptor1"));
         apiKeyData.setInterceptorIndex(0);
+        apiKeyData.setPerRequestKey("perRequestKey");
+        apiKeyData.setInitialDeployment("model");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getInitialDeployment()).thenReturn("model");
+        when(context.getDeployment()).thenReturn(model);
         JsonNode result = ProxyUtil.MAPPER.readTree("{}");
-
-        fn = new ApplyDefaultDeploymentSettingsFn(proxy, context, false);
 
         assertFalse(fn.apply((ObjectNode) result));
         assertTrue(result.isEmpty());
