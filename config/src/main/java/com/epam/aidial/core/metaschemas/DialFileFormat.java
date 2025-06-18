@@ -12,9 +12,9 @@ import java.util.regex.Pattern;
 
 public class DialFileFormat implements Format {
 
-    // Improved regex: avoids nested quantifiers and backtracking, uses character classes and possessive quantifiers
+    // Updated regex: allows trailing slash for folders
     private static final Pattern PATTERN = Pattern.compile(
-            "^files/[a-zA-Z0-9]+/([a-zA-Z0-9()_\\-.~'%]+(?:/[a-zA-Z0-9()_\\-.~'%]+)*+)$"
+            "^files/[a-zA-Z0-9]+(?:/[a-zA-Z0-9()_\\-.~'%]+)*+/?$"
     );
     private static final int MAX_LENGTH = 4096;
 
