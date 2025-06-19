@@ -79,9 +79,11 @@ public class AccessTokenValidator {
             DecodedJWT jwt = IdentityProvider.decodeJwtToken(accessToken);
             return extractClaimsFromJwt(jwt);
         } catch (JWTDecodeException e) {
+            log.warn("JWT decoding error occurred", e);
             // access token is not JWT. let's try to extract claims from user info
             return extractClaimsFromUserInfo(accessToken);
         } catch (Throwable e) {
+            log.error("Can't extract claims from authorization header", e);
             return Future.failedFuture(e);
         }
     }

@@ -76,7 +76,7 @@ public class ShareController {
                         String body = buffer.toString(StandardCharsets.UTF_8);
                         request = ProxyUtil.convertToObject(body, ListSharedResourcesRequest.class);
                     } catch (Exception e) {
-                        log.error("Invalid request body provided", e);
+                        log.warn("Invalid request body provided", e);
                         throw new IllegalArgumentException("Can't list shared resources. Incorrect body");
                     }
 
@@ -105,7 +105,7 @@ public class ShareController {
                         String body = buffer.toString(StandardCharsets.UTF_8);
                         request = ProxyUtil.convertToObject(body, ShareResourcesRequest.class);
                     } catch (Exception e) {
-                        log.error("Invalid request body provided", e);
+                        log.warn("Invalid request body provided", e);
                         throw new IllegalArgumentException("Can't initiate share request. Incorrect body");
                     }
 
@@ -162,7 +162,7 @@ public class ShareController {
                     try {
                         request = ProxyUtil.convertToObject(buffer, CopySharedAccessRequest.class);
                     } catch (Exception e) {
-                        log.error("Invalid request body provided", e);
+                        log.warn("Invalid request body provided", e);
                         throw new IllegalArgumentException("Can't initiate copy shared access request. Incorrect body provided");
                     }
 
@@ -216,7 +216,7 @@ public class ShareController {
             String body = buffer.toString(StandardCharsets.UTF_8);
             return ProxyUtil.convertToObject(body, ResourceLinkCollection.class);
         } catch (Exception e) {
-            log.error("Invalid request body provided", e);
+            log.warn("Invalid request body provided", e);
             throw new HttpException(HttpStatus.BAD_REQUEST, "Can't %s shared resources. Incorrect body".formatted(operation));
         }
     }
@@ -226,7 +226,7 @@ public class ShareController {
             String body = buffer.toString(StandardCharsets.UTF_8);
             return ProxyUtil.convertToObject(body, RevokeResourcesRequest.class);
         } catch (Exception e) {
-            log.error("Invalid request body provided", e);
+            log.warn("Invalid request body provided", e);
             throw new HttpException(HttpStatus.BAD_REQUEST, "Can't %s shared resources. Incorrect body".formatted(operation));
         }
     }
