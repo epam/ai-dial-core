@@ -9,6 +9,6 @@ import java.math.BigDecimal;
  */
 @Data
 public class CostItemLimitStats {
-    private BigDecimal total;
-    private BigDecimal used;
+    private BigDecimal total = BigDecimal.ZERO;
+    private BigDecimal used = BigDecimal.ZERO;
 }

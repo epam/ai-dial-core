@@ -64,7 +64,8 @@ public class RateLimiter {
                 usage.setCost(cost);
 
                 // Update cost limits
-                String costsPath = getPathToCosts("user");
+                String userId = context.getUserSub() != null ? context.getUserSub() : "user";
+                String costsPath = getPathToCosts(userId);
                 ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
                 Future<Void> costFuture = vertx.executeBlocking(() -> updateCostLimit(costResourceDescription, cost), false);
 
@@ -148,7 +149,8 @@ public class RateLimiter {
     }
 
     private void collectCostLimitStats(ProxyContext context, LimitStats limitStats, long timestamp) {
-        String costsPath = getPathToCosts("user");
+        String userId = context.getUserSub() != null ? context.getUserSub() : "user";
+        String costsPath = getPathToCosts(userId);
         ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
         String json = resourceService.getResource(resourceDescription);
         CostRateLimit rateLimit = ProxyUtil.convertToObject(json, CostRateLimit.class);
@@ -247,7 +249,8 @@ public class RateLimiter {
     }
 
     private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp) {
-        String costsPath = getPathToCosts("user");
+        String userId = context.getUserSub() != null ? context.getUserSub() : "user";
+        String costsPath = getPathToCosts(userId);
         ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
         String prevValue = resourceService.getResource(resourceDescription);
         CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
@@ -405,8 +408,7 @@ public class RateLimiter {
 
     private static CostLimit getCostLimit(Map<String, Role> roles, String userRole, CostLimit defaultCostLimit) {
         return Optional.ofNullable(roles.get(userRole))
-                .map(Role::getCostLimits)
-                .map(costLimits -> costLimits.get("default"))
+                .map(Role::getCostLimit)
                 .orElse(defaultCostLimit);
     }
 
