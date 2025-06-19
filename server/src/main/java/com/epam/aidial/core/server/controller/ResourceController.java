@@ -174,7 +174,7 @@ public class ResourceController extends AccessControlBaseController {
         try {
             return ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
-            log.error("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+            log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
             application.setApplicationProperties(null);
             application.setInvalid(true);
             return application;

@@ -66,7 +66,7 @@ public class ResourceOperationController {
                     try {
                         request = ProxyUtil.convertToObject(buffer, MoveResourcesRequest.class);
                     } catch (Exception e) {
-                        log.error("Invalid request body provided", e);
+                        log.warn("Invalid request body provided", e);
                         throw new IllegalArgumentException("Can't initiate move resource request. Incorrect body provided");
                     }
 

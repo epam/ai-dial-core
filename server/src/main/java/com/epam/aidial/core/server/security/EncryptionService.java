@@ -60,7 +60,7 @@ public class EncryptionService {
             cipher.init(Cipher.DECRYPT_MODE, key, iv);
             return new String(cipher.doFinal(Base58.decode(value)));
         } catch (Exception e) {
-            log.error("Failed to decrypt value " + value, e);
+            log.warn("Failed to decrypt value " + value, e);
             return null;
         }
     }

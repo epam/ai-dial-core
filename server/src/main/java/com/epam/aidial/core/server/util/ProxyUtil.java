@@ -277,7 +277,7 @@ public class ProxyUtil {
         try {
             return MAPPER.readValue(payload, clazz);
         } catch (JsonProcessingException e) {
-            log.error("Failed to convert payload to the object", e);
+            log.warn("Failed to convert payload to the object", e);
             if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
                 String missingField = mismatchedInputException.getPath().stream()
                         .map(JsonMappingException.Reference::getFieldName)

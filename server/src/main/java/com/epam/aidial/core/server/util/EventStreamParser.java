@@ -78,7 +78,7 @@ public class EventStreamParser {
                 }
             }
         } catch (Throwable e) {
-            log.error("Error occurred at parsing chunk", e);
+            log.warn("Error occurred at parsing chunk", e);
             return Future.failedFuture(e);
         }
 
@@ -119,7 +119,7 @@ public class EventStreamParser {
                         .onFailure(error -> log.warn("Error occurred at handling json data from chunk", error));
                 futures.add(future);
             } catch (Throwable e) {
-                log.error("Error occurred at parsing json data from chunk", e);
+                log.warn("Error occurred at parsing json data from chunk", e);
             } finally {
                 buffer.clear();
                 stage = Stages.EOL;

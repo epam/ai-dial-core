@@ -219,7 +219,7 @@ public class UpstreamCacheService {
         try {
             return Instant.ofEpochSecond(Long.parseLong(val));
         } catch (NumberFormatException e) {
-            log.error("Invalid expireAt datetime format: " + val);
+            log.warn("Invalid expireAt datetime format: " + val);
             return null;
         }
     }
