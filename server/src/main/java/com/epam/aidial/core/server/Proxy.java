@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import com.epam.aidial.core.server.controller.ControllerTemplate;
+import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -107,6 +108,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final UpstreamCacheService upstreamCacheService;
     private final ConsentService consentService;
     private final DeploymentService deploymentService;
+    private final HealthCheckController healthCheckController;
     private final String version;
 
     @Override
@@ -175,7 +177,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         String path = URLDecoder.decode(request.path(), StandardCharsets.UTF_8);
         if (request.method() == HttpMethod.GET && path.equals(HEALTH_CHECK_PATH)) {
-            respond(request, HttpStatus.OK);
+            healthCheckController.handle(request);
             return;
         }
 

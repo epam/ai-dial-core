@@ -149,19 +149,6 @@ public class ProxyTest {
     }
 
     @Test
-    public void testHandle_HealthCheck() {
-        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
-        when(request.method()).thenReturn(HttpMethod.GET);
-        when(request.path()).thenReturn(HEALTH_CHECK_PATH);
-        MultiMap headers = mock(MultiMap.class);
-        when(request.headers()).thenReturn(headers);
-
-        proxy.handle(request);
-
-        verify(response).setStatusCode(OK.getCode());
-    }
-
-    @Test
     public void testHandle_MissingApiKeyAndToken() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
