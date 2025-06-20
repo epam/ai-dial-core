@@ -33,7 +33,7 @@ public class ConsentController {
                     try {
                         request = ProxyUtil.convertToObject(buffer, AcceptConsentRequest.class);
                     } catch (Exception e) {
-                        log.error("Invalid request body provided", e);
+                        log.warn("Invalid request body provided", e);
                         context.respond(HttpStatus.BAD_REQUEST, "Invalid request body provided");
                         return Future.succeededFuture();
                     }
@@ -55,10 +55,10 @@ public class ConsentController {
 
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
-            log.error("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            log.warn("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
-            log.error("Deployment not found {}", deploymentId, error);
+            log.warn("Deployment not found {}", deploymentId, error);
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
             log.error("Failed to process user consent", error);

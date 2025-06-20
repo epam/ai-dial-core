@@ -233,10 +233,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         if (apiKey == null) {
             return tokenValidator.extractClaims(authorization)
                     .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)),
-                            error -> {
-                                log.error("Can't extract claims from authorization header", error);
-                                return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header"));
-                            });
+                            error -> Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header")));
         }
 
         // see https://github.com/epam/ai-dial-core/issues/675

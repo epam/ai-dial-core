@@ -179,13 +179,13 @@ public class DeploymentPostController {
 
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
-            log.error("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            log.warn("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
-            log.error("Deployment not found {}", deploymentId, error);
+            log.warn("Deployment not found {}", deploymentId, error);
             respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else if (error instanceof HttpException e) {
-            log.error("Deployment error {}", deploymentId, error);
+            log.warn("Deployment error {}", deploymentId, error);
             respond(e.getStatus(), e.getMessage());
         } else {
             log.error("Failed to handle deployment {}", deploymentId, error);
@@ -223,7 +223,7 @@ public class DeploymentPostController {
         rateLimitError.getError().setMessage(result.errorMessage());
         rateLimitError.getError().setDisplayMessage(result.displayErrorMessage());
 
-        log.error("Rate limit error {}. Project: {}. User sub: {}. Deployment: {}. Trace: {}. Span: {}", result.errorMessage(),
+        log.warn("Rate limit error {}. Project: {}. User sub: {}. Deployment: {}. Trace: {}. Span: {}", result.errorMessage(),
                 context.getProject(), context.getUserSub(), deploymentId, context.getTraceId(), context.getSpanId());
 
         String errorMessage = ProxyUtil.convertToString(rateLimitError);
@@ -599,7 +599,7 @@ public class DeploymentPostController {
         try {
             route.next();
         } catch (HttpException e) {
-            log.error("No route. Trace: {}. Span: {}. Project: {}. Deployment: {}. User sub: {}",
+            log.warn("No route. Trace: {}. Span: {}. Project: {}. Deployment: {}. User sub: {}",
                     context.getTraceId(), context.getSpanId(),
                     context.getProject(), context.getDeployment().getName(), context.getUserSub());
             respond(e);
