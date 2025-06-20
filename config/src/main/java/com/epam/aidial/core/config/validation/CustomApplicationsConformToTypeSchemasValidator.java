@@ -58,7 +58,7 @@ public class CustomApplicationsConformToTypeSchemasValidator implements Constrai
                         .map(ValidationMessage::getMessage)
                         .reduce((a, b) -> a + ", " + b)
                         .orElse("Unknown validation error");
-                log.error("Application {} does not conform to schema {}: {}", entry.getKey(), schemaId, logMessage);
+                log.warn("Application {} does not conform to schema {}: {}", entry.getKey(), schemaId, logMessage);
                 context.disableDefaultConstraintViolation();
                 context.buildConstraintViolationWithTemplate(context.getDefaultConstraintMessageTemplate())
                         .addPropertyNode("applications")

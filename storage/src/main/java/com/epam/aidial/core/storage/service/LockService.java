@@ -108,7 +108,7 @@ public class LockService {
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
-            log.error("Lock service failed to unlock: {}", id);
+            log.warn("Lock service failed to unlock: {}", id);
         } else {
             log.debug("Thread {} releases a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         }
