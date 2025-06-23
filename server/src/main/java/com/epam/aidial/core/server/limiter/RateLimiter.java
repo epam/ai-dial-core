@@ -64,8 +64,7 @@ public class RateLimiter {
                 usage.setCost(cost);
 
                 // Update cost limits
-                String userId = context.getUserSub() != null ? context.getUserSub() : "user";
-                String costsPath = getPathToCosts(userId);
+                String costsPath = getPathToCosts();
                 ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
                 Future<Void> costFuture = vertx.executeBlocking(() -> updateCostLimit(costResourceDescription, cost), false);
 
@@ -149,8 +148,7 @@ public class RateLimiter {
     }
 
     private void collectCostLimitStats(ProxyContext context, LimitStats limitStats, long timestamp) {
-        String userId = context.getUserSub() != null ? context.getUserSub() : "user";
-        String costsPath = getPathToCosts(userId);
+        String costsPath = getPathToCosts();
         ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
         String json = resourceService.getResource(resourceDescription);
         CostRateLimit rateLimit = ProxyUtil.convertToObject(json, CostRateLimit.class);
@@ -238,19 +236,11 @@ public class RateLimiter {
 
         // Check cost limits
         CostLimit costLimit = getCostLimitByUser(context);
-        if (costLimit != null && costLimit.hasLimits()) {
-            RateLimitResult costResult = checkCostLimit(context, costLimit, timestamp);
-            if (costResult.status() != HttpStatus.OK) {
-                return costResult;
-            }
-        }
-
-        return RateLimitResult.SUCCESS;
+        return checkCostLimit(context, costLimit, timestamp);
     }
 
     private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp) {
-        String userId = context.getUserSub() != null ? context.getUserSub() : "user";
-        String costsPath = getPathToCosts(userId);
+        String costsPath = getPathToCosts();
         ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
         String prevValue = resourceService.getResource(resourceDescription);
         CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
@@ -396,8 +386,8 @@ public class RateLimiter {
         return String.format("%s/requests", name);
     }
 
-    private static String getPathToCosts(String name) {
-        return String.format("%s/costs", name);
+    private static String getPathToCosts() {
+        return "costs";
     }
 
     private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {
@@ -411,5 +401,4 @@ public class RateLimiter {
                 .map(Role::getCostLimit)
                 .orElse(defaultCostLimit);
     }
-
 }
