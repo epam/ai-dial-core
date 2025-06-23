@@ -538,7 +538,8 @@ public class ApplicationService {
             try {
                 ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(function.getSourceFolder(), encryptionService);
 
-                if (!folder.isFolder() || folder.getType() != ResourceTypes.FILE || !folder.getBucketName().equals(resource.getBucketName())) {
+                if (!folder.isFolder() || folder.getType() != ResourceTypes.FILE
+                        || (!folder.getBucketName().equals(resource.getBucketName()) && !isPublicOrReview(resource))) {
                     throw new IllegalArgumentException();
                 }
 
