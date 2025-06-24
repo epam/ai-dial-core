@@ -53,6 +53,27 @@ public class ApplyDefaultDeploymentSettingsFnTest {
     }
 
     @Test
+    public void testWithModelWithoutInterceptors_WhenComplexDefaults() throws JsonProcessingException {
+        Model model = new Model();
+        Map<String, Object> defaults = Map.of("a", Map.of("b", 1, "c", "test"));
+        model.setDefaults(defaults);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+        when(context.getDeployment()).thenReturn(model);
+        JsonNode result = ProxyUtil.MAPPER.readTree("""
+                {
+                 "a": {"b" : 2, "d": "foo"}
+                }
+                """);
+
+        assertTrue(fn.apply((ObjectNode) result));
+        assertEquals(2, result.get("a").get("b").asInt());
+        assertEquals("foo", result.get("a").get("d").asText());
+        assertEquals("test", result.get("a").get("c").asText());
+    }
+
+    @Test
     public void testWithModelWithInterceptors_AtFirstInterceptor() throws JsonProcessingException {
         Model model = new Model();
         Map<String, Object> defaults = Map.of("key1", true, "key2", 123, "key3", 0.45, "key4", "str");
