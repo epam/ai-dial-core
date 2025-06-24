@@ -30,17 +30,49 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
                 String deploymentId = context.getInitialDeployment();
                 deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             }
+            if (!deployment.getDefaults().isEmpty()) {
+                applied = true;
+            }
             for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
                 String key = e.getKey();
-                Object value = e.getValue();
-                if (!tree.has(key)) {
-                    tree.set(key, ProxyUtil.MAPPER.convertValue(value, JsonNode.class));
-                    applied = true;
-                }
+                JsonNode update = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
+                tree.set(key, copy(tree.get(key), update));
             }
         }
 
         return applied;
+    }
+
+    /**
+     * Copies default values to the target node from the source.
+     * The default value is copied from the source to the target if it's missed in the target node.
+     *
+     * <p>
+     *     Note. Arrays are not copied.
+     * </p>
+     */
+    private static JsonNode copy(JsonNode target, JsonNode source) {
+        if (target == null || target.isNull()) {
+            return source;
+        }
+        if (source == null || source.isNull()) {
+            return target;
+        }
+        if (target.getNodeType() != source.getNodeType()) {
+            return source;
+        }
+        if (source.isObject()) {
+            return copyObjects((ObjectNode) target, (ObjectNode) source);
+        }
+        return target;
+    }
+
+    private static ObjectNode copyObjects(ObjectNode target, ObjectNode source) {
+        for (Map.Entry<String, JsonNode> entry : source.properties()) {
+            String name = entry.getKey();
+            target.set(name, copy(target.get(name), entry.getValue()));
+        }
+        return target;
     }
 
     /**
