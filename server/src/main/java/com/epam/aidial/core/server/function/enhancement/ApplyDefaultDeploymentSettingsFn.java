@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -21,7 +20,6 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
         super(proxy, context);
     }
 
-    @SneakyThrows
     @Override
     public Boolean apply(ObjectNode tree) {
         boolean applied = false;
@@ -37,17 +35,23 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
             }
             for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
                 String key = e.getKey();
-                Object value = e.getValue();
-                JsonNode nodeToBeUpdated = tree.get(key);
-                JsonNode update = ProxyUtil.MAPPER.convertValue(value, JsonNode.class);
-                tree.set(key, merge(nodeToBeUpdated, update));
+                JsonNode update = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
+                tree.set(key, copy(tree.get(key), update));
             }
         }
 
         return applied;
     }
 
-    private JsonNode merge(JsonNode target, JsonNode source) {
+    /**
+     * Copies default values to the target node from the source.
+     * The default value is copied from the source to the target if it's missed in the target node.
+     *
+     * <p>
+     *     Note. Arrays are not copied.
+     * </p>
+     */
+    private static JsonNode copy(JsonNode target, JsonNode source) {
         if (target == null || target.isNull()) {
             return source;
         }
@@ -58,15 +62,15 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
             return source;
         }
         if (source.isObject()) {
-            return mergeObjects((ObjectNode) target, (ObjectNode) source);
+            return copyObjects((ObjectNode) target, (ObjectNode) source);
         }
         return target;
     }
 
-    private ObjectNode mergeObjects(ObjectNode target, ObjectNode source) {
+    private static ObjectNode copyObjects(ObjectNode target, ObjectNode source) {
         for (Map.Entry<String, JsonNode> entry : source.properties()) {
             String name = entry.getKey();
-            target.set(name, merge(target.get(name), entry.getValue()));
+            target.set(name, copy(target.get(name), entry.getValue()));
         }
         return target;
     }
