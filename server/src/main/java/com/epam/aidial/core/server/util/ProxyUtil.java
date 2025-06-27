@@ -50,7 +50,6 @@ public class ProxyUtil {
             .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
             .add(HttpHeaders.UPGRADE, "whatever")
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
-            .add(HttpHeaders.ACCEPT_ENCODING, "whatever")
             .add(Proxy.HEADER_API_KEY, "whatever");
     public static final String METADATA_PREFIX = "metadata/";
 
