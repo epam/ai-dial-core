@@ -14,6 +14,8 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -42,12 +44,12 @@ public class ProxyContext {
 
     private static final int LOG_MAX_ERROR_LENGTH = 200;
     private static final Set<CharSequence> CORS_SAFE_LIST = Stream.of(
-            HttpHeaders.CACHE_CONTROL,
-            HttpHeaders.CONTENT_LANGUAGE,
-            HttpHeaders.CONTENT_LENGTH,
-            HttpHeaders.CONTENT_TYPE,
-            HttpHeaders.EXPIRES,
-            HttpHeaders.LAST_MODIFIED)
+                    HttpHeaders.CACHE_CONTROL,
+                    HttpHeaders.CONTENT_LANGUAGE,
+                    HttpHeaders.CONTENT_LENGTH,
+                    HttpHeaders.CONTENT_TYPE,
+                    HttpHeaders.EXPIRES,
+                    HttpHeaders.LAST_MODIFIED)
             .map(header -> header.toString().toLowerCase())
             .collect(Collectors.toUnmodifiableSet());
 
@@ -130,7 +132,8 @@ public class ProxyContext {
         if (spanId != null && !spanId.isEmpty()) {
             MDC.put("span_id", spanId);
         }
-        MDC.put("trace_flags", "01");
+        SpanContext context = Span.current().getSpanContext();
+        MDC.put("trace_flags", context.getTraceFlags().asHex());
     }
 
     private void initExtractedClaims(ExtractedClaims extractedClaims, Key originalKey) {
@@ -164,7 +167,7 @@ public class ProxyContext {
         return respond(status, json);
     }
 
-    public Future<?> respond(HttpStatus status, String body) {
+    public Future<?> respond(HttpStatus status, String body)  {
         MDC.put("status", status.toString());
         MDC.put("project", getProject());
         if (body == null) {
@@ -174,6 +177,7 @@ public class ProxyContext {
         String shortBody = body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body;
 
         MDC.put("result", shortBody);
+        MDC.put("user_sub", getUserSub());
 
         if (status != HttpStatus.OK) {
             log.warn("Responding with error. Project: {}. Trace: {}. Span: {}. Status: {}. Body: {}",

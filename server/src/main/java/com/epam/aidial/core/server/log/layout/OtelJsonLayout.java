@@ -92,7 +92,7 @@ public class OtelJsonLayout extends LayoutBase<ILoggingEvent> {
             case "WARN" -> "13";
             case "ERROR" -> "17";
             case "FATAL" -> "21";
-            default -> "INFO";
+            default -> "9";
         };
     }
 

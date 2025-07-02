@@ -32,6 +32,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.slf4j.Logger;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,6 +88,9 @@ public class ProxyTest {
 
     @InjectMocks
     private Proxy proxy;
+
+    @Mock
+    private Logger mockLogger;
 
     @BeforeEach
     public void beforeEach() {
@@ -146,6 +150,19 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(REQUEST_ENTITY_TOO_LARGE.getCode());
+    }
+
+    @Test
+    public void testHandle_HealthCheck() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.path()).thenReturn(HEALTH_CHECK_PATH);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
     }
 
     @Test
@@ -600,5 +617,80 @@ public class ProxyTest {
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_MAX_AGE, "86400");
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET");
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, "Api-Key");
+    }
+
+    @Test
+    public void testHandleError_RuntimeException() {
+        // Setup
+        // Use the same response mock as the regular tests
+        when(response.ended()).thenReturn(false);
+        when(response.end(anyString())).thenReturn(Future.succeededFuture());
+
+        // Create a new request mock that throws an exception
+        HttpServerRequest errorRequest = mock(HttpServerRequest.class);
+        when(errorRequest.response()).thenReturn(response);
+        when(errorRequest.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(errorRequest.method()).thenReturn(HttpMethod.GET);
+        when(errorRequest.path()).thenReturn("/test-path");
+
+        // Simulate a RuntimeException when headers() is called
+        RuntimeException runtimeException = new RuntimeException("Test runtime exception");
+        when(errorRequest.headers()).thenThrow(runtimeException);
+
+        // Execute
+        proxy.handle(errorRequest);
+
+        // Verify
+        verify(response).setStatusCode(500);
+    }
+
+    @Test
+    public void testHandleError_SeriousError() {
+        // Setup
+        // Use the same response mock as the regular tests
+        when(response.ended()).thenReturn(false);
+        when(response.end(anyString())).thenReturn(Future.succeededFuture());
+
+        // Create a new request mock that throws an exception
+        HttpServerRequest errorRequest = mock(HttpServerRequest.class);
+        when(errorRequest.response()).thenReturn(response);
+        when(errorRequest.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(errorRequest.method()).thenReturn(HttpMethod.GET);
+        when(errorRequest.path()).thenReturn("/test-path");
+
+        // Simulate a serious Error when headers() is called
+        Error seriousError = new OutOfMemoryError("Test serious error");
+        when(errorRequest.headers()).thenThrow(seriousError);
+
+        // Execute
+        proxy.handle(errorRequest);
+
+        // Verify
+        verify(response).setStatusCode(500);
+    }
+
+    @Test
+    public void testHandleError_CheckedException() {
+        // Setup
+        // Use the same response mock as the regular tests
+        when(response.ended()).thenReturn(false);
+        when(response.end(anyString())).thenReturn(Future.succeededFuture());
+
+        // Create a new request mock that throws an exception
+        HttpServerRequest errorRequest = mock(HttpServerRequest.class);
+        when(errorRequest.response()).thenReturn(response);
+        when(errorRequest.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(errorRequest.method()).thenReturn(HttpMethod.GET);
+        when(errorRequest.path()).thenReturn("/test-path");
+
+        // Simulate a checked exception when getHeader() is called
+        Exception checkedException = new Exception("Test checked exception");
+        when(errorRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenThrow(checkedException);
+
+        // Execute
+        proxy.handle(errorRequest);
+
+        // Verify
+        verify(response).setStatusCode(500);
     }
 }

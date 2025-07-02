@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import com.epam.aidial.core.server.controller.ControllerTemplate;
+import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -111,6 +112,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final UpstreamCacheService upstreamCacheService;
     private final ConsentService consentService;
     private final DeploymentService deploymentService;
+    private final HealthCheckController healthCheckController;
     private final String version;
 
     @Override
@@ -127,24 +129,13 @@ public class Proxy implements Handler<HttpServerRequest> {
             HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
             String message = null;
 
+            putToMDC("request_method", request.method().name());
+            putToMDC("request_path", request.path());
+            putToMDC("request_params", request.params().toString());
 
-            // Log more context information for unexpected errors
-            String path = request.path();
-            String method = request.method().name();
-
-            // Add structured fields to MDC
-            MDC.put("request_path", path);
-            MDC.put("request_method", method);
-
-            // Add error details as structured fields
-            String exceptionName = error.getClass().getSimpleName();
-            String exceptionMessage = error.getMessage();
-            String exceptionStacktrace = Arrays.toString(error.getStackTrace());
-            MDC.put("exception_name", exceptionName);
-            if (exceptionMessage != null) {
-                MDC.put("exception_message", exceptionMessage);
-            }
-            MDC.put("exception_stacktrace", exceptionStacktrace);
+            putToMDC("exception_name", error.getClass().getSimpleName());
+            putToMDC("exception_message", error.getMessage());
+            putToMDC("exception_stacktrace", Arrays.toString(error.getStackTrace()));
 
             try {
                 if (error instanceof RuntimeException) {
@@ -155,7 +146,6 @@ public class Proxy implements Handler<HttpServerRequest> {
                     log.error("Can't handle request", error);
                 }
             } finally {
-                // Clean up MDC to prevent leaking into other logs
                 remove("request_path");
                 remove("request_method");
                 remove("exception_name");
@@ -163,8 +153,13 @@ public class Proxy implements Handler<HttpServerRequest> {
                 remove("exception_stacktrace");
             }
 
-
             respond(request, status, message);
+        }
+    }
+
+    private static void putToMDC(String key, String value) {
+        if (value != null) {
+            MDC.put(key, value);
         }
     }
 
@@ -209,7 +204,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         String path = URLDecoder.decode(request.path(), StandardCharsets.UTF_8);
         if (request.method() == HttpMethod.GET && path.equals(HEALTH_CHECK_PATH)) {
-            respond(request, HttpStatus.OK);
+            healthCheckController.handle(request);
             return;
         }
 

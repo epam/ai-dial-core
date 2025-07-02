@@ -15,7 +15,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("checkstyle:LineLength")
-public class GfLogStoreTest {
+public class LogbackLogStoreTest {
 
     @Test
     public void testIsStreamingResponse() {
@@ -48,7 +48,7 @@ public class GfLogStoreTest {
                   }
                 }
                 """;
-        assertFalse(GfLogStore.isStreamingResponse(Buffer.buffer(batchResponse)));
+        assertFalse(LogbackLogStore.isStreamingResponse(Buffer.buffer(batchResponse)));
         String streamingResponse = """
                 data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
                  
@@ -69,7 +69,7 @@ public class GfLogStoreTest {
                        }
                 data: [DONE]
                 """;
-        assertTrue(GfLogStore.isStreamingResponse(Buffer.buffer(streamingResponse)));
+        assertTrue(LogbackLogStore.isStreamingResponse(Buffer.buffer(streamingResponse)));
     }
 
     @Test
@@ -167,7 +167,7 @@ public class GfLogStoreTest {
                 data: [DONE]
                                 
                 """;
-        String res = GfLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
+        String res = LogbackLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
         assertNotNull(res);
         String expected = """
                 {"id":"1d84aa54-e476-405d-9713-386bdfc85993","object":"chat.completion","created":"1687222196","model":"gpt-35-turbo","usage":{"junk_string":"junk","junk_integer":1,"junk_float":1.0,"junk_null":null,"junk_true":true,"junk_false":false,"completion_tokens":10,"prompt_tokens":20,"total_tokens":30},"statistics":{"usage_per_model":[{"name":"text-embedding-ada-002","prompt_tokens":23,"total_tokens":23},{"name":"gpt-4","prompt_tokens":123,"completion_tokens":17,"total_tokens":140}]},"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"As an AI language model, I don't have emotions, but I'm functioning perfectly well. How can I assist you today?","custom_content":{"attachments":[{"url":"url2"},{"url":"url1"}],"stages":[{"name":"stage1","status":"completed"},{"name":"stage2","status":"completed"}],"controls":[{"label":"label1"},{"label":"label2"}],"state":{"p1":1,"p2":1}}}}]}""";
@@ -193,7 +193,7 @@ public class GfLogStoreTest {
                 data: [DONE]
                 """;
 
-        String res = GfLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
+        String res = LogbackLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
         assertNotNull(res);
         String expected = """
                 {"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","object":"chat.completion","created":1724242846,"model":null,"choices":[{"index":0,"finish_reason":null,"message":{"role":"assistant","custom_content":{"attachments":[{"type":"text/markdown","title":"[0] 'Architecture'","data":"data","reference_url":"url1"},{"type":"text/markdown","title":"[1] 'User Guide'","data":"data","reference_url":"url2"},{"type":"text/markdown","title":"[2] 'Knowledge Base'","data":"data","reference_url":"url3"},{"type":"text/markdown","title":"[3] 'Documentation'","data":"you can pick one of three formats to copy its data: CSV, Markdown or Text.\\n\\n","reference_url":"url4"}]},"content":"A B C"}}]}""";
@@ -207,7 +207,7 @@ public class GfLogStoreTest {
         when(context.getInterceptors()).thenReturn(null);
         when(context.getSourceDeployment()).thenReturn("app");
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = LogbackLogStore.getParentDeployment(context);
 
         assertEquals("app", result);
     }
@@ -221,7 +221,7 @@ public class GfLogStoreTest {
         List<String> executionPath = List.of("app", "interceptor1", "interceptor2", "model");
         when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = LogbackLogStore.getParentDeployment(context);
 
         assertEquals("app", result);
     }
@@ -235,7 +235,7 @@ public class GfLogStoreTest {
         List<String> executionPath = List.of("interceptor1", "interceptor2", "model");
         when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = LogbackLogStore.getParentDeployment(context);
 
         assertNull(result);
     }
@@ -249,7 +249,7 @@ public class GfLogStoreTest {
         List<String> executionPath = List.of("app", "interceptor1", "dep1", "interceptor2", "model");
         when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = LogbackLogStore.getParentDeployment(context);
 
         assertNull(result);
     }
