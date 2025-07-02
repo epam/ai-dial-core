@@ -246,6 +246,8 @@ public class PublicationService {
 
         List<Publication.Resource> reviewResourcesToAdd = new ArrayList<>();
         List<Publication.Resource> reviewResourcesToDelete = new ArrayList<>();
+        List<Pair<String, String>> reviewResourcesToMove = new ArrayList<>();
+        Map<String, String> replacementLinks = new HashMap<>();
 
         ResourceDescriptor publicationsFile = publications(publicationResource);
 
@@ -266,24 +268,20 @@ public class PublicationService {
                 sourceUrlToResource.put(resource.getSourceUrl(), resource);
             }
             Set<String> newSourceUrls = new HashSet<>();
-            List<Pair<Publication.Resource, List<ResourceDescriptor>>> applicationRelatedFiles = new ArrayList<>();
-            Map<String, Publication.Resource> reviewUrlToResource = new HashMap<>();
-
             for (Publication.Resource resource : publication.getResources()) {
                 Publication.Resource existingResource = sourceUrlToResource.get(resource.getSourceUrl());
                 if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
                     if (existingResource == null) {
                         reviewResourcesToAdd.add(resource);
-                    }
-                    ResourceDescriptor reviewApp = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
-                    if (reviewApp.getType() == ResourceTypes.APPLICATION) {
-                        Application application = applicationService.getApplication(reviewApp).getValue();
-                        List<ResourceDescriptor> applicationsOwnDescriptors = ApplicationTypeSchemaUtils.getFiles(configStore.get(), application, encryption, resourceService);
-                        if (!applicationsOwnDescriptors.isEmpty()) {
-                            applicationRelatedFiles.add(Pair.of(resource, applicationsOwnDescriptors));
+                    } else if (!resource.getTargetUrl().equals(existingResource.getTargetUrl())) {
+                        reviewResourcesToMove.add(Pair.of(existingResource.getReviewUrl(), resource.getReviewUrl()));
+                        ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(existingResource.getReviewUrl(), encryption);
+
+                        if (from.getType() == ResourceTypes.FILE) {
+                            ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
+                            String decodedUrl = UrlUtil.decodePath(from.getUrl());
+                            replacementLinks.put(decodedUrl, to.getUrl());
                         }
-                    } else if (reviewApp.getType() == ResourceTypes.FILE) {
-                        reviewUrlToResource.put(resource.getReviewUrl(), resource);
                     }
                 }
                 newSourceUrls.add(resource.getSourceUrl());
@@ -295,34 +293,11 @@ public class PublicationService {
                 }
             }
 
-            for (Pair<Publication.Resource, List<ResourceDescriptor>> pair : applicationRelatedFiles) {
-                Publication.Resource appResource = pair.getLeft();
-                String targetFolder = getTargetFolderForCustomAppFiles(appResource.getTargetUrl(), encryption);
-                for (ResourceDescriptor file : pair.getRight()) {
-                    String url = file.getUrl();
-                    ResourceDescriptor parent = file.getParent();
-                    if (parent == null) {
-                        log.warn("Bad resource descriptor for application file: {}", file.getUrl());
-                        continue;
-                    }
-                    String parentUrl = parent.getUrl();
-                    for (Publication.Resource resource : publication.getResources()) {
-                        if (resource.getReviewUrl().startsWith(url)) {
-                            String relativePath;
-                            if (file.isFolder()) {
-                                relativePath = resource.getReviewUrl().substring(parentUrl.length());
-                            } else {
-                                relativePath = file.getName();
-                            }
-                            String targetUrl = ResourceDescriptorFactory.fromDecoded(
-                                    file.getType(),
-                                    ResourceDescriptor.PUBLIC_BUCKET,
-                                    ResourceDescriptor.PATH_SEPARATOR,
-                                    targetFolder + relativePath).getUrl();
-                            resource.setTargetUrl(targetUrl);
-                        }
-                    }
-                }
+            // move renamed target resources in the review bucket
+            for (Pair<String, String> pair : reviewResourcesToMove) {
+                ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(pair.getLeft(), encryption);
+                ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(pair.getRight(), encryption);
+                resourceOperationService.moveResource(from, to, false);
             }
 
             // delete removed resources from the review bucket
@@ -333,6 +308,16 @@ public class PublicationService {
 
             // copy new resources to the review bucket
             copySourceToReviewResources(reviewResourcesToAdd);
+
+            // replace internal links in the resources
+            for (Publication.Resource resource : publication.getResources()) {
+                if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
+                    ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
+                    if (to.getType() == ResourceTypes.CONVERSATION) {
+                        resourceService.computeResource(to, conversationBody -> PublicationUtil.replaceConversationLinks(conversationBody, to, replacementLinks));
+                    }
+                }
+            }
 
             // update user publications
             existingPublication.setRules(publication.getRules());
@@ -476,6 +461,7 @@ public class PublicationService {
     private void validatePublicationResources(ProxyContext context, Publication publication, String bucketName, String reviewBucket, boolean isAdmin) {
         Set<String> urls = new HashSet<>();
         String targetFolder = publication.getTargetFolder();
+        boolean isPublicationNew = publication.getUrl() == null;
         for (Publication.Resource resource : publication.getResources()) {
             Publication.ResourceAction action = resource.getAction();
             if (action == null) {
@@ -483,7 +469,7 @@ public class PublicationService {
             }
 
             if (action == Publication.ResourceAction.ADD || action == Publication.ResourceAction.ADD_IF_ABSENT) {
-                validateResourceForAddition(context, resource, targetFolder, reviewBucket, urls);
+                validateResourceForAddition(context, resource, targetFolder, reviewBucket, urls, isPublicationNew);
             } else if (action == Publication.ResourceAction.DELETE) {
                 validateResourceForDeletion(resource, targetFolder, urls, bucketName, isAdmin);
             } else {
@@ -528,7 +514,7 @@ public class PublicationService {
     }
 
     private void validateResourceForAddition(ProxyContext context, Publication.Resource resource, String targetFolder,
-                                             String reviewBucket, Set<String> urls) {
+                                             String reviewBucket, Set<String> urls, boolean isPublicationNew) {
         ResourceDescriptor source = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
         ResourceDescriptor target = ResourceDescriptorFactory.fromPublicUrl(resource.getTargetUrl());
         verifyResourceType(source);
@@ -552,7 +538,7 @@ public class PublicationService {
             throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
         }
 
-        if (resource.getReviewUrl() == null && !resourceService.hasResource(source)) {
+        if (isPublicationNew && !resourceService.hasResource(source)) {
             throw new IllegalArgumentException("Source resource does not exists: " + sourceUrl);
         }
 
@@ -571,25 +557,23 @@ public class PublicationService {
         resource.setSourceUrl(sourceUrl);
         resource.setTargetUrl(targetUrl);
 
-        if (resource.getReviewUrl() == null) {
 
-            String targetSuffix = targetUrl.substring(source.getType().group().length() + 1);
+        String targetSuffix = targetUrl.substring(source.getType().group().length() + 1);
 
-            if (!targetSuffix.startsWith(targetFolder)) {
-                throw new IllegalArgumentException("Target resource folder does not match with target folder: " + targetUrl);
-            } else {
-                targetSuffix = targetSuffix.substring(targetFolder.length());
-            }
-
-            String reviewUrl = source.getType().group() + ResourceDescriptor.PATH_SEPARATOR
-                    + reviewBucket + ResourceDescriptor.PATH_SEPARATOR + targetSuffix;
-
-            if (!urls.add(reviewUrl)) {
-                throw new IllegalArgumentException("Review resources have duplicate urls: " + reviewUrl);
-            }
-
-            resource.setReviewUrl(reviewUrl);
+        if (!targetSuffix.startsWith(targetFolder)) {
+            throw new IllegalArgumentException("Target resource folder does not match with target folder: " + targetUrl);
+        } else {
+            targetSuffix = targetSuffix.substring(targetFolder.length());
         }
+
+        String reviewUrl = source.getType().group() + ResourceDescriptor.PATH_SEPARATOR
+                + reviewBucket + ResourceDescriptor.PATH_SEPARATOR + targetSuffix;
+
+        if (!urls.add(reviewUrl)) {
+            throw new IllegalArgumentException("Review resources have duplicate urls: " + reviewUrl);
+        }
+
+        resource.setReviewUrl(reviewUrl);
     }
 
     private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls,
