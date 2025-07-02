@@ -2403,7 +2403,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     {
                       "action": "ADD",
                       "sourceUrl": "conversations/%s/my/folder/conversation",
-                      "targetUrl": "conversations/public/folder/conversation2"
+                      "targetUrl": "conversations/public/folder/conversation2",
+                      "reviewUrl":"conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                     }
                   ]
                 }
@@ -2428,7 +2429,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     {
                       "action": "ADD",
                       "sourceUrl": "conversations/%s/my/folder/conversation",
-                      "targetUrl": "conversations/public/folder/conversation2"
+                      "targetUrl": "conversations/public/folder/conversation2",
+                      "reviewUrl":"conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                     }
                   ]
                 }
@@ -2444,7 +2446,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation2",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                   "resourceTypes" : [ "CONVERSATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -2492,7 +2494,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     {
                       "action": "ADD",
                       "sourceUrl": "conversations/%s/my/folder/conversation",
-                      "targetUrl": "conversations/public/folder/conversation2"
+                      "targetUrl": "conversations/public/folder/conversation2",
+                      "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                     }
                   ]
                 }
@@ -2508,7 +2511,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation2",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
                    } ],
                   "resourceTypes" : [ "CONVERSATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -2584,16 +2587,18 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "action": "ADD",
                   "sourceUrl": "conversations/%s/my/folder/conversation%s",
-                  "targetUrl": "conversations/public/folder/conversation%s"
+                  "targetUrl": "conversations/public/folder/conversation%s",
+                  "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation%s"
                 },
                 {
                   "action": "ADD",
                   "sourceUrl": "files/%s/file",
+                  "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/file",
                   "targetUrl": "files/public/folder/new_file"
                 }
               ]
             }
-            """.formatted(bucket, "1", "1", bucket), "authorization", "admin");
+            """.formatted(bucket, "1", "1", "1", bucket), "authorization", "admin");
         verify(response, 200);
 
         response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
@@ -2603,6 +2608,350 @@ class PublicationApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, conversationTemplate.formatted("conversations/public/folder/conversation1",
                 "conversations/public/folder", "files/public/folder/new_file"));
 
+    }
+
+    @Test
+    void testApplicationWithTypeSchemaPublish_WhenUpdate() {
+        Response response = upload(HttpMethod.PUT, "/v1/files/%s/test_file.txt".formatted(bucket), null, """
+                  Test1
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = upload(HttpMethod.PUT, "/v1/files/%s/xyz/test_file.txt".formatted(bucket), null, """
+                  Test2
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/%s/test_app".formatted(bucket), null, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/%s/test_file.txt",
+                                "files/%s/xyz/test_file.txt"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """.formatted(bucket, bucket));
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/%s/test_app",
+                          "targetUrl": "applications/public/folder/with_apps/test_app"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        String correctResponse = """
+                {
+                  "url" : "publications/%s/0123",
+                  "name" : "Publication of my application",
+                  "targetFolder" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "action" : "ADD",
+                    "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app",
+                    "targetUrl" : "applications/public/folder/with_apps/test_app",
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app"
+                  }, {
+                    "action" : "ADD",
+                    "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file.txt",
+                    "targetUrl" : "files/public/folder/with_apps/.test_app/test_file.txt",
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app/test_file.txt"
+                  }, {
+                    "action" : "ADD",
+                    "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file.txt",
+                    "targetUrl" : "files/public/folder/with_apps/.test_app/test_file_2.txt",
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app/test_file_2.txt"
+                  } ],
+                  "resourceTypes" : [ "APPLICATION", "FILE" ],
+                  "rules" : [ {
+                    "function" : "TRUE",
+                    "source" : "roles",
+                    "targets" : null
+                  } ],
+                  "author" : "EPM-RTC-GPT"
+                }
+                """.formatted(bucket, bucket);
+
+
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        // Update as admin
+        response = operationRequest("/v1/ops/publication/update", """
+                {
+                "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                "name": "Publication of my application",
+                 "targetFolder": "public/folder2/",
+                      "resources" : [ {
+                    "action" : "ADD",
+                    "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app",
+                    "targetUrl" : "applications/public/folder/with_apps/test_app2",
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app"
+                  }, {
+                    "action" : "ADD",
+                    "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file.txt",
+                    "targetUrl" : "files/public/folder/with_apps/.test_app/test_file.txt",
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app/test_file.txt"
+                  }, {
+                    "action" : "ADD",
+                    "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file.txt",
+                    "targetUrl" : "files/public/folder/with_apps/.test_app/test_file_2.txt",
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app/test_file_2.txt"
+                  } ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket), "authorization", "admin");
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+    }
+
+    @Test
+    void testApplicationWithTypeSchemaPublish_Ok_FolderWithSubfolder_WhenUpdate() throws JsonProcessingException {
+
+        List<String> filePaths =
+                List.of("/v1/files/%s/xyz/test_file1.txt", "/v1/files/%s/xyz/test_file2.txt", "/v1/files/%s/xyz/abc/test_file1.txt", "/v1/files/%s/xyz/abc/test_file2.txt",
+                        "/v1/files/%s/some/xyz/abc/test_file1.txt", "/v1/files/%s/some/xyz/abc/test_file2.txt", "/v1/files/%s/another/xyz");
+
+        Response response;
+        for (String filePath : filePaths) {
+            response = upload(HttpMethod.PUT, filePath.formatted(bucket), null, "Test");
+            Assertions.assertEquals(200, response.status());
+        }
+
+        response = send(HttpMethod.PUT, "/v1/applications/%s/test_app2".formatted(bucket), null, """
+                  {
+                      "displayName": "test_app2",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/%s/xyz/", "files/%s/some/xyz/", "files/%s/another/xyz"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """.formatted(bucket, bucket, bucket));
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/%s/test_app2",
+                          "targetUrl": "applications/public/folder/with_apps/test_app2"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        String correctResponse = """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name" : "Publication of my application",
+                  "targetFolder" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                            "action" : "ADD",
+                            "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app2",
+                            "targetUrl" : "applications/public/folder/with_apps/test_app2",
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/abc/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/abc/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/abc/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/abc/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/abc/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_2/abc/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/abc/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/abc/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_2/abc/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/abc/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/another/xyz",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_3",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_3"
+                          }
+                  ],
+                  "resourceTypes" : [ "APPLICATION", "FILE" ],
+                  "rules" : [ {
+                    "function" : "TRUE",
+                    "source" : "roles",
+                    "targets" : null
+                  } ],
+                  "author" : "EPM-RTC-GPT"
+                }""";
+
+
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        // Update as admin
+        response = operationRequest("/v1/ops/publication/update", """
+                {
+                "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                "name": "Publication of my application",
+                 "targetFolder": "public/folder2/",
+                 "resources" : [ {
+                            "action" : "ADD",
+                            "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app2",
+                            "targetUrl" : "applications/public/folder2/with_apps/test_app3",
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/abc/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/abc/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/abc/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/abc/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/abc/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/xyz/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/abc/test_file1.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_2/abc/test_file1.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/abc/test_file1.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/some/xyz/abc/test_file2.txt",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_2/abc/test_file2.txt",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/abc/test_file2.txt"
+                          }, {
+                            "action" : "ADD",
+                            "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/another/xyz",
+                            "targetUrl" : "files/public/folder/with_apps/.test_app2/xyz_3",
+                            "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_3"
+                          }
+                  ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket), "authorization", "admin");
+        verify(response, 200);
+        JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode resources = responseJson.get("resources");
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        String targetUrl = resources.get(0).get("targetUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+        correctResponse = """
+                {
+                  "name" : "applications/public/folder2/with_apps/test_app3",
+                  "display_name" : "test_app2",
+                  "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                  "description" : "My application description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "author" : "EPM-RTC-GPT",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
+                  "dependencies" : [ ],
+                  "application_properties" : {
+                    "property1" : "test property1",
+                    "property2" : "test property2",
+                    "property3" : [ "files/public/folder2/with_apps/.test_app3/xyz/",
+                    "files/public/folder2/with_apps/.test_app3/xyz_2/",
+                    "files/public/folder2/with_apps/.test_app3/xyz_3" ]
+                  },
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                }""";
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        // After approval, verify files exist at target paths
+        for (int i = 1; i < resources.size(); i++) {
+            targetUrl = resources.get(i).get("targetUrl").asText();
+            if (targetUrl.startsWith("files/")) {
+                Response fileResponse = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+                Assertions.assertEquals(200, fileResponse.status(), "File should exist at target path: " + targetUrl);
+            }
+        }
     }
 
 }
