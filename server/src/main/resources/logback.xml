@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Configuration variables -->
+    <property name="SERVICE_NAME" value="${SERVICE_NAME:-aidial-core}"/>
+    <property name="SERVICE_VERSION" value="${SERVICE_VERSION:-1.0.0}"/>
+    <property name="LOG_LEVEL" value="${LOG_LEVEL:-INFO}"/>
+    <property name="JSON_ENABLED" value="${JSON_LOGS_ENABLED:-true}"/>
+
+    <!-- Console Appender with OTL JSON format -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="com.epam.aidial.core.server.log.layout.OtelJsonLayout">
+                <serviceName>${SERVICE_NAME}</serviceName>
+                <serviceVersion>${SERVICE_VERSION}</serviceVersion>
+            </layout>
+        </encoder>
+    </appender>
+
+    <!-- Console Appender for plain text format (fallback) -->
+    <appender name="CONSOLE_PLAIN" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{trace_id:-},%X{span_id:-}] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Async appender for performance -->
+    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <discardingThreshold>0</discardingThreshold>
+        <queueSize>1024</queueSize>
+        <includeCallerData>false</includeCallerData>
+        <appender-ref ref="CONSOLE_JSON"/>
+    </appender>
+
+    <!-- File Appender for logs -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${AIDIAL_LOG_FILE:-log/aidial.log}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>log/aidial.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <maxFileSize>100MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="com.epam.aidial.core.server.log.layout.OtelJsonLayout">
+                <serviceName>${SERVICE_NAME}</serviceName>
+                <serviceVersion>${SERVICE_VERSION}</serviceVersion>
+            </layout>
+        </encoder>
+    </appender>
+
+    <!-- OpenTelemetry Appender for tracing integration -->
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+        <captureExperimentalAttributes>true</captureExperimentalAttributes>
+        <captureKeyValuePairAttributes>true</captureKeyValuePairAttributes>
+        <captureMarkerAttribute>true</captureMarkerAttribute>
+    </appender>
+
+    <!-- Special logger for aidial.log -->
+    <logger name="aidial.log" level="INFO" additivity="false">
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="OTEL"/>
+        <if condition='property("JSON_ENABLED").equals("true")'>
+            <then>
+                <appender-ref ref="CONSOLE_JSON"/>
+            </then>
+            <else>
+                <appender-ref ref="CONSOLE_PLAIN"/>
+            </else>
+        </if>
+    </logger>
+
+    <!-- Loggers for various components -->
+    <logger name="com.epam.aidial" level="${LOG_LEVEL}"/>
+    <logger name="io.vertx" level="WARN"/>
+    <logger name="io.opentelemetry" level="WARN"/>
+    <logger name="org.redisson" level="WARN"/>
+
+    <!-- Root logger -->
+    <root level="${LOG_LEVEL}">
+        <appender-ref ref="OTEL"/>
+        <if condition='property("JSON_ENABLED").equals("true")'>
+            <then>
+                <appender-ref ref="ASYNC_CONSOLE"/>
+            </then>
+            <else>
+                <appender-ref ref="CONSOLE_PLAIN"/>
+            </else>
+        </if>
+    </root>
+</configuration>

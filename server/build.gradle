@@ -1,13 +1,21 @@
-
 dependencies {
     implementation project(':config')
     implementation project(':storage')
 
     implementation 'com.google.protobuf:protobuf-java:3.25.5'
-    implementation 'org.slf4j:slf4j-api:1.7.32'
-    implementation 'com.epam.deltix:gflog-api:3.0.6'
-    implementation 'com.epam.deltix:gflog-core:3.0.6'
-    runtimeOnly 'com.epam.deltix:gflog-slf4j:3.0.6'
+    implementation 'org.slf4j:slf4j-api:2.0.9'
+    implementation 'ch.qos.logback:logback-classic:1.4.14'
+    implementation 'ch.qos.logback:logback-core:1.4.14'
+
+    // For structured JSON logging
+    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+
+    // For conditional processing in Logback configuration
+    implementation 'org.codehaus.janino:janino:3.1.10'
+
+    // OpenTelemetry integration with logs
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:1.32.0-alpha'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-mdc-1.0:1.32.0-alpha'
     implementation 'io.vertx:vertx-core:4.5.13'
     implementation 'io.vertx:vertx-config:4.5.13'
     implementation 'io.vertx:vertx-opentelemetry:4.5.13'

@@ -25,6 +25,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import java.util.List;
 import java.util.Map;
@@ -122,6 +123,14 @@ public class ProxyContext {
             this.decodedSourceDeployment = null;
         }
         this.spanId = spanId;
+
+        if (traceId != null && !traceId.isEmpty()) {
+            MDC.put("trace_id", traceId);
+        }
+        if (spanId != null && !spanId.isEmpty()) {
+            MDC.put("span_id", spanId);
+        }
+        MDC.put("trace_flags", "01");
     }
 
     private void initExtractedClaims(ExtractedClaims extractedClaims, Key originalKey) {
@@ -156,13 +165,19 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status, String body) {
+        MDC.put("status", status.toString());
+        MDC.put("project", getProject());
         if (body == null) {
             body = "";
         }
 
+        String shortBody = body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body;
+
+        MDC.put("result", shortBody);
+
         if (status != HttpStatus.OK) {
-            log.warn("Responding with error. Project: {}. Trace: {}. Span: {}. Status: {}. Body: {}", getProject(), traceId, spanId, status,
-                    body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
+            log.warn("Responding with error. Project: {}. Trace: {}. Span: {}. Status: {}. Body: {}",
+                    getProject(), traceId, spanId, status, shortBody);
         }
 
         response.setStatusCode(status.getCode()).end(body);
