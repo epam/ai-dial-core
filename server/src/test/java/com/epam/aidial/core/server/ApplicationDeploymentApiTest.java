@@ -101,7 +101,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -138,7 +139,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -191,7 +193,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                   "routes" : { }
                 }
                 """);
 
@@ -227,7 +230,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -280,7 +284,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -317,7 +322,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -370,7 +376,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -407,7 +414,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -456,7 +464,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                   "routes" : { }
                 }
                 """);
 
@@ -513,7 +522,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -697,7 +707,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -779,7 +790,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -898,7 +910,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "env" : {
                         "VAR" : "VAL"
                       }
-                    }
+                    },
+                    "routes" : { }
                 }
                 """);
 
@@ -938,7 +951,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
-                    "max_retry_attempts" : 1
+                    "max_retry_attempts" : 1,
+                    "routes" : { }
                   }, {
                     "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
                     "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
@@ -987,7 +1001,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "env" : {
                         "VAR" : "VAL"
                       }
-                    }
+                    },
+                    "routes" : { }
                   } ],
                   "object" : "list"
                 }

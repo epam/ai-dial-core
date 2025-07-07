@@ -60,7 +60,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
-                "updated_at" : "@ignore"
+                "updated_at" : "@ignore",
+                "routes" : { }
                 }
                 """);
 
@@ -231,7 +232,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
-                "updated_at" : "@ignore"
+                "updated_at" : "@ignore",
+                "routes" : { }
                 }
                 """);
 
@@ -345,7 +347,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "author" : "EPM-RTC-GPT",
                    "created_at" : "@ignore",
                    "updated_at" : "@ignore",
-                   "dependencies" : [ ]
+                   "dependencies" : [ ],
+                   "routes" : { }
                  }
                 """);
 
@@ -387,7 +390,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 },
                             "defaults":{},
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "routes" : { }
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -423,7 +427,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "max_retry_attempts" : 1,
                             "owner" : "EPM-RTC-GPT",
                             "created_at" : "@ignore",
-                            "updated_at" : "@ignore"
+                            "updated_at" : "@ignore",
+                            "routes" : { }
                           }
                     ],
                     "object":"list"
@@ -468,7 +473,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 },
                             "defaults":{},
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "routes" : { }
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -504,7 +510,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "max_retry_attempts" : 1,
                             "owner" : "EPM-RTC-GPT",
                             "created_at" : "@ignore",
-                            "updated_at" : "@ignore"
+                            "updated_at" : "@ignore",
+                            "routes" : { }
                           }
                     ],
                     "object":"list"
@@ -625,7 +632,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 },
                             "defaults":{},
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "routes" : { }
                         },
                         {
                             "id" : "secured-app",
@@ -660,7 +668,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             },
                             "defaults" : { },
                             "description_keywords" : [ ],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "routes" : { }
                         },
                         {
                             "id" : "applications/public/folder/my-custom-application",
@@ -696,7 +705,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "max_retry_attempts" : 1,
                             "owner" : "dream-team",
                             "created_at" : "@ignore",
-                            "updated_at" : "@ignore"
+                            "updated_at" : "@ignore",
+                            "routes" : { }
                           }
                     ],
                     "object":"list"
@@ -744,7 +754,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 },
                             "defaults":{},
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "routes" : { }
                         }
                     ],
                     "object":"list"
@@ -804,7 +815,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "max_retry_attempts" : 1,
                     "owner" : "EPM-RTC-GPT",
                     "created_at" : "@ignore",
-                    "updated_at" : "@ignore"
+                    "updated_at" : "@ignore",
+                    "routes" : { }
                 }
                 """);
 
@@ -846,7 +858,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 },
                             "defaults":{},
                             "description_keywords":[],
-                            "max_retry_attempts" : 1
+                            "max_retry_attempts" : 1,
+                            "routes" : { }
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -882,7 +895,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "max_retry_attempts" : 1,
                             "owner" : "EPM-RTC-GPT",
                             "created_at" : "@ignore",
-                            "updated_at" : "@ignore"
+                            "updated_at" : "@ignore",
+                            "routes" : { }
                           }
                     ],
                     "object":"list"
@@ -959,7 +973,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
-                "updated_at" : "@ignore"
+                "updated_at" : "@ignore",
+                "routes" : { }
                 }
                 """);
         Application application1 = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -984,7 +999,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
-                "updated_at" : "@ignore"
+                "updated_at" : "@ignore",
+                "routes" : { }
                 }
                 """);
         Application application2 = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -1031,7 +1047,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "dependencies" : [ ],
                 "author" : "EPM-RTC-GPT",
                 "created_at" : "@ignore",
-                "updated_at" : "@ignore"
+                "updated_at" : "@ignore",
+                "routes" : { }
                 }
                 """);
         Application application = ProxyUtil.convertToObject(response.body(), Application.class);
@@ -1103,7 +1120,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "property2" : "test property2",
                     "property3" : [ "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt", "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt" ]
                   },
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }
                 """);
     }
@@ -1142,7 +1160,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "author" : "EPM-RTC-GPT",
                   "created_at" : "@ignore",
                   "updated_at" : "@ignore",
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }
                 """);
     }
@@ -1372,7 +1391,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      },
                      "defaults" : { },
                      "description_keywords" : [ ],
-                     "max_retry_attempts" : 1
+                     "max_retry_attempts" : 1,
+                     "routes" : { }
                    }, {
                      "display_name" : "test_app",
                      "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
@@ -1405,7 +1425,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
                      "invalid" : true,
-                     "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                     "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                     "routes" : { }
                    } ],
                    "object" : "list"
                 }

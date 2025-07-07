@@ -397,7 +397,7 @@ public class ControllerSelectorTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
-        assertInstanceOf(RouteController.class, controller);
+        assertInstanceOf(GlobalRouteController.class, controller);
     }
 
     @Test
@@ -660,7 +660,7 @@ public class ControllerSelectorTest {
         when(request.path()).thenReturn("/prefix/openai/deployments/deployment");
         when(request.method()).thenReturn(HttpMethod.GET);
         Controller controller = ControllerSelector.select(request).build(proxy, context);
-        assertInstanceOf(RouteController.class, controller);
+        assertInstanceOf(GlobalRouteController.class, controller);
     }
 
     @Test
@@ -669,7 +669,7 @@ public class ControllerSelectorTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         Controller controller = ControllerSelector.select(request).build(proxy, context);
         assertNotNull(controller);
-        assertInstanceOf(RouteController.class, controller);
+        assertInstanceOf(GlobalRouteController.class, controller);
     }
 
     @Test
