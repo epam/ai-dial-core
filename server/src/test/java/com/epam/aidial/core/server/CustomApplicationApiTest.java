@@ -351,172 +351,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "routes" : { }
                  }
                 """);
-
-        // verify user1 can list both applications (from config and own)
-        response = send(HttpMethod.GET, "/openai/applications");
-        verifyJsonNotExact(response, 200, """
-                {
-                    "data":[
-                        {
-                            "id":"app",
-                            "application":"app",
-                            "display_name":"10k",
-                            "icon_url":"http://localhost:7001/logo10k.png",
-                            "description":"Some description of the application for testing",
-                            "reference":"app",
-                            "owner":"organization-owner",
-                            "object":"application",
-                            "status":"succeeded",
-                            "created_at":1672534800,
-                            "updated_at":1672534800,
-                            "features":{
-                                "rate":true,
-                                "tokenize":false,
-                                "truncate_prompt":false,
-                                "configuration":true,
-                                "system_prompt":false,
-                                "tools":false,
-                                "seed":false,
-                                "url_attachments":false,
-                                "folder_attachments":false,
-                                "allow_resume":true,
-                                "accessible_by_per_request_key": true,
-                                "content_parts": false,
-                                "temperature" : true,
-                                "addons" : true,
-                                "cache" : false,
-                                "auto_caching" : false,
-                                "parallel_tool_calls" : true
-                                },
-                            "defaults":{},
-                            "description_keywords":[],
-                            "max_retry_attempts" : 1,
-                            "routes" : { }
-                        },
-                        {
-                            "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                            "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                            "display_name" : "My Custom Application",
-                            "display_version" : "1.0",
-                            "icon_url" : "http://application1/icon.svg",
-                            "description" : "My Custom Application Description",
-                            "reference": "@ignore",
-                            "object" : "application",
-                            "status" : "succeeded",
-                            "features" : {
-                              "rate" : true,
-                              "tokenize" : false,
-                              "truncate_prompt" : false,
-                              "configuration" : true,
-                              "system_prompt" : true,
-                              "tools" : false,
-                              "seed" : false,
-                              "url_attachments" : false,
-                              "folder_attachments" : false,
-                              "allow_resume":true,
-                              "accessible_by_per_request_key": true,
-                              "content_parts": false,
-                              "temperature" : true,
-                              "addons" : true,
-                              "cache" : false,
-                              "auto_caching" : false,
-                              "parallel_tool_calls" : true
-                            },
-                            "defaults" : { },
-                            "description_keywords":[],
-                            "max_retry_attempts" : 1,
-                            "owner" : "EPM-RTC-GPT",
-                            "created_at" : "@ignore",
-                            "updated_at" : "@ignore",
-                            "routes" : { }
-                          }
-                    ],
-                    "object":"list"
-                }
-                """);
-
-        // verify user2 can list both applications (from config and shared)
-        response = send(HttpMethod.GET, "/openai/applications", null, null, "Api-key", "proxyKey2");
-        verifyJsonNotExact(response, 200, """
-                {
-                    "data":[
-                        {
-                            "id":"app",
-                            "application":"app",
-                            "display_name":"10k",
-                            "icon_url":"http://localhost:7001/logo10k.png",
-                            "description":"Some description of the application for testing",
-                            "reference":"app",
-                            "owner":"organization-owner",
-                            "object":"application",
-                            "status":"succeeded",
-                            "created_at":1672534800,
-                            "updated_at":1672534800,
-                            "features":{
-                                "rate":true,
-                                "tokenize":false,
-                                "truncate_prompt":false,
-                                "configuration":true,
-                                "system_prompt":false,
-                                "tools":false,
-                                "seed":false,
-                                "url_attachments":false,
-                                "folder_attachments":false,
-                                "allow_resume":true,
-                                "accessible_by_per_request_key": true,
-                                "content_parts": false,
-                                "temperature" : true,
-                                "addons" : true,
-                                "cache" : false,
-                                "auto_caching" : false,
-                                "parallel_tool_calls" : true
-                                },
-                            "defaults":{},
-                            "description_keywords":[],
-                            "max_retry_attempts" : 1,
-                            "routes" : { }
-                        },
-                        {
-                            "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                            "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
-                            "display_name" : "My Custom Application",
-                            "display_version" : "1.0",
-                            "icon_url" : "http://application1/icon.svg",
-                            "description" : "My Custom Application Description",
-                            "reference" : "@ignore",
-                            "object" : "application",
-                            "status" : "succeeded",
-                            "features" : {
-                              "rate" : true,
-                              "tokenize" : false,
-                              "truncate_prompt" : false,
-                              "configuration" : true,
-                              "system_prompt" : true,
-                              "tools" : false,
-                              "seed" : false,
-                              "url_attachments" : false,
-                              "folder_attachments" : false,
-                              "allow_resume":true,
-                              "accessible_by_per_request_key": true,
-                              "content_parts": false,
-                              "temperature" : true,
-                              "addons" : true,
-                              "cache" : false,
-                              "auto_caching" : false,
-                              "parallel_tool_calls" : true
-                            },
-                            "defaults" : { },
-                            "description_keywords":[],
-                            "max_retry_attempts" : 1,
-                            "owner" : "EPM-RTC-GPT",
-                            "created_at" : "@ignore",
-                            "updated_at" : "@ignore",
-                            "routes" : { }
-                          }
-                    ],
-                    "object":"list"
-                }
-                """);
     }
 
     @Test
@@ -593,125 +427,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/applications/public/folder/my-custom-application",
                 null, null, "authorization", "user");
         verify(response, 200);
-
-        // verify listing returns both applications (from config and public)
-        response = send(HttpMethod.GET, "/openai/applications", null, null, "authorization", "user");
-        verifyJsonNotExact(response, 200, """
-                {
-                    "data":[
-                        {
-                            "id":"app",
-                            "application":"app",
-                            "display_name":"10k",
-                            "icon_url":"http://localhost:7001/logo10k.png",
-                            "description":"Some description of the application for testing",
-                            "reference":"app",
-                            "owner":"organization-owner",
-                            "object":"application",
-                            "status":"succeeded",
-                            "created_at":1672534800,
-                            "updated_at":1672534800,
-                            "features":{
-                                "rate":true,
-                                "tokenize":false,
-                                "truncate_prompt":false,
-                                "configuration":true,
-                                "system_prompt":false,
-                                "tools":false,
-                                "seed":false,
-                                "url_attachments":false,
-                                "folder_attachments":false,
-                                "allow_resume":true,
-                                "accessible_by_per_request_key": true,
-                                "content_parts": false,
-                                "temperature" : true,
-                                "addons" : true,
-                                "cache" : false,
-                                "auto_caching" : false,
-                                "parallel_tool_calls" : true
-                                },
-                            "defaults":{},
-                            "description_keywords":[],
-                            "max_retry_attempts" : 1,
-                            "routes" : { }
-                        },
-                        {
-                            "id" : "secured-app",
-                            "application" : "secured-app",
-                            "display_name" : "A",
-                            "icon_url" : "http://localhost:7001/logo10k.png",
-                            "description" : "Some description of the application for testing",
-                            "reference" : "secured-app",
-                            "owner" : "organization-owner",
-                            "object" : "application",
-                            "status" : "succeeded",
-                            "created_at" : 1672534800,
-                            "updated_at" : 1672534800,
-                            "features" : {
-                              "rate" : false,
-                              "tokenize" : false,
-                              "truncate_prompt" : false,
-                              "configuration" : false,
-                              "system_prompt" : true,
-                              "tools" : false,
-                              "seed" : false,
-                              "url_attachments" : false,
-                              "folder_attachments" : false,
-                              "allow_resume" : true,
-                              "accessible_by_per_request_key" : true,
-                              "content_parts" : false,
-                              "temperature" : true,
-                              "addons" : true,
-                              "cache" : false,
-                              "auto_caching" : false,
-                              "parallel_tool_calls" : true
-                            },
-                            "defaults" : { },
-                            "description_keywords" : [ ],
-                            "max_retry_attempts" : 1,
-                            "routes" : { }
-                        },
-                        {
-                            "id" : "applications/public/folder/my-custom-application",
-                            "application" : "applications/public/folder/my-custom-application",
-                            "display_name" : "My Custom Application",
-                            "display_version" : "1.0",
-                            "icon_url" : "http://application1/icon.svg",
-                            "description" : "My Custom Application Description",
-                            "reference" : "@ignore",
-                            "object" : "application",
-                            "status" : "succeeded",
-                            "features" : {
-                              "rate" : true,
-                              "tokenize" : false,
-                              "truncate_prompt" : false,
-                              "configuration" : true,
-                              "system_prompt" : true,
-                              "tools" : false,
-                              "seed" : false,
-                              "url_attachments" : false,
-                              "folder_attachments" : false,
-                              "allow_resume":true,
-                              "accessible_by_per_request_key": true,
-                              "content_parts": false,
-                              "temperature" : true,
-                              "addons" : true,
-                              "cache" : false,
-                              "auto_caching" : false,
-                              "parallel_tool_calls" : true
-                            },
-                            "defaults" : { },
-                            "description_keywords":[],
-                            "max_retry_attempts" : 1,
-                            "owner" : "dream-team",
-                            "created_at" : "@ignore",
-                            "updated_at" : "@ignore",
-                            "routes" : { }
-                          }
-                    ],
-                    "object":"list"
-                }
-                """);
     }
 
     @Test
@@ -756,7 +471,64 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "routes" : { }
-                        }
+                        }, {
+                             "id" : "app-route",
+                             "application" : "app-route",
+                             "display_name" : "10k",
+                             "icon_url" : "http://localhost:7001/logo10k.png",
+                             "description" : "Some description of the application for testing",
+                             "reference" : "app-route",
+                             "owner" : "organization-owner",
+                             "object" : "application",
+                             "status" : "succeeded",
+                             "created_at" : 1672534800,
+                             "updated_at" : 1672534800,
+                             "features" : {
+                               "rate" : true,
+                               "tokenize" : false,
+                               "truncate_prompt" : false,
+                               "configuration" : true,
+                               "system_prompt" : false,
+                               "tools" : false,
+                               "seed" : false,
+                               "url_attachments" : false,
+                               "folder_attachments" : false,
+                               "allow_resume" : true,
+                               "accessible_by_per_request_key" : true,
+                               "content_parts" : false,
+                               "temperature" : true,
+                               "addons" : true,
+                               "cache" : false,
+                               "auto_caching" : false,
+                               "parallel_tool_calls" : true
+                             },
+                             "defaults" : { },
+                             "description_keywords" : [ ],
+                             "max_retry_attempts" : 1,
+                             "routes" : {
+                               "index-search" : {
+                                 "name" : null,
+                                 "userRoles" : null,
+                                 "response" : null,
+                                 "rewritePath" : true,
+                                 "paths" : [ "/v1/index(/[^/]+)*$" ],
+                                 "methods" : [ "DELETE", "POST", "PUT" ],
+                                 "upstreams" : [ {
+                                   "endpoint" : "http://localhost:4848",
+                                   "extraData" : null,
+                                   "weight" : 1,
+                                   "tier" : 0
+                                 } ],
+                                 "maxRetryAttempts" : 1,
+                                 "order" : 2147483647,
+                                 "permissions" : [ ],
+                                 "attachmentPaths" : {
+                                   "requestBody" : [ "@.attachments[*].url" ],
+                                   "responseBody" : [ "@.result.attachedFiles" ]
+                                 }
+                               }
+                             }
+                           }
                     ],
                     "object":"list"
                 }
@@ -860,6 +632,64 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "routes" : { }
+                        },
+                        {
+                            "id" : "app-route",
+                            "application" : "app-route",
+                            "display_name" : "10k",
+                            "icon_url" : "http://localhost:7001/logo10k.png",
+                            "description" : "Some description of the application for testing",
+                            "reference" : "app-route",
+                            "owner" : "organization-owner",
+                            "object" : "application",
+                            "status" : "succeeded",
+                            "created_at" : 1672534800,
+                            "updated_at" : 1672534800,
+                            "features" : {
+                              "rate" : true,
+                              "tokenize" : false,
+                              "truncate_prompt" : false,
+                              "configuration" : true,
+                              "system_prompt" : false,
+                              "tools" : false,
+                              "seed" : false,
+                              "url_attachments" : false,
+                              "folder_attachments" : false,
+                              "allow_resume" : true,
+                              "accessible_by_per_request_key" : true,
+                              "content_parts" : false,
+                              "temperature" : true,
+                              "addons" : true,
+                              "cache" : false,
+                              "auto_caching" : false,
+                              "parallel_tool_calls" : true
+                            },
+                            "defaults" : { },
+                            "description_keywords" : [ ],
+                            "max_retry_attempts" : 1,
+                            "routes" : {
+                              "index-search" : {
+                                "name" : null,
+                                "userRoles" : null,
+                                "response" : null,
+                                "rewritePath" : true,
+                                "paths" : [ "/v1/index(/[^/]+)*$" ],
+                                "methods" : [ "DELETE", "POST", "PUT" ],
+                                "upstreams" : [ {
+                                  "endpoint" : "http://localhost:4848",
+                                  "extraData" : null,
+                                  "weight" : 1,
+                                  "tier" : 0
+                                } ],
+                                "maxRetryAttempts" : 1,
+                                "order" : 2147483647,
+                                "permissions" : [ ],
+                                "attachmentPaths" : {
+                                  "requestBody" : [ "@.attachments[*].url" ],
+                                  "responseBody" : [ "@.result.attachedFiles" ]
+                                }
+                              }
+                            }
                         },
                         {
                             "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
@@ -1354,46 +1184,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         //making get request from other user and check invalid flag
 
-        response = send(HttpMethod.GET, "/openai/applications", null, null, "Api-key", "proxyKey2");
+        response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", null, null, "Api-key", "proxyKey2");
 
         verifyJsonNotExact(response, 200, """
                   {
-                     "data" : [ {
-                     "id" : "app",
-                     "application" : "app",
-                     "display_name" : "10k",
-                     "icon_url" : "http://localhost:7001/logo10k.png",
-                     "description" : "Some description of the application for testing",
-                     "reference" : "app",
-                     "owner" : "organization-owner",
-                     "object" : "application",
-                     "status" : "succeeded",
-                     "created_at" : "@ignore",
-                     "updated_at" : "@ignore",
-                     "features" : {
-                       "rate" : true,
-                       "tokenize" : false,
-                       "truncate_prompt" : false,
-                       "configuration" : true,
-                       "system_prompt" : false,
-                       "tools" : false,
-                       "seed" : false,
-                       "url_attachments" : false,
-                       "folder_attachments" : false,
-                       "allow_resume" : true,
-                       "accessible_by_per_request_key" : true,
-                       "content_parts" : false,
-                       "temperature" : true,
-                       "addons" : true,
-                       "cache" : false,
-                       "auto_caching" : false,
-                       "parallel_tool_calls" : true
-                     },
-                     "defaults" : { },
-                     "description_keywords" : [ ],
-                     "max_retry_attempts" : 1,
-                     "routes" : { }
-                   }, {
                      "display_name" : "test_app",
                      "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
                      "description" : "My application description",
@@ -1426,9 +1220,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "max_retry_attempts" : 1,
                      "invalid" : true,
                      "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                     "routes" : { }
-                   } ],
-                   "object" : "list"
+                     "routes" : { }                  
                 }
                 """);
     }

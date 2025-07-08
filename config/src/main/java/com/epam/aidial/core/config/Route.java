@@ -29,7 +29,7 @@ public class Route extends RoleBasedEntity {
     @Min(value = 0, message = "Order can't be negative")
     private int order = Integer.MAX_VALUE;
     private Set<ResourceAccessType> permissions = Set.of();
-    private AttachmentPath attachmentPath = EMPTY_ATTACHMENT_PATHS;
+    private AttachmentPath attachmentPaths = EMPTY_ATTACHMENT_PATHS;
 
     @Data
     public static class Response {

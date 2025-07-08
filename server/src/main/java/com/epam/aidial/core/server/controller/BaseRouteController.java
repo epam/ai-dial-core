@@ -370,7 +370,7 @@ public abstract class BaseRouteController implements Controller {
 
     private Route selectRoute(Collection<Route> routes) {
         HttpServerRequest request = context.getRequest();
-        String path = request.path();
+        String path = getRoutePath();
 
         for (Route route : routes) {
             List<Pattern> paths = route.getPaths();

@@ -82,6 +82,29 @@
         "systemPromptSupported": false
       }
     },
+    "app-route": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "10k",
+      "iconUrl": "http://localhost:7001/logo10k.png",
+      "description": "Some description of the application for testing",
+      "features": {
+        "rateEndpoint": "http://localhost:7001/openai/deployments/10k/rate_response",
+        "configurationEndpoint": "http://localhost:7001/openai/deployments/10k/config",
+        "systemPromptSupported": false
+      },
+      "routes": {
+        "index-search": {
+          "paths": ["/v1/index(/[^/]+)*$"],
+          "rewritePath": true,
+          "methods": ["POST", "PUT", "DELETE"],
+          "upstreams": [{"endpoint": "http://localhost:4848"}],
+          "attachmentPaths": {
+            "requestBody": ["@.attachments[*].url"],
+            "responseBody": ["@.result.attachedFiles"]
+          }
+        }
+      }
+    },
     "secured-app": {
       "endpoint": "http://localhost:9876/chat/completions",
       "displayName": "A",

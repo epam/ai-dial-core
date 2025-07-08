@@ -16,7 +16,7 @@ public class CollectRequestCustomAttachmentsFn extends CollectRequestAttachments
     @Override
     protected Set<String> collectAttachments(ObjectNode tree) {
         Route route = context.getRoute();
-        List<String> jsonPointers = route.getAttachmentPath().getRequestBody();
-        return collectAttachmentsFromJson(tree, jsonPointers);
+        List<String> jsonPaths = route.getAttachmentPaths().getRequestBody();
+        return collectAttachmentsFromJson(tree, jsonPaths);
     }
 }
