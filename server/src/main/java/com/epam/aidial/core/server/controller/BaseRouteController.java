@@ -52,15 +52,10 @@ public abstract class BaseRouteController implements Controller {
 
     @Override
     public Future<?> handle() {
-        return getRoutes().onFailure(error -> {
-            if (error instanceof HttpException httpException) {
-                respond(httpException);
-            } else {
-                String errorMsg = "Error occurred on getting routers from context";
-                log.error(errorMsg, error);
-                respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
-            }
-        }).map(this::selectRoute).compose(this::handleRoute);
+        return getRoutes().map(this::selectRoute).compose(this::handleRoute).otherwise(error -> {
+            handleError(error);
+            return null;
+        });
     }
 
     protected Future<?> handleRoute(Route route) {
@@ -77,7 +72,7 @@ public abstract class BaseRouteController implements Controller {
             return Future.succeededFuture();
         }
 
-        return hasRequiredPermissions(route.getPermissions()).onFailure(this::handleError).compose(result -> {
+        return hasRequiredPermissions(route.getPermissions()).compose(result -> {
             if (!result) {
                 // the route has no required permissions
                 context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
@@ -95,7 +90,6 @@ public abstract class BaseRouteController implements Controller {
                 context.getResponse().setStatusCode(response.getStatus());
                 context.setResponseBody(Buffer.buffer(response.getBody()));
             }
-            context.setRoute(route);
             return proxy.getRateLimiter().limit(context, context.getRoute())
                     .map(rateLimitResult -> {
                         if (rateLimitResult.status() == HttpStatus.OK) {
@@ -104,8 +98,7 @@ public abstract class BaseRouteController implements Controller {
                             handleRateLimitHit(rateLimitResult);
                         }
                         return null;
-                    })
-                    .onFailure(this::handleError);
+                    });
         });
     }
 
@@ -315,9 +308,13 @@ public abstract class BaseRouteController implements Controller {
     }
 
     private void handleError(Throwable error) {
-        String route = context.getRoute().getName();
-        log.error("Failed to handle route {}", route, error);
-        respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process route request: " + route);
+        if (error instanceof HttpException httpException) {
+            respond(httpException);
+        } else {
+            String errorMsg = "Error occurred on processing route request: %s".formatted(context.getRequest().path());
+            log.error(errorMsg, error);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
+        }
     }
 
     /**
@@ -386,6 +383,7 @@ public abstract class BaseRouteController implements Controller {
 
             for (Pattern pattern : route.getPaths()) {
                 if (pattern.matcher(path).matches()) {
+                    context.setRoute(route);
                     return route;
                 }
             }

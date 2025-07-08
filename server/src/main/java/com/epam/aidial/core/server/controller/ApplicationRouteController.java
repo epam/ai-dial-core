@@ -45,17 +45,21 @@ public class ApplicationRouteController extends BaseRouteController {
 
     @Override
     protected Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions) {
-        if (permissions.isEmpty()) {
+        ResourceDescriptor appResource;
+        try {
+            appResource = ResourceDescriptorFactory.fromAnyUrl(deploymentId, proxy.getEncryptionService());
+        } catch (IllegalArgumentException e) {
+            // it looks like deployment id is not a custom application
             return Future.succeededFuture(true);
         }
-        ResourceDescriptor appResource = ResourceDescriptorFactory.fromAnyUrl(deploymentId, proxy.getEncryptionService());
         return proxy.getVertx().executeBlocking(() -> {
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = proxy.getAccessService().lookupPermissions(Set.of(appResource), context);
             Set<ResourceAccessType> actual = result.get(appResource);
             if (actual == null) {
                 return false;
             }
-            return actual.containsAll(permissions);
+            Set<ResourceAccessType> expected = permissions.isEmpty() ? ResourceAccessType.READ_ONLY : permissions;
+            return actual.containsAll(expected);
         });
     }
 
