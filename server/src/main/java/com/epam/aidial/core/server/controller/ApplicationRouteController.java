@@ -23,8 +23,11 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class ApplicationRouteController extends BaseRouteController {
@@ -80,11 +83,19 @@ public class ApplicationRouteController extends BaseRouteController {
             Deployment deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             context.setDeployment(deployment);
             if (deployment instanceof Application application) {
-                return application.getRoutes().values();
+                return sortRoutes(application.getRoutes());
             } else {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Application is not found: " + deploymentId);
             }
         });
+    }
+
+    private Collection<Route> sortRoutes(LinkedHashMap<String, Route> routes) {
+        return routes.entrySet().stream().map(e -> {
+            Route route = e.getValue();
+            route.setName(e.getKey());
+            return route;
+        }).sorted(Comparator.comparingInt(Route::getOrder)).collect(Collectors.toList());
     }
 
     @Override
