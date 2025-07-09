@@ -573,19 +573,25 @@ public class DeploymentPostController {
         log.warn("Can't send response to client. Trace: {}. Span: {}. Error:",
                 context.getTraceId(), context.getSpanId(), error);
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-        // make sure we collect token usage in case if client accidentally closed the connection
-        responseStream.endStreamFuture()
-                .onFailure(ignore -> {
-                    context.getProxyRequest().reset(); // drop connection to stop origin response
-                })
-                .compose(ignore -> {
-                    Buffer responseBody = context.getResponseStream().getContent();
-                    context.setResponseBody(responseBody);
-                    context.setResponseBodyTimestamp(System.currentTimeMillis());
-                    return collectTokenUsage(responseBody);
-                })
-                .onSuccess(ignored -> proxy.getLogStore().save(context))
-                .onComplete(ignored -> finalizeRequest());
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Model) {
+            // make sure we collect token usage in case if client accidentally closed the connection
+            responseStream.endStreamFuture()
+                    .onFailure(ignore -> {
+                        context.getProxyRequest().reset(); // drop connection to stop origin response
+                    })
+                    .compose(ignore -> {
+                        Buffer responseBody = context.getResponseStream().getContent();
+                        context.setResponseBody(responseBody);
+                        context.setResponseBodyTimestamp(System.currentTimeMillis());
+                        return collectTokenUsage(responseBody);
+                    })
+                    .onSuccess(ignored -> proxy.getLogStore().save(context))
+                    .onComplete(ignored -> finalizeRequest());
+        } else {
+            // drop connection to stop application responding
+            context.getProxyRequest().reset();
+        }
     }
 
     private static String buildUri(ProxyContext context) {
