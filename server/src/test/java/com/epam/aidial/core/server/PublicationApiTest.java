@@ -2430,6 +2430,7 @@ class PublicationApiTest extends ResourceBaseTest {
                 {
                   "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
                   "targetFolder": "public/folder/",
+                  "name": "New name",
                   "resources": [
                     {
                       "action": "ADD",
@@ -2455,6 +2456,24 @@ class PublicationApiTest extends ResourceBaseTest {
                   "resourceTypes" : [ "CONVERSATION" ],
                   "author" : "EPM-RTC-GPT"
                 }
+                """);
+
+        // list publications
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                   "publications" : [ {
+                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                     "name" : "Publication name",
+                     "targetFolder" : "public/folder/",
+                     "status" : "PENDING",
+                     "createdAt" : 0,
+                     "resourceTypes" : [ "CONVERSATION" ],
+                     "author" : "EPM-RTC-GPT"
+                   } ]
+                 }
                 """);
 
         // Approve the publication
