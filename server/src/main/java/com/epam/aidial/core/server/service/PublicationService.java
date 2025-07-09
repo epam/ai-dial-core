@@ -327,7 +327,7 @@ public class PublicationService {
             resourceService.putResource(publicationsFile, encodePublications(publications), EtagHeader.ANY, null, false);
 
             // update public publications to be viewed by admin
-            updatePublicPublications(publication);
+            updatePublicPublications(existingPublication);
 
             return existingPublication;
         }
