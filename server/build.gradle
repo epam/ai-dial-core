@@ -32,6 +32,7 @@ dependencies {
     implementation 'org.glassfish:jakarta.el:4.0.2'
     implementation 'jakarta.validation:jakarta.validation-api:3.0.2' // Ensure you have Jakarta Validation API dependency
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.4.3'
+    implementation 'com.jayway.jsonpath:json-path:2.9.0'
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
     testImplementation 'commons-io:commons-io:2.14.0'

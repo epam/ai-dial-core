@@ -1,5 +1,6 @@
 package com.epam.aidial.core.storage.data;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
