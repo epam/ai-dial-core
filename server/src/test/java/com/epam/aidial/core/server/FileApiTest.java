@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -25,7 +25,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;

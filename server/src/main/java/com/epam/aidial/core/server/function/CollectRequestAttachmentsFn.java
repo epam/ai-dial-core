@@ -1,17 +1,18 @@
 package com.epam.aidial.core.server.function;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Set;
 
 /**
  * Collects attached files from the chat completion request and puts the result to API key data.
@@ -20,18 +21,23 @@ import lombok.extern.slf4j.Slf4j;
  * </p>
  */
 @Slf4j
-public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode> {
+public abstract class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode> {
     public CollectRequestAttachmentsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     @Override
     public Boolean apply(ObjectNode tree) {
-        ProxyUtil.collectAttachedFilesFromRequest(tree, this::processAttachedFile);
+        Set<String> attachments = collectAttachments(tree);
+        for (String attachment : attachments) {
+            tryToAutoShareAttachedFile(attachment);
+        }
         return false;
     }
 
-    private void processAttachedFile(String url) {
+    protected abstract Set<String> collectAttachments(ObjectNode tree);
+
+    protected void tryToAutoShareAttachedFile(String url) {
         ResourceDescriptor resource = fromAnyUrl(url, proxy.getEncryptionService());
         if (resource == null) {
             return;
@@ -50,5 +56,4 @@ public class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode>
             throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the file %s".formatted(url));
         }
     }
-
 }

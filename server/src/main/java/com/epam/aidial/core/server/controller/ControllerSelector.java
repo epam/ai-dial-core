@@ -25,7 +25,7 @@ public class ControllerSelector {
     private static final Object CONTROLLER_TEMPLATE_KEY = new Object();
     private static final List<ControllerRoute> ROUTES = new ArrayList<>();
     private static final ControllerTemplate DEFAULT_CONTROLLER_TEMPLATE = new ControllerTemplate(
-            "/{path}", RouteController::new);
+            "/{path}", GlobalRouteController::new);
 
     static {
         // GET routes
@@ -292,6 +292,15 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        // add deployment routes
+        ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            String routePath = pathMatcher.group(2);
+            return new ApplicationRouteController(proxy, context, deploymentId, routePath);
+        });
+        for (HttpMethod method : Proxy.ALLOWED_HTTP_METHODS) {
+            ROUTES.add(new ControllerRoute(method, RouteTemplate.DEPLOYMENT_ROUTES.getPattern(), applicationRouteTemplate));
+        }
     }
 
     public ControllerTemplate select(HttpServerRequest request) {

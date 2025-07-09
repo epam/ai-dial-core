@@ -234,7 +234,7 @@ public class AiDial {
         return version;
     }
 
-    public static String getVersion(){
+    public static String getVersion() {
         return version();
     }
 

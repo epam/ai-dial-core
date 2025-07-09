@@ -1,4 +1,4 @@
-package com.epam.aidial.core.storage.data;
+package com.epam.aidial.core.config;
 
 import java.util.Collections;
 import java.util.EnumSet;

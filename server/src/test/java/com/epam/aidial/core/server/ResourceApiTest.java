@@ -523,7 +523,8 @@ class ResourceApiTest extends ResourceBaseTest {
                     "updated_at" : "@ignore",
                     "dependencies" : [ ],
                     "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                    "invalid" : true
+                    "invalid" : true,
+                    "routes" : { }
                 }
                 """);
     }

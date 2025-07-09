@@ -1,18 +1,22 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
@@ -31,7 +35,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.client.utils.URLEncodedUtils;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,14 +47,22 @@ import java.util.regex.Pattern;
 
 @Slf4j
 @RequiredArgsConstructor
-public class RouteController implements Controller {
+public abstract class BaseRouteController implements Controller {
 
-    private final Proxy proxy;
-    private final ProxyContext context;
+    protected final Proxy proxy;
+    protected final ProxyContext context;
+
+    protected final List<BaseRequestFunction<ObjectNode>> enhancementFunctions = new ArrayList<>();
 
     @Override
     public Future<?> handle() {
-        Route route = selectRoute();
+        return getRoutes().map(this::selectRoute).compose(this::handleRoute).otherwise(error -> {
+            handleError(error);
+            return null;
+        });
+    }
+
+    protected Future<?> handleRoute(Route route) {
         if (route == null) {
             log.warn("RouteController can't find a route to proceed the request: {}", getRequestUri());
             respond(HttpStatus.BAD_GATEWAY, "No route");
@@ -61,25 +76,52 @@ public class RouteController implements Controller {
             return Future.succeededFuture();
         }
 
-        Route.Response response = route.getResponse();
-        if (response == null) {
-            UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(route);
-            if (!canRetry(upstreamRoute)) {
+        return hasRequiredPermissions(route.getPermissions()).compose(result -> {
+            if (!result) {
+                // the route has no required permissions
+                context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
                 return Future.succeededFuture();
             }
-            context.setTraceOperation("Send request to %s route".formatted(route.getName()));
-            context.setUpstreamRoute(upstreamRoute);
-        } else {
-            context.getResponse().setStatusCode(response.getStatus());
-            context.setResponseBody(Buffer.buffer(response.getBody()));
-        }
-        context.setRoute(route);
-
-        context.getRequest().body()
-                .onSuccess(this::handleRequestBody)
-                .onFailure(this::handleRequestBodyError);
-        return Future.succeededFuture();
+            Route.Response response = route.getResponse();
+            if (response == null) {
+                UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(route);
+                if (!canRetry(upstreamRoute)) {
+                    return Future.succeededFuture();
+                }
+                context.setTraceOperation("Send request to %s route".formatted(route.getName()));
+                context.setUpstreamRoute(upstreamRoute);
+            } else {
+                context.getResponse().setStatusCode(response.getStatus());
+                context.setResponseBody(Buffer.buffer(response.getBody()));
+            }
+            return proxy.getRateLimiter().limit(context, context.getRoute())
+                    .map(rateLimitResult -> {
+                        if (rateLimitResult.status() == HttpStatus.OK) {
+                            handleRateLimitSuccess();
+                        } else {
+                            handleRateLimitHit(rateLimitResult);
+                        }
+                        return null;
+                    });
+        });
     }
+
+    private void handleRateLimitSuccess() {
+        if (context.getResponseBody() == null) {
+            setupProxyApiKeyData();
+            context.getRequest().body()
+                    .onFailure(this::handleRequestBodyError)
+                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }, false));
+        } else {
+            context.getResponse().send(context.getResponseBody());
+            proxy.getLogStore().save(context);
+        }
+    }
+
+    protected abstract Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions);
 
     String getRequestUri() {
         HttpServerRequest request = context.getRequest();
@@ -106,24 +148,35 @@ public class RouteController implements Controller {
     }
 
     private void handleRequestBody(Buffer requestBody) {
+        Deployment deployment = context.getDeployment();
+        log.info("Received body from client. Trace: {}. Span: {}. Project: {}. Deployment: {}. Length: {}",
+                context.getTraceId(), context.getSpanId(),
+                context.getProject(), deployment == null ? "N/A" : deployment.getName(), requestBody.length());
+
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setRequestBody(requestBody);
 
-        if (context.getResponseBody() == null) {
-            proxy.getRateLimiter().limit(context, context.getRoute())
-                    .compose(rateLimitResult -> {
-                        if (rateLimitResult.status() == HttpStatus.OK) {
-                            setupProxyApiKeyData();
-                            return sendRequest();
-                        } else {
-                            handleRateLimitHit(rateLimitResult);
-                            return Future.succeededFuture();
-                        }
-                    })
-                    .onFailure(this::handleError);
-        } else {
-            context.getResponse().send(context.getResponseBody());
-            proxy.getLogStore().save(context);
+        if (!enhancementFunctions.isEmpty()) {
+            try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                if (ProxyUtil.processChain(tree, enhancementFunctions)) {
+                    context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
+                }
+            } catch (Throwable e) {
+                if (e instanceof HttpException httpException) {
+                    respond(httpException.getStatus(), httpException.getMessage());
+                } else {
+                    respond(HttpStatus.BAD_REQUEST);
+                }
+                log.warn("Can't process JSON request body. Trace: {}. Span: {}. Error:",
+                        context.getTraceId(), context.getSpanId(), e);
+                return;
+            }
         }
+
+        proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+
+        sendRequest();
     }
 
     private void setupProxyApiKeyData() {
@@ -158,10 +211,14 @@ public class RouteController implements Controller {
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
 
+        injectAdditionalHeaders(proxyRequest);
+
         proxyRequest.send(proxyRequestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
     }
+
+    protected abstract void injectAdditionalHeaders(HttpClientRequest proxyRequest);
 
     /**
      * Called when proxy received the response headers from the origin.
@@ -200,6 +257,7 @@ public class RouteController implements Controller {
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)
+                .endOnSuccess(false)
                 .to(response)
                 .onSuccess(ignored -> handleResponse())
                 .onFailure(this::handleResponseError);
@@ -219,10 +277,18 @@ public class RouteController implements Controller {
      * Called when proxy sent response from the origin to the client.
      */
     private void handleResponse() {
-        Buffer proxyResponseBody = context.getResponseStream().getContent();
+        BufferingReadStream responseStream = context.getResponseStream();
+        Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
-        proxy.getLogStore().save(context);
+        handleProxyResponseBody(proxyResponseBody).onFailure(error -> log.warn("Failed to handle proxy response. Trace: {}. Span: {}",
+                context.getTraceId(), context.getSpanId(), error)).onSuccess(ignore -> {
+                    HttpServerResponse response = context.getResponse();
+                    proxy.getLogStore().save(context);
+                    responseStream.end(response);
+                });
     }
+
+    protected abstract Future<Void> handleProxyResponseBody(Buffer responseBody);
 
     private void handleRateLimitHit(RateLimitResult result) {
         ErrorData rateLimitError = new ErrorData();
@@ -264,8 +330,13 @@ public class RouteController implements Controller {
             log.debug("Failed to add exception to span", e);
         }
 
-        log.error("Failed to handle route {}", route, error);
-        respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process route request: " + route);
+        if (error instanceof HttpException httpException) {
+            respond(httpException);
+        } else {
+            String errorMsg = "Error occurred on processing route request: %s".formatted(context.getRequest().path());
+            log.error(errorMsg, route, error);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
+        }
     }
 
     /**
@@ -340,12 +411,13 @@ public class RouteController implements Controller {
         finalizeRequest();
     }
 
-    private Route selectRoute() {
-        Config config = context.getConfig();
-        HttpServerRequest request = context.getRequest();
-        String path = request.path();
+    protected abstract Future<Collection<Route>> getRoutes();
 
-        for (Route route : config.getRoutes().values()) {
+    private Route selectRoute(Collection<Route> routes) {
+        HttpServerRequest request = context.getRequest();
+        String path = getRoutePath();
+
+        for (Route route : routes) {
             List<Pattern> paths = route.getPaths();
             Set<String> methods = route.getMethods();
 
@@ -359,6 +431,7 @@ public class RouteController implements Controller {
 
             for (Pattern pattern : route.getPaths()) {
                 if (pattern.matcher(path).matches()) {
+                    context.setRoute(route);
                     return route;
                 }
             }
@@ -371,7 +444,7 @@ public class RouteController implements Controller {
     private String getEndpointUri(Upstream upstream) {
         URIBuilder uriBuilder = new URIBuilder(upstream.getEndpoint());
         if (context.getRoute().isRewritePath()) {
-            uriBuilder.setPath(context.getRequest().path());
+            uriBuilder.setPath(getRoutePath());
             String query = context.getRequest().query();
             if (query != null) {
                 uriBuilder.setParameters(URLEncodedUtils.parse(query, StandardCharsets.UTF_8));
@@ -379,6 +452,8 @@ public class RouteController implements Controller {
         }
         return uriBuilder.toString();
     }
+
+    protected abstract String getRoutePath();
 
     private void respond(HttpStatus status, String result) {
         finalizeRequest();
@@ -388,6 +463,11 @@ public class RouteController implements Controller {
     private void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+    }
+
+    private void respond(HttpStatus status) {
+        finalizeRequest();
+        context.respond(status);
     }
 
     private void finalizeRequest() {

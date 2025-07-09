@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Route;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -40,4 +41,6 @@ public class ApplicationData extends DeploymentData {
     private URI applicationTypeSchemaId;
 
     private Application.Function function;
+
+    private Map<String, Route> routes;
 }
