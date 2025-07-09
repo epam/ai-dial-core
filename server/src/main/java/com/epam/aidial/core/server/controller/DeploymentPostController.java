@@ -521,7 +521,7 @@ public class DeploymentPostController {
                 context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
                 context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
-                currentUpstream == null ? "N/A" : currentUpstream.hashCode());
+                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
     }
