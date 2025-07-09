@@ -14,9 +14,10 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
-import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
@@ -73,7 +74,7 @@ public class DeploymentPostController {
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context),
+        this.enhancementFunctions = List.of(new CollectRequestChatCompletionAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceAssistantRequestFn(proxy, context),
@@ -388,7 +389,7 @@ public class DeploymentPostController {
             upstreamRoute.fail(proxyResponse);
         }
 
-        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseAttachmentsFn(proxy, context) : null;
+        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseChatCompletionAttachmentsFn(proxy, context) : null;
 
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024), handler);
@@ -490,7 +491,7 @@ public class DeploymentPostController {
         }
         try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            var fn = new CollectResponseAttachmentsFn(proxy, context);
+            var fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
             return fn.apply(tree);
         } catch (IOException e) {
             log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
@@ -520,7 +521,7 @@ public class DeploymentPostController {
                 context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
                 context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
-                currentUpstream == null ? "N/A" : currentUpstream.hashCode());
+                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
     }
@@ -572,19 +573,25 @@ public class DeploymentPostController {
         log.warn("Can't send response to client. Trace: {}. Span: {}. Error:",
                 context.getTraceId(), context.getSpanId(), error);
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-        // make sure we collect token usage in case if client accidentally closed the connection
-        responseStream.endStreamFuture()
-                .onFailure(ignore -> {
-                    context.getProxyRequest().reset(); // drop connection to stop origin response
-                })
-                .compose(ignore -> {
-                    Buffer responseBody = context.getResponseStream().getContent();
-                    context.setResponseBody(responseBody);
-                    context.setResponseBodyTimestamp(System.currentTimeMillis());
-                    return collectTokenUsage(responseBody);
-                })
-                .onSuccess(ignored -> proxy.getLogStore().save(context))
-                .onComplete(ignored -> finalizeRequest());
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Model) {
+            // make sure we collect token usage in case if client accidentally closed the connection
+            responseStream.endStreamFuture()
+                    .onFailure(ignore -> {
+                        context.getProxyRequest().reset(); // drop connection to stop origin response
+                    })
+                    .compose(ignore -> {
+                        Buffer responseBody = context.getResponseStream().getContent();
+                        context.setResponseBody(responseBody);
+                        context.setResponseBodyTimestamp(System.currentTimeMillis());
+                        return collectTokenUsage(responseBody);
+                    })
+                    .onSuccess(ignored -> proxy.getLogStore().save(context))
+                    .onComplete(ignored -> finalizeRequest());
+        } else {
+            // drop connection to stop application responding
+            context.getProxyRequest().reset();
+        }
     }
 
     private static String buildUri(ProxyContext context) {

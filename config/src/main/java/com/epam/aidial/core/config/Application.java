@@ -12,6 +12,7 @@ import lombok.experimental.Accessors;
 
 import java.net.URI;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Data
@@ -32,6 +33,9 @@ public class Application extends Deployment {
     private String viewerUrl;
 
     private String editorUrl;
+
+    // maintain the order of routes defined in the app config
+    private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
 
     @JsonIgnore
     public Boolean hasApplicationTypeSchemaId() {
@@ -148,5 +152,6 @@ public class Application extends Deployment {
         this.setAuthor(source.getAuthor());
         this.setCreatedAt(source.getCreatedAt());
         this.setUpdatedAt(source.getUpdatedAt());
+        this.setRoutes(source.getRoutes());
     }
 }
