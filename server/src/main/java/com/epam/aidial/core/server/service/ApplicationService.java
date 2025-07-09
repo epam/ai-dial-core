@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.ApplicationUtil;
@@ -23,7 +24,6 @@ import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationExc
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;

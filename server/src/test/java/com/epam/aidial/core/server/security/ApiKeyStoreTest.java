@@ -1,11 +1,10 @@
 package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
-import com.epam.aidial.core.storage.service.LockService;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.apache.commons.lang3.mutable.MutableObject;
