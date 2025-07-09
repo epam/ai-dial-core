@@ -14,8 +14,11 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.StatusCode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -29,11 +32,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -168,20 +167,44 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status, String body)  {
-        MDC.put("status", status.toString());
-        MDC.put("project", getProject());
+        MDC.put("http.status.code", status.toString());
+        MDC.put("user.project", getProject());
         if (body == null) {
             body = "";
         }
-
-        String shortBody = body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body;
-
-        MDC.put("result", shortBody);
-        MDC.put("user_sub", getUserSub());
+        MDC.put("error.message", body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
+        MDC.put("user.sub", getUserSub());
 
         if (status != HttpStatus.OK) {
-            log.warn("Responding with error. Project: {}. Trace: {}. Span: {}. Status: {}. Body: {}",
-                    getProject(), traceId, spanId, status, shortBody);
+
+            String errorMessage = String.format("HTTP %d: %s", status.getCode(), body);
+            HttpException exception = new HttpException(status, errorMessage);
+
+            MDC.put("exception.type", exception.getClass().getSimpleName());
+            MDC.put("exception.message", exception.getMessage());
+            MDC.put("exception.stacktrace", Arrays.toString(exception.getStackTrace()));
+
+            try {
+                Span currentSpan = Span.current();
+                if (currentSpan.isRecording()) {
+                    currentSpan.recordException(exception, Attributes.of(
+                            AttributeKey.stringKey("error.context"), "http_response_error",
+                            AttributeKey.longKey("http.status.code"), (long) status.getCode(),
+                            AttributeKey.stringKey("error.message"), body,
+                            AttributeKey.stringKey("user.project"), getProject() != null ? getProject() : "unknown"
+                    ));
+                    currentSpan.setStatus(StatusCode.ERROR, errorMessage);
+                    currentSpan.setAttribute("http.response.status.code", status.getCode());
+                }
+            } catch (Exception e) {
+                log.debug("Failed to add exception to span", e);
+            }
+
+            log.warn("Responding with error.");
+
+            MDC.remove("exception.type");
+            MDC.remove("exception.message");
+            MDC.remove("exception.stacktrace");
         }
 
         response.setStatusCode(status.getCode()).end(body);

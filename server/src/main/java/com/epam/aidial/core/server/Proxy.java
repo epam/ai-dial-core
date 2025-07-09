@@ -34,8 +34,11 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.StatusCode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -129,13 +132,29 @@ public class Proxy implements Handler<HttpServerRequest> {
             HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
             String message = null;
 
-            putToMDC("request_method", request.method().name());
-            putToMDC("request_path", request.path());
-            putToMDC("request_params", request.params().toString());
+            String path = request.path();
+            String method = request.method().name();
+            try {
+                Span currentSpan = Span.current();
+                if (currentSpan.isRecording()) {
+                    currentSpan.recordException(error, Attributes.of(
+                            AttributeKey.stringKey("error.context"), "proxy_error_handler",
+                            AttributeKey.stringKey("request.path"), path,
+                            AttributeKey.stringKey("request.method"), method,
+                            AttributeKey.stringKey("error.type"), error.getClass().getSimpleName()
+                    ));
+                    currentSpan.setStatus(StatusCode.ERROR, error.getMessage());
+                }
+            } catch (Exception e) {
+                log.debug("Failed to add exception to span", e);
+            }
+            putToMDC("request.method", request.method().name());
+            putToMDC("request.path", request.path());
+            putToMDC("request.params", request.params().toString());
 
-            putToMDC("exception_name", error.getClass().getSimpleName());
-            putToMDC("exception_message", error.getMessage());
-            putToMDC("exception_stacktrace", Arrays.toString(error.getStackTrace()));
+            putToMDC("exception.name", error.getClass().getSimpleName());
+            putToMDC("exception.message", error.getMessage());
+            putToMDC("exception.stacktrace", Arrays.toString(error.getStackTrace()));
 
             try {
                 if (error instanceof RuntimeException) {
@@ -146,11 +165,11 @@ public class Proxy implements Handler<HttpServerRequest> {
                     log.error("Can't handle request", error);
                 }
             } finally {
-                remove("request_path");
-                remove("request_method");
-                remove("exception_name");
-                remove("exception_message");
-                remove("exception_stacktrace");
+                remove("request.path");
+                remove("request.method");
+                remove("exception.name");
+                remove("exception.message");
+                remove("exception.stacktrace");
             }
 
             respond(request, status, message);

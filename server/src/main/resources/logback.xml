@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <!-- Configuration variables -->
-    <property name="SERVICE_NAME" value="${SERVICE_NAME:-aidial-core}"/>
-    <property name="SERVICE_VERSION" value="${SERVICE_VERSION:-1.0.0}"/>
     <property name="LOG_LEVEL" value="${LOG_LEVEL:-INFO}"/>
 
     <!-- Console JSON Appender -->
     <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
             <layout class="com.epam.aidial.core.server.log.layout.OtelJsonLayout">
-                <serviceName>${SERVICE_NAME}</serviceName>
-                <serviceVersion>${SERVICE_VERSION}</serviceVersion>
             </layout>
         </encoder>
     </appender>
@@ -18,16 +14,9 @@
     <!-- OpenTelemetry Appender -->
     <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
 
-    <!-- Special logger for aidial.log -->
-    <logger name="aidial.log" level="INFO" additivity="false">
-        <appender-ref ref="CONSOLE_JSON"/>
-        <appender-ref ref="OTEL"/>
-    </logger>
-
-    <!-- Component loggers -->
-    <logger name="com.epam.aidial" level="${LOG_LEVEL}"/>
     <logger name="io.vertx" level="WARN"/>
-    <logger name="io.opentelemetry" level="WARN"/>
+    <logger name="io.vertx.tracing" level="DEBUG"/>
+    <logger name="io.opentelemetry" level="DEBUG"/>
     <logger name="org.redisson" level="WARN"/>
 
     <!-- Root logger -->

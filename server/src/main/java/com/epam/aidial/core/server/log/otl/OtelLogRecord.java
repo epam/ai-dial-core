@@ -12,31 +12,31 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class OtelLogRecord {
 
-    @JsonProperty("timestamp")
-    private String timestamp;
+    @JsonProperty("Timestamp")
+    private Long timestamp;
 
-    @JsonProperty("severity_text")
+    @JsonProperty("ObservedTimestamp")
+    private Long observedTimestamp;
+
+    @JsonProperty("SeverityText")
     private String severityText;
 
-    @JsonProperty("severity_number")
-    private String severityNumber;
+    @JsonProperty("SeverityNumber")
+    private Integer severityNumber;
 
-    @JsonProperty("trace_id")
+    @JsonProperty("TraceId")
     private String traceId;
 
-    @JsonProperty("span_id")
+    @JsonProperty("SpanId")
     private String spanId;
 
-    @JsonProperty("trace_flags")
+    @JsonProperty("TraceFlags")
     private String traceFlags;
 
-    @JsonProperty("service")
-    private String service;
-
-    @JsonProperty("body")
+    @JsonProperty("Body")
     private LogBody body;
 
-    @JsonProperty("resource")
+    @JsonProperty("Resource")
     private Map<String, Object> resource;
 
     @Data

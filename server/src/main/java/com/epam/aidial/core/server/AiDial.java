@@ -6,8 +6,8 @@ import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
-import com.epam.aidial.core.server.log.LogbackLogStore;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -113,7 +113,7 @@ public class AiDial {
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             client = vertx.createHttpClient(clientOptions);
 
-            LogStore logStore = new LogbackLogStore(vertx);
+            LogStore logStore = new GfLogStore(vertx);
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client, clientOptions);
@@ -232,6 +232,10 @@ public class AiDial {
             log.warn("Failed to load version", e);
         }
         return version;
+    }
+
+    public static String getVersion(){
+        return version();
     }
 
     private static JsonObject fileSettings() throws IOException {

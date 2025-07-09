@@ -9,6 +9,10 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.deltix.gflog.api.Log;
+import com.epam.deltix.gflog.api.LogEntry;
+import com.epam.deltix.gflog.api.LogFactory;
+import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,10 +24,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -32,23 +33,24 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.Scanner;
+import javax.annotation.Nullable;
 
 @Slf4j
-public class LogbackLogStore implements LogStore {
+public class GfLogStore implements LogStore {
 
-    private static final Logger PROMPT_LOGGER = LoggerFactory.getLogger("aidial.log");
+    private static final Log LOGGER = LogFactory.getLog("aidial.log");
     // Max allowed size is 4 mb for request/response body
     private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
 
     private final Vertx vertx;
 
-    public LogbackLogStore(Vertx vertx) {
+    public GfLogStore(Vertx vertx) {
         this.vertx = vertx;
     }
 
     @Override
     public void save(ProxyContext context) {
-        if (!PROMPT_LOGGER.isInfoEnabled() || !context.getRequest().method().equals(HttpMethod.POST)) {
+        if (!LOGGER.isInfoEnabled() || !context.getRequest().method().equals(HttpMethod.POST)) {
             return;
         }
 
@@ -69,140 +71,138 @@ public class LogbackLogStore implements LogStore {
         }
         // end
 
+        LogEntry entry = LOGGER.log(LogLevel.INFO);
         try {
-            String logMessage = buildLogMessage(context, assembledStreamingResponse);
-            PROMPT_LOGGER.info(logMessage);
+            append(context, entry, assembledStreamingResponse);
+            entry.commit();
         } catch (Throwable e) {
+            entry.abort();
             log.warn("Can't save log due to the error", e);
         }
         return null;
     }
 
-    private String buildLogMessage(ProxyContext context, String assembledStreamingResponse) throws JsonProcessingException {
-        StringBuilder message = new StringBuilder();
+    private void append(ProxyContext context, LogEntry entry, String assembledStreamingResponse) throws JsonProcessingException {
         HttpServerRequest request = context.getRequest();
         HttpServerResponse response = context.getResponse();
 
-        message.append("{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"");
-        appendEscaped(message, context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID));
+        append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
+        append(entry, context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID), true);
 
-        message.append("\"},\"project\":{\"id\":\"");
-        appendEscaped(message, context.getProject());
+        append(entry, "\"},\"project\":{\"id\":\"", false);
+        append(entry, context.getProject(), true);
 
-        message.append("\"},\"user\":{\"id\":\"");
-        appendEscaped(message, context.getUserHash());
+        append(entry, "\"},\"user\":{\"id\":\"", false);
+        append(entry, context.getUserHash(), true);
 
-        message.append("\",\"title\":\"");
-        appendEscaped(message, context.getRequestHeader(Proxy.HEADER_JOB_TITLE));
-        message.append("\"}");
+        append(entry, "\",\"title\":\"", false);
+        append(entry, context.getRequestHeader(Proxy.HEADER_JOB_TITLE), true);
+        append(entry, "\"}", false);
 
         TokenUsage tokenUsage = context.getTokenUsage();
         if (tokenUsage != null) {
-            message.append(",\"token_usage\":{");
-            message.append("\"completion_tokens\":");
-            message.append(tokenUsage.getCompletionTokens());
-            message.append(",\"prompt_tokens\":");
-            message.append(tokenUsage.getPromptTokens());
-            message.append(",\"total_tokens\":");
-            message.append(tokenUsage.getTotalTokens());
+            append(entry, ",\"token_usage\":{", false);
+            append(entry, "\"completion_tokens\":", false);
+            append(entry, Long.toString(tokenUsage.getCompletionTokens()), true);
+            append(entry, ",\"prompt_tokens\":", false);
+            append(entry, Long.toString(tokenUsage.getPromptTokens()), true);
+            append(entry, ",\"total_tokens\":", false);
+            append(entry, Long.toString(tokenUsage.getTotalTokens()), true);
             if (tokenUsage.getPromptTokensDetails() != null) {
                 PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
-                message.append(",\"prompt_token_details\":{\"cached_tokens\":");
-                message.append(details.getCachedTokens());
-                message.append("}");
+                append(entry, ",\"prompt_token_details\":{\"cached_tokens\":", false);
+                append(entry, Long.toString(details.getCachedTokens()), true);
+                append(entry, "}", false);
             }
             if (tokenUsage.getCost() != null) {
-                message.append(",\"deployment_price\":");
-                message.append(tokenUsage.getCost());
+                append(entry, ",\"deployment_price\":", false);
+                append(entry, tokenUsage.getCost().toString(), true);
             }
             if (tokenUsage.getAggCost() != null) {
-                message.append(",\"price\":");
-                message.append(tokenUsage.getAggCost());
+                append(entry, ",\"price\":", false);
+                append(entry, tokenUsage.getAggCost().toString(), true);
             }
-            message.append("}");
+            append(entry, "}", false);
         }
 
         Deployment deployment = context.getDeployment();
         if (deployment != null) {
-            message.append(",\"deployment\":\"");
-            appendEscaped(message, deployment.getName());
-            message.append("\"");
+            append(entry, ",\"deployment\":\"", false);
+            append(entry, deployment.getName(), true);
+            append(entry, "\"", false);
         }
 
         String parentDeployment = getParentDeployment(context);
         if (parentDeployment != null) {
-            message.append(",\"parent_deployment\":\"");
-            appendEscaped(message, parentDeployment);
-            message.append("\"");
+            append(entry, ",\"parent_deployment\":\"", false);
+            append(entry, parentDeployment, true);
+            append(entry, "\"", false);
         }
 
         List<String> executionPath = context.getExecutionPath();
         if (executionPath != null) {
-            message.append(",\"execution_path\":");
-            message.append(ProxyUtil.MAPPER.writeValueAsString(executionPath));
+            append(entry, ",\"execution_path\":", false);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
         if (!context.isSecuredApiKey()) {
-            message.append(",\"assembled_response\":\"");
+            append(entry, ",\"assembled_response\":\"", false);
             if (assembledStreamingResponse != null) {
-                appendEscaped(message, assembledStreamingResponse);
+                append(entry, assembledStreamingResponse, true);
             } else {
-                appendBuffer(message, context.getResponseBody());
+                append(entry, context.getResponseBody());
             }
-            message.append("\"");
+            append(entry, "\"", false);
         }
 
-        message.append(",\"trace\":{\"trace_id\":\"");
-        appendEscaped(message, context.getTraceId());
+        append(entry, ",\"trace\":{\"trace_id\":\"", false);
+        append(entry, context.getTraceId(), true);
 
-        message.append("\",\"core_span_id\":\"");
-        appendEscaped(message, context.getSpanId());
+        append(entry, "\",\"core_span_id\":\"", false);
+        append(entry, context.getSpanId(), true);
 
         String parentSpanId = context.getParentSpanId();
         if (parentSpanId != null) {
-            message.append("\",\"core_parent_span_id\":\"");
-            appendEscaped(message, context.getParentSpanId());
+            append(entry, "\",\"core_parent_span_id\":\"", false);
+            append(entry, context.getParentSpanId(), true);
         }
 
-        message.append("\"},\"request\":{\"protocol\":\"");
-        appendEscaped(message, request.version().alpnName().toUpperCase());
+        append(entry, "\"},\"request\":{\"protocol\":\"", false);
+        append(entry, request.version().alpnName().toUpperCase(), true);
 
-        message.append("\",\"method\":\"");
-        appendEscaped(message, request.method().name());
+        append(entry, "\",\"method\":\"", false);
+        append(entry, request.method().name(), true);
 
-        message.append("\",\"uri\":\"");
-        appendEscaped(message, request.uri());
+        append(entry, "\",\"uri\":\"", false);
+        append(entry, request.uri(), true);
 
-        message.append("\",\"time\":\"");
-        appendEscaped(message, formatTimestamp(context.getRequestTimestamp()));
+        append(entry, "\",\"time\":\"", false);
+        append(entry, formatTimestamp(context.getRequestTimestamp()), true);
 
         if (!context.isSecuredApiKey()) {
-            message.append("\",\"body\":\"");
-            appendBuffer(message, context.getRequestBody());
+            append(entry, "\",\"body\":\"", false);
+            append(entry, context.getRequestBody());
         }
 
-        message.append("\"},\"response\":{\"status\":\"");
-        message.append(response.getStatusCode());
+        append(entry, "\"},\"response\":{\"status\":\"", false);
+        append(entry, Integer.toString(response.getStatusCode()), true);
 
         Optional<String> upstreamEndpoint = Optional.ofNullable(context.getUpstreamRoute())
                 .map(UpstreamRoute::get).map(Upstream::getEndpoint);
         if (upstreamEndpoint.isPresent()) {
-            message.append("\",\"upstream_uri\":\"");
-            appendEscaped(message, upstreamEndpoint.get());
+            append(entry, "\",\"upstream_uri\":\"", false);
+            append(entry, upstreamEndpoint.get(), true);
         }
 
         if (!context.isSecuredApiKey()) {
-            message.append("\",\"body\":\"");
-            appendBuffer(message, context.getResponseBody());
+            append(entry, "\",\"body\":\"", false);
+            append(entry, context.getResponseBody());
         }
 
-        message.append("\"}");
-        message.append("}");
-
-        return message.toString();
+        append(entry, "\"}}", false);
     }
 
-    private void appendBuffer(StringBuilder message, Buffer buffer) {
+    private static void append(LogEntry entry, Buffer buffer) {
         if (buffer == null) {
             return;
         }
@@ -211,30 +211,40 @@ public class LogbackLogStore implements LogStore {
             buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
         }
         byte[] bytes = buffer.getBytes();
-        String chars = new String(bytes, StandardCharsets.UTF_8);
-        appendEscaped(message, chars);
+        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
+        append(entry, chars, true);
         if (largeBuffer) {
             // append a special marker that entry is cut off due to its large size
-            message.append(">>");
+            append(entry, ">>", false);
         }
     }
 
-    private void appendEscaped(StringBuilder message, String chars) {
+    private static void append(LogEntry entry, String chars, boolean escape) {
         if (chars == null) {
             return;
         }
 
-        for (int i = 0; i < chars.length(); i++) {
-            char c = chars.charAt(i);
-            char e = escape(c);
+        if (!escape) {
+            entry.append(chars);
+            return;
+        }
+
+        int i;
+        int j;
+
+        for (i = 0, j = 0; i < chars.length(); i++) {
+            final char c = chars.charAt(i);
+            final char e = escape(c);
 
             if (e != 0) {
-                message.append('\\');
-                message.append(e);
-            } else {
-                message.append(c);
+                entry.append(chars, j, i);
+                entry.append('\\');
+                entry.append(e);
+                j = i + 1;
             }
         }
+
+        entry.append(chars, j, i);
     }
 
     private static char escape(char c) {

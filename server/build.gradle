@@ -2,10 +2,13 @@ dependencies {
     implementation project(':config')
     implementation project(':storage')
 
+
     implementation 'com.google.protobuf:protobuf-java:3.25.5'
     implementation 'org.slf4j:slf4j-api:2.0.9'
     implementation 'ch.qos.logback:logback-classic:1.5.13'
     implementation 'ch.qos.logback:logback-core:1.5.13'
+    implementation 'com.epam.deltix:gflog-api:3.0.6'
+    implementation 'com.epam.deltix:gflog-core:3.0.6'
     implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
     implementation 'org.codehaus.janino:janino:3.1.10'
     implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:1.32.0-alpha'
@@ -16,6 +19,8 @@ dependencies {
     implementation 'io.vertx:vertx-micrometer-metrics:4.5.13'
     implementation 'io.micrometer:micrometer-registry-prometheus:1.11.2'
     implementation 'io.micrometer:micrometer-registry-otlp:1.11.2'
+    implementation 'io.opentelemetry:opentelemetry-api:1.47.0'
+    implementation 'io.opentelemetry:opentelemetry-context:1.47.0'
     implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.47.0'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.47.0'
     implementation 'org.apache.commons:commons-lang3:3.12.0'
