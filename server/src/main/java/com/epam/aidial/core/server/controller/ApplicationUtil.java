@@ -43,6 +43,8 @@ public class ApplicationUtil {
             data.setUpdatedAt(application.getUpdatedAt());
         }
 
+        data.setRoutes(application.getRoutes());
+
         return data;
     }
 

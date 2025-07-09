@@ -103,6 +103,11 @@ public enum RouteTemplate {
             "/v1/deployments/{id}/limits"
     ),
 
+    DEPLOYMENT_ROUTES(
+            "^/+v1/deployments/(?<id>.+)/route(?<routePath>/.+?)$",
+            "/v1/deployments/{id}/route/{routePath}"
+    ),
+
     // Operations
     SHARE_RESOURCE_OPERATIONS(
             "^/v1/ops/resource/share/(create|list|discard|revoke|copy)$",

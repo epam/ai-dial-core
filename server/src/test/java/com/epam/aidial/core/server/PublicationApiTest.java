@@ -1871,7 +1871,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_2/",
                     "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/.test_app2/xyz_3" ]
                   },
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
@@ -1911,7 +1912,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "files/public/folder/with_apps/.test_app2/xyz_2/",
                     "files/public/folder/with_apps/.test_app2/xyz_3" ]
                   },
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
@@ -2028,7 +2030,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "property3" : [ "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test.txt",
                     "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.abc_app/test_2.txt" ]
                   },
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
@@ -2066,7 +2069,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "property2" : "test property2",
                     "property3" : [ "files/public/.abc_app/test.txt", "files/public/.abc_app/test_2.txt" ]
                   },
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
@@ -2185,7 +2189,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "property3" : [ "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.test/test/",
                     "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/.test/test_2" ]
                   },
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
@@ -2223,7 +2228,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "property2" : "test property2",
                     "property3" : [ "files/public/.test/test/", "files/public/.test/test_2" ]
                   },
-                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : { }
                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
