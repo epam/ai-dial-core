@@ -2393,6 +2393,63 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPublicationUpdate_WithoutResources() {
+        // Create initial publication
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "name": "Publication name",
+                  "targetFolder": "public/folder/",
+                  "rules": [
+                    {
+                      "source": "roles",
+                      "function": "EQUAL",
+                      "targets": ["user"]
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        // Update as admin
+        response = operationRequest("/v1/ops/publication/update", """
+                {
+                  "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetFolder": "public/folder/",
+                  "rules": [
+                    {
+                       "source": "roles",
+                        "function": "EQUAL",
+                        "targets": ["manager"]
+                    }
+                  ]
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        // list publications
+        response = operationRequest("/v1/ops/publication/list", """
+                {"url": "publications/public/"}
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                   "publications" : [ {
+                     "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                     "name" : "Publication name",
+                     "targetFolder" : "public/folder/",
+                     "status" : "PENDING",
+                     "createdAt" : 0,
+                     "resourceTypes" : [ ],
+                     "author" : "EPM-RTC-GPT"
+                   } ]
+                 }
+                """);
+
+        // Approve the publication
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+    }
+
+    @Test
     void testPublicationUpdate() {
         Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
