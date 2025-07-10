@@ -324,6 +324,7 @@ public class PublicationService {
             existingPublication.setTargetFolder(publication.getTargetFolder());
             existingPublication.setResources(publication.getResources());
             existingPublication.setDisplayAuthor(publication.getDisplayAuthor());
+            existingPublication.setResourceTypes(publication.getResourceTypes());
             resourceService.putResource(publicationsFile, encodePublications(publications), EtagHeader.ANY, null, false);
 
             // update public publications to be viewed by admin
