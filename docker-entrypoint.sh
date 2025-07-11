@@ -10,7 +10,7 @@ if [ $# -lt 1 ]; then
   if [ "$(id -u)" = '0' ]; then
     chown -R appuser:appuser "$LOG_DIR" "$STORAGE_DIR"
 
-    exec su-exec appuser "/app/bin/server" "$@"
+    setpriv --reuid $(id -u appuser) --regid $(id -g appuser) "/app/bin/server" "$@"
   fi
 
   exec "/app/bin/server" "$@"

@@ -1,4 +1,4 @@
-FROM gradle:8.2.0-jdk17-alpine AS builder
+FROM gradle:8.2.0-jdk17 AS builder
 
 #COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
@@ -7,7 +7,7 @@ WORKDIR /home/gradle/src
 RUN --mount=type=secret,id=GPR_USERNAME,env=GPR_USERNAME --mount=type=secret,id=GPR_PASSWORD,env=GPR_PASSWORD gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
 
-FROM eclipse-temurin:17-jdk-alpine
+FROM eclipse-temurin:17-jdk
 
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
@@ -26,10 +26,6 @@ RUN chown -R appuser:appuser /app
 
 COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-# upgrade/install packages
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils
-RUN apk add --no-cache su-exec
 
 HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
   CMD wget --no-verbose --spider --tries=1 http://localhost:8080/health || exit 1
