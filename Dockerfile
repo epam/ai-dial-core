@@ -19,7 +19,7 @@ ENV LOG_DIR=/app/log
 
 WORKDIR /app
 
-RUN adduser -u 1001 --disabled-password --gecos "" appuser
+RUN adduser --uid 1001 --disabled-password --gecos "" appuser
 
 COPY --from=builder --chown=appuser:appuser /build/ .
 RUN chown -R appuser:appuser /app
