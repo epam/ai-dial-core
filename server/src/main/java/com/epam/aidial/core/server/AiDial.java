@@ -253,6 +253,7 @@ public class AiDial {
 
         for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
             String key = entry.getKey();
+            log.info("Env var name: {}", key);
             String value = entry.getValue();
 
             for (String prefix : prefixes) {
