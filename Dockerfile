@@ -37,4 +37,7 @@ RUN mkdir -p "$LOG_DIR" && \
     mkdir -p "$STORAGE_DIR" && \
     chown -R appuser:appuser "$STORAGE_DIR"
 
+# Ubuntu is using dash as /bin/sh which leads to missing dotted environment variables in java
+RUN ln -sfT /bin/bash /bin/sh
+
 ENTRYPOINT ["docker-entrypoint.sh"]
