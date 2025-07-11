@@ -27,6 +27,7 @@ public class Config {
     private Map<String, Model> models = Map.of();
     private Map<String, Addon> addons = Map.of();
     private Map<String, Application> applications = Map.of();
+    private Map<String, Application> toolsets = Map.of();
     private Assistants assistant = new Assistants();
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private Map<String, Key> keys = new HashMap<>();

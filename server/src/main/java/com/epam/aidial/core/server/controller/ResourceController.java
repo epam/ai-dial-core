@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -318,6 +319,7 @@ public class ResourceController extends AccessControlBaseController {
         switch ((ResourceTypes) descriptor.getType()) {
             case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
             case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
+            case TOOL_SET -> ProxyUtil.convertToObject(body, ToolSet.class);
             default -> throw new IllegalArgumentException("Unsupported resource type " + descriptor.getType());
         }
     }
