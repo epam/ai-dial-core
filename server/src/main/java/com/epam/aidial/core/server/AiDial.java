@@ -116,6 +116,7 @@ public class AiDial {
             LogStore logStore = new GfLogStore(vertx);
 
             if (accessTokenValidator == null) {
+                log.info("IDP config: {}", settings("identityProviders"));
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client, clientOptions);
             }
 
@@ -262,7 +263,7 @@ public class AiDial {
                 }
             }
         }
-
+        log.info("Env settings: {}", properties);
         return JsonObjectHelper.from(properties, false, true);
     }
 
