@@ -5,7 +5,7 @@ dependencies {
 
     implementation 'com.google.protobuf:protobuf-java:3.25.5'
     implementation 'org.slf4j:slf4j-api:1.7.32'
-    implementation 'org.apache.commons:commons-lang3:3.12.0'
+    implementation 'org.apache.commons:commons-lang3:3.18.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     implementation 'org.apache.jclouds:jclouds-allblobstore:2.7.3'
     implementation 'org.apache.jclouds.api:filesystem:2.7.3'
