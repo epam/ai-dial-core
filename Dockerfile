@@ -41,3 +41,7 @@ RUN mkdir -p "$LOG_DIR" && \
 RUN ln -sfT /bin/bash /bin/sh
 
 ENTRYPOINT ["docker-entrypoint.sh"]
+
+# Debug
+RUN uname -a && \
+    dpkg --print-architecture
