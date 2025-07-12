@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.Publications;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -10,6 +12,12 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublicationApiTest extends ResourceBaseTest {
 
@@ -2752,7 +2760,7 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publication/list", """
                 {"url": "publications/public/"}
                 """, "authorization", "admin");
-        verifyJson(response, 200, """
+        verifyJsonNotExact(response, 200, """
                 {
                    "publications" : [ {
                      "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
@@ -2760,12 +2768,16 @@ class PublicationApiTest extends ResourceBaseTest {
                      "targetFolder" : "public/folder/",
                      "status" : "PENDING",
                      "createdAt" : 0,
-                     "resourceTypes" : [ "CONVERSATION", "FILE" ],
+                     "resourceTypes" : [ "@ignore", "@ignore" ],
                      "author" : "EPM-RTC-GPT"
                    } ]
                  }
                 """);
-
+        Publications publications = ProxyUtil.convertToObject(response.body(), Publications.class);
+        assertNotNull(publications);
+        assertNotNull(publications.publications());
+        assertFalse(publications.publications().isEmpty());
+        assertEquals(publications.publications().iterator().next().getResourceTypes(), Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION));
     }
 
 }

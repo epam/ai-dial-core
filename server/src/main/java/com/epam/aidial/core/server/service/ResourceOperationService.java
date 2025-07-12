@@ -23,11 +23,12 @@ import static com.epam.aidial.core.server.data.ResourceTypes.APPLICATION;
 import static com.epam.aidial.core.server.data.ResourceTypes.CONVERSATION;
 import static com.epam.aidial.core.server.data.ResourceTypes.FILE;
 import static com.epam.aidial.core.server.data.ResourceTypes.PROMPT;
+import static com.epam.aidial.core.server.data.ResourceTypes.TOOL_SET;
 
 @AllArgsConstructor
 public class ResourceOperationService {
     private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(FILE, CONVERSATION,
-            PROMPT, APPLICATION);
+            PROMPT, APPLICATION, TOOL_SET);
 
     private final ApplicationService applicationService;
     private final ResourceService resourceService;
@@ -147,7 +148,7 @@ public class ResourceOperationService {
     private static void verifyResourceToDelete(ResourceDescriptor resource) {
         ResourceType type = resource.getType();
         if (!(APPLICATION == type || FILE == type
-                || CONVERSATION == type || type == PROMPT)) {
+                || CONVERSATION == type || type == PROMPT || type == TOOL_SET)) {
             throw new IllegalArgumentException("Unsupported resource type to delete: " + type.name());
         }
     }
