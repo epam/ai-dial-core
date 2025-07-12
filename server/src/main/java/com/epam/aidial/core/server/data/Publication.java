@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.Nulls;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -67,7 +67,7 @@ public class Publication {
         if (resources == null) {
             return Set.of();
         }
-        Set<ResourceTypes> resourceTypes = new LinkedHashSet<>();
+        Set<ResourceTypes> resourceTypes = new HashSet<>();
         for (Resource resource : resources) {
             String resourceUrl = resource.getTargetUrl();
             String resourceType = resourceUrl.substring(0, resourceUrl.indexOf('/'));

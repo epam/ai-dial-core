@@ -6,5 +6,7 @@ on:
 
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@1.12.1
+    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@2.4.0
     secrets: inherit
+    with:
+      platforms: "linux/amd64,linux/arm64"

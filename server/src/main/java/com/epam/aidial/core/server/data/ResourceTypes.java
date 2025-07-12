@@ -8,7 +8,8 @@ public enum ResourceTypes implements ResourceType {
     SHARED_WITH_ME("shared_with_me", true), SHARED_BY_ME("shared_by_me", true), INVITATION("invitations", true),
     PUBLICATION("publications", true), RULES("rules", true), API_KEY_DATA("api_key_data", true), NOTIFICATION("notifications", true),
     APPLICATION("applications", true), DEPLOYMENT_COST_STATS("deployment_cost_stats", true),
-    CODE_INTERPRETER_SESSION("code_interpreter_session", true), USER_CONSENT("user_consent", true);
+    CODE_INTERPRETER_SESSION("code_interpreter_session", true), USER_CONSENT("user_consent", true),
+    TOOL_SET("toolsets", true);
 
     private final String group;
     private final boolean requireCompression;
@@ -27,6 +28,7 @@ public enum ResourceTypes implements ResourceType {
             case "publications" -> PUBLICATION;
             case "applications" -> APPLICATION;
             case "code_interpreter_session" -> CODE_INTERPRETER_SESSION;
+            case "toolsets" -> TOOL_SET;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }

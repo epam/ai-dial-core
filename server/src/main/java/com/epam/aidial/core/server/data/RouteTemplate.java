@@ -68,11 +68,11 @@ public enum RouteTemplate {
     ),
 
     RESOURCE(
-            "^/v1/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "^/v1/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
     RESOURCE_METADATA(
-            "^/v1/metadata/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
