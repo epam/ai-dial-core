@@ -82,6 +82,28 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
+        response = send(HttpMethod.GET, "/openai/toolsets/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "display_name": "My Toolset",
+                  "display_version": "1.0",
+                  "icon_url": "http://toolset/icon.svg",
+                  "description": "My toolset Description",
+                  "owner": "EPM-RTC-GPT",
+                  "object": "application",
+                  "status": "succeeded",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
+                  "description_keywords": [],
+                  "max_retry_attempts": 1,
+                  "transport": "HTTP",
+                  "allowed_tools": [
+                    "tool1",
+                    "tool2"
+                  ]
+                }
+                """);
+
         response = send(HttpMethod.GET, "/openai/toolsets");
         verifyJsonNotExact(response, 200, """
                 {
