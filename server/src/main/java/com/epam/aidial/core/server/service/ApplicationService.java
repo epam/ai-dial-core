@@ -8,23 +8,16 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.ApplicationUtil;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.data.SharedResourcesResponse;
-import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
-import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
-import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.NodeType;
-import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -48,12 +41,10 @@ import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -63,7 +54,6 @@ import static com.epam.aidial.core.server.service.PublicationService.getTargetFo
 public class ApplicationService {
 
     private static final String DEPLOYMENTS_NAME = "deployments";
-    private static final int PAGE_SIZE = 1000;
 
     private final Vertx vertx;
     private final ApiKeyStore apiKeyStore;
@@ -110,60 +100,6 @@ public class ApplicationService {
         }
     }
 
-    public List<Application> getAllApplications(ProxyContext context) {
-        List<Application> applications = new ArrayList<>();
-        applications.addAll(getPrivateApplications(context));
-        applications.addAll(getSharedApplications(context));
-        applications.addAll(getPublicApplications(context));
-        return applications;
-    }
-
-    public List<Application> getPrivateApplications(ProxyContext context) {
-        String location = BucketBuilder.buildInitiatorBucket(context);
-        String bucket = encryptionService.encrypt(location);
-
-        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, bucket, location, null);
-        return getApplications(folder, context);
-    }
-
-    public List<Application> getSharedApplications(ProxyContext context) {
-        String location = BucketBuilder.buildInitiatorBucket(context);
-        String bucket = encryptionService.encrypt(location);
-
-        ListSharedResourcesRequest request = new ListSharedResourcesRequest();
-        request.setResourceTypes(Set.of(ResourceTypes.APPLICATION));
-
-        ShareService shares = context.getProxy().getShareService();
-        SharedResourcesResponse response = shares.listSharedWithMe(bucket, location, request);
-        Set<MetadataBase> metadata = response.getResources();
-
-        List<Application> list = new ArrayList<>();
-
-        for (MetadataBase meta : metadata) {
-            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-
-            if (meta instanceof ResourceItemMetadata) {
-                try {
-                    Application application = extractApplicationFromResource(resource, resource, context, meta);
-                    list.add(application);
-                } catch (ResourceNotFoundException ignore) {
-                    // skip shared app which might be deleted incidentally
-                    log.warn("Shared application is not found: {}", meta.getUrl());
-                }
-            } else {
-                list.addAll(getApplications(resource, context));
-            }
-        }
-
-        return list;
-    }
-
-    public List<Application> getPublicApplications(ProxyContext context) {
-        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
-        AccessService accessService = context.getProxy().getAccessService();
-        return getApplications(folder, page -> accessService.filterForbidden(context, folder, page), context);
-    }
-
     public Pair<ResourceItemMetadata, Application> getApplication(ResourceDescriptor resource) {
         return getApplication(resource, EtagHeader.ANY);
     }
@@ -190,48 +126,7 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    public List<Application> getApplications(ResourceDescriptor resource, ProxyContext ctx) {
-        Consumer<ResourceFolderMetadata> noop = ignore -> {
-        };
-        return getApplications(resource, noop, ctx);
-    }
-
-    public List<Application> getApplications(ResourceDescriptor resource,
-                                             Consumer<ResourceFolderMetadata> filter, ProxyContext ctx) {
-        if (!resource.isFolder() || resource.getType() != ResourceTypes.APPLICATION) {
-            throw new IllegalArgumentException("Invalid application folder: " + resource.getUrl());
-        }
-
-        List<Application> applications = new ArrayList<>();
-        String nextToken = null;
-
-        do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(resource, nextToken, PAGE_SIZE, true);
-            if (folder == null) {
-                break;
-            }
-
-            filter.accept(folder);
-
-            for (MetadataBase meta : folder.getItems()) {
-                if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceTypes.APPLICATION) {
-                    try {
-                        ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-                        Application application = extractApplicationFromResource(resource, item, ctx, meta);
-                        applications.add(application);
-                    } catch (ResourceNotFoundException ignore) {
-                        // deleted while fetching
-                    }
-                }
-            }
-
-            nextToken = folder.getNextToken();
-        } while (nextToken != null);
-
-        return applications;
-    }
-
-    private Application extractApplicationFromResource(ResourceDescriptor resource, ResourceDescriptor item, ProxyContext ctx, MetadataBase meta) {
+    public Application extractApplicationFromResource(ResourceDescriptor resource, ResourceDescriptor item, ProxyContext ctx) {
         Application application = getApplication(item).getValue();
         return modifySchemRichApplication(resource, ctx, application, item);
     }
@@ -316,7 +211,7 @@ public class ApplicationService {
             return null;
         });
 
-        Application application = reference.getValue();
+        Application application = reference.get();
 
         if (isPublicOrReview(resource) && application.getFunction() != null) {
             deleteFolder(application.getFunction().getSourceFolder());
@@ -424,7 +319,7 @@ public class ApplicationService {
         vertx.executeBlocking(() -> launchApplication(context, resource), false)
                 .onFailure(error -> vertx.executeBlocking(() -> terminateApplication(resource, error.getMessage()), false));
 
-        return result.getValue();
+        return result.get();
     }
 
     public Application undeployApplication(ResourceDescriptor resource) {
@@ -464,7 +359,7 @@ public class ApplicationService {
         });
 
         Future<Void> future = vertx.executeBlocking(() -> terminateApplication(resource, null), false);
-        return Pair.of(result.getValue(), future);
+        return Pair.of(result.get(), future);
     }
 
     public Application.Logs getApplicationLogs(ResourceDescriptor resource) {

@@ -211,6 +211,14 @@
             "userRoles": ["role3"]
         }
     },
+    "toolsets": {
+        "git": {
+            "transport": "http",
+            "endpoint": "http://git-mcp-server/call",
+            "allowed_tools": ["branch", "remote"],
+            "description": "Git remote tool set"
+        }
+    },
     "keys": {
         "proxyKey1": {
             "project": "TestProject1",
@@ -258,4 +266,4 @@
         }
     },
     "retriableErrorCodes": [401, 403]
-}
+},
