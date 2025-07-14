@@ -72,8 +72,8 @@ public class ToolSetController {
         return deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
             @SuppressWarnings("unchecked")
             @Override
-            public ToolSet extract(ResourceDescriptor parent, ResourceDescriptor current, ProxyContext context) {
-                return toolSetService.getToolSet(current).getValue();
+            public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
+                return toolSetService.getToolSet(resource).getValue();
             }
         });
     }

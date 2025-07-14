@@ -126,17 +126,17 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    public Application extractApplicationFromResource(ResourceDescriptor resource, ResourceDescriptor item, ProxyContext ctx) {
-        Application application = getApplication(item).getValue();
-        return modifySchemRichApplication(resource, ctx, application, item);
+    public Application extractApplicationFromResource(ResourceDescriptor resource, ProxyContext ctx) {
+        Application application = getApplication(resource).getValue();
+        return modifySchemRichApplication(resource, ctx, application);
     }
 
-    private static Application modifySchemRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application, ResourceDescriptor item) {
+    private static Application modifySchemRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application) {
         try {
             boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
                     resource.getDecodedUrl());
             if (applicationRequestInfoAboutItSelf) {
-                application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
+                application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, resource, application);
             }
             application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {

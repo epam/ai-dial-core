@@ -83,8 +83,8 @@ public class ApplicationController {
                 list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, new DeploymentService.DeploymentExtractor() {
                     @SuppressWarnings("unchecked")
                     @Override
-                    public Application extract(ResourceDescriptor parent, ResourceDescriptor current, ProxyContext context) {
-                        return applicationService.extractApplicationFromResource(parent, current, context);
+                    public Application extract(ResourceDescriptor resource, ProxyContext context) {
+                        return applicationService.extractApplicationFromResource(resource, context);
                     }
                 }));
             }

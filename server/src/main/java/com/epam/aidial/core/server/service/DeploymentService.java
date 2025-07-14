@@ -134,7 +134,7 @@ public class DeploymentService {
                 if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == resourceType) {
                     try {
                         ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-                        T deployment = extractor.extract(resource, item, ctx);
+                        T deployment = extractor.extract(item, ctx);
                         deployments.add(deployment);
                     } catch (ResourceNotFoundException ignore) {
                         // deleted while fetching
@@ -166,7 +166,7 @@ public class DeploymentService {
 
             if (meta instanceof ResourceItemMetadata) {
                 try {
-                    T deployment = extractor.extract(resource, resource, context);
+                    T deployment = extractor.extract(resource, context);
                     list.add(deployment);
                 } catch (ResourceNotFoundException ignore) {
                     // skip shared app which might be deleted incidentally
@@ -187,7 +187,7 @@ public class DeploymentService {
     }
 
     public interface DeploymentExtractor {
-        <T extends Deployment> T extract(ResourceDescriptor parent, ResourceDescriptor current, ProxyContext context);
+        <T extends Deployment> T extract(ResourceDescriptor resource, ProxyContext context);
 
     }
 
