@@ -51,7 +51,7 @@ public class DeploymentService {
         Deployment deployment = context.getConfig().selectDeployment(id);
         if (deployment != null) {
             if (!deployment.hasAccess(context.getUserRoles())) {
-                forbiddenDeployment(id);
+                throwForbiddenDeploymentError(id);
             }
             return deployment;
         }
@@ -88,13 +88,13 @@ public class DeploymentService {
         }
 
         if (!accessService.hasReadAccess(resource, context)) {
-            forbiddenDeployment(resourceUrl);
+            throwForbiddenDeploymentError(resourceUrl);
         }
 
         return resource;
     }
 
-    private static void forbiddenDeployment(String deploymentId) {
+    private static void throwForbiddenDeploymentError(String deploymentId) {
         throw new PermissionDeniedException("Forbidden deployment: " + deploymentId);
     }
 

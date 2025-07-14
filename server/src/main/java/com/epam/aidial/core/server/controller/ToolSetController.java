@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -53,9 +52,8 @@ public class ToolSetController {
 
     public Future<?> getToolSets() {
         Config config = context.getConfig();
-        Proxy proxy = context.getProxy();
 
-        return proxy.getVertx().executeBlocking(() -> {
+        return vertx.executeBlocking(() -> {
             List<ToolSet> list = new ArrayList<>();
             for (ToolSet toolSet : config.getToolsets().values()) {
                 if (toolSet.hasAccess(context.getUserRoles())) {

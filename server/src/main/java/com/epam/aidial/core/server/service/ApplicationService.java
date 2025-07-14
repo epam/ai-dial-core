@@ -128,10 +128,10 @@ public class ApplicationService {
 
     public Application extractApplicationFromResource(ResourceDescriptor resource, ProxyContext ctx) {
         Application application = getApplication(resource).getValue();
-        return modifySchemRichApplication(resource, ctx, application);
+        return modifySchemaRichApplication(resource, ctx, application);
     }
 
-    private static Application modifySchemRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application) {
+    private static Application modifySchemaRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application) {
         try {
             boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
                     resource.getDecodedUrl());
