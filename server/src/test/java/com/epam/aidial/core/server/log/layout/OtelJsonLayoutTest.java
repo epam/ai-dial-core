@@ -59,7 +59,7 @@ class OtelJsonLayoutTest {
     }
 
     @Test
-    void shouldIncludeMDCProperties() throws Exception {
+    void shouldIncludeMdcProperties() throws Exception {
         MDC.put("request_id", "12345");
         MDC.put("user_id", "user123");
 
@@ -121,7 +121,7 @@ class OtelJsonLayoutTest {
     }
 
     @Test
-    void shouldIncludeAllMDCFields() throws Exception {
+    void shouldIncludeAllMdcFields() throws Exception {
         // Set up all MDC fields
         MDC.put("deployment", "test-deployment");
         MDC.put("user_hash", "user-hash-123");
@@ -190,7 +190,7 @@ class OtelJsonLayoutTest {
     }
 
     @Test
-    void shouldHandleNullMDCFields() throws Exception {
+    void shouldHandleNullMdcFields() throws Exception {
         // Don't set any MDC fields
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();

@@ -148,13 +148,13 @@ public class Proxy implements Handler<HttpServerRequest> {
             } catch (Exception e) {
                 log.debug("Failed to add exception to span", e);
             }
-            putToMDC("request.method", request.method().name());
-            putToMDC("request.path", request.path());
-            putToMDC("request.params", request.params().toString());
+            putToMdc("request.method", request.method().name());
+            putToMdc("request.path", request.path());
+            putToMdc("request.params", request.params().toString());
 
-            putToMDC("exception.name", error.getClass().getSimpleName());
-            putToMDC("exception.message", error.getMessage());
-            putToMDC("exception.stacktrace", Arrays.toString(error.getStackTrace()));
+            putToMdc("exception.name", error.getClass().getSimpleName());
+            putToMdc("exception.message", error.getMessage());
+            putToMdc("exception.stacktrace", Arrays.toString(error.getStackTrace()));
 
             try {
                 if (error instanceof RuntimeException) {
@@ -176,7 +176,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private static void putToMDC(String key, String value) {
+    private static void putToMdc(String key, String value) {
         if (value != null) {
             MDC.put(key, value);
         }
