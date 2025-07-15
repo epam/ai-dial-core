@@ -17,7 +17,6 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublicationApiTest extends ResourceBaseTest {
 
@@ -2734,6 +2733,28 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
         verify(response, 200);
 
+        // Update as admin - bad source file
+        response = operationRequest("/v1/ops/publication/update", """
+            {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+              "name": "Publication name",
+              "targetFolder": "public/folder/",
+              "resources": [
+                {
+                  "action": "ADD",
+                  "sourceUrl": "conversations/%s/my/folder/conversation%s",
+                  "targetUrl": "conversations/public/folder/conversation%s"
+                },
+                {
+                  "action": "ADD",
+                  "sourceUrl": "files/%s/invalid_file",
+                  "targetUrl": "files/public/folder/new_file"
+                }
+              ]
+            }
+            """.formatted(bucket, "", "1", bucket), "authorization", "admin");
+        verify(response, 400);
+
         // Update as admin
         response = operationRequest("/v1/ops/publication/update", """
             {
@@ -2778,6 +2799,13 @@ class PublicationApiTest extends ResourceBaseTest {
         assertNotNull(publications.publications());
         assertFalse(publications.publications().isEmpty());
         assertEquals(publications.publications().iterator().next().getResourceTypes(), Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION));
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/conversations/public/folder/conversation1");
+        verifyJsonNotExact(response, 200, conversationTemplate.formatted("conversations/public/folder/conversation1",
+                "conversations/public/folder", "files/public/folder/new_file"));
     }
 
 }
