@@ -24,7 +24,7 @@ public abstract class AccessControlBaseController {
 
         try {
             resource = ResourceDescriptorFactory.fromAnyUrl(resourceUrl, proxy.getEncryptionService());
-        } catch (IllegalArgumentException e) {
+        } catch (Exception e) {
             String errorMessage = e.getMessage() != null ? e.getMessage() : ("Invalid resource url provided: " + resourceUrl);
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
