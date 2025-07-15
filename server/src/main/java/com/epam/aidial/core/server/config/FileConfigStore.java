@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.validation.ValidationModule;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -146,7 +147,14 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Interceptor interceptor = entry.getValue();
                 interceptor.setName(name);
-                log.debug("Interceptor {}", interceptor);
+                log.debug("Loading {}", interceptor);
+            }
+
+            for (Map.Entry<String, ToolSet> entry : config.getToolsets().entrySet()) {
+                String name = entry.getKey();
+                ToolSet toolSet = entry.getValue();
+                toolSet.setName(name);
+                log.debug("Loading {}", toolSet);
             }
 
             this.config = config;

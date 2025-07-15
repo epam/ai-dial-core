@@ -17,6 +17,7 @@ public class DeploymentData {
     private String addon;
     private String assistant;
     private String application;
+    private String toolset;
     private String displayName;
     private String displayVersion;
     private String iconUrl;

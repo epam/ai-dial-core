@@ -178,7 +178,11 @@ public enum RouteTemplate {
     TOOL_SETS(
             "^/+openai/toolsets$",
             "/openai/toolsets"
-    ),;
+    ),
+    TOOL_SET_PROXY(
+            "^/v1/toolset/(?<id>.+?)/mcp$",
+            "/v1/toolset/{id})/mcp"
+    );
 
     private final Pattern pattern;
     private final String template;
