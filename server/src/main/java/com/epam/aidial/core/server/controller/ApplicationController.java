@@ -80,7 +80,13 @@ public class ApplicationController {
                 }
             }
             if (applicationService.isIncludeCustomApps()) {
-                list.addAll(applicationService.getAllApplications(context));
+                list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, new DeploymentService.DeploymentExtractor() {
+                    @SuppressWarnings("unchecked")
+                    @Override
+                    public Application extract(ResourceDescriptor resource, ProxyContext context) {
+                        return applicationService.extractApplicationFromResource(resource, context);
+                    }
+                }));
             }
             return list.stream().map(ApplicationUtil::mapApplication).toList();
         }).onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
