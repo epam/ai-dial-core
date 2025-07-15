@@ -27,7 +27,7 @@ dependencies {
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
     implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
-    implementation group: 'com.azure', name: 'azure-identity', version: '1.13.2'
+    implementation group: 'com.azure', name: 'azure-identity', version: '1.16.2'
     implementation 'org.hibernate.validator:hibernate-validator:8.0.0.Final'
     implementation 'org.glassfish:jakarta.el:4.0.2'
     implementation 'jakarta.validation:jakarta.validation-api:3.0.2' // Ensure you have Jakarta Validation API dependency
