@@ -164,9 +164,6 @@ public class ResourceService implements AutoCloseable {
             }
 
             for (MetadataBase item : folder.getItems()) {
-                if (item.getNodeType() == NodeType.FOLDER) {
-                    continue;
-                }
                 String sourceFileUrl = item.getUrl();
                 String targetFileUrl = targetFolder + sourceFileUrl.substring(sourceFolder.getUrl().length());
 
@@ -217,44 +214,49 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        List<MetadataBase> resources = set.stream().map(meta -> {
-            Map<String, String> metadata = meta.getUserMetadata();
-            String path = meta.getName();
-            ResourceDescriptor description = descriptor.resolveByPath(path);
-
-            if (meta.getType() != StorageType.BLOB) {
-                return new ResourceFolderMetadata(description);
-            }
-
-            Long createdAt = null;
-            Long updatedAt = null;
-            String author = null;
-
-            if (metadata != null) {
-                createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
-                updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
-                author = decode(metadata.get(AUTHOR_ATTRIBUTE));
-            }
-
-            if (createdAt == null && meta.getCreationDate() != null) {
-                createdAt = meta.getCreationDate().getTime();
-            }
-
-            if (updatedAt == null && meta.getLastModified() != null) {
-                updatedAt = meta.getLastModified().getTime();
-            }
-
-            if (description.getType().requireCompression()) {
-                return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt).setAuthor(author);
-            }
-
-            return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
-                    .setCreatedAt(createdAt)
-                    .setAuthor(author)
-                    .setUpdatedAt(updatedAt);
-        }).toList();
+        List<MetadataBase> resources = set.stream()
+                // blob store never returns folder however local FS provider may return
+                .filter(meta -> !recursive || meta.getType() == StorageType.BLOB)
+                .map(meta -> storageToResourceMetadata(meta, descriptor)).toList();
 
         return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
+    }
+
+    private static MetadataBase storageToResourceMetadata(StorageMetadata meta, ResourceDescriptor folder) {
+        Map<String, String> metadata = meta.getUserMetadata();
+        String path = meta.getName();
+        ResourceDescriptor description = folder.resolveByPath(path);
+
+        if (meta.getType() != StorageType.BLOB) {
+            return new ResourceFolderMetadata(description);
+        }
+
+        Long createdAt = null;
+        Long updatedAt = null;
+        String author = null;
+
+        if (metadata != null) {
+            createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
+            updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
+            author = decode(metadata.get(AUTHOR_ATTRIBUTE));
+        }
+
+        if (createdAt == null && meta.getCreationDate() != null) {
+            createdAt = meta.getCreationDate().getTime();
+        }
+
+        if (updatedAt == null && meta.getLastModified() != null) {
+            updatedAt = meta.getLastModified().getTime();
+        }
+
+        if (description.getType().requireCompression()) {
+            return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt).setAuthor(author);
+        }
+
+        return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
+                .setCreatedAt(createdAt)
+                .setAuthor(author)
+                .setUpdatedAt(updatedAt);
     }
 
     @Nullable
