@@ -272,15 +272,20 @@ public class PublicationService {
                 Publication.Resource existingResource = sourceUrlToResource.get(resource.getSourceUrl());
                 if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
                     if (existingResource == null) {
+                        ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
+                        if (!resourceService.hasResource(from)) {
+                            throw new IllegalArgumentException("Source resource does not exists: " + resource.getSourceUrl());
+                        }
                         reviewResourcesToAdd.add(resource);
+                        ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
+                        replacementLinks.put(from.getDecodedUrl(), to.getUrl());
                     } else if (!resource.getTargetUrl().equals(existingResource.getTargetUrl())) {
                         reviewResourcesToMove.add(Pair.of(existingResource.getReviewUrl(), resource.getReviewUrl()));
                         ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(existingResource.getReviewUrl(), encryption);
 
                         if (from.getType() == ResourceTypes.FILE) {
                             ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
-                            String decodedUrl = UrlUtil.decodePath(from.getUrl());
-                            replacementLinks.put(decodedUrl, to.getUrl());
+                            replacementLinks.put(from.getDecodedUrl(), to.getUrl());
                         }
                     }
                 }
@@ -324,10 +329,11 @@ public class PublicationService {
             existingPublication.setTargetFolder(publication.getTargetFolder());
             existingPublication.setResources(publication.getResources());
             existingPublication.setDisplayAuthor(publication.getDisplayAuthor());
+            existingPublication.setResourceTypes(publication.getResourceTypes());
             resourceService.putResource(publicationsFile, encodePublications(publications), EtagHeader.ANY, null, false);
 
             // update public publications to be viewed by admin
-            updatePublicPublications(publication);
+            updatePublicPublications(existingPublication);
 
             return existingPublication;
         }

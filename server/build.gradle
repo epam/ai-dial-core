@@ -23,7 +23,7 @@ dependencies {
     implementation 'io.opentelemetry:opentelemetry-context:1.47.0'
     implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.47.0'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.47.0'
-    implementation 'org.apache.commons:commons-lang3:3.12.0'
+    implementation 'org.apache.commons:commons-lang3:3.18.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     implementation 'com.auth0:java-jwt:4.4.0'
     implementation 'com.auth0:jwks-rsa:0.22.1'

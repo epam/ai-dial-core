@@ -68,11 +68,11 @@ public enum RouteTemplate {
     ),
 
     RESOURCE(
-            "^/v1/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "^/v1/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
     RESOURCE_METADATA(
-            "^/v1/metadata/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
@@ -170,7 +170,15 @@ public enum RouteTemplate {
     APP_SCHEMAS(
             "^/v1/application_type_schemas/(schemas|schema|meta_schema)$",
             "/v1/application_type_schemas/{operation}"
-    );
+    ),
+    TOOL_SET(
+            "^/+openai/toolsets/(?<id>.+?)$",
+            "/openai/toolsets/{id}"
+    ),
+    TOOL_SETS(
+            "^/+openai/toolsets$",
+            "/openai/toolsets"
+    ),;
 
     private final Pattern pattern;
     private final String template;

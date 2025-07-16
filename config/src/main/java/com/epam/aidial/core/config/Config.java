@@ -27,6 +27,7 @@ public class Config {
     private Map<String, Model> models = Map.of();
     private Map<String, Addon> addons = Map.of();
     private Map<String, Application> applications = Map.of();
+    private Map<String, ToolSet> toolsets = Map.of();
     private Assistants assistant = new Assistants();
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private Map<String, Key> keys = new HashMap<>();
@@ -49,6 +50,11 @@ public class Config {
         Model model = models.get(deploymentId);
         if (model != null) {
             return model;
+        }
+
+        ToolSet toolSet = toolsets.get(deploymentId);
+        if (toolSet != null) {
+            return toolSet;
         }
 
         Assistants assistants = assistant;

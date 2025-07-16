@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
@@ -157,7 +158,10 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new, upstreamCacheService);
 
-            DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService);
+            ToolSetService toolSetService = new ToolSetService(resourceService);
+
+            DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
+                    toolSetService, resourceService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
@@ -168,7 +172,7 @@ public class AiDial {
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, version());
+                    consentService, deploymentService, healthCheckController, toolSetService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

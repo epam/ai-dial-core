@@ -138,6 +138,15 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.TOOL_SET, (proxy, context, pathMatcher) -> {
+            ToolSetController controller = new ToolSetController(context);
+            String toolsetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return () -> controller.getToolSet(toolsetId);
+        });
+        get(RouteTemplate.TOOL_SETS, (proxy, context, pathMatcher) -> {
+            ToolSetController controller = new ToolSetController(context);
+            return controller::getToolSets;
+        });
 
         // POST routes
         post(RouteTemplate.POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {
