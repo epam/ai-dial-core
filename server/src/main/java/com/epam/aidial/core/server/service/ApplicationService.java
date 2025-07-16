@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 @Slf4j
@@ -334,35 +335,30 @@ public class ApplicationService {
             return List.of();
         }
         String targetFolder = getTargetFolderForCustomAppFiles(dest);
-        List<ResourceDescriptor> result = new ArrayList<>();
         if (isPublicOrReview(source)) {
-            for (ResourceDescriptor file : sourceAppFiles) {
-                String path = targetFolder + file.getName();
-                if (file.isFolder()) {
-                    path += ResourceDescriptor.PATH_SEPARATOR;
-                }
-                ResourceDescriptor target = ResourceDescriptorFactory.fromDecoded(
-                        ResourceTypes.FILE,
-                        dest.getBucketName(),
-                        dest.getBucketLocation(),
-                        path);
-                result.add(target);
-            }
+            return toDestAppFiles(dest, sourceAppFiles, targetFolder, ResourceDescriptor::getName);
         } else {
             Map<String, Integer> fileNameToCount = new HashMap<>();
-            for (ResourceDescriptor file : sourceAppFiles) {
-                String fileName = createUniqueFileName(file, fileNameToCount);
-                String path = targetFolder + fileName;
-                if (file.isFolder()) {
-                    path += ResourceDescriptor.PATH_SEPARATOR;
-                }
-                ResourceDescriptor target = ResourceDescriptorFactory.fromDecoded(
-                        ResourceTypes.FILE,
-                        dest.getBucketName(),
-                        dest.getBucketLocation(),
-                        path);
-                result.add(target);
+            Function<ResourceDescriptor, String> fn = file -> createUniqueFileName(file, fileNameToCount);
+            return toDestAppFiles(dest, sourceAppFiles, targetFolder, fn);
+        }
+    }
+
+    private static List<ResourceDescriptor> toDestAppFiles(ResourceDescriptor dest,
+                                                           List<ResourceDescriptor> sourceAppFiles, String targetFolder,
+                                                           Function<ResourceDescriptor, String> fn) {
+        List<ResourceDescriptor> result = new ArrayList<>();
+        for (ResourceDescriptor file : sourceAppFiles) {
+            String path = targetFolder + fn.apply(file);
+            if (file.isFolder()) {
+                path += ResourceDescriptor.PATH_SEPARATOR;
             }
+            ResourceDescriptor target = ResourceDescriptorFactory.fromDecoded(
+                    ResourceTypes.FILE,
+                    dest.getBucketName(),
+                    dest.getBucketLocation(),
+                    path);
+            result.add(target);
         }
         return result;
     }
