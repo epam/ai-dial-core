@@ -177,7 +177,6 @@ public class ProxyContext {
         if (body == null) {
             body = "";
         }
-        MDC.put("error.message", body.length() > LOG_MAX_ERROR_LENGTH ? body.substring(0, LOG_MAX_ERROR_LENGTH) : body);
         MDC.put("user.sub", getUserSub());
 
         if (status != HttpStatus.OK) {
@@ -193,9 +192,7 @@ public class ProxyContext {
                 Span currentSpan = Span.current();
                 if (currentSpan.isRecording()) {
                     currentSpan.recordException(exception, Attributes.of(
-                            AttributeKey.stringKey("error.context"), "http_response_error",
                             AttributeKey.longKey("http.status.code"), (long) status.getCode(),
-                            AttributeKey.stringKey("error.message"), body,
                             AttributeKey.stringKey("user.project"), getProject() != null ? getProject() : "unknown"
                     ));
                     currentSpan.setStatus(StatusCode.ERROR, errorMessage);

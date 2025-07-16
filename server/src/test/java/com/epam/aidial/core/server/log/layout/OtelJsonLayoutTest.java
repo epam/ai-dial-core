@@ -52,14 +52,16 @@ class OtelJsonLayoutTest {
         assertTrue(result.endsWith("\n"));
 
         JsonNode jsonNode = objectMapper.readTree(result);
-        assertNotNull(jsonNode.get("timestamp"));
-        assertEquals("INFO", jsonNode.get("severity").asText());
-        assertEquals("test-service", jsonNode.get("service").asText());
-        assertEquals("Test message", jsonNode.get("body").get("message").asText());
+        assertNotNull(jsonNode.get("Timestamp"));
+        assertNotNull(jsonNode.get("ObservedTimestamp"));
+        assertEquals("INFO", jsonNode.get("SeverityText").asText());
+        assertEquals(9, jsonNode.get("SeverityNumber").asInt());
+        assertEquals("test-service", jsonNode.get("Resource").get("service.name").asText());
+        assertEquals("Test message", jsonNode.get("Body").asText());
     }
 
     @Test
-    void shouldIncludeMdcProperties() throws Exception {
+    void shouldIncludeMDCProperties() throws Exception {
         MDC.put("request_id", "12345");
         MDC.put("user_id", "user123");
 
@@ -77,8 +79,8 @@ class OtelJsonLayoutTest {
         String result = layout.doLayout(event);
         JsonNode jsonNode = objectMapper.readTree(result);
 
-        assertEquals("12345", jsonNode.get("body").get("details").get("request_id").asText());
-        assertEquals("user123", jsonNode.get("body").get("details").get("user_id").asText());
+        assertEquals("12345", jsonNode.get("Attributes").get("request_id").asText());
+        assertEquals("user123", jsonNode.get("Attributes").get("user_id").asText());
 
         MDC.clear();
     }
@@ -105,23 +107,23 @@ class OtelJsonLayoutTest {
         JsonNode jsonNode = objectMapper.readTree(result);
 
         // Verify trace context is included as top-level fields
-        assertEquals("e0671734d3d00c9838ebff2396fd385d", jsonNode.get("trace_id").asText());
-        assertEquals("7219d5f67da9ef84", jsonNode.get("span_id").asText());
-        assertEquals("01", jsonNode.get("trace_flags").asText());
+        assertEquals("e0671734d3d00c9838ebff2396fd385d", jsonNode.get("TraceId").asText());
+        assertEquals("7219d5f67da9ef84", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
 
-        // Verify trace context is not duplicated in details
-        JsonNode details = jsonNode.get("body").get("details");
-        if (details != null) {
-            assertNull(details.get("trace_id"));
-            assertNull(details.get("span_id"));
-            assertNull(details.get("trace_flags"));
+        // Verify trace context is not duplicated in attributes
+        JsonNode attributes = jsonNode.get("Attributes");
+        if (attributes != null) {
+            assertNull(attributes.get("trace_id"));
+            assertNull(attributes.get("span_id"));
+            assertNull(attributes.get("trace_flags"));
         }
 
         MDC.clear();
     }
 
     @Test
-    void shouldIncludeAllMdcFields() throws Exception {
+    void shouldIncludeAllMDCFields() throws Exception {
         // Set up all MDC fields
         MDC.put("deployment", "test-deployment");
         MDC.put("user_hash", "user-hash-123");
@@ -152,10 +154,9 @@ class OtelJsonLayoutTest {
         JsonNode jsonNode = objectMapper.readTree(result);
 
         // Verify system fields are included
-        assertEquals("test-service-mdc", jsonNode.get("service").asText());
-        assertEquals("trace-id-123", jsonNode.get("trace_id").asText());
-        assertEquals("span-id-123", jsonNode.get("span_id").asText());
-        assertEquals("01", jsonNode.get("trace_flags").asText());
+        assertEquals("trace-id-123", jsonNode.get("TraceId").asText());
+        assertEquals("span-id-123", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
 
         // Verify business fields are not included
         assertNull(jsonNode.get("deployment"));
@@ -167,30 +168,29 @@ class OtelJsonLayoutTest {
         assertNull(jsonNode.get("route_name"));
         assertNull(jsonNode.get("result"));
 
-        // Verify these fields are not duplicated in details
-        JsonNode details = jsonNode.get("body").get("details");
-        if (details != null) {
-            assertNull(details.get("service"));
-            assertNull(details.get("trace_id"));
-            assertNull(details.get("span_id"));
-            assertNull(details.get("trace_flags"));
-            // Business fields should be in details since they're not fields in OtelLogRecord
-            assertEquals("test-deployment", details.get("deployment").asText());
-            assertEquals("user-hash-123", details.get("user_hash").asText());
-            assertEquals("GET", details.get("method").asText());
-            assertEquals("/api/test", details.get("path").asText());
-            assertEquals("200", details.get("status").asText());
-            assertEquals("user-sub-123", details.get("user_sub").asText());
-            assertEquals("test-route", details.get("route_name").asText());
-            assertEquals("success", details.get("result").asText());
-            assertEquals("test-project", details.get("project").asText());
+        // Verify these fields are not duplicated in attributes
+        JsonNode attributes = jsonNode.get("Attributes");
+        if (attributes != null) {
+            assertNull(attributes.get("trace_id"));
+            assertNull(attributes.get("span_id"));
+            assertNull(attributes.get("trace_flags"));
+            // Business fields should be in attributes since they're not fields in OtelLogRecord
+            assertEquals("test-deployment", attributes.get("deployment").asText());
+            assertEquals("user-hash-123", attributes.get("user_hash").asText());
+            assertEquals("GET", attributes.get("method").asText());
+            assertEquals("/api/test", attributes.get("path").asText());
+            assertEquals("200", attributes.get("status").asText());
+            assertEquals("user-sub-123", attributes.get("user_sub").asText());
+            assertEquals("test-route", attributes.get("route_name").asText());
+            assertEquals("success", attributes.get("result").asText());
+            assertEquals("test-project", attributes.get("project").asText());
         }
 
         MDC.clear();
     }
 
     @Test
-    void shouldHandleNullMdcFields() throws Exception {
+    void shouldHandleNullMDCFields() throws Exception {
         // Don't set any MDC fields
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
@@ -209,12 +209,12 @@ class OtelJsonLayoutTest {
         JsonNode jsonNode = objectMapper.readTree(result);
 
         // Verify system fields are present with empty strings
-        assertEquals("", jsonNode.get("trace_id").asText());
-        assertEquals("", jsonNode.get("span_id").asText());
-        assertEquals("", jsonNode.get("trace_flags").asText());
+        assertEquals("", jsonNode.get("TraceId").asText());
+        assertEquals("", jsonNode.get("SpanId").asText());
+        assertEquals("", jsonNode.get("TraceFlags").asText());
 
-        // Service should be "test-service" from the layout configuration
-        assertEquals("test-service", jsonNode.get("service").asText());
+        // Service should be "test-service" from the layout configuration in resource
+        assertEquals("test-service", jsonNode.get("Resource").get("service.name").asText());
 
         // Verify business fields are not included
         assertNull(jsonNode.get("deployment"));

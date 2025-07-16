@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import lombok.Setter;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -15,20 +16,14 @@ import java.util.Map;
 public class OtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     private final ObjectMapper objectMapper;
+    @Setter
     private String serviceName = "aidial-core";
+    @Setter
     private String serviceVersion = AiDial.getVersion();
 
     public OtelJsonLayout() {
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
-    }
-
-    public void setServiceName(String serviceName) {
-        this.serviceName = serviceName;
-    }
-
-    public void setServiceVersion(String serviceVersion) {
-        this.serviceVersion = serviceVersion;
     }
 
     @Override
@@ -44,6 +39,10 @@ public class OtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     private OtelLogRecord buildOtelLogRecord(ILoggingEvent event) {
         Map<String, String> mdc = event.getMDCPropertyMap();
+        if (mdc == null) {
+            mdc = Map.of();
+        }
+
         String traceId = mdc.get("trace_id");
         String spanId = mdc.get("span_id");
         String traceFlags = mdc.get("trace_flags");
@@ -55,9 +54,15 @@ public class OtelJsonLayout extends LayoutBase<ILoggingEvent> {
             mdcCopy.remove(field);
         }
 
-        Map<String, Object> details = null;
+        Map<String, Object> attributes = new HashMap<>();
         if (!mdcCopy.isEmpty()) {
-            details = new HashMap<>(mdcCopy);
+            attributes.putAll(mdcCopy);
+        }
+        if (mdc.containsKey("user.project")) {
+            attributes.put("user.project", mdc.get("user.project"));
+        }
+        if (mdc.containsKey("user.sub")) {
+            attributes.put("user.sub", mdc.get("user.sub"));
         }
 
         Map<String, Object> resource = new HashMap<>();
@@ -74,11 +79,9 @@ public class OtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 .traceId(traceId != null ? traceId : "")
                 .spanId(spanId != null ? spanId : "")
                 .traceFlags(traceFlags != null ? traceFlags : "")
-                .body(OtelLogRecord.LogBody.builder()
-                        .message(event.getFormattedMessage())
-                        .details(details)
-                        .build())
+                .body(event.getFormattedMessage())
                 .resource(resource)
+                .attributes(attributes)
                 .build();
     }
 

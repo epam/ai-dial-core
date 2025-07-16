@@ -132,53 +132,19 @@ public class Proxy implements Handler<HttpServerRequest> {
             HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
             String message = null;
 
-            String path = request.path();
-            String method = request.method().name();
-            try {
-                Span currentSpan = Span.current();
-                if (currentSpan.isRecording()) {
-                    currentSpan.recordException(error, Attributes.of(
-                            AttributeKey.stringKey("error.context"), "proxy_error_handler",
-                            AttributeKey.stringKey("request.path"), path,
-                            AttributeKey.stringKey("request.method"), method,
-                            AttributeKey.stringKey("error.type"), error.getClass().getSimpleName()
-                    ));
-                    currentSpan.setStatus(StatusCode.ERROR, error.getMessage());
-                }
-            } catch (Exception e) {
-                log.debug("Failed to add exception to span", e);
+            if (error instanceof HttpException e) {
+                status = e.getStatus();
+                message = e.getMessage();
             }
-            putToMdc("request.method", request.method().name());
-            putToMdc("request.path", request.path());
-            putToMdc("request.params", request.params().toString());
-
-            putToMdc("exception.name", error.getClass().getSimpleName());
-            putToMdc("exception.message", error.getMessage());
-            putToMdc("exception.stacktrace", Arrays.toString(error.getStackTrace()));
-
-            try {
-                if (error instanceof RuntimeException) {
-                    log.error("Unexpected runtime exception while handling request", error);
-                } else if (error instanceof Error) {
-                    log.error("Serious system error while handling request", error);
-                } else {
-                    log.error("Can't handle request", error);
-                }
-            } finally {
-                remove("request.path");
-                remove("request.method");
-                remove("exception.name");
-                remove("exception.message");
-                remove("exception.stacktrace");
+            if (error instanceof RuntimeException) {
+                log.error("Unexpected runtime exception while handling request", error);
+            } else if (error instanceof Error) {
+                log.error("Serious system error while handling request", error);
+            } else {
+                log.error("Can't handle request", error);
             }
 
             respond(request, status, message);
-        }
-    }
-
-    private static void putToMdc(String key, String value) {
-        if (value != null) {
-            MDC.put(key, value);
         }
     }
 
@@ -239,7 +205,9 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request,
+                        result.apiKeyData, traceId, spanId,
+                        result.authorizedProject, result.authorizedUserSub))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
@@ -247,7 +215,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     /**
      * The method authorizes HTTP request by user access token or (and) API key.
      * <p>
-     *     There are four possible use cases:
+     * There are four possible use cases:
      *     <ol>
      *     <li>Both API key and access token are missed</li>
      *     <li>Both API key and access token are provided</li>
@@ -323,23 +291,42 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private record AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
+    private record AuthorizationResult(
+            ApiKeyData apiKeyData,
+            ExtractedClaims extractedClaims,
+            String authorizedProject,
+            String authorizedUserSub
+    ) {
 
+        public AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
+            this(apiKeyData, extractedClaims,
+                    (extractedClaims != null) ? extractedClaims.project() :
+                            ((apiKeyData != null && apiKeyData.getOriginalKey() != null) ? apiKeyData.getOriginalKey().getProject() : null),
+                    (extractedClaims != null) ? extractedClaims.sub() : null);
+        }
     }
 
     @SneakyThrows
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims, Config config,
-                                                 HttpServerRequest request, ApiKeyData apiKeyData, String traceId, String spanId) {
+                                                 HttpServerRequest request, ApiKeyData apiKeyData,
+                                                 String traceId, String spanId, String authorizedProject, String authorizedUserSub) {
         Future<?> future;
         try {
+            ContextManager.setContext(authorizedProject, authorizedUserSub, traceId, spanId);
+            ContextManager.setRequestContext(request);
+
             ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId);
+
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);
+
             future = controller.handle();
+
         } catch (Exception t) {
             future = Future.failedFuture(t);
         }
-        return future;
+        return future.onComplete(result -> ContextManager.clearContext());
+
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {

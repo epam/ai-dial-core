@@ -314,29 +314,8 @@ public abstract class BaseRouteController implements Controller {
 
     private void handleError(Throwable error) {
         String route = context.getRoute().getName();
-
-        try {
-            Span currentSpan = Span.current();
-            if (currentSpan.isRecording()) {
-                currentSpan.recordException(error, Attributes.of(
-                        AttributeKey.stringKey("error.context"), "route_handling_error",
-                        AttributeKey.stringKey("route.name"), route,
-                        AttributeKey.stringKey("request.uri"), getRequestUri(),
-                        AttributeKey.stringKey("user.project"), context.getProject() != null ? context.getProject() : "unknown"
-                ));
-                currentSpan.setStatus(StatusCode.ERROR, error.getMessage());
-            }
-        } catch (Exception e) {
-            log.debug("Failed to add exception to span", e);
-        }
-
-        if (error instanceof HttpException httpException) {
-            respond(httpException);
-        } else {
-            String errorMsg = "Error occurred on processing route request: %s".formatted(context.getRequest().path());
-            log.error(errorMsg, route, error);
-            respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
-        }
+        log.error("Failed to handle route {}", route, error);
+        respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process route request: " + route);
     }
 
     /**
@@ -351,20 +330,7 @@ public abstract class BaseRouteController implements Controller {
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        try {
-            Span currentSpan = Span.current();
-            if (currentSpan.isRecording()) {
-                currentSpan.recordException(error, Attributes.of(
-                        AttributeKey.stringKey("error.context"), "proxy_connection_error",
-                        AttributeKey.stringKey("request.uri"), getRequestUri()
-                ));
-                currentSpan.setStatus(StatusCode.ERROR, "Connection failed: " + error.getMessage());
-            }
-        } catch (Exception e) {
-            log.debug("Failed to add exception to span", e);
-        }
-
-        log.warn("Can't connect to origin: {}", error.getMessage(), error);
+        log.warn("Can't connect to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
@@ -378,20 +344,7 @@ public abstract class BaseRouteController implements Controller {
      * Called when proxy failed to send request to the origin.
      */
     private void handleProxyRequestError(Throwable error) {
-        try {
-            Span currentSpan = Span.current();
-            if (currentSpan.isRecording()) {
-                currentSpan.recordException(error, Attributes.of(
-                        AttributeKey.stringKey("error.context"), "proxy_request_error",
-                        AttributeKey.stringKey("request.uri"), getRequestUri()
-                ));
-                currentSpan.setStatus(StatusCode.ERROR, "Request failed: " + error.getMessage());
-            }
-        } catch (Exception e) {
-            log.debug("Failed to add exception to span", e);
-        }
-
-        log.warn("Can't send request to origin: {}", error.getMessage(), error);
+        log.warn("Can't send request to origin: {}", error.getMessage());
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);

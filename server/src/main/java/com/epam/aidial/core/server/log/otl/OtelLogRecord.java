@@ -33,20 +33,13 @@ public class OtelLogRecord {
     @JsonProperty("TraceFlags")
     private String traceFlags;
 
-    @JsonProperty("Body")
-    private LogBody body;
-
     @JsonProperty("Resource")
     private Map<String, Object> resource;
 
-    @Data
-    @Builder
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class LogBody {
-        @JsonProperty("message")
-        private String message;
+    @JsonProperty("Body")
+    private Object body;
 
-        @JsonProperty("details")
-        private Map<String, Object> details;
-    }
+    @JsonProperty("Attributes")
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    private Map<String, Object> attributes;
 }

@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -79,6 +80,8 @@ public class ProxyTest {
     private BlobStorage storage;
     @Mock
     private ResourceService resourceService;
+    @Mock
+    private HealthCheckController healthCheckController;
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private HttpServerRequest request;
@@ -99,6 +102,11 @@ public class ProxyTest {
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD)).thenReturn(null);
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS)).thenReturn(null);
         when(response.setStatusCode(anyInt())).thenReturn(response);
+
+        // Mock params() to avoid NullPointerException in error handling
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(request.params()).thenReturn(params);
     }
 
     @AfterEach
@@ -162,7 +170,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(OK.getCode());
+        verify(healthCheckController).handle(request);
     }
 
     @Test
@@ -175,7 +183,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(401);
     }
 
     @Test
@@ -196,7 +204,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(401);
     }
 
     @Test
@@ -218,7 +226,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(BAD_REQUEST.getCode());
+        verify(response).setStatusCode(400);
     }
 
     @Test
@@ -241,7 +249,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(BAD_REQUEST.getCode());
+        verify(response).setStatusCode(400);
     }
 
     @Test
@@ -266,7 +274,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(BAD_REQUEST.getCode());
+        verify(response).setStatusCode(400);
     }
 
     @Test
@@ -326,7 +334,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(401);
     }
 
     @Test
@@ -434,7 +442,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(401);
     }
 
     @Test
@@ -459,7 +467,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(401);
     }
 
     @Test
@@ -584,7 +592,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(401);
     }
 
     @Test
@@ -601,7 +609,7 @@ public class ProxyTest {
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(401);
     }
 
     @Test
@@ -633,6 +641,11 @@ public class ProxyTest {
         when(errorRequest.method()).thenReturn(HttpMethod.GET);
         when(errorRequest.path()).thenReturn("/test-path");
 
+        // Mock params() to return a valid MultiMap to avoid NullPointerException
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(errorRequest.params()).thenReturn(params);
+
         // Simulate a RuntimeException when headers() is called
         RuntimeException runtimeException = new RuntimeException("Test runtime exception");
         when(errorRequest.headers()).thenThrow(runtimeException);
@@ -657,6 +670,11 @@ public class ProxyTest {
         when(errorRequest.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(errorRequest.method()).thenReturn(HttpMethod.GET);
         when(errorRequest.path()).thenReturn("/test-path");
+
+        // Mock params() to return a valid MultiMap to avoid NullPointerException
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(errorRequest.params()).thenReturn(params);
 
         // Simulate a serious Error when headers() is called
         Error seriousError = new OutOfMemoryError("Test serious error");
@@ -683,9 +701,14 @@ public class ProxyTest {
         when(errorRequest.method()).thenReturn(HttpMethod.GET);
         when(errorRequest.path()).thenReturn("/test-path");
 
-        // Simulate a checked exception when getHeader() is called
-        Exception checkedException = new Exception("Test checked exception");
-        when(errorRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenThrow(checkedException);
+        // Mock params() to return a valid MultiMap to avoid NullPointerException
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(errorRequest.params()).thenReturn(params);
+
+        // Simulate a runtime exception when getHeader() is called (can't use checked exceptions)
+        RuntimeException runtimeException = new RuntimeException("Test runtime exception");
+        when(errorRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenThrow(runtimeException);
 
         // Execute
         proxy.handle(errorRequest);
