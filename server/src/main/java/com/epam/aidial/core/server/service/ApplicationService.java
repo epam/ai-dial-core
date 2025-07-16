@@ -41,14 +41,13 @@ import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-
-import static com.epam.aidial.core.server.service.PublicationService.getTargetFolderForCustomAppFiles;
 
 @Slf4j
 public class ApplicationService {
@@ -97,6 +96,22 @@ public class ApplicationService {
         if (controller.isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
             vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
+        }
+    }
+
+    private static String getTargetFolderForCustomAppFiles(ResourceDescriptor target) {
+        if (target.isFolder()) {
+            throw new IllegalArgumentException("Target url must be a file");
+        }
+        if (target.getType() != ResourceTypes.APPLICATION) {
+            throw new IllegalArgumentException("Target url must be an application type");
+        }
+        String appName = target.getName();
+        String appPath = target.getParentPath();
+        if (appPath == null) {
+            return "." + appName + ResourceDescriptor.PATH_SEPARATOR;
+        } else {
+            return appPath + ResourceDescriptor.PATH_SEPARATOR + "." + appName + ResourceDescriptor.PATH_SEPARATOR;
         }
     }
 
@@ -154,10 +169,7 @@ public class ApplicationService {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             Application.Function function = application.getFunction();
 
-            if (application.getApplicationTypeSchemaId() != null && existing != null
-                    && existing.getApplicationProperties() != null && application.getApplicationProperties() == null) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, "The application with schema can not be updated to the one without properties");
-            }
+            verifySchemaRichApp(application, existing);
 
             if (function != null) {
                 if (existing == null || existing.getFunction() == null) {
@@ -190,6 +202,13 @@ public class ApplicationService {
         });
 
         return Pair.of(meta, application);
+    }
+
+    private static void verifySchemaRichApp(Application application, Application existing) {
+        if (application.getApplicationTypeSchemaId() != null && existing != null
+                && existing.getApplicationProperties() != null && application.getApplicationProperties() == null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "The application with schema can not be updated to the one without properties");
+        }
     }
 
     public void deleteApplication(ResourceDescriptor resource, EtagHeader etag) {
@@ -236,8 +255,26 @@ public class ApplicationService {
         boolean isPublicOrReview = isPublicOrReview(destination);
         String sourceFolder = (function == null) ? null : function.getSourceFolder();
 
+        Map<String, String> fileReplacementLinks;
+        List<ResourceDescriptor> sourceAppFiles = List.of();
+        List<ResourceDescriptor> destAppFiles = List.of();
+        if (isPublicOrReview) {
+            sourceAppFiles = ApplicationTypeSchemaUtils.getFiles(configStore.get(), application, encryptionService, resourceService);
+            destAppFiles = toDestAppFiles(source, destination, sourceAppFiles);
+            fileReplacementLinks = new HashMap<>();
+            for (int i = 0; i < sourceAppFiles.size(); i++) {
+                ResourceDescriptor sourceFile = sourceAppFiles.get(i);
+                ResourceDescriptor destFile = destAppFiles.get(i);
+                fileReplacementLinks.put(sourceFile.getDecodedUrl(), destFile.getUrl());
+            }
+        } else {
+            fileReplacementLinks = Map.of();
+        }
+
         resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
+
+            verifySchemaRichApp(application, existing);
 
             if (function != null) {
                 if (existing == null || existing.getFunction() == null) {
@@ -267,14 +304,67 @@ public class ApplicationService {
                 }
             }
 
+            if (isPublicOrReview) {
+                replaceLinksInAppProperties(application, fileReplacementLinks);
+            }
+
             return ProxyUtil.convertToString(application);
         });
 
-        // for public/review application source folder is equal to target folder
-        // source files are copied to read-only deployment bucket for such applications
-        if (isPublicOrReview && function != null) {
-            copyFolder(sourceFolder, function.getSourceFolder(), false);
+        if (isPublicOrReview) {
+            if (function != null) {
+                // for public/review application source folder is equal to target folder
+                // source files are copied to read-only deployment bucket for such applications
+                copyFolder(sourceFolder, function.getSourceFolder());
+            }
+            for (int i = 0; i < sourceAppFiles.size(); i++) {
+                ResourceDescriptor sourceFile = sourceAppFiles.get(i);
+                ResourceDescriptor destFile = destAppFiles.get(i);
+                if (sourceFile.isFolder()) {
+                    resourceService.copyFolder(sourceFile, destFile, false);
+                } else {
+                    resourceService.copyResource(source, destFile);
+                }
+            }
         }
+    }
+
+    private static List<ResourceDescriptor> toDestAppFiles(ResourceDescriptor source, ResourceDescriptor dest, List<ResourceDescriptor> sourceAppFiles) {
+        if (sourceAppFiles.isEmpty()) {
+            return List.of();
+        }
+        String targetFolder = getTargetFolderForCustomAppFiles(dest);
+        List<ResourceDescriptor> result = new ArrayList<>();
+        if (isPublicOrReview(source)) {
+            for (ResourceDescriptor file : sourceAppFiles) {
+                String path = targetFolder + file.getName();
+                if (file.isFolder()) {
+                    path += ResourceDescriptor.PATH_SEPARATOR;
+                }
+                ResourceDescriptor target = ResourceDescriptorFactory.fromDecoded(
+                        ResourceTypes.FILE,
+                        dest.getBucketName(),
+                        dest.getBucketLocation(),
+                        path);
+                result.add(target);
+            }
+        } else {
+            Map<String, Integer> fileNameToCount = new HashMap<>();
+            for (ResourceDescriptor file : sourceAppFiles) {
+                String fileName = createUniqueFileName(file, fileNameToCount);
+                String path = targetFolder + fileName;
+                if (file.isFolder()) {
+                    path += ResourceDescriptor.PATH_SEPARATOR;
+                }
+                ResourceDescriptor target = ResourceDescriptorFactory.fromDecoded(
+                        ResourceTypes.FILE,
+                        dest.getBucketName(),
+                        dest.getBucketLocation(),
+                        path);
+                result.add(target);
+            }
+        }
+        return result;
     }
 
     public Application redeployApplication(ProxyContext context, ResourceDescriptor resource) {
@@ -491,7 +581,7 @@ public class ApplicationService {
             // for public/review application source folder is equal to target folder
             // source files are copied to read-only deployment bucket for such applications
             if (!isPublicOrReview(resource)) {
-                copyFolder(function.getSourceFolder(), function.getTargetFolder(), false);
+                copyFolder(function.getSourceFolder(), function.getTargetFolder());
             }
 
             ApiKeyData key = new ApiKeyData();
@@ -632,15 +722,15 @@ public class ApplicationService {
         }
     }
 
-    private void copyFolder(String sourceFolderUrl, String targetFolderUrl, boolean overwrite) {
+    private void copyFolder(String sourceFolderUrl, String targetFolderUrl) {
         ResourceDescriptor sourceFolder = ResourceDescriptorFactory.fromAnyUrl(sourceFolderUrl, encryptionService);
         ResourceDescriptor targetFolder = ResourceDescriptorFactory.fromAnyUrl(targetFolderUrl, encryptionService);
-        resourceService.copyFolder(sourceFolder, targetFolder, overwrite);
+        resourceService.copyFolder(sourceFolder, targetFolder, false);
     }
 
-    private boolean deleteFolder(String folderUrl) {
+    private void deleteFolder(String folderUrl) {
         ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(folderUrl, encryptionService);
-        return resourceService.deleteFolder(folder);
+        resourceService.deleteFolder(folder);
     }
 
     private static String buildMapping(String endpoint, String path) {
@@ -651,59 +741,7 @@ public class ApplicationService {
         return resource.isPublic() || PublicationService.isReviewBucket(resource);
     }
 
-    public void replaceSchemaRichAppOwnResources(Application application, String targetApplicationUrl, Map<String, String> replacementLinks) {
-        if (application.getApplicationTypeSchemaId() == null) {
-            return;
-        }
-        String targetApplicationResourceFolderUrl = getTargetFolderForCustomAppFiles(targetApplicationUrl, encryptionService);
-        replacementLinks = extractApplicationOwnResourcesMapping(application, targetApplicationResourceFolderUrl, replacementLinks);
-        applyApplicationOwnResourcesMapping(application, replacementLinks);
-    }
-
-    public Map<String, String> extractApplicationOwnResourcesMapping(Application application, String targetApplicationResourceFolderUrl, Map<String, String> replacementLinks) {
-        List<ResourceDescriptor> applicationOwnResources = ApplicationTypeSchemaUtils.getFiles(
-                configStore.get(), application, encryptionService, resourceService);
-
-        Map<String, String> resultMapping = new HashMap<>();
-
-        for (ResourceDescriptor resource : applicationOwnResources) {
-            String resourceUrl = resource.getUrl();
-            String decodedResourceUrl = UrlUtil.decodePath(resourceUrl);
-            if (resource.isFolder()) {
-                String replacement = replacementLinks.entrySet().stream()
-                        .filter(entry -> entry.getKey().startsWith(decodedResourceUrl))
-                        .map(Map.Entry::getValue)
-                        .findFirst()
-                        .orElseThrow(() -> new IllegalStateException("Missing replacement link for folder: " + resourceUrl));
-                resultMapping.put(resourceUrl, extractTargetPath(targetApplicationResourceFolderUrl, replacement) + ResourceDescriptor.PATH_SEPARATOR);
-            } else {
-                String replacement = replacementLinks.get(decodedResourceUrl);
-                if (replacement == null) {
-                    throw new IllegalStateException("Missing replacement link for file: " + resourceUrl);
-                }
-                resultMapping.put(resourceUrl, extractTargetPath(targetApplicationResourceFolderUrl, replacement));
-            }
-        }
-
-        return resultMapping;
-    }
-
-    private static String extractTargetPath(String basePath, String fullPathEncoded) {
-        String fullPath = UrlUtil.decodePath(fullPathEncoded);
-        int basePathIndex = fullPath.indexOf(basePath);
-        if (basePathIndex == -1) {
-            throw new IllegalStateException(
-                    "Base path '" + basePath + "' not found in full path '" + fullPath + "'");
-        }
-
-        String prefixPath = fullPath.substring(0, basePathIndex);
-        String relativePath = fullPath.substring(basePathIndex + basePath.length());
-        String firstComponent = relativePath.split(ResourceDescriptor.PATH_SEPARATOR, 2)[0];
-
-        return UrlUtil.encodePath(prefixPath + basePath + firstComponent);
-    }
-
-    public static void applyApplicationOwnResourcesMapping(Application application, Map<String, String> replacementLinks) {
+    public static void replaceLinksInAppProperties(Application application, Map<String, String> replacementLinks) {
         JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
         replaceTextNodes(customProperties, replacementLinks, null, null);
         Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
@@ -732,5 +770,22 @@ public class ApplicationService {
                 ((ObjectNode) parent).put(fieldName, replacement);
             }
         }
+    }
+
+    private static String createUniqueFileName(ResourceDescriptor sourceDescriptor, Map<String, Integer> fileNamesTaken) {
+        String fileName = sourceDescriptor.getName();
+        int count = fileNamesTaken.getOrDefault(fileName, 0) + 1;
+        fileNamesTaken.put(fileName, count);
+
+        if (count > 1) {
+            if (sourceDescriptor.isFolder() || !fileName.contains(".")) {
+                // File has no extension or folder
+                fileName = fileName + "_" + count;
+            } else {
+                // File has extension
+                fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
+            }
+        }
+        return fileName;
     }
 }

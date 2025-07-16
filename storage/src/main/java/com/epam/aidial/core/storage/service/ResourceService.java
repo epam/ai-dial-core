@@ -4,6 +4,7 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -163,6 +164,9 @@ public class ResourceService implements AutoCloseable {
             }
 
             for (MetadataBase item : folder.getItems()) {
+                if (item.getNodeType() == NodeType.FOLDER) {
+                    continue;
+                }
                 String sourceFileUrl = item.getUrl();
                 String targetFileUrl = targetFolder + sourceFileUrl.substring(sourceFolder.getUrl().length());
 
