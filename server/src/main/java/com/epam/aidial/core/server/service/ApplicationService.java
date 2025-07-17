@@ -774,12 +774,13 @@ public class ApplicationService {
         fileNamesTaken.put(fileName, count);
 
         if (count > 1) {
-            if (sourceDescriptor.isFolder() || !fileName.contains(".")) {
+            int index = fileName.lastIndexOf('.');
+            if (sourceDescriptor.isFolder() || index == -1) {
                 // File has no extension or folder
                 fileName = fileName + "_" + count;
             } else {
                 // File has extension
-                fileName = fileName.replaceFirst("(\\.[^.]+)$", "_" + count + "$1");
+                fileName = fileName.substring(0, index) + "_" + count + fileName.substring(index);
             }
         }
         return fileName;
