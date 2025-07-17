@@ -181,7 +181,7 @@ public enum RouteTemplate {
     ),
     TOOL_SET_PROXY(
             "^/v1/toolset/(?<id>.+?)/mcp$",
-            "/v1/toolset/{id})/mcp"
+            "/v1/toolset/{id}/mcp"
     );
 
     private final Pattern pattern;
