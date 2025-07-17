@@ -53,7 +53,6 @@ public class GfLogStore implements LogStore {
         BasicThreadFactory factory = BasicThreadFactory.builder()
                 .namingPattern("gflog-store-%d")
                 .daemon(true)
-                .priority(Thread.MAX_PRIORITY)
                 .build();
         executor = Executors.newSingleThreadExecutor(factory);
     }
