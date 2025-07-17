@@ -24,6 +24,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -33,6 +34,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -42,10 +47,14 @@ public class GfLogStore implements LogStore {
     // Max allowed size is 4 mb for request/response body
     private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
 
-    private final Vertx vertx;
+    private final ExecutorService executor;
 
-    public GfLogStore(Vertx vertx) {
-        this.vertx = vertx;
+    public GfLogStore() {
+        BasicThreadFactory factory = BasicThreadFactory.builder()
+                .namingPattern("gflog-store-%d")
+                .daemon(true)
+                .build();
+        executor = Executors.newSingleThreadExecutor(factory);
     }
 
     @Override
@@ -53,8 +62,9 @@ public class GfLogStore implements LogStore {
         if (!LOGGER.isInfoEnabled() || !context.getRequest().method().equals(HttpMethod.POST)) {
             return;
         }
-
-        vertx.executeBlocking(() -> doSave(context));
+        // run the process of saving analytics logs in a single thread in order to reduce memory footprint.
+        // Gflog allocates a buffer per thread: the more threads the more buffers need to be allocated.
+        executor.submit(() -> doSave(context));
     }
 
     private Void doSave(ProxyContext context) {

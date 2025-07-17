@@ -114,7 +114,7 @@ public class AiDial {
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             client = vertx.createHttpClient(clientOptions);
 
-            LogStore logStore = new GfLogStore(vertx);
+            LogStore logStore = new GfLogStore();
 
             if (accessTokenValidator == null) {
                 accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client, clientOptions);
