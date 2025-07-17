@@ -145,7 +145,7 @@ public class AiDial {
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
                     resourceService, invitationService, shareService, lockService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock, configStore);
+                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
