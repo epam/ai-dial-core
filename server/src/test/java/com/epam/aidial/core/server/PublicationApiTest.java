@@ -2135,7 +2135,7 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testApplicationWithTypeSchemaPublish_Ok_MindMapCase() {
+    void testApplicationWithTypeSchemaPublish_Ok_MindMapCase() throws JsonProcessingException {
 
         List<String> filePaths = List.of(
                 "Unt 26__0.0.1/generate.json",
@@ -2203,6 +2203,39 @@ class PublicationApiTest extends ResourceBaseTest {
                 }""";
 
 
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode resources = responseJson.get("resources");
+        String targetUrl = resources.get(0).get("targetUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+        correctResponse = """
+                {
+                   "name" : "applications/public/xyz%20app%204",
+                   "display_name" : "test%20app%202",
+                   "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                   "description" : "My application description",
+                   "reference" : "@ignore",
+                   "forward_auth_token" : false,
+                   "defaults" : { },
+                   "interceptors" : [ ],
+                   "description_keywords" : [ ],
+                   "max_retry_attempts" : 1,
+                   "author" : "EPM-RTC-GPT",
+                   "created_at" : "@ignore",
+                   "updated_at" : "@ignore",
+                   "dependencies" : [ ],
+                   "application_properties" : {
+                     "property1" : "test property1",
+                     "property2" : "test property2",
+                     "property3" : [ "files/public/.xyz%20app%204/Unt%2026__0.0.1/", "files/public/.xyz%20app%204/Unt%2026__0.0_2.1" ]
+                   },
+                   "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                   "routes" : { }
+                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
     }
