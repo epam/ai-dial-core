@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -11,6 +12,7 @@ public class UrlUtilTest {
 
     @Test
     public void testPathSegmentEncoding() {
+        assertNull(UrlUtil.encodePathSegment(null));
         assertEquals("folder%201", UrlUtil.encodePathSegment("folder 1"));
         assertEquals("folder%20%23", UrlUtil.encodePathSegment("folder #"));
         assertEquals("%D1%84%D0%B0%D0%B9%D0%BB.txt", UrlUtil.encodePathSegment("файл.txt"));
@@ -22,6 +24,7 @@ public class UrlUtilTest {
 
     @Test
     public void testPathEncoding() {
+        assertNull(UrlUtil.encodePath(null));
         assertEquals("", UrlUtil.encodePath(""));
         assertEquals("/", UrlUtil.encodePath("/"));
         assertEquals("//", UrlUtil.encodePath("//"));
@@ -36,6 +39,7 @@ public class UrlUtilTest {
 
     @Test
     public void testPathDecoding() {
+        assertNull(UrlUtil.decodePath(null));
         assertEquals("folder 1", UrlUtil.decodePath("folder%201"));
         assertEquals("folder #", UrlUtil.decodePath("folder%20%23"));
         assertEquals("fo$l+=d,e#r 1", UrlUtil.decodePath("fo$l+=d,e%23r%201"));
@@ -48,6 +52,7 @@ public class UrlUtilTest {
 
     @Test
     public void testIsAbsoluteUrl() {
+        assertFalse(UrlUtil.isAbsoluteUrl(null));
         assertTrue(UrlUtil.isAbsoluteUrl("test://example.com"));
         assertTrue(UrlUtil.isAbsoluteUrl("TEST://EXAMPLE.COM"));
         assertTrue(UrlUtil.isAbsoluteUrl("test1+test2://example.com/item"));
@@ -60,6 +65,7 @@ public class UrlUtilTest {
 
     @Test
     public void testIsDataUrl() {
+        assertFalse(UrlUtil.isDataUrl(null));
         assertTrue(UrlUtil.isDataUrl("data:whatever"));
         assertTrue(UrlUtil.isDataUrl("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAIAAADZSiLoAAAAF0lEQVR4nGNkYPjPwMDAwMDAxAADCBYAG10BBdmz9y8AAAAASUVORK5CYII="));
         assertFalse(UrlUtil.isDataUrl("data"));
@@ -67,5 +73,12 @@ public class UrlUtilTest {
         assertFalse(UrlUtil.isDataUrl(" data:whatever"));
         assertFalse(UrlUtil.isDataUrl("data;whatever"));
         assertFalse(UrlUtil.isDataUrl("https://example.com"));
+    }
+
+    @Test
+    public void testIsFolder() {
+        assertFalse(UrlUtil.isFolder(null));
+        assertTrue(UrlUtil.isFolder("files/1224/folder/"));
+        assertFalse(UrlUtil.isFolder("files/1224/folder/file"));
     }
 }

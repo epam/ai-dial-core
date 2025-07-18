@@ -752,7 +752,8 @@ public class ApplicationService {
             for (int i = 0; i < node.size(); i++) {
                 JsonNode childNode = node.get(i);
                 if (childNode.isTextual()) {
-                    String replacement = replacementMap.get(childNode.textValue());
+                    String decodedUrl = UrlUtil.tryDecodePath(childNode.textValue());
+                    String replacement = replacementMap.get(decodedUrl);
                     if (replacement != null) {
                         ((ArrayNode) node).set(i, replacement);
                     }
@@ -761,7 +762,8 @@ public class ApplicationService {
                 }
             }
         } else if (node.isTextual()) {
-            String replacement = replacementMap.get(node.textValue());
+            String decodedUrl = UrlUtil.tryDecodePath(node.textValue());
+            String replacement = replacementMap.get(decodedUrl);
             if (replacement != null && parent.isObject()) {
                 ((ObjectNode) parent).put(fieldName, replacement);
             }
