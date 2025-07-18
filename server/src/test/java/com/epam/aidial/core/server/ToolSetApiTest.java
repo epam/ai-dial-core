@@ -1,7 +1,12 @@
 package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
+import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
+
+import java.nio.charset.StandardCharsets;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ToolSetApiTest extends ResourceBaseTest {
 
@@ -54,9 +59,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                    "data" : [ {
+                     "toolset" : "git",
                      "description" : "Git remote tool set",
                      "owner" : "organization-owner",
-                     "object" : "application",
+                     "object" : "toolset",
                      "status" : "succeeded",
                      "created_at" : 1672534800,
                      "updated_at" : 1672534800,
@@ -90,7 +96,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                   "icon_url": "http://toolset/icon.svg",
                   "description": "My toolset Description",
                   "owner": "EPM-RTC-GPT",
-                  "object": "application",
+                  "object": "toolset",
                   "status": "succeeded",
                   "created_at" : "@ignore",
                   "updated_at" : "@ignore",
@@ -108,9 +114,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                     "data" : [ {
+                      "toolset" : "git",
                       "description" : "Git remote tool set",
                       "owner" : "organization-owner",
-                      "object" : "application",
+                      "object" : "toolset",
                       "status" : "succeeded",
                       "created_at" : 1672534800,
                       "updated_at" : 1672534800,
@@ -124,7 +131,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                       "icon_url" : "http://toolset/icon.svg",
                       "description" : "My toolset Description",
                       "owner" : "EPM-RTC-GPT",
-                      "object" : "application",
+                      "object" : "toolset",
                       "status" : "succeeded",
                       "created_at" : "@ignore",
                       "updated_at" : "@ignore",
@@ -137,5 +144,29 @@ public class ToolSetApiTest extends ResourceBaseTest {
                   }
                 """);
 
+    }
+
+    @Test
+    public void testProxyMcpCall() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+        String mcpResponse = """
+                    {
+                      "result": "success"
+                    }
+                    """;
+        TestWebServer.Handler handler = request -> {
+            assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
+            return new MockResponse().setBody(mcpResponse);
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null, mcpRequest);
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
     }
 }
