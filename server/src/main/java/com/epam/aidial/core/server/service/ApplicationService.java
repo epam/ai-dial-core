@@ -233,8 +233,18 @@ public class ApplicationService {
 
         Application application = reference.get();
 
-        if (isPublicOrReview(resource) && application.getFunction() != null) {
-            deleteFolder(application.getFunction().getSourceFolder());
+        if (isPublicOrReview(resource)) {
+            if (application.getFunction() != null) {
+                deleteFolder(application.getFunction().getSourceFolder());
+            }
+            List<ResourceDescriptor> appFiles = ApplicationTypeSchemaUtils.getFiles(configStore.get(), application, encryptionService, resourceService);
+            for (ResourceDescriptor file : appFiles) {
+                if (file.isFolder()) {
+                    resourceService.deleteFolder(file);
+                } else {
+                    resourceService.deleteResource(file, EtagHeader.ANY);
+                }
+            }
         }
     }
 
@@ -324,7 +334,7 @@ public class ApplicationService {
                 if (sourceFile.isFolder()) {
                     resourceService.copyFolder(sourceFile, destFile, false);
                 } else {
-                    resourceService.copyResource(source, destFile);
+                    resourceService.copyResource(source, destFile, null, false);
                 }
             }
         }
