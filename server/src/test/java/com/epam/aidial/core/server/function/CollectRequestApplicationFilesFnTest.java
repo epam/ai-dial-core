@@ -7,7 +7,9 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -21,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.URI;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,44 +54,15 @@ public class CollectRequestApplicationFilesFnTest {
     @Mock
     private ResourceService resourceService;
 
+    @Mock
+    private ApplicationSchemaService applicationSchemaService;
+
 
     @InjectMocks
     private CollectRequestApplicationFilesFn fn;
 
     private Application application;
     private ObjectNode tree;
-
-    private final String schema = """
-            {
-              "$schema": "https://dial.epam.com/application_type_schemas/schema#",
-              "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
-              "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",
-              "dial:applicationTypeDisplayName": "Specific Application Type",
-              "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",
-              "properties": {
-                "clientFile": {
-                  "type": "string",
-                  "format": "dial-file-encoded",
-                  "dial:meta": {
-                    "dial:propertyKind": "client",
-                    "dial:propertyOrder": 1
-                  },
-                  "dial:file": true
-                },
-                "serverFile": {
-                  "type": "string",
-                  "format": "dial-file-encoded",
-                  "dial:meta": {
-                    "dial:propertyKind": "server",
-                    "dial:propertyOrder": 2
-                  },
-                  "dial:file": true
-                }
-              },
-              "required": [
-                "clientFile"
-              ]
-            }""";
 
     @BeforeEach
     void setUp() {
@@ -118,10 +92,7 @@ public class CollectRequestApplicationFilesFnTest {
 
     @Test
     void apply_appendsFilesToApiKeyData_whenApplicationHasCustomSchemaId() {
-        when(proxy.getAccessService()).thenReturn(accessService);
-        when(proxy.getResourceService()).thenReturn(resourceService);
         when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getConfig()).thenReturn(config);
         String serverFile = "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext";
         when(context.getDeployment()).thenReturn(application);
         application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
@@ -129,11 +100,14 @@ public class CollectRequestApplicationFilesFnTest {
         customProps.put("clientFile", "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext");
         customProps.put("serverFile", serverFile);
         application.setApplicationProperties(customProps);
-        when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schema);
         when(accessService.hasReadAccess(any(), any())).thenReturn(true);
-        when(resourceService.hasResource(any())).thenReturn(true);
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        ResourceDescriptor file = mock(ResourceDescriptor.class);
+        when(file.getUrl()).thenReturn(serverFile);
+        when(applicationSchemaService.getServerFiles(eq(application))).thenReturn(List.of(file));
 
         boolean result = fn.apply(tree);
 
@@ -144,10 +118,7 @@ public class CollectRequestApplicationFilesFnTest {
 
     @Test
     void apply_appendsFilesToApiKeyData_whenApplicationHasCustomSchemaId_AndSchemaDescribesArray() {
-        when(proxy.getAccessService()).thenReturn(accessService);
-        when(proxy.getResourceService()).thenReturn(resourceService);
         when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getConfig()).thenReturn(config);
         String[] ragFiles = {
                 "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext",
                 "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext"
@@ -185,11 +156,16 @@ public class CollectRequestApplicationFilesFnTest {
                     ]
                 }
                 """;
-        when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schemaWithArray);
         when(accessService.hasReadAccess(any(), any())).thenReturn(true);
-        when(resourceService.hasResource(any())).thenReturn(true);
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        ResourceDescriptor file1 = mock(ResourceDescriptor.class);
+        when(file1.getUrl()).thenReturn(ragFiles[0]);
+        ResourceDescriptor file2 = mock(ResourceDescriptor.class);
+        when(file2.getUrl()).thenReturn(ragFiles[1]);
+        when(applicationSchemaService.getServerFiles(eq(application))).thenReturn(List.of(file1, file2));
 
         boolean result = fn.apply(tree);
 
@@ -201,28 +177,8 @@ public class CollectRequestApplicationFilesFnTest {
     }
 
     @Test
-    void apply_throws_whenResourceServiceHasNoResource() {
-        when(proxy.getResourceService()).thenReturn(resourceService);
-        when(context.getConfig()).thenReturn(config);
-        String serverFile = "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext";
-        when(context.getDeployment()).thenReturn(application);
-        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
-        Map<String, Object> customProps = new HashMap<>();
-        customProps.put("clientFile", "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext");
-        customProps.put("serverFile", serverFile);
-        application.setApplicationProperties(customProps);
-        when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schema);
-        when(resourceService.hasResource(any())).thenReturn(false); //Has No Resource
-
-        Assertions.assertThrows(HttpException.class, () -> fn.apply(tree));
-    }
-
-    @Test
     void apply_throws_whenAccessServiceHasNoReadAccess() {
-        when(proxy.getAccessService()).thenReturn(accessService);
-        when(proxy.getResourceService()).thenReturn(resourceService);
         when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
-        when(context.getConfig()).thenReturn(config);
         String serverFile = "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext";
         when(context.getDeployment()).thenReturn(application);
         application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
@@ -230,9 +186,11 @@ public class CollectRequestApplicationFilesFnTest {
         customProps.put("clientFile", "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext");
         customProps.put("serverFile", serverFile);
         application.setApplicationProperties(customProps);
-        when(config.getCustomApplicationSchema(eq(URI.create("customSchemaId")))).thenReturn(schema);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        ResourceDescriptor file = mock(ResourceDescriptor.class);
+        when(applicationSchemaService.getServerFiles(eq(application))).thenReturn(List.of(file));
         when(accessService.hasReadAccess(any(), any())).thenReturn(false); //Has no Read Access
-        when(resourceService.hasResource(any())).thenReturn(true);
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
 

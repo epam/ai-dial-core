@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -90,7 +89,8 @@ public class AccessServiceTest {
         );
 
         JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of()));
-        AccessService service = new AccessService(encryptionService, shareService, ruleService, settings);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings);
         service.filterForbidden(context, folderDescriptor, folderMetadata);
 
         assertEquals(2, folderMetadata.getItems().size());
@@ -138,7 +138,8 @@ public class AccessServiceTest {
         );
 
         JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of(Map.of("source", "roles", "function", "EQUAL", "targets", List.of("admin")))));
-        AccessService service = new AccessService(encryptionService, shareService, ruleService, settings);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings);
         service.filterForbidden(context, folderDescriptor, folderMetadata);
 
         assertEquals(1, folderMetadata.getItems().size());
@@ -199,7 +200,8 @@ public class AccessServiceTest {
         when(context.getSourceDeployment()).thenReturn("source");
 
         JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of(Map.of("source", "roles", "function", "EQUAL", "targets", List.of("admin")))));
-        var accessService = new AccessService(encryptionService, shareService, ruleService, settings);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        var accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings);
 
         ResourceDescriptor hiddenResource = new ResourceDescriptor(
                 ResourceTypes.FILE,
@@ -240,7 +242,8 @@ public class AccessServiceTest {
         when(context.getProject()).thenReturn("TEST-PROJECT");
 
         JsonObject settings = new JsonObject().put("admin", new JsonObject().put("rules", List.of()));
-        var accessService = new AccessService(encryptionService, shareService, ruleService, settings);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        var accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings);
 
         ResourceDescriptor hiddenResource = new ResourceDescriptor(
                 ResourceTypes.FILE,
@@ -311,7 +314,10 @@ public class AccessServiceTest {
     @Test
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesUndefined() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
-        AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
                 {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
@@ -325,7 +331,10 @@ public class AccessServiceTest {
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesEmpty() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("role1"));
-        AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
                 {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
@@ -340,7 +349,10 @@ public class AccessServiceTest {
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesNotEmpty_Forbidden() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("role1"));
-        AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
                 {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
@@ -355,7 +367,10 @@ public class AccessServiceTest {
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesNotEmpty_Allowed() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getUserRoles()).thenReturn(List.of("role1", "admin"));
-        AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
                 {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
@@ -371,7 +386,10 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        AccessService service = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService service = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
                 {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
@@ -391,28 +409,18 @@ public class AccessServiceTest {
         String initiatorBucket = "Users/user-sub-id/";
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", initiatorBucket, false);
 
-        Config config = mock(Config.class);
-        when(context.getConfig()).thenReturn(config);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
 
-        Proxy proxy = mock(Proxy.class);
-        when(context.getProxy()).thenReturn(proxy);
-        when(proxy.getEncryptionService()).thenReturn(encryptionService);
-        ResourceService resourceService = mock(ResourceService.class);
-        when(proxy.getResourceService()).thenReturn(resourceService);
-
-
-        try (MockedStatic<ApplicationTypeSchemaUtils> appSchemaUtilsMock = mockStatic(ApplicationTypeSchemaUtils.class);
-                MockedStatic<BucketBuilder> bucketBuilderMock = mockStatic(BucketBuilder.class)) {
+        try (MockedStatic<BucketBuilder> bucketBuilderMock = mockStatic(BucketBuilder.class)) {
 
             List<ResourceDescriptor> applicationFiles = List.of(resource);
-            appSchemaUtilsMock.when(() -> ApplicationTypeSchemaUtils.getFiles(
-                            config, application, encryptionService, resourceService))
-                    .thenReturn(applicationFiles);
+            when(applicationSchemaService.getFiles(application)).thenReturn(applicationFiles);
 
             bucketBuilderMock.when(() -> BucketBuilder.buildInitiatorBucket(context))
                     .thenReturn(initiatorBucket);
 
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                    applicationSchemaService,
                     new JsonObject("""
                             {
                              "admin": {
@@ -436,7 +444,10 @@ public class AccessServiceTest {
         when(application.hasApplicationTypeSchemaId()).thenReturn(false);
         when(context.getDeployment()).thenReturn(application);
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
                 {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
@@ -454,7 +465,10 @@ public class AccessServiceTest {
         Deployment application = mock(Deployment.class);
         when(context.getDeployment()).thenReturn(application);
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
-        AccessService accessService = new AccessService(encryptionService, shareService, ruleService, new JsonObject("""
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
                 {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]

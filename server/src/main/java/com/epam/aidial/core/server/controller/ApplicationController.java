@@ -9,12 +9,16 @@ import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
+import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -26,7 +30,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import static com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils.modifySchemaRichApplication;
 
 @Slf4j
 public class ApplicationController {
@@ -38,6 +41,9 @@ public class ApplicationController {
     private final ApplicationService applicationService;
 
     private final DeploymentService deploymentService;
+    private final ApplicationSchemaService applicationSchemaService;
+
+    private final DeploymentService.DeploymentExtractor deploymentExtractor;
 
     public ApplicationController(ProxyContext context) {
         this.context = context;
@@ -46,6 +52,8 @@ public class ApplicationController {
         this.accessService = context.getProxy().getAccessService();
         this.applicationService = context.getProxy().getApplicationService();
         this.deploymentService = context.getProxy().getDeploymentService();
+        this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
+        this.deploymentExtractor = new ApplicationDeploymentExtractor();
     }
 
     public Future<?> getApplication(String applicationId) {
@@ -53,7 +61,7 @@ public class ApplicationController {
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
-                        return modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf, context);
+                        return applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
@@ -75,18 +83,12 @@ public class ApplicationController {
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
                     boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), application.getName());
-                    application = modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf, context);
+                    application = applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     list.add(application);
                 }
             }
             if (applicationService.isIncludeCustomApps()) {
-                list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, new DeploymentService.DeploymentExtractor() {
-                    @SuppressWarnings("unchecked")
-                    @Override
-                    public Application extract(ResourceDescriptor resource, ProxyContext context) {
-                        return applicationService.extractApplicationFromResource(resource, context);
-                    }
-                }));
+                list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
             }
             return list.stream().map(ApplicationUtil::mapApplication).toList();
         }).onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
@@ -196,6 +198,31 @@ public class ApplicationController {
         } else {
             log.error("Failed to handle application request", error);
             context.respond(error, "Internal error");
+        }
+    }
+
+    private class ApplicationDeploymentExtractor implements DeploymentService.DeploymentExtractor {
+        @SuppressWarnings("unchecked")
+        @Override
+        public Application extract(ResourceDescriptor resource, ProxyContext context) {
+            Application application = applicationService.getApplication(resource).getValue();
+            return modifySchemaRichApplication(resource, context, application);
+        }
+
+        private Application modifySchemaRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application) {
+            try {
+                boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
+                        resource.getDecodedUrl());
+                if (applicationRequestInfoAboutItSelf && !accessService.hasWriteAccess(resource, ctx)) {
+                    application = applicationSchemaService.filterCustomClientProperties(application);
+                }
+                application = applicationSchemaService.modifyEndpointsForCustomApplication(application);
+            } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+                log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+                application.setApplicationProperties(null);
+                application.setInvalid(true);
+            }
+            return application;
         }
     }
 }

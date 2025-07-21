@@ -1,11 +1,10 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.server.Proxy;
-import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -13,6 +12,10 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.URI;
 import java.util.Collections;
@@ -22,16 +25,22 @@ import java.util.Map;
 
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-public class ApplicationTypeSchemaUtilsTest {
+@ExtendWith(MockitoExtension.class)
+public class ApplicationSchemaServiceTest {
+    @Mock
     private Config config;
+    @Mock
+    private ConfigStore configStore;
     private Application application;
-    private ProxyContext ctx;
-    private ResourceDescriptor resource;
-    private AccessService accessService;
+    @Mock
+    private ResourceService resourceService;
+    @Mock
+    private EncryptionService encryptionService;
+
+    @InjectMocks
+    private ApplicationSchemaService service;
 
     private final String schema = """
             {
@@ -70,61 +79,53 @@ public class ApplicationTypeSchemaUtilsTest {
             "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext");
     private final Map<String, Object> customProperties = new HashMap<>();
 
-    ApplicationTypeSchemaUtilsTest() {
-        customProperties.putAll(clientProperties);
-        customProperties.putAll(serverProperties);
-    }
-
     @BeforeEach
     void setUp() {
-        config = mock(Config.class);
+        customProperties.putAll(clientProperties);
+        customProperties.putAll(serverProperties);
         application = new Application();
-        ctx = mock(ProxyContext.class);
-        resource = mock(ResourceDescriptor.class);
-        Proxy proxy = mock(Proxy.class);
-        accessService = mock(AccessService.class);
-        when(ctx.getProxy()).thenReturn(proxy);
-        when(proxy.getAccessService()).thenReturn(accessService);
-        when(ctx.getConfig()).thenReturn(config);
     }
 
     @Test
     public void getCustomApplicationSchemaOrThrow_returnsSchema_whenSchemaIdExists() {
+        when(configStore.get()).thenReturn(config);
         URI schemaId = URI.create("schemaId");
         application.setApplicationTypeSchemaId(schemaId);
         when(config.getCustomApplicationSchema(schemaId)).thenReturn("schema");
 
-        String result = ApplicationTypeSchemaUtils.getCustomApplicationSchemaOrThrow(config, application);
+        String result = service.getCustomApplicationSchemaOrThrow(application);
 
         Assertions.assertEquals("schema", result);
     }
 
     @Test
     public void getCustomApplicationSchemaOrThrow_throws_whenSchemaNotFound() {
+        when(configStore.get()).thenReturn(config);
         URI schemaId = URI.create("schemaId");
         application.setApplicationTypeSchemaId(schemaId);
         when(config.getCustomApplicationSchema(schemaId)).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                ApplicationTypeSchemaUtils.getCustomApplicationSchemaOrThrow(config, application));
+                service.getCustomApplicationSchemaOrThrow(application));
     }
 
     @Test
     public void getCustomApplicationSchemaOrThrow_returnsNull_whenSchemaIdIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        String result = ApplicationTypeSchemaUtils.getCustomApplicationSchemaOrThrow(config, application);
+        String result = service.getCustomApplicationSchemaOrThrow(application);
 
         Assertions.assertNull(result);
     }
 
     @Test
     void consumeServerProperties_returnsProperties_whenSchemaExists() {
+        when(configStore.get()).thenReturn(config);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
 
-        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
+        service.consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
             Assertions.assertEquals(serverProperties, properties);
             Assertions.assertTrue(appendApplicationPropertiesHeader);
         });
@@ -134,7 +135,7 @@ public class ApplicationTypeSchemaUtilsTest {
     void consumeServerProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
+        service.consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
             Assertions.assertEquals(Collections.emptyMap(), properties);
             Assertions.assertTrue(appendApplicationPropertiesHeader);
         });
@@ -142,22 +143,24 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     void consumeServerProperties_throws_whenSchemaNotFound() {
+        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                ApplicationTypeSchemaUtils.consumeServerProperties(config, application, (properties, appendApplicationPropertiesHeader) -> {
+                service.consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                 }));
     }
 
 
     @Test
     public void filterCustomClientProperties_returnsFilteredProperties_whenSchemaExists() {
+        when(configStore.get()).thenReturn(config);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         application.setApplicationProperties(customProperties);
 
-        Application result = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+        Application result = service.filterCustomClientProperties(application);
 
         Assertions.assertNotSame(application, result);
         Assertions.assertEquals(clientProperties, result.getApplicationProperties());
@@ -165,11 +168,12 @@ public class ApplicationTypeSchemaUtilsTest {
 
     @Test
     public void filterCustomClientProperties_returnsOriginalApplication_whenApplicationPropertiesIsNull() {
+        when(configStore.get()).thenReturn(config);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         application.setApplicationProperties(null);
 
-        Application result = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+        Application result = service.filterCustomClientProperties(application);
 
         Assertions.assertSame(application, result);
     }
@@ -178,46 +182,19 @@ public class ApplicationTypeSchemaUtilsTest {
     public void filterCustomClientProperties_returnsOriginalApplication_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        Application result = ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+        Application result = service.filterCustomClientProperties(application);
 
         Assertions.assertSame(application, result);
         Assertions.assertEquals(application, result);
     }
 
     @Test
-    public void filterCustomClientPropertiesWhenNoWriteAccess_returnsFilteredProperties_whenNoWriteAccess() {
-        URI schemUri = URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type");
-        application.setApplicationTypeSchemaId(schemUri);
-        application.setApplicationProperties(customProperties);
-        when(config.getCustomApplicationSchema(eq(schemUri))).thenReturn(schema);
-        when(accessService.hasWriteAccess(resource, ctx)).thenReturn(false);
-
-        Application result = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, resource, application);
-
-        Assertions.assertNotSame(application, result);
-        Assertions.assertEquals(clientProperties, result.getApplicationProperties());
-    }
-
-    @Test
-    public void filterCustomClientPropertiesWhenNoWriteAccess_returnsOriginalApplication_whenHasWriteAccess() {
-        URI schemUri = URI.create("https://mydial.epam.com/custom_application_schemas/specific_application_type");
-        when(accessService.hasWriteAccess(resource, ctx)).thenReturn(true);
-        application.setApplicationTypeSchemaId(schemUri);
-        application.setApplicationProperties(customProperties);
-        when(config.getCustomApplicationSchema(eq(schemUri))).thenReturn(schema);
-
-        Application result = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, resource, application);
-
-        Assertions.assertSame(application, result);
-        Assertions.assertEquals(customProperties, result.getApplicationProperties());
-    }
-
-    @Test
     public void modifyEndpointForCustomApplication_setsCustomEndpoints_whenSchemaExists() {
+        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
-        Application result = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application);
+        Application result = service.modifyEndpointsForCustomApplication(application);
 
         Assertions.assertNotSame(application, result);
         Assertions.assertEquals("http://specific_application_service/opeani/v1/completion", result.getEndpoint());
@@ -227,12 +204,12 @@ public class ApplicationTypeSchemaUtilsTest {
     public void modifyEndpointsForCustomApplication_return_original_app_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        Assertions.assertSame(application,
-                ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application));
+        Assertions.assertSame(application, service.modifyEndpointsForCustomApplication(application));
     }
 
     @Test
     public void modifyEndpointForCustomApplication_throws_whenEndpointsNotFound() {
+        when(configStore.get()).thenReturn(config);
         String schemaWithoutEndpoint = """
                 {
                 "$schema": "https://dial.epam.com/application_type_schemas/schema#",
@@ -253,21 +230,19 @@ public class ApplicationTypeSchemaUtilsTest {
         when(config.getCustomApplicationSchema(any())).thenReturn(schemaWithoutEndpoint);
 
         Assertions.assertThrows(ApplicationTypeSchemaProcessingException.class, () ->
-                ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(config, application));
+                service.modifyEndpointsForCustomApplication(application));
     }
 
     @Test
     public void getFiles_returnsListOfFiles_whenSchemaExists() {
+        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
-        EncryptionService encryptionService = mock(EncryptionService.class);
-        ResourceService resourceService = mock(ResourceService.class);
-
         when(resourceService.hasResource(any())).thenReturn(true);
 
-        List<ResourceDescriptor> result = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService, resourceService);
+        List<ResourceDescriptor> result = service.getFiles(application);
 
         Assertions.assertEquals(2, result.size());
     }
@@ -276,41 +251,33 @@ public class ApplicationTypeSchemaUtilsTest {
     public void getFiles_returnsEmptyList_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        EncryptionService encryptionService = mock(EncryptionService.class);
-        ResourceService resourceService = mock(ResourceService.class);
-
-        List<ResourceDescriptor> result = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService, resourceService);
+        List<ResourceDescriptor> result = service.getFiles(application);
 
         Assertions.assertTrue(result.isEmpty());
     }
 
     @Test
     public void getFiles_throwsException_whenResourceNotFound() {
+        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
-        EncryptionService encryptionService = mock(EncryptionService.class);
-        ResourceService resourceService = mock(ResourceService.class);
-
         when(resourceService.hasResource(any())).thenReturn(false);
 
-        Assertions.assertThrows(ApplicationTypeResourceException.class, () ->
-                ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService, resourceService));
+        Assertions.assertThrows(ApplicationTypeResourceException.class, () -> service.getFiles(application));
     }
 
     @Test
     public void getServerFiles_returnsListOfServerFiles_whenSchemaExists() {
+        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
-        EncryptionService encryptionService = mock(EncryptionService.class);
-        ResourceService resourceService = mock(ResourceService.class);
-
         when(resourceService.hasResource(any())).thenReturn(true);
 
-        List<ResourceDescriptor> result = ApplicationTypeSchemaUtils.getServerFiles(config, application, encryptionService, resourceService);
+        List<ResourceDescriptor> result = service.getServerFiles(application);
 
         Assertions.assertEquals(1, result.size());
         Assertions.assertEquals(result.get(0).getUrl(), serverProperties.get("serverFile"));
@@ -320,31 +287,27 @@ public class ApplicationTypeSchemaUtilsTest {
     public void getServerFiles_returnsEmptyList_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        EncryptionService encryptionService = mock(EncryptionService.class);
-        ResourceService resourceService = mock(ResourceService.class);
-
-        List<ResourceDescriptor> result = ApplicationTypeSchemaUtils.getServerFiles(config, application, encryptionService, resourceService);
+        List<ResourceDescriptor> result = service.getServerFiles(application);
 
         Assertions.assertTrue(result.isEmpty());
     }
 
     @Test
     public void getServerFiles_throwsException_whenResourceNotFound() {
+        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
-        EncryptionService encryptionService = mock(EncryptionService.class);
-        ResourceService resourceService = mock(ResourceService.class);
-
         when(resourceService.hasResource(any())).thenReturn(false);
 
         Assertions.assertThrows(ApplicationTypeResourceException.class, () ->
-                ApplicationTypeSchemaUtils.getServerFiles(config, application, encryptionService, resourceService));
+                service.getServerFiles(application));
     }
 
     @Test
     public void getServerFiles_returnsListOfServerFiles_whenOneOfSchema() {
+        when(configStore.get()).thenReturn(config);
         final String schema = """
                 {
                   "$schema" : "https://dial.epam.com/application_type_schemas/schema#",
@@ -401,13 +364,10 @@ public class ApplicationTypeSchemaUtilsTest {
         application.setApplicationProperties(customProperties);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
 
-        EncryptionService encryptionService = mock(EncryptionService.class);
-        ResourceService resourceService = mock(ResourceService.class);
-
         when(resourceService.hasResource(any())).thenReturn(true);
 
-        List<ResourceDescriptor> resultServer = ApplicationTypeSchemaUtils.getServerFiles(config, application, encryptionService, resourceService);
-        List<ResourceDescriptor> resultAll = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService, resourceService);
+        List<ResourceDescriptor> resultServer = service.getServerFiles(application);
+        List<ResourceDescriptor> resultAll = service.getFiles(application);
 
         //check server files
         List<?> serverFiles = (List<?>) customServerProperties.get("serverFile");
