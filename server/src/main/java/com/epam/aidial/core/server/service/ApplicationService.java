@@ -334,7 +334,10 @@ public class ApplicationService {
                 if (sourceFile.isFolder()) {
                     resourceService.copyFolder(sourceFile, destFile, false);
                 } else {
-                    resourceService.copyResource(source, destFile, null, false);
+                    if (!resourceService.copyResource(source, destFile, null, false)) {
+                        throw new IllegalArgumentException("Can't copy source file: " + source.getUrl()
+                                + " to destination file: " + destFile.getUrl());
+                    }
                 }
             }
         }
