@@ -1,23 +1,13 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
-import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
-import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 

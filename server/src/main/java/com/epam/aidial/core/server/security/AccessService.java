@@ -6,10 +6,10 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -44,6 +44,8 @@ public class AccessService {
 
     private final List<String> createCodeAppRoles;
 
+    private final ApplicationSchemaService applicationSchemaService;
+
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
@@ -58,10 +60,12 @@ public class AccessService {
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
                          RuleService ruleService,
+                         ApplicationSchemaService applicationSchemaService,
                          JsonObject settings) {
         this.encryptionService = encryptionService;
         this.shareService = shareService;
         this.ruleService = ruleService;
+        this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
@@ -244,8 +248,7 @@ public class AccessService {
     public Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
-            List<ResourceDescriptor> applicationFiles = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, context.getProxy().getEncryptionService(),
-                    context.getProxy().getResourceService());
+            List<ResourceDescriptor> applicationFiles = applicationSchemaService.getFiles(application);
             String location = BucketBuilder.buildInitiatorBucket(context);
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
             for (ResourceDescriptor resource : resources) {

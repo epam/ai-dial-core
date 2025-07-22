@@ -27,7 +27,6 @@ import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -111,7 +110,7 @@ public class DeploymentPostController {
                     }
 
                     if (dep instanceof Application app) {
-                        dep = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), app);
+                        dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
                     if (dep.getEndpoint() == null) {
@@ -341,7 +340,7 @@ public class DeploymentPostController {
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
 
-            ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, appendApplicationPropertiesHeader) -> {
+            proxy.getApplicationSchemaService().consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                 if (appendApplicationPropertiesHeader) {
                     String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);

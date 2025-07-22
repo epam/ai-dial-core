@@ -1,11 +1,13 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
-import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.server.validation.DialFileKeyword;
@@ -21,7 +23,7 @@ import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
-import lombok.experimental.UtilityClass;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URI;
@@ -40,8 +42,8 @@ import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.getMetaschemaBuilder;
 
 @Slf4j
-@UtilityClass
-public class ApplicationTypeSchemaUtils {
+@AllArgsConstructor
+public class ApplicationSchemaService {
 
     private static final JsonMetaSchema DIAL_META_SCHEMA = getMetaschemaBuilder()
             .keyword(new DialMetaKeyword())
@@ -53,12 +55,17 @@ public class ApplicationTypeSchemaUtils {
             .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
             .build();
 
-    static String getCustomApplicationSchemaOrThrow(Config config, Application application) {
+    private final ResourceService resourceService;
+    private final ConfigStore configStore;
+
+    private final EncryptionService encryptionService;
+
+    String getCustomApplicationSchemaOrThrow(Application application) {
         URI schemaId = application.getApplicationTypeSchemaId();
         if (schemaId == null) {
             return null;
         }
-        String customApplicationSchema = config.getCustomApplicationSchema(schemaId);
+        String customApplicationSchema = configStore.get().getCustomApplicationSchema(schemaId);
         if (customApplicationSchema == null) {
             throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
         }
@@ -97,8 +104,8 @@ public class ApplicationTypeSchemaUtils {
         void accept(Map<String, Object> properties, boolean appendApplicationPropertiesHeader) throws JsonProcessingException;
     }
 
-    public static void consumeServerProperties(Config config, Application application, ServerPropertiesConsumer consumer) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(config, application);
+    public void consumeServerProperties(Application application, ServerPropertiesConsumer consumer) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
         if (customApplicationSchema == null) {
             return;
         }
@@ -123,9 +130,9 @@ public class ApplicationTypeSchemaUtils {
         void accept(String completion, String configuration, String rate, String tokenize, String truncatePrompt);
     }
 
-    private static void consumeCustomApplicationEndpoints(Config config, Application application, EndpointConsumer consumer) {
+    private void consumeCustomApplicationEndpoints(Application application, EndpointConsumer consumer) {
         try {
-            String schema = getCustomApplicationSchemaOrThrow(config, application);
+            String schema = getCustomApplicationSchemaOrThrow(application);
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
 
             String completionEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, true);
@@ -152,14 +159,14 @@ public class ApplicationTypeSchemaUtils {
         return endpointNode.asText();
     }
 
-    public static Application modifyEndpointsForCustomApplication(Config config, Application application) {
+    public Application modifyEndpointsForCustomApplication(Application application) {
         if (application.getApplicationTypeSchemaId() == null) {
             return application;
         }
 
         Application copy = new Application(application);
 
-        consumeCustomApplicationEndpoints(config, application, (completionEndpoint, configurationEndpoint, rateEndpoint, tokenizeEndpoint, truncatePromptEndpoint) -> {
+        consumeCustomApplicationEndpoints(application, (completionEndpoint, configurationEndpoint, rateEndpoint, tokenizeEndpoint, truncatePromptEndpoint) -> {
             copy.setEndpoint(completionEndpoint);
 
             Features features = copy.getFeatures();
@@ -186,8 +193,8 @@ public class ApplicationTypeSchemaUtils {
         return copy;
     }
 
-    public static Application filterCustomClientProperties(Config config, Application application) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(config, application);
+    public Application filterCustomClientProperties(Application application) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
         if (customApplicationSchema == null) {
             return application;
         }
@@ -200,28 +207,18 @@ public class ApplicationTypeSchemaUtils {
         return copy;
     }
 
-    public static Application filterCustomClientPropertiesWhenNoWriteAccess(ProxyContext ctx, ResourceDescriptor resource, Application application) {
-        if (!ctx.getProxy().getAccessService().hasWriteAccess(resource, ctx)) {
-            application = filterCustomClientProperties(ctx.getConfig(), application);
-        }
-        return application;
+    public List<ResourceDescriptor> getServerFiles(Application application) {
+        return getFiles(application, ListCollector.FileCollectorType.ONLY_SERVER_FILES);
     }
 
-    public static List<ResourceDescriptor> getServerFiles(Config config, Application application, EncryptionService encryptionService,
-                                                          ResourceService resourceService) {
-        return getFiles(config, application, encryptionService, resourceService, ListCollector.FileCollectorType.ONLY_SERVER_FILES);
-    }
-
-    public static List<ResourceDescriptor> getFiles(Config config, Application application, EncryptionService encryptionService,
-                                                    ResourceService resourceService) {
-        return getFiles(config, application, encryptionService, resourceService, ListCollector.FileCollectorType.ALL_FILES);
+    public List<ResourceDescriptor> getFiles(Application application) {
+        return getFiles(application, ListCollector.FileCollectorType.ALL_FILES);
     }
 
     @SuppressWarnings("unchecked")
-    private static List<ResourceDescriptor> getFiles(Config config, Application application, EncryptionService encryptionService,
-                                                     ResourceService resourceService, ListCollector.FileCollectorType collectorName) {
+    private List<ResourceDescriptor> getFiles(Application application, ListCollector.FileCollectorType collectorName) {
         try {
-            String customApplicationSchema = getCustomApplicationSchemaOrThrow(config, application);
+            String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
             if (customApplicationSchema == null) {
                 return Collections.emptyList();
             }
@@ -257,12 +254,12 @@ public class ApplicationTypeSchemaUtils {
         }
     }
 
-    public static Application modifySchemaRichApplication(Application application, boolean propertyFilteringRequired, ProxyContext context) {
+    public Application modifySchemaRichApplication(Application application, boolean propertyFilteringRequired) {
         try {
             if (propertyFilteringRequired) {
-                application = ApplicationTypeSchemaUtils.filterCustomClientProperties(context.getConfig(), application);
+                application = filterCustomClientProperties(application);
             }
-            application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
+            application = modifyEndpointsForCustomApplication(application);
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
             log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
             application.setApplicationProperties(null);

@@ -4,19 +4,14 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.ApplicationUtil;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
-import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -68,7 +63,7 @@ public class ApplicationService {
     @Getter
     private final boolean includeCustomApps;
 
-    private final ConfigStore configStore;
+    private final ApplicationSchemaService applicationSchemaService;
 
     public ApplicationService(Vertx vertx,
                               RedissonClient redis,
@@ -77,15 +72,16 @@ public class ApplicationService {
                               ResourceService resourceService,
                               LockService lockService,
                               ApplicationOperatorService operatorService,
+                              ApplicationSchemaService applicationSchemaService,
                               Supplier<String> idGenerator,
-                              JsonObject settings, ConfigStore configStore) {
-        this.configStore = configStore;
+                              JsonObject settings) {
         String pendingApplicationsKey = BlobStorageUtil.toStoragePath(lockService.getPrefix(), "pending-applications");
 
         this.vertx = vertx;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
+        this.applicationSchemaService = applicationSchemaService;
         this.lockService = lockService;
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
@@ -140,27 +136,6 @@ public class ApplicationService {
         application.setUpdatedAt(meta.getUpdatedAt());
 
         return Pair.of(meta, application);
-    }
-
-    public Application extractApplicationFromResource(ResourceDescriptor resource, ProxyContext ctx) {
-        Application application = getApplication(resource).getValue();
-        return modifySchemaRichApplication(resource, ctx, application);
-    }
-
-    private static Application modifySchemaRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application) {
-        try {
-            boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
-                    resource.getDecodedUrl());
-            if (applicationRequestInfoAboutItSelf) {
-                application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, resource, application);
-            }
-            application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);
-        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
-            log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
-            application.setApplicationProperties(null);
-            application.setInvalid(true);
-        }
-        return application;
     }
 
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author, Application application) {
@@ -237,7 +212,7 @@ public class ApplicationService {
             if (application.getFunction() != null) {
                 deleteFolder(application.getFunction().getSourceFolder());
             }
-            List<ResourceDescriptor> appFiles = ApplicationTypeSchemaUtils.getFiles(configStore.get(), application, encryptionService, resourceService);
+            List<ResourceDescriptor> appFiles = applicationSchemaService.getFiles(application);
             for (ResourceDescriptor file : appFiles) {
                 if (file.isFolder()) {
                     resourceService.deleteFolder(file);
@@ -270,7 +245,7 @@ public class ApplicationService {
         List<ResourceDescriptor> sourceAppFiles = List.of();
         List<ResourceDescriptor> destAppFiles = List.of();
         if (isPublicOrReview) {
-            sourceAppFiles = ApplicationTypeSchemaUtils.getFiles(configStore.get(), application, encryptionService, resourceService);
+            sourceAppFiles = applicationSchemaService.getFiles(application);
             destAppFiles = toDestAppFiles(source, destination, sourceAppFiles);
             fileReplacementLinks = new HashMap<>();
             for (int i = 0; i < sourceAppFiles.size(); i++) {

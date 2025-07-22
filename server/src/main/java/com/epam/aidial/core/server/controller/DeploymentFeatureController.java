@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -45,7 +44,7 @@ public class DeploymentFeatureController {
         // make sure request.body() called before request.resume()
         return proxy.getVertx().executeBlocking(() -> proxy.getDeploymentService().findDeployment(context, deploymentId), false).map(dep -> {
             if (dep instanceof Application application) {
-                dep = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(context.getConfig(), application);
+                dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
             }
             String endpoint = endpointGetter.apply(dep);
             context.setDeployment(dep);
@@ -146,7 +145,7 @@ public class DeploymentFeatureController {
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {
                 proxyRequest.headers().add(HEADER_APPLICATION_ID, deployment.getName());
-                ApplicationTypeSchemaUtils.consumeServerProperties(context.getConfig(), application, (properties, appendApplicationPropertiesHeader) -> {
+                proxy.getApplicationSchemaService().consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                     if (appendApplicationPropertiesHeader) {
                         String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                         proxyRequest.headers().add(HEADER_APPLICATION_PROPERTIES, propsString);
