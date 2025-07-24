@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -16,6 +17,7 @@ import com.epam.aidial.core.server.validation.ListCollector;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
@@ -24,8 +26,10 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
 import lombok.AllArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,10 +37,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_COMPLETION_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_CONFIGURATION_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_RATE_ENDPOINT;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_ROUTES;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TOKENIZE_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.getMetaschemaBuilder;
@@ -54,6 +60,13 @@ public class ApplicationSchemaService {
             .metaSchema(DIAL_META_SCHEMA)
             .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
             .build();
+
+    private static final TypeReference<Map<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
+        @Override
+        public Type getType() {
+            return super.getType();
+        }
+    };
 
     private final ResourceService resourceService;
     private final ConfigStore configStore;
@@ -266,5 +279,20 @@ public class ApplicationSchemaService {
             application.setInvalid(true);
         }
         return application;
+    }
+
+    @Nullable
+    @SneakyThrows
+    public Map<String, Route> getRoutes(Application application) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
+        if (customApplicationSchema == null) {
+            return null;
+        }
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode appRoutes = schemaNode.get(APPLICATION_TYPE_ROUTES);
+        if (appRoutes == null) {
+            return null;
+        }
+        return ProxyUtil.MAPPER.treeToValue(appRoutes, APP_ROUTE_TYPE_REF);
     }
 }

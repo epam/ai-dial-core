@@ -11,7 +11,7 @@ public abstract class RoleBasedEntity {
 
     private String name;
 
-    @JsonAlias({"userRoles", "user_roles"})
+    @JsonAlias({"userRoles", "user_roles", "dial:userRoles"})
     private Set<String> userRoles;
 
     /**

@@ -139,7 +139,41 @@
                 "paramInt": 123,
                 "paramFloat": 0.25
             },
-            "interceptors": ["interceptor1", "interceptor2", "interceptor3"]
+            "interceptors": ["interceptor1", "interceptor2", "interceptor3"],
+            "routes": {
+                "vector_store_query": {
+                    "paths": ["/v1/vector_store(/[^/]+)*$"],
+                    "rewritePath": true,
+                    "methods": ["GET", "HEAD"],
+                    "userRoles": ["role1"],
+                    "upstreams": [
+                        {
+                            "endpoint": "http://localhost:9876"
+                        },
+                        {
+                            "endpoint": "http://localhost:9877"
+                        }
+                    ],
+                    "order": 1,
+                    "permissions": ["WRITE"],
+                    "attachmentPaths": {
+                        "attachmentPaths": {
+                            "requestBody": ["@.attachments[*].url"],
+                            "responseBody": ["@.result.attachedFiles"]
+                        }
+                    }
+                },
+                "rate": {
+                    "paths": ["/v1/rate"],
+                    "rewritePath": true,
+                    "methods": ["GET", "HEAD"],
+                    "response": {
+                        "status": 200,
+                        "body": "OK"
+                    },
+                    "order": 2
+                }
+            }
         }
     },
     "models": {
@@ -266,4 +300,4 @@
         }
     },
     "retriableErrorCodes": [401, 403]
-},
+}

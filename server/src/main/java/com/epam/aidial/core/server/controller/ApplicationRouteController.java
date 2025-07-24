@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -87,14 +86,18 @@ public class ApplicationRouteController extends BaseRouteController {
             Deployment deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             context.setDeployment(deployment);
             if (deployment instanceof Application application) {
-                return sortRoutes(application.getRoutes());
+                Map<String, Route> routes = proxy.getApplicationSchemaService().getRoutes(application);
+                if (routes == null) {
+                    routes = application.getRoutes();
+                }
+                return sortRoutes(routes);
             } else {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Application is not found: " + deploymentId);
             }
         });
     }
 
-    private Collection<Route> sortRoutes(LinkedHashMap<String, Route> routes) {
+    private Collection<Route> sortRoutes(Map<String, Route> routes) {
         return routes.entrySet().stream().map(e -> {
             Route route = e.getValue();
             route.setName(e.getKey());

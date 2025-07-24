@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
@@ -25,6 +26,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -381,5 +383,82 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertEquals(clientProperties.get("clientFile"), resultAll.get(0).getUrl());
         Assertions.assertEquals(serverFiles.get(0), resultAll.get(1).getUrl());
         Assertions.assertEquals(serverFiles.get(1), resultAll.get(2).getUrl());
+    }
+
+    @Test
+    public void testGetRoutes_WhenSchemaAndRoutesExist() {
+        when(configStore.get()).thenReturn(config);
+        URI appSchemaUri = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(appSchemaUri);
+        final String schema = """
+                {
+                  "$schema" : "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id" : "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeEditorUrl" : "https://mydial.epam.com/specific_application_type_editor",
+                  "dial:applicationTypeDisplayName" : "Specific Application Type",
+                  "dial:applicationTypeCompletionEndpoint" : "http://specific_application_service/opeani/v1/completion",
+                  "dial:applicationTypeRoutes": {
+                      "data_sync": {
+                        "dial:paths": [
+                          "/v1/data"
+                        ],
+                        "dial:rewritePath": true,
+                        "dial:methods": [
+                          "PUT"
+                        ],
+                        "dial:userRoles": [
+                          "admin",
+                          "user"
+                        ],
+                        "dial:upstreams": [
+                          {
+                            "dial:endpoint": "http://localhost:8080"
+                          },
+                          {
+                            "dial:endpoint": "http://localhost:8081"
+                          }
+                        ],
+                        "dial:order": 5,
+                        "dial:permissions": [
+                          "WRITE"
+                        ]
+                      }
+                    }
+                }""";
+
+        when(config.getCustomApplicationSchema(eq(appSchemaUri))).thenReturn(schema);
+
+        Map<String, Route> routes = service.getRoutes(application);
+
+        Assertions.assertNotNull(routes);
+        Assertions.assertEquals(1, routes.size());
+        Assertions.assertTrue(routes.containsKey("data_sync"));
+    }
+
+    @Test
+    public void testGetRoutes_WhenSchemaExist() {
+        when(configStore.get()).thenReturn(config);
+        URI appSchemaUri = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(appSchemaUri);
+        final String schema = """
+                {
+                  "$schema" : "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id" : "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeEditorUrl" : "https://mydial.epam.com/specific_application_type_editor",
+                  "dial:applicationTypeDisplayName" : "Specific Application Type",
+                  "dial:applicationTypeCompletionEndpoint" : "http://specific_application_service/opeani/v1/completion"
+                }""";
+
+        when(config.getCustomApplicationSchema(eq(appSchemaUri))).thenReturn(schema);
+
+        Map<String, Route> routes = service.getRoutes(application);
+
+        Assertions.assertNull(routes);
+    }
+
+    @Test
+    public void testGetRoutes_WhenSchemaNotExist() {
+        Map<String, Route> routes = service.getRoutes(application);
+        Assertions.assertNull(routes);
     }
 }
