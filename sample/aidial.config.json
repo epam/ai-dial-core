@@ -299,5 +299,65 @@
             }
         }
     },
-    "retriableErrorCodes": [401, 403]
+    "retriableErrorCodes": [401, 403],
+    "applicationTypeSchemas": [
+        {
+            "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+            "$id": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+            "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
+            "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
+            "dial:applicationTypeDisplayName": "Specific Application Type",
+            "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
+            "dial:applicationTypeRoutes": {
+                "data_sync": {
+                    "dial:paths": [
+                        "/v1/index/search"
+                    ],
+                    "dial:rewritePath": true,
+                    "dial:methods": [
+                        "POST"
+                    ],
+
+                    "dial:order": 5,
+                    "dial:permissions": [
+                        "WRITE"
+                    ]
+                }
+            },
+            "properties": {
+                "property1": {
+                    "title": "Property 1",
+                    "type": "string",
+                    "dial:meta": {
+                        "dial:propertyKind": "client",
+                        "dial:propertyOrder": 1
+                    }
+                },
+                "property2": {
+                    "title": "Property 2",
+                    "type": "string",
+                    "dial:meta": {
+                        "dial:propertyKind": "server",
+                        "dial:propertyOrder": 2
+                    }
+                },
+                "property3": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "dial-file-encoded",
+                        "dial:file": true
+                    },
+                    "dial:meta": {
+                        "dial:propertyKind": "server",
+                        "dial:propertyOrder": 3
+                    }
+                }
+            },
+            "required": [
+                "property1",
+                "property2"
+            ]
+        }
+    ]
 }

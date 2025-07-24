@@ -65,8 +65,7 @@
                 "dial:paths": {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^/v1/"
+                    "type": "string"
                   }
                 },
                 "dial:rewritePath": {

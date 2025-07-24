@@ -51,6 +51,7 @@ public class MetaSchemaHolder {
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT))
                 .keyword(new NonValidationKeyword(PROPERTY_KIND))
                 .keyword(new NonValidationKeyword(PROPERTY_ORDER))
+                .keyword(new NonValidationKeyword(APPLICATION_TYPE_ROUTES))
                 .keyword(new NonValidationKeyword("$defs"))
                 .format(new DialFileFormat());
     }
