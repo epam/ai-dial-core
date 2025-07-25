@@ -54,14 +54,10 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Set;
-
-import static org.slf4j.MDC.remove;
 
 @Slf4j
 @Getter
@@ -137,11 +133,6 @@ public class Proxy implements Handler<HttpServerRequest> {
             if (error instanceof HttpException e) {
                 status = e.getStatus();
                 message = e.getMessage();
-            }
-            if (error instanceof RuntimeException) {
-                log.error("Unexpected runtime exception while handling request", error);
-            } else if (error instanceof Error) {
-                log.error("Serious system error while handling request", error);
             } else {
                 log.error("Can't handle request", error);
             }
@@ -207,9 +198,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request,
-                        result.apiKeyData, traceId, spanId,
-                        result.authorizedProject, result.authorizedUserSub))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
@@ -293,42 +282,26 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private record AuthorizationResult(
-            ApiKeyData apiKeyData,
-            ExtractedClaims extractedClaims,
-            String authorizedProject,
-            String authorizedUserSub
-    ) {
+    private record AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
 
-        public AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
-            this(apiKeyData, extractedClaims,
-                    (extractedClaims != null) ? extractedClaims.project() :
-                            ((apiKeyData != null && apiKeyData.getOriginalKey() != null) ? apiKeyData.getOriginalKey().getProject() : null),
-                    (extractedClaims != null) ? extractedClaims.sub() : null);
-        }
     }
 
     @SneakyThrows
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims, Config config,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
-                                                 String traceId, String spanId, String authorizedProject, String authorizedUserSub) {
+                                                 String traceId, String spanId) {
+        // Clear context when the response is actually closed, not when controller completes
+        request.response().closeHandler(v -> ContextManager.clearContext());
         Future<?> future;
         try {
-            ContextManager.setContext(authorizedProject, authorizedUserSub, traceId, spanId);
-            ContextManager.setRequestContext(request);
-
             ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId);
-
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);
-
             future = controller.handle();
-
         } catch (Exception t) {
             future = Future.failedFuture(t);
         }
-        return future.onComplete(result -> ContextManager.clearContext());
-
+        return future;
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {

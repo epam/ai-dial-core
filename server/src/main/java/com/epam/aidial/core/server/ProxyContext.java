@@ -19,7 +19,9 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.StatusCode;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -130,14 +132,16 @@ public class ProxyContext {
         }
         this.spanId = spanId;
 
-        if (traceId != null && !traceId.isEmpty()) {
-            MDC.put("trace_id", traceId);
+        // Set the ProxyContext in MDC and Vertx context
+        ContextManager.setProxyContext(this);
+
+        // Set trace context in MDC
+        SpanContext spanContext = Span.current().getSpanContext();
+        if (spanContext.isValid()) {
+            MDC.put("trace.id", spanContext.getTraceId());
+            MDC.put("span.id", spanContext.getSpanId());
+            MDC.put("trace.flags", spanContext.getTraceFlags().asHex());
         }
-        if (spanId != null && !spanId.isEmpty()) {
-            MDC.put("span_id", spanId);
-        }
-        SpanContext context = Span.current().getSpanContext();
-        MDC.put("trace_flags", context.getTraceFlags().asHex());
     }
 
     private void initExtractedClaims(ExtractedClaims extractedClaims, Key originalKey) {
@@ -171,16 +175,21 @@ public class ProxyContext {
         return respond(status, json);
     }
 
-    public Future<?> respond(HttpStatus status, String body)  {
-        MDC.put("http.status.code", status.toString());
-        MDC.put("user.project", getProject());
+    public Future<?> respond(HttpStatus status, String body) {
+        // Set the entire ProxyContext in MDC and Vertx context
+        ContextManager.setProxyContext(this);
+
+        // Also store in Vertx context for the logging layout
+        Context vertxContext = Vertx.currentContext();
+        if (vertxContext != null) {
+            vertxContext.putLocal("http.status.code", String.valueOf(status.getCode()));
+        }
+
         if (body == null) {
             body = "";
         }
-        MDC.put("user.sub", getUserSub());
 
         if (status != HttpStatus.OK) {
-
             String errorMessage = String.format("HTTP %d: %s", status.getCode(), body);
             HttpException exception = new HttpException(status, errorMessage);
 

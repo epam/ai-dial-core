@@ -2,55 +2,76 @@ package com.epam.aidial.core.server;
 
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpServerRequest;
-import org.slf4j.MDC;
 
 public class ContextManager {
-    private static final String USER_PROJECT = "user.project";
-    private static final String USER_SUB = "user.sub";
-    private static final String TRACE_ID = "trace.id";
-    private static final String SPAN_ID = "span.id";
-    private static final String REQUEST_URI = "request.uri";
-    private static final String REQUEST_METHOD = "request.method";
 
-    public static void setContext(String project, String userSub, String traceId, String spanId) {
-        if (project != null) {
-            MDC.put(USER_PROJECT, project);
+    private static final String PROXY_CONTEXT_KEY = "proxyContext";
+
+    /**
+     * Set ProxyContext in Vertx context only.
+     * This simplifies context management by storing the entire ProxyContext object
+     * instead of managing individual attributes.
+     * MDC is not used here to avoid duplication, as it will be temporarily enriched
+     * during logging in AutoEnrichedOtelJsonLayout.
+     */
+    public static void setProxyContext(ProxyContext proxyContext) {
+        if (proxyContext == null) {
+            return;
         }
-        MDC.put(USER_SUB, userSub != null ? userSub : "unknown");
 
+        // Store the entire ProxyContext in Vertx context only
         Context vertxContext = Vertx.currentContext();
         if (vertxContext != null) {
-            if (project != null) {
-                vertxContext.putLocal(USER_PROJECT, project);
-            }
-            vertxContext.putLocal(USER_SUB, userSub != null ? userSub : "unknown");
-            if (traceId != null) {
-                vertxContext.putLocal(TRACE_ID, traceId);
-            }
-            if (spanId != null) {
-                vertxContext.putLocal(SPAN_ID, spanId);
-            }
-        }
-    }
+            vertxContext.putLocal(PROXY_CONTEXT_KEY, proxyContext);
 
-    public static void setRequestContext(HttpServerRequest request) {
-        setContextValue(REQUEST_URI, request.uri());
-        setContextValue(REQUEST_METHOD, request.method().name());
-    }
-
-    private static void setContextValue(String key, String value) {
-        if (value != null) {
-            MDC.put(key, value);
-
-            Context vertxContext = Vertx.currentContext();
-            if (vertxContext != null) {
-                vertxContext.putLocal(key, value);
+            // Also store individual fields for easier access by logging
+            if (proxyContext.getProject() != null) {
+                vertxContext.putLocal("user.project", proxyContext.getProject());
+            }
+            if (proxyContext.getUserSub() != null) {
+                vertxContext.putLocal("user.sub", proxyContext.getUserSub());
+            }
+            if (proxyContext.getRequest() != null) {
+                vertxContext.putLocal("request.uri", proxyContext.getRequest().uri());
+                vertxContext.putLocal("request.method", proxyContext.getRequest().method().name());
+            }
+            // Store trace context fields
+            if (proxyContext.getTraceId() != null) {
+                vertxContext.putLocal("trace.id", proxyContext.getTraceId());
+            }
+            if (proxyContext.getSpanId() != null) {
+                vertxContext.putLocal("span.id", proxyContext.getSpanId());
             }
         }
     }
 
+    /**
+     * Get ProxyContext from Vertx context.
+     */
+    public static ProxyContext getProxyContext() {
+        Context vertxContext = Vertx.currentContext();
+        if (vertxContext != null) {
+            return vertxContext.getLocal(PROXY_CONTEXT_KEY);
+        }
+        return null;
+    }
+
+    /**
+     * Clear context data from Vertx context.
+     * MDC is not cleared here as it's only temporarily enriched during logging.
+     */
     public static void clearContext() {
-        MDC.clear();
+        // Clear from Vertx context
+        Context vertxContext = Vertx.currentContext();
+        if (vertxContext != null) {
+            vertxContext.removeLocal(PROXY_CONTEXT_KEY);
+            vertxContext.removeLocal("user.project");
+            vertxContext.removeLocal("user.sub");
+            vertxContext.removeLocal("request.uri");
+            vertxContext.removeLocal("request.method");
+            vertxContext.removeLocal("http.status.code");
+            vertxContext.removeLocal("trace.id");
+            vertxContext.removeLocal("span.id");
+        }
     }
 }

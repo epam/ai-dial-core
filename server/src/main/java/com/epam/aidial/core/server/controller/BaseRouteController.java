@@ -17,10 +17,6 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
-import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.StatusCode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -313,9 +309,13 @@ public abstract class BaseRouteController implements Controller {
     }
 
     private void handleError(Throwable error) {
-        String route = context.getRoute().getName();
-        log.error("Failed to handle route {}", route, error);
-        respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process route request: " + route);
+        if (error instanceof HttpException httpException) {
+            respond(httpException);
+        } else {
+            String errorMsg = "Error occurred on processing route request: %s".formatted(context.getRequest().path());
+            log.error(errorMsg, error);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
+        }
     }
 
     /**
