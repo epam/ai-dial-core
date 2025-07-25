@@ -99,4 +99,60 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    public void testSchemaRichAppRoute() {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+                {
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "application_properties" : {
+                    "property1" : "test property1",
+                    "property2" : "test property2"
+                  },
+                "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                }
+                """);
+        verifyJsonNotExact(response, 200, """
+                {
+                "name":"my-custom-application",
+                "parentPath":null,
+                "bucket":"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                "url":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                "nodeType":"ITEM",
+                "resourceType":"APPLICATION",
+                "createdAt": "@ignore",
+                "updatedAt":"@ignore",
+                "etag":"@ignore",
+                "author" : "EPM-RTC-GPT"
+                }
+                """);
+        String responseBody = """
+                {
+                 "content": "some result",
+                 "attachments": "file1"
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            TestWebServer.Handler handler = request -> {
+                MockResponse mockResponse = new MockResponse();
+                mockResponse.setResponseCode(200);
+                mockResponse.setBody(responseBody);
+                return mockResponse;
+            };
+            server.map(HttpMethod.POST, "/v1/index/search", handler);
+
+            String requestBody = """
+                    {
+                     "payload": "some content"
+                    }
+                    """;
+            String appPath = "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application/route/v1/index/search";
+            ResourceBaseTest.Response appResponse = send(HttpMethod.POST, appPath, null, requestBody);
+
+            verify(appResponse, 200, responseBody);
+        }
+    }
+
 }

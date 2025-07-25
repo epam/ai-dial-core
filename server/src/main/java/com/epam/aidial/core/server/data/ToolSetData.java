@@ -19,7 +19,7 @@ public class ToolSetData extends DeploymentData {
     private List<String> allowedTools;
 
     {
-        setObject("application");
+        setObject("toolset");
         setScaleSettings(null);
         setFeatures(null);
     }
@@ -28,7 +28,7 @@ public class ToolSetData extends DeploymentData {
     public static ToolSetData toData(ToolSet toolSet) {
         ToolSetData data = new ToolSetData();
 
-        data.setApplication(toolSet.getName());
+        data.setToolset(toolSet.getName());
         data.setDisplayName(toolSet.getDisplayName());
         data.setIconUrl(toolSet.getIconUrl());
         data.setDisplayVersion(toolSet.getDisplayVersion());

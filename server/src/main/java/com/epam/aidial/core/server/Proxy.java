@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -114,6 +115,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
     private final ToolSetService toolSetService;
+    private final ApplicationSchemaService applicationSchemaService;
     private final String version;
 
     @Override

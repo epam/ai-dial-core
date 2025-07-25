@@ -15,7 +15,6 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
@@ -173,7 +172,7 @@ public class ResourceController extends AccessControlBaseController {
             features.setTruncatePromptEndpoint(null);
         }
         try {
-            return ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+            return proxy.getApplicationSchemaService().filterCustomClientProperties(application);
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
             log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
             application.setApplicationProperties(null);
@@ -198,9 +197,7 @@ public class ResourceController extends AccessControlBaseController {
         try {
             checkCreateCodeApp(application);
             if (application.getApplicationProperties() != null) {
-                Config config = context.getConfig();
-                List<ResourceDescriptor> files = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService,
-                        resourceService);
+                List<ResourceDescriptor> files = proxy.getApplicationSchemaService().getFiles(application);
                 files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
                         .findAny().ifPresent(file -> {
                             throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());

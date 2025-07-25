@@ -274,6 +274,10 @@ public class ControllerSelector {
             ConsentController controller = new ConsentController(context, proxy);
             return () -> controller.acceptConsent(deploymentId);
         });
+        post(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
+            String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ToolSetProxyController(proxy, context, toolSetId);
+        }));
         // DELETE routes
         delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);

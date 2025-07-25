@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
@@ -130,6 +131,8 @@ public class UpstreamRouteProvider {
             prefix = "application";
         } else if (deployment instanceof Assistant) {
             prefix = "assistant";
+        } else if (deployment instanceof ToolSet) {
+            prefix = "toolset";
         } else {
             throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getClass().getName());
         }

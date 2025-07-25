@@ -2135,7 +2135,141 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testApplicationWithTypeSchemaPublish_Ok_MindMapCase() {
+    void testUnpublishSchemaRichApp() throws JsonProcessingException {
+        testPublishSchemaRichApp("0123", "2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo");
+        Response response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Unpublish my application",
+                      "targetFolder": "public/",
+                      "resources": [
+                        {
+                          "action": "DELETE",
+                          "targetUrl": "applications/public/xyz%20app%204"
+                        }
+                      ]
+                    }
+                """);
+        verify(response, 200);
+        response = operationRequest("/v1/ops/publication/approve", """
+            {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+            }
+            """, "authorization", "admin");
+        verify(response, 200);
+        testPublishSchemaRichApp("0125", "2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhG9cWs5cubLjt6DVqa4wmnj");
+    }
+
+    private void testPublishSchemaRichApp(String pubId, String reviewBucket) throws JsonProcessingException {
+
+        List<String> filePaths = List.of(
+                "Unt 26__0.0.1/generate.json",
+                "Unt 26__0.0.1/nodes/1743404608.101931_1.json",
+                "abc/Unt 26__0.0.1"
+        );
+        String basePath = "/v1/files/%s/appdata/mindmap/".formatted(bucket);
+        Response response;
+        for (String filePath : filePaths) {
+            String resourceUrl = basePath + UrlUtil.encodePath(filePath);
+            response = upload(HttpMethod.PUT, resourceUrl, null, "Test");
+            Assertions.assertEquals(200, response.status());
+        }
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202", null, """
+                  {
+                      "displayName": "test%20app%202",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/Unt%2026__0.0.1/",
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/mindmap/abc/Unt%2026__0.0.1"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202",
+                          "targetUrl": "applications/public/xyz%20app%204"
+                        }
+                      ]
+                    }
+                """);
+        String correctResponse = """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/%s",
+                  "name" : "Publication of my application",
+                  "targetFolder" : "public/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                       "action" : "ADD",
+                       "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%%20app%%202",
+                       "targetUrl" : "applications/public/xyz%%20app%%204",
+                       "reviewUrl" : "applications/%s/xyz%%20app%%204"
+                     }],
+                  "resourceTypes" : [ "APPLICATION" ],
+                  "author" : "EPM-RTC-GPT"
+                }""".formatted(pubId, reviewBucket);
+
+
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        response = operationRequest("/v1/ops/publication/approve", """
+            {
+              "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/%s"
+            }
+            """.formatted(pubId), "authorization", "admin");
+        verify(response, 200);
+
+        JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode resources = responseJson.get("resources");
+        String targetUrl = resources.get(0).get("targetUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+        correctResponse = """
+                {
+                   "name" : "applications/public/xyz%20app%204",
+                   "display_name" : "test%20app%202",
+                   "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                   "description" : "My application description",
+                   "reference" : "@ignore",
+                   "forward_auth_token" : false,
+                   "defaults" : { },
+                   "interceptors" : [ ],
+                   "description_keywords" : [ ],
+                   "max_retry_attempts" : 1,
+                   "author" : "EPM-RTC-GPT",
+                   "created_at" : "@ignore",
+                   "updated_at" : "@ignore",
+                   "dependencies" : [ ],
+                   "application_properties" : {
+                     "property1" : "test property1",
+                     "property2" : "test property2",
+                     "property3" : [ "files/public/.xyz%20app%204/Unt%2026__0.0.1/", "files/public/.xyz%20app%204/Unt%2026__0.0_2.1" ]
+                   },
+                   "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                   "routes" : { }
+                 }""";
+        verifyJsonNotExact(response, 200, correctResponse);
+
+    }
+
+    @Test
+    void testApplicationWithTypeSchemaPublish_Ok_MindMapCase() throws JsonProcessingException {
 
         List<String> filePaths = List.of(
                 "Unt 26__0.0.1/generate.json",
@@ -2203,6 +2337,39 @@ class PublicationApiTest extends ResourceBaseTest {
                 }""";
 
 
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode resources = responseJson.get("resources");
+        String targetUrl = resources.get(0).get("targetUrl").asText();
+        response = send(HttpMethod.GET, "/v1/" + targetUrl, null, null, "authorization", "admin");
+        correctResponse = """
+                {
+                   "name" : "applications/public/xyz%20app%204",
+                   "display_name" : "test%20app%202",
+                   "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                   "description" : "My application description",
+                   "reference" : "@ignore",
+                   "forward_auth_token" : false,
+                   "defaults" : { },
+                   "interceptors" : [ ],
+                   "description_keywords" : [ ],
+                   "max_retry_attempts" : 1,
+                   "author" : "EPM-RTC-GPT",
+                   "created_at" : "@ignore",
+                   "updated_at" : "@ignore",
+                   "dependencies" : [ ],
+                   "application_properties" : {
+                     "property1" : "test property1",
+                     "property2" : "test property2",
+                     "property3" : [ "files/public/.xyz%20app%204/Unt%2026__0.0.1/", "files/public/.xyz%20app%204/Unt%2026__0.0_2.1" ]
+                   },
+                   "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                   "routes" : { }
+                 }""";
         verifyJsonNotExact(response, 200, correctResponse);
 
     }
