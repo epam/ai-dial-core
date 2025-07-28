@@ -155,12 +155,16 @@
                         }
                     ],
                     "order": 1,
-                    "permissions": ["WRITE"],
+                    "permissions": [
+                        "WRITE"
+                    ],
                     "attachmentPaths": {
-                        "attachmentPaths": {
-                            "requestBody": ["@.attachments[*].url"],
-                            "responseBody": ["@.result.attachedFiles"]
-                        }
+                        "requestBody": [
+                            "@.attachments[*].url"
+                        ],
+                        "responseBody": [
+                            "@.result.attachedFiles"
+                        ]
                     }
                 },
                 "rate": {
@@ -317,7 +321,11 @@
                     "dial:methods": [
                         "POST"
                     ],
-
+                    "dial:upstreams": [
+                        {
+                            "dial:endpoint": "http://localhost:4848"
+                        }
+                    ],
                     "dial:order": 5,
                     "dial:permissions": [
                         "WRITE"
