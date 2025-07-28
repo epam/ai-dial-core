@@ -15,8 +15,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.StatusCode;
-import io.vertx.core.Context;
-import io.vertx.core.Vertx;
 import lombok.Setter;
 
 import java.time.Instant;
@@ -112,27 +110,30 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     private void enrichAttributesFromContext(Map<String, Object> attributes) {
         // First try to get values from Vertx context
-        String userProject = getContextValue("user.project");
-        String userSub = getContextValue("user.sub");
-        String requestUri = getContextValue("request.uri");
-        String requestMethod = getContextValue("request.method");
-        String httpStatusCode = getContextValue("http.status.code");
+        String userProject = ContextManager.getContextValue("user.project");
+        String userSub = ContextManager.getContextValue("user.sub");
+        String requestUri = ContextManager.getContextValue("request.uri");
+        String requestMethod = ContextManager.getContextValue("request.method");
+        String httpStatusCode = ContextManager.getContextValue("http.status.code");
 
-        // Then try to get from ProxyContext if not found
+        // If values are not found in Vertx context, try to get from ProxyContext
         try {
             ProxyContext proxyContext = ContextManager.getProxyContext();
             if (proxyContext != null) {
-                if (userProject == null && proxyContext.getProject() != null) {
+                // Only use ProxyContext values if Vertx context values are null
+                if (userProject == null) {
                     userProject = proxyContext.getProject();
                 }
-                if (userSub == null && proxyContext.getUserSub() != null) {
+                if (userSub == null) {
                     userSub = proxyContext.getUserSub();
                 }
-                if (requestUri == null && proxyContext.getRequest() != null) {
-                    requestUri = proxyContext.getRequest().uri();
-                }
-                if (requestMethod == null && proxyContext.getRequest() != null) {
-                    requestMethod = proxyContext.getRequest().method().name();
+                if (proxyContext.getRequest() != null) {
+                    if (requestUri == null) {
+                        requestUri = proxyContext.getRequest().uri();
+                    }
+                    if (requestMethod == null) {
+                        requestMethod = proxyContext.getRequest().method().name();
+                    }
                 }
             }
         } catch (Exception e) {
@@ -160,30 +161,29 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         }
     }
 
-    private String getContextValue(String key) {
-        try {
-            Context vertxContext = Vertx.currentContext();
-            if (vertxContext != null) {
-                Object localValue = vertxContext.getLocal(key);
-                if (localValue != null) {
-                    return localValue.toString();
-                }
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-
-        return null;
-    }
-
     private void autoEnrichOpenTelemetry(ILoggingEvent event) {
         try {
             Span currentSpan = Span.current();
             if (currentSpan.isRecording()) {
-                String userProject = getContextValue("user.project");
-                String userSub = getContextValue("user.sub");
-                String requestUri = getContextValue("request.uri");
-                String requestMethod = getContextValue("request.method");
+                String userProject = null;
+                String userSub = null;
+                String requestUri = null;
+                String requestMethod = null;
+
+                // Get values from ProxyContext
+                try {
+                    ProxyContext proxyContext = ContextManager.getProxyContext();
+                    if (proxyContext != null) {
+                        userProject = proxyContext.getProject();
+                        userSub = proxyContext.getUserSub();
+                        if (proxyContext.getRequest() != null) {
+                            requestUri = proxyContext.getRequest().uri();
+                            requestMethod = proxyContext.getRequest().method().name();
+                        }
+                    }
+                } catch (Exception e) {
+                    // Ignore
+                }
 
                 // Always enrich span with context attributes
                 currentSpan.setAllAttributes(Attributes.of(
@@ -227,9 +227,10 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     private String buildFallbackJson(ILoggingEvent event) {
         return String.format(
-                "{\"timestamp\":\"%s\",\"severity\":%d,\"message\":\"%s\",\"logger\":\"%s\"}",
+                "{\"Timestamp\":\"%s\",\"SeverityNumber\":%d,\"SeverityText\":\"%s\",\"Body\":\"%s\",\"Logger\":\"%s\"}",
                 Instant.ofEpochMilli(event.getTimeStamp()),
                 mapSeverity(event.getLevel().toString()),
+                event.getLevel().toString(),
                 event.getFormattedMessage().replace("\"", "\\\""),
                 event.getLoggerName()
         );

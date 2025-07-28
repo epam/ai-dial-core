@@ -183,7 +183,6 @@ public abstract class BaseRouteController implements Controller {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
     }
 
     /**

@@ -110,15 +110,15 @@ class AutoEnrichedOtelJsonLayoutTest {
 
     @Test
     void shouldEnrichFromVertxContext() throws Exception {
-        // Setup Vertx context with values
-        Context vertxContext = mock(Context.class);
-        when(vertxContext.getLocal("user.project")).thenReturn("test-project");
-        when(vertxContext.getLocal("user.sub")).thenReturn("test-user");
-        when(vertxContext.getLocal("request.uri")).thenReturn("/v1/test");
-        when(vertxContext.getLocal("request.method")).thenReturn("POST");
-        when(vertxContext.getLocal("http.status.code")).thenReturn("200");
+        // Mock ContextManager.getContextValue calls
+        contextManagerMock.when(() -> ContextManager.getContextValue("user.project")).thenReturn("test-project");
+        contextManagerMock.when(() -> ContextManager.getContextValue("user.sub")).thenReturn("test-user");
+        contextManagerMock.when(() -> ContextManager.getContextValue("request.uri")).thenReturn("/v1/test");
+        contextManagerMock.when(() -> ContextManager.getContextValue("request.method")).thenReturn("POST");
+        contextManagerMock.when(() -> ContextManager.getContextValue("http.status.code")).thenReturn("200");
         
-        vertxMock.when(Vertx::currentContext).thenReturn(vertxContext);
+        // No ProxyContext
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -213,13 +213,12 @@ class AutoEnrichedOtelJsonLayoutTest {
 
     @Test
     void shouldEnrichFromMixedSources() throws Exception {
-        // Setup Vertx context with some values
-        Context vertxContext = mock(Context.class);
-        when(vertxContext.getLocal("user.project")).thenReturn("vertx-project");
-        when(vertxContext.getLocal("user.sub")).thenReturn(null); // Not in Vertx
-        when(vertxContext.getLocal("http.status.code")).thenReturn("502");
-        
-        vertxMock.when(Vertx::currentContext).thenReturn(vertxContext);
+        // Mock ContextManager.getContextValue calls - some return values, some return null
+        contextManagerMock.when(() -> ContextManager.getContextValue("user.project")).thenReturn("vertx-project");
+        contextManagerMock.when(() -> ContextManager.getContextValue("user.sub")).thenReturn(null); // Not in Vertx
+        contextManagerMock.when(() -> ContextManager.getContextValue("request.uri")).thenReturn(null); // Not in Vertx
+        contextManagerMock.when(() -> ContextManager.getContextValue("request.method")).thenReturn(null); // Not in Vertx
+        contextManagerMock.when(() -> ContextManager.getContextValue("http.status.code")).thenReturn("502");
         
         // Setup ProxyContext with complementary values
         ProxyContext proxyContext = mock(ProxyContext.class);
