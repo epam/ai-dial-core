@@ -2,7 +2,9 @@ package com.epam.aidial.core.server;
 
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
+import lombok.experimental.UtilityClass;
 
+@UtilityClass
 public class ContextManager {
 
     private static final String PROXY_CONTEXT_KEY = "proxyContext";

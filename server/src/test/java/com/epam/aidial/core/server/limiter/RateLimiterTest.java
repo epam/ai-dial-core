@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
-import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -18,7 +17,6 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -43,7 +41,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -56,9 +53,6 @@ public class RateLimiterTest {
 
     @Mock
     private Vertx vertx;
-
-    @Mock
-    private EncryptionService encryptionService;
 
     @Mock
     private BlobStorage blobStorage;
@@ -101,10 +95,6 @@ public class RateLimiterTest {
 
     @BeforeEach
     public void beforeEach() {
-        // Set up request mock with lenient strictness to avoid UnnecessaryStubbingException
-        lenient().when(request.uri()).thenReturn("/test/uri");
-        lenient().when(request.method()).thenReturn(HttpMethod.POST);
-        
         RKeys keys = redissonClient.getKeys();
         for (String key : keys.getKeys()) {
             keys.delete(key);

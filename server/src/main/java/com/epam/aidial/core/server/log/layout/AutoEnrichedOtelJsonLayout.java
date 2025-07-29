@@ -109,31 +109,20 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
     }
 
     private void enrichAttributesFromContext(Map<String, Object> attributes) {
-        // First try to get values from Vertx context
-        String userProject = ContextManager.getContextValue("user.project");
-        String userSub = ContextManager.getContextValue("user.sub");
-        String requestUri = ContextManager.getContextValue("request.uri");
-        String requestMethod = ContextManager.getContextValue("request.method");
-        String httpStatusCode = ContextManager.getContextValue("http.status.code");
+        String userProject = null;
+        String userSub = null;
+        String requestUri = null;
+        String requestMethod = null;
 
-        // If values are not found in Vertx context, try to get from ProxyContext
+        // Get values directly from ProxyContext since individual values are not stored in Vertx context
         try {
             ProxyContext proxyContext = ContextManager.getProxyContext();
             if (proxyContext != null) {
-                // Only use ProxyContext values if Vertx context values are null
-                if (userProject == null) {
-                    userProject = proxyContext.getProject();
-                }
-                if (userSub == null) {
-                    userSub = proxyContext.getUserSub();
-                }
+                userProject = proxyContext.getProject();
+                userSub = proxyContext.getUserSub();
                 if (proxyContext.getRequest() != null) {
-                    if (requestUri == null) {
-                        requestUri = proxyContext.getRequest().uri();
-                    }
-                    if (requestMethod == null) {
-                        requestMethod = proxyContext.getRequest().method().name();
-                    }
+                    requestUri = proxyContext.getRequest().uri();
+                    requestMethod = proxyContext.getRequest().method().name();
                 }
             }
         } catch (Exception e) {
@@ -146,7 +135,8 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         attributes.put("request.uri", requestUri != null ? requestUri : "unknown");
         attributes.put("request.method", requestMethod != null ? requestMethod : "unknown");
 
-        // Only add http.status.code if it's available (it won't be available before response is sent)
+        // Check for http.status.code which is explicitly set in ProxyContext.respond() at line 186
+        String httpStatusCode = ContextManager.getContextValue("http.status.code");
         if (httpStatusCode != null) {
             attributes.put("http.status.code", httpStatusCode);
         }

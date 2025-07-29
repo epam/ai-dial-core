@@ -109,16 +109,21 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
-    void shouldEnrichFromVertxContext() throws Exception {
-        // Mock ContextManager.getContextValue calls
-        contextManagerMock.when(() -> ContextManager.getContextValue("user.project")).thenReturn("test-project");
-        contextManagerMock.when(() -> ContextManager.getContextValue("user.sub")).thenReturn("test-user");
-        contextManagerMock.when(() -> ContextManager.getContextValue("request.uri")).thenReturn("/v1/test");
-        contextManagerMock.when(() -> ContextManager.getContextValue("request.method")).thenReturn("POST");
-        contextManagerMock.when(() -> ContextManager.getContextValue("http.status.code")).thenReturn("200");
+    void shouldEnrichFromProxyContextWithHttpStatus() throws Exception {
+        // Setup ProxyContext
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(request.uri()).thenReturn("/v1/test");
+        when(request.method()).thenReturn(HttpMethod.POST);
         
-        // No ProxyContext
-        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        when(proxyContext.getProject()).thenReturn("test-project");
+        when(proxyContext.getUserSub()).thenReturn("test-user");
+        when(proxyContext.getRequest()).thenReturn(request);
+        
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        
+        // Mock http.status.code from Vertx context
+        contextManagerMock.when(() -> ContextManager.getContextValue("http.status.code")).thenReturn("200");
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -126,7 +131,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         LoggingEvent event = new LoggingEvent();
         event.setLoggerName(testLogger.getName());
         event.setLevel(Level.INFO);
-        event.setMessage("Test with Vertx context");
+        event.setMessage("Test with ProxyContext and http status");
         event.setTimeStamp(System.currentTimeMillis());
         event.setLoggerContext(context);
 
@@ -212,25 +217,21 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
-    void shouldEnrichFromMixedSources() throws Exception {
-        // Mock ContextManager.getContextValue calls - some return values, some return null
-        contextManagerMock.when(() -> ContextManager.getContextValue("user.project")).thenReturn("vertx-project");
-        contextManagerMock.when(() -> ContextManager.getContextValue("user.sub")).thenReturn(null); // Not in Vertx
-        contextManagerMock.when(() -> ContextManager.getContextValue("request.uri")).thenReturn(null); // Not in Vertx
-        contextManagerMock.when(() -> ContextManager.getContextValue("request.method")).thenReturn(null); // Not in Vertx
-        contextManagerMock.when(() -> ContextManager.getContextValue("http.status.code")).thenReturn("502");
-        
-        // Setup ProxyContext with complementary values
+    void shouldEnrichFromProxyContextAndHttpStatusFromVertx() throws Exception {
+        // Setup ProxyContext
         ProxyContext proxyContext = mock(ProxyContext.class);
         HttpServerRequest request = mock(HttpServerRequest.class);
         when(request.uri()).thenReturn("/v1/models");
         when(request.method()).thenReturn(HttpMethod.GET);
         
-        when(proxyContext.getProject()).thenReturn("proxy-project"); // Will be ignored, Vertx has priority
-        when(proxyContext.getUserSub()).thenReturn("proxy-user"); // Will be used
+        when(proxyContext.getProject()).thenReturn("proxy-project");
+        when(proxyContext.getUserSub()).thenReturn("proxy-user");
         when(proxyContext.getRequest()).thenReturn(request);
         
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        
+        // Mock http.status.code from Vertx context
+        contextManagerMock.when(() -> ContextManager.getContextValue("http.status.code")).thenReturn("502");
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -238,7 +239,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         LoggingEvent event = new LoggingEvent();
         event.setLoggerName(testLogger.getName());
         event.setLevel(Level.INFO);
-        event.setMessage("Test with mixed sources");
+        event.setMessage("Test with ProxyContext and http status from Vertx");
         event.setTimeStamp(System.currentTimeMillis());
         event.setLoggerContext(context);
 
@@ -247,11 +248,11 @@ class AutoEnrichedOtelJsonLayoutTest {
 
         JsonNode attributes = jsonNode.get("Attributes");
         assertNotNull(attributes);
-        assertEquals("vertx-project", attributes.get("user.project").asText()); // From Vertx
+        assertEquals("proxy-project", attributes.get("user.project").asText()); // From ProxyContext
         assertEquals("proxy-user", attributes.get("user.sub").asText()); // From ProxyContext
         assertEquals("/v1/models", attributes.get("request.uri").asText()); // From ProxyContext
         assertEquals("GET", attributes.get("request.method").asText()); // From ProxyContext
-        assertEquals("502", attributes.get("http.status.code").asText()); // From Vertx
+        assertEquals("502", attributes.get("http.status.code").asText()); // From Vertx context
     }
 
     @Test
