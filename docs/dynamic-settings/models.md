@@ -2,6 +2,114 @@
 
 In dynamic settings you can include language models and their parameters you with to enable in DIAL.
 
+## models
+
+A list of deployed models and their [parameters](#models-parameters).
+
+* `<model_name>`: A unique model name.
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {},
+        "embedding-ada": {}
+}
+```
+
+### models.<model_name>
+
+An object containing parameters for each [model](#models).
+
+* `type`: Model type—chat or embedding.
+* `iconUrl`: Icon path for the model on UI.
+* `description`: Brief model description.
+* `displayName`: Model name on UI.
+* `displayVersion`: Model version on UI.
+* `endpoint`: Model API for chat completions or embeddings.
+* `tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. gpt-3.5-turbo-0301, gpt-4-0314, or gpt-4-1106-vision-preview). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the tokenizeEndpoint provided by the model.
+* `features`: Model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
+* `limits`: Model token limits. Refer to [models.<model_name>.limits](#modelsmodel_namelimits)
+* `pricing`: Model cost estimation parameters. Refer to [models.<model_name>.pricing](#modelsmodel_namepricing).
+* `upstreams`: Used for load-balancing—request is sent to model endpoint containing X-UPSTREAM-ENDPOINT and X-UPSTREAM-KEY headers.
+* `userRoles`: a specific claim value provided by a specific IDP. Refer to IDP Configuration to view examples.
+descriptionKeywords: a list of keywords describes the model, e.g. code-gen, text2image.
+* `maxRetryAttempts`: max retry attempts to route a single user request to upstreams.
+* `inputAttachmentTypes`: A list of allowed MIME types for the input attachments.
+* `maxInputAttachments`: Maximum number of input attachments (default is zero when inputAttachmentTypes is unset, otherwise, infinity).
+* `author`: the model's developer.
+* `createdAt`: the date of the model creation.
+* `updatedAt`: the date of the last model update.
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {
+            "type": "chat",
+            "tokenizerModel": "tokenizer",
+        }
+}
+```
+
+#### models.<model_name>.limits
+
+Parameters defining the token limits that apply to the model. Use to ensure that the model does not exceed a specified token limit during interactions.
+
+* `maxPromptTokens`: maximum number of tokens in a completion request.
+* `maxCompletionTokens`: maximum number of tokens in a completion response.
+* `maxTotalTokens`: maximum number of tokens in completion request and response combined. Typically either `maxTotalTokens` is specified or `maxPromptTokens` and `maxCompletionTokens`.           
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {
+            "limits": {
+                "maxTotalTokens": 1000,
+                "maxPromptTokens": 200,
+                "maxCompletionTokens": 800,
+            },
+        }
+}
+```
+
+#### models.<model_name>.pricing 
+
+Parameters defining the pricing for the model. Use to enables real-time cost estimation and quota enforcement.
+
+* `unit`: the pricing units 
+    * `token`: Every token sent or received by the model is counted towards your cost metrics.
+    * `char_without_whitespace`: Tells DIAL to count only non-whitespace characters (letters, numbers, punctuation) in each request as the billing unit.
+    * `none`: disables all cost tracking for this model.
+* `prompt`: Cost per unit for prompt tokens.
+* `completion`: Cost per unit for completion tokens (chat responses).
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {
+            "pricing": {
+                "unit": "token",
+                "prompt": "0.56",
+                "completion": "0.67"
+            },
+        }
+}
+```
+
+#### models.<model_name>.features
+
+In features you can specify optional capabilities of the model. You can use model's features to tailor DIAL Core’s Unified Protocol behavior—turning features on when your model supports them, or off when it doesn’t.
+
+
+Some models adapters expose specialized HTTP endpoints for tokenization, rate estimation, prompt truncation, or live configuration. You can override the default Unified Protocol calls by specifying them in this section.
+
+#### models.<model_name>.upstreams
+
+Upstreams configurations. Use to configure [load balancing](https://docs.dialx.ai/platform/core/load-balancer).
+
 |Parameter | Description  |
 |----------|----------|
 | models  | A list of deployed models and their parameters:<br />`<model_name>`: Unique model name. |
