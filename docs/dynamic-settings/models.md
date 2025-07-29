@@ -28,10 +28,6 @@ An object containing parameters for each [model](#models).
 * `displayVersion`: Model version on UI.
 * `endpoint`: Model API for chat completions or embeddings.
 * `tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. gpt-3.5-turbo-0301, gpt-4-0314, or gpt-4-1106-vision-preview). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the tokenizeEndpoint provided by the model.
-* `features`: Model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
-* `limits`: Model token limits. Refer to [models.<model_name>.limits](#modelsmodel_namelimits)
-* `pricing`: Model cost estimation parameters. Refer to [models.<model_name>.pricing](#modelsmodel_namepricing).
-* `upstreams`: Used for load-balancing—request is sent to model endpoint containing X-UPSTREAM-ENDPOINT and X-UPSTREAM-KEY headers.
 * `userRoles`: a specific claim value provided by a specific IDP. Refer to IDP Configuration to view examples.
 descriptionKeywords: a list of keywords describes the model, e.g. code-gen, text2image.
 * `maxRetryAttempts`: max retry attempts to route a single user request to upstreams.
@@ -40,89 +36,16 @@ descriptionKeywords: a list of keywords describes the model, e.g. code-gen, text
 * `author`: the model's developer.
 * `createdAt`: the date of the model creation.
 * `updatedAt`: the date of the last model update.
+* `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
+* `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
+* `fieldsHashingOrder`: A list of chat completion request components that defines an order in which they are used to compute a hash of the request. The components of the request are identified by strings `prefix.body.tools` and `prefix.body.messages`. The default value of the parameter is ["prefix.body.tools", "prefix.body.messages"], meaning the hash is first computed for the tools definitions, then extended with the hash of the messages. It reflects the relative order of tools and messages components when they are converted to tokens and fed into a typical LLM. The hash is used uniquely identify prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching). It enables DIAL Core to redirect independent requests that are sharing the same prefix to the same upstream endpoint. This is essential to enable context caching feature of LLM since their caching scope is limited to a simple upstream endpoint.
+* `features`: Model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
+* `limits`: Model token limits. Refer to [models.<model_name>.limits](#modelsmodel_namelimits)
+* `pricing`: Model cost estimation parameters. Refer to [models.<model_name>.pricing](#modelsmodel_namepricing).
+* `upstreams`: Used for load-balancing—request is sent to model endpoint containing X-UPSTREAM-ENDPOINT and X-UPSTREAM-KEY headers. Refer to [models.<model_name>.upstreams](#modelsmodel_nameupstreams).
+
 
 **Example**
-
-```json
-"models": {
-        "chat-gpt-35-turbo": {
-            "type": "chat",
-            "tokenizerModel": "tokenizer",
-        }
-}
-```
-
-#### models.<model_name>.limits
-
-Parameters defining the token limits that apply to the model. Use to ensure that the model does not exceed a specified token limit during interactions.
-
-* `maxPromptTokens`: maximum number of tokens in a completion request.
-* `maxCompletionTokens`: maximum number of tokens in a completion response.
-* `maxTotalTokens`: maximum number of tokens in completion request and response combined. Typically either `maxTotalTokens` is specified or `maxPromptTokens` and `maxCompletionTokens`.           
-
-**Example**
-
-```json
-"models": {
-        "chat-gpt-35-turbo": {
-            "limits": {
-                "maxTotalTokens": 1000,
-                "maxPromptTokens": 200,
-                "maxCompletionTokens": 800,
-            },
-        }
-}
-```
-
-#### models.<model_name>.pricing 
-
-Parameters defining the pricing for the model. Use to enables real-time cost estimation and quota enforcement.
-
-* `unit`: the pricing units 
-    * `token`: Every token sent or received by the model is counted towards your cost metrics.
-    * `char_without_whitespace`: Tells DIAL to count only non-whitespace characters (letters, numbers, punctuation) in each request as the billing unit.
-    * `none`: disables all cost tracking for this model.
-* `prompt`: Cost per unit for prompt tokens.
-* `completion`: Cost per unit for completion tokens (chat responses).
-
-**Example**
-
-```json
-"models": {
-        "chat-gpt-35-turbo": {
-            "pricing": {
-                "unit": "token",
-                "prompt": "0.56",
-                "completion": "0.67"
-            },
-        }
-}
-```
-
-#### models.<model_name>.features
-
-In features you can specify optional capabilities of the model. You can use model's features to tailor DIAL Core’s Unified Protocol behavior—turning features on when your model supports them, or off when it doesn’t.
-
-
-Some models adapters expose specialized HTTP endpoints for tokenization, rate estimation, prompt truncation, or live configuration. You can override the default Unified Protocol calls by specifying them in this section.
-
-#### models.<model_name>.upstreams
-
-Upstreams configurations. Use to configure [load balancing](https://docs.dialx.ai/platform/core/load-balancer).
-
-|Parameter | Description  |
-|----------|----------|
-| models  | A list of deployed models and their parameters:<br />`<model_name>`: Unique model name. |
-| models.<model_name>| `type`: Model type—`chat` or `embedding`.<br />`iconUrl`: Icon path for the model on UI.<br />`description`: Brief model description.<br />`displayName`: Model name on UI.<br />`displayVersion`: Model version on UI.<br />`endpoint`: Model API for chat completions or embeddings.<br />`tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. `gpt-3.5-turbo-0301`, `gpt-4-0314`, or `gpt-4-1106-vision-preview`). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the `tokenizeEndpoint` provided by the model.<br />`features`: Model features.<br />`limits`: Model token limits.<br />`pricing`: Model pricing.<br />`upstreams`: Used for [load-balancing—request](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/5.load-balancer.md) is sent to model endpoint containing X-UPSTREAM-ENDPOINT and X-UPSTREAM-KEY headers.<br />`userRoles`: a specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.<br />`descriptionKeywords`: a list of keywords describes the model, e.g. `code-gen`, `text2image`.  <br />`maxRetryAttempts`: max retry attempts to route a single user request to upstreams.<br/>`inputAttachmentTypes`: A list of allowed MIME types for the input attachments.<br />`maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity). <br />`author`: the model's developer.  <br />`createdAt`: the date of the model creation. <br />`updatedAt`: the date of the last model update. |
-| models.<model_name>.limits           | `maxPromptTokens`: maximum number of tokens in a completion request.<br />`maxCompletionTokens`: maximum number of tokens in a completion response.<br />`maxTotalTokens`: maximum number of tokens in completion request and response combined.<br />Typically either `maxTotalTokens` is specified or `maxPromptTokens` and `maxCompletionTokens`.           |
-| models.<model_name>.pricing          | `unit`: the pricing units (currently `token` and `char_without_whitespace` are supported).<br />`prompt`: per-unit price for the completion request in USD.<br />`completion`: per-unit price for the completion response in USD.  |
-| models.<model_name>.features         | `rateEndpoint`: endpoint for rate requests *(exposed by core as `<deployment name>/rate`)*.<br />`tokenizeEndpoint`: endpoint for requests to the model tokenizer *(exposed by DIAL Core as `<deployment name>/tokenize`)*.<br />`truncatePromptEndpoint`: endpoint for truncating prompt requests *(exposed by DIAL Core as `<deployment name>/truncate_prompt`)*.<br />`systemPromptSupported`: does the model support system prompt (default is `true`).<br />`toolsSupported`: does the model support tools (default is `false`).<br />`seedSupported`: does the model support `seed` request parameter (default is `false`).<br />`urlAttachmentsSupported`: does the model/application support attachments with URLs (default is `false`).<br />`folderAttachmentsSupported`: does the model/application support folder attachments (default is `false`)<br />`accessibleByPerRequestKey`: indicates whether the deployment is accessible using a per-request API key (default is `true`).<br />`contentPartsSupported`: indicates whether the deployment supports requests with content parts or not (default is `false`). <br />`cacheSupported`: indicates whether the deployment supports [LLM caching](https://docs.dialx.ai/tutorials/developers/prompt-caching) (default is `false`). <br />`autoCachingSupported`: indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible (default is `false`). <br /> `parallelToolCallsSupported`: indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request (default is `true`)    |
-| models.<model_name>.upstreams        | `endpoint`: Model endpoint.<br />`key`: Your API key.<br />`weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this enpoint from routing. Default value: 1.<br />`tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [Load Balancer](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/5.load-balancer.md) to learn more.<br/>`extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. It can be a JSON or String.  |
-| models.<model_name>.defaults         | Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call            |
-| models.<model_name>.interceptors     | A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.   |
-| models.<model_name>.fieldsHashingOrder       | A list of chat completion request components that defines an order in which they are used to compute a hash of the request. The components of the request are identified by strings `prefix.body.tools` and `prefix.body.messages`. The default value of the parameter is ["prefix.body.tools", "prefix.body.messages"], meaning the hash is first computed for the tools definitions, then extended with the hash of the messages. It reflects the relative order of tools and messages components when they are converted to tokens and fed into a typical LLM. The hash is used uniquely identify prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching). It enables DIAL Core to redirect independent requests that are sharing the same prefix to the same upstream endpoint. This is essential to enable context caching feature of LLM since their caching scope is limited to a simple upstream endpoint.| 
-
-**Configuration Example:**
 
 ```json
 "models": {
@@ -195,3 +118,127 @@ Upstreams configurations. Use to configure [load balancing](https://docs.dialx.a
         }
     },
 ```
+
+#### models.<model_name>.limits
+
+Parameters defining the token limits that apply to the model. Use to ensure that the model does not exceed a specified token limit during interactions.
+
+* `maxPromptTokens`: Maximum number of tokens in a completion request.
+* `maxCompletionTokens`: Maximum number of tokens in a completion response.
+* `maxTotalTokens`: Maximum number of tokens in completion request and response combined. Typically either `maxTotalTokens` is specified or `maxPromptTokens` and `maxCompletionTokens`.           
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {
+            "limits": {
+                "maxTotalTokens": 1000,
+                "maxPromptTokens": 200,
+                "maxCompletionTokens": 800,
+            },
+        }
+}
+```
+
+#### models.<model_name>.pricing 
+
+Parameters defining the pricing for the model. Use to enables real-time cost estimation and quota enforcement.
+
+* `unit`: the pricing units 
+    * `token`: Every token sent or received by the model is counted towards your cost metrics.
+    * `char_without_whitespace`: Tells DIAL to count only non-whitespace characters (letters, numbers, punctuation) in each request as the billing unit.
+    * `none`: disables all cost tracking for this model.
+* `prompt`: Cost per unit for prompt tokens.
+* `completion`: Cost per unit for completion tokens (chat responses).
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {
+            "pricing": {
+                "unit": "token",
+                "prompt": "0.56",
+                "completion": "0.67"
+            },
+        }
+}
+```
+
+#### models.<model_name>.features
+
+In features you can specify optional capabilities of the model. You can use model's features to tailor DIAL Core’s Unified Protocol behavior—turning features on when your model supports them, or off when it doesn’t.
+
+Some models adapters expose specialized HTTP endpoints for tokenization, rate estimation, prompt truncation, or live configuration. You can override the default Unified Protocol calls by specifying them in this section.
+
+* `rateEndpoint`: URL to invoke the model’s cost‐estimation or billing API. *(exposed by core as `<deployment name>/rate`)*. 
+* `tokenizeEndpoint`: URL to invoke a standalone tokenization service. *(exposed by DIAL Core as * `<deployment name>/tokenize`)*. Use when you need precise token counts before truncation or batching. Models without built-in tokenization require this.
+* `truncatePromptEndpoint`: URL to invoke a prompt‐truncation API *(exposed by DIAL Core as * `<deployment name>/truncate_prompt`)*. Ensures prompts are safely cut to max context length. Useful when working with very long user inputs. 
+* `systemPromptSupported`: A boolean parameter to enable/disable a system‐level message (the "agent’s instructions") at the start of every chat. Disable for models that ignore or block system prompts. Default is `true`.
+* `toolsSupported`: A boolean parameter to enable/disable `tools` (a.k.a. functions) feature for safe external API calls. Enable if you plan to use DIAL Add-ons or function calling. Default is `false`.
+* `seedSupported`: A boolean parameter to enable/disable `seed` parameter for deterministic output. Use in testing or reproducible workflows. Default is `false`.
+* `urlAttachmentsSupported`: A boolean parameter to enable/disable passing URLs as attachments (images, docs) to the model. Can be required for image-based or file-referencing prompts. Default is `false`.
+* `folderAttachmentsSupported`: A boolean parameter to enable/disable attaching folders (batching multiple files). Default is `false`.
+* `accessibleByPerRequestKey`: A boolean parameter to enable/disable access to the model with a [per-request API key](https://docs.dialx.ai/platform/core/per-request-keys). Default is `true`.
+* `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts. Default is `false`.
+* `cacheSupported`: A boolean parameter that indicates whether the deployment supports [LLM caching](https://docs.dialx.ai/tutorials/developers/prompt-caching). Default is `false`.
+* `autoCachingSupported`: A boolean parameter that indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible. Default is `false`. 
+* `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.  
+
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {
+            "features": {
+                "rateEndpoint": "http://host/rate",
+                "tokenizeEndpoint": "http://host/tokinize",
+                "truncatePromptEndpoint": "http://host/truncate",
+                "configurationEndpoint": "http://host/configure",
+                "systemPromptSupported": false,
+                "toolsSupported": false,
+                "seedSupported":false,
+                "urlAttachmentsSupported": false,
+                "folderAttachmentsSupported": false,
+                "accessibleByPerRequestKey": true,
+                "contentPartsSupported": false
+            },
+        }
+}
+```
+
+#### models.<model_name>.upstreams
+
+Upstreams configurations. Use to configure [load balancing](https://docs.dialx.ai/platform/core/load-balancer).
+
+* `endpoint`: One or more backend URLs to send requests to. Enables round-robin load balancing or fallback among multiple hosts.
+* `key`: API key, token, or credential passed to the upstream. 
+* `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
+* `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to Load Balancer to learn more.
+* `extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. It can be a JSON or String.
+
+**Example**
+
+```json
+"models": {
+        "chat-gpt-35-turbo": {
+            "upstreams": [
+                {
+                    "endpoint": "http://localhost:7001",
+                    "key": "modelKey1"
+                },
+                {
+                    "endpoint": "http://localhost:7002",
+                    "key": "modelKey2"
+                },
+                {
+                    "endpoint": "http://localhost:7003",
+                    "key": "modelKey3"
+                }
+            ],
+        }
+}
+```
+
