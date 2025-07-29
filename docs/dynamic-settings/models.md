@@ -1,6 +1,6 @@
 # Dynamic Setting for Models
 
-In dynamic settings you can include language models and their parameters you with to enable in DIAL.
+In dynamic settings you can include language models and their parameters you wish to enable in DIAL.
 
 ## models
 
@@ -21,28 +21,28 @@ A list of deployed models and their [parameters](#models-parameters).
 
 An object containing parameters for each [model](#models).
 
-* `type`: Model type—chat or embedding.
-* `iconUrl`: Icon path for the model on UI.
-* `description`: Brief model description.
-* `displayName`: Model name on UI.
-* `displayVersion`: Model version on UI.
+* `type`: A string defining the model type (chat or embedding). DIAL Core uses this to choose the correct API endpoint and a payload schema.
+* `iconUrl`: A string with the URL with the icon location to display for the model on UI.
+* `description`: A string with a brief model description.
+* `displayName`: A string with the models's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the model.
+* `displayVersion`: A string with the model's version. Use it to distinguish between "latest," "beta," or date-stamped builds.
 * `endpoint`: Model API for chat completions or embeddings.
 * `tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. gpt-3.5-turbo-0301, gpt-4-0314, or gpt-4-1106-vision-preview). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the tokenizeEndpoint provided by the model.
-* `userRoles`: a specific claim value provided by a specific IDP. Refer to IDP Configuration to view examples.
-descriptionKeywords: a list of keywords describes the model, e.g. code-gen, text2image.
-* `maxRetryAttempts`: max retry attempts to route a single user request to upstreams.
+* `userRoles`: A specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
+* `descriptionKeywords`: A list of keywords describes the model, e.g. code-gen, text2image.
+* `maxRetryAttempts`: The number of times DIAL Core will retry a connection in case of upstream errors (e.g. on timeouts or 5xx responses).
 * `inputAttachmentTypes`: A list of allowed MIME types for the input attachments.
 * `maxInputAttachments`: Maximum number of input attachments (default is zero when inputAttachmentTypes is unset, otherwise, infinity).
-* `author`: the model's developer.
-* `createdAt`: the date of the model creation.
-* `updatedAt`: the date of the last model update.
+* `author`: The model's developer.
+* `createdAt`: The date of the model creation.
+* `updatedAt`: The date of the last model update.
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
 * `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
 * `fieldsHashingOrder`: A list of chat completion request components that defines an order in which they are used to compute a hash of the request. The components of the request are identified by strings `prefix.body.tools` and `prefix.body.messages`. The default value of the parameter is ["prefix.body.tools", "prefix.body.messages"], meaning the hash is first computed for the tools definitions, then extended with the hash of the messages. It reflects the relative order of tools and messages components when they are converted to tokens and fed into a typical LLM. The hash is used uniquely identify prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching). It enables DIAL Core to redirect independent requests that are sharing the same prefix to the same upstream endpoint. This is essential to enable context caching feature of LLM since their caching scope is limited to a simple upstream endpoint.
-* `features`: Model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
-* `limits`: Model token limits. Refer to [models.<model_name>.limits](#modelsmodel_namelimits)
-* `pricing`: Model cost estimation parameters. Refer to [models.<model_name>.pricing](#modelsmodel_namepricing).
-* `upstreams`: Used for load-balancing—request is sent to model endpoint containing X-UPSTREAM-ENDPOINT and X-UPSTREAM-KEY headers. Refer to [models.<model_name>.upstreams](#modelsmodel_nameupstreams).
+* `features`: An object with the model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
+* `limits`: An object with the model token limits. Refer to [models.<model_name>.limits](#modelsmodel_namelimits)
+* `pricing`: An object with the model cost estimation parameters. Refer to [models.<model_name>.pricing](#modelsmodel_namepricing).
+* `upstreams`: An object with the upstreams parameters. Used for load-balancing—request is sent to model endpoint containing X-UPSTREAM-ENDPOINT and X-UPSTREAM-KEY headers. Refer to [models.<model_name>.upstreams](#modelsmodel_nameupstreams).
 
 
 **Example**
