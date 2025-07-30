@@ -64,8 +64,9 @@ public abstract class BaseRouteController implements Controller {
             respond(HttpStatus.BAD_GATEWAY, "No route");
             return Future.succeededFuture();
         }
+        context.setRoute(route);
 
-        if (!route.hasAccess(context.getUserRoles())) {
+        if (!hasAccessByUserRoles(route)) {
             log.warn("Forbidden route {}. Trace: {}. Span: {}. Project: {}. User sub: {}.",
                     route.getName(), context.getTraceId(), context.getSpanId(), context.getProject(), context.getUserSub());
             respond(HttpStatus.FORBIDDEN, "Forbidden route");
@@ -118,6 +119,10 @@ public abstract class BaseRouteController implements Controller {
     }
 
     protected abstract Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions);
+
+    protected boolean hasAccessByUserRoles(Route route) {
+        return route.hasAccess(context.getUserRoles());
+    }
 
     String getRequestUri() {
         HttpServerRequest request = context.getRequest();
@@ -383,7 +388,6 @@ public abstract class BaseRouteController implements Controller {
 
             for (Pattern pattern : route.getPaths()) {
                 if (pattern.matcher(path).matches()) {
-                    context.setRoute(route);
                     return route;
                 }
             }
