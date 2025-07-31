@@ -1,14 +1,39 @@
 # Dynamic Setting for Toolsets
 
-In dynamic settings you can include toolsets and their parameters you with to enable in DIAL.
+In dynamic settings you can include toolsets and their parameters you wish to enable in DIAL.
 
-|Parameter | Description  |
-|----------|----------|
-| toolsets| A list of deployed DIAL Toolsets and their parameters: `toolset_name` is an unique toolset name.               |
-| toolsets.<toolset_name>              | `endpoint`: DIAL Toolset API for MCP calls. <br />`iconUrl`: Icon path for the DIAL toolset on UI.<br />`description`: Brief DIAL toolset description.<br />`displayName`: DIAL toolset name on UI. <br />`userRoles`: a specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.<br />`descriptionKeywords`: a list of keywords describes the application, e.g. `code-gen`, `text2image`. <br />`maxRetryAttempts`: max retry attempts to route a single user request to the application's endpoint. <br />`author`: the application's developer.  <br />`createdAt`: the date of the application creation. <br />`updatedAt`: the date of the last application update. </br> `transport` - transport supported by MCP server. The available options are: `HTTP` or `SSE`. <\br> `allowedTools` - a list of available tools in the MCP server.              |
+## toolsets
 
-**Configuration Example:**
+A list of deployed DIAL Toolsets and their [parameters](#toolsetstoolset_name): 
+
+* `<toolset_name>` is an unique toolset name.   
+
+### toolsets.<toolset_name>
+
+An object containing parameters for each [toolset](#toolsets).
+
+`endpoint`: DIAL Toolset API for MCP calls. 
+`iconUrl`: A string with the URL with the icon location to display for the toolset on UI.
+`description`: A brief DIAL toolset description.
+`displayName`: A string with the toolset's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the toolset.
+`userRoles`: A specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.
+`descriptionKeywords`: A list of keywords describes the toolset, e.g. `code-gen`, `text2image`. 
+`maxRetryAttempts`: A max retry attempts to route a single user request to the toolset's endpoint.
+`author`: The toolset's developer.
+`createdAt`: The date of the toolset creation. 
+`updatedAt`: The date of the last toolset update. 
+`transport`: A transport supported by MCP server. The available options are: `HTTP` or `SSE`.
+`allowedTools`: A list of available tools in the MCP server.              |
+
+**Example:**
 
 ```json
-TBD
+"toolsets": {
+        "git": {
+            "transport": "http",
+            "endpoint": "http://git-mcp-server/call",
+            "allowed_tools": ["branch", "remote"],
+            "description": "Git remote tool set"
+        }
+    },
 ```

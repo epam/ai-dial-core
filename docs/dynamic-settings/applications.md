@@ -6,7 +6,7 @@ In dynamic settings you can include applications and their parameters you with t
 
 A list of deployed applications and their [parameters](#applicationsapplication_name).
 
-* `application_name>`: A unique application name.
+* `<application_name>`: A unique application name.
 
 **Example**
 
