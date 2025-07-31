@@ -4,7 +4,7 @@ In dynamic settings you can include language models and their parameters you wis
 
 ## models
 
-A list of deployed models and their [parameters](#models-parameters).
+A list of deployed models and their [parameters](#modelsmodel_name).
 
 * `<model_name>`: A unique model name.
 
