@@ -1,13 +1,26 @@
 # Dynamic Setting for APi Keys
 
-In dynamic settings you can define API keys with their settings.
+In dynamic settings you can define API keys with their settings that will be available in DIAL. 
 
-|Parameter | Description  |
-|----------|----------|
-| keys    | API Keys parameters:<br />`<core_key>`: Your API key. Refer to [API Keys](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/2.access-control-intro.md#api-keys) to learn more.    |
-| keys.<core_key>    | `project`: Project name is assigned to this key. **Required** <br />`role`: a role to be assigned to the key. **Note:** a key is invalid if `role` and `roles` are missed. **Required**  <br />`roles`: a list of roles to be assigned to the key. **Note:** a key is invalid if `role` and `roles` are missed. <br/> `secured`: the flag indicates if the key is secured. If it's set to `true` user request and deployment response won't be saved to the prompt log storage.     |
+> Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/access-control-intro) to learn more about API keys and access control.
 
-**Configuration Example:**
+## keys
+
+A list of defined API keys and their [parameters](#keysparameters).
+
+* `<core_key>`: A unique API key name.
+
+### keys.<core_key>
+
+An object containing properties an each [API key](#keys).
+
+* `project`: Project name assigned to this key. **Required** 
+* `role`: A role assigned to a specific key. **Note:** a key is invalid if `role` and `roles` are missed. **Required**  
+* `roles`: A list of roles assigned to a specific key. **Note:** a key is invalid if `role` and `roles` are missed. 
+* `secured`: A boolean flag that indicates if the key is a secured key. If it's set to `true`, user request and deployment response won't be saved to the prompt log storage. Refer to [Secured Keys](https://docs.dialx.ai/platform/core/privacy#applications-audit-logs) for more details.
+
+
+## Configuration Example
 
 ```json
 //Example extract from aidial.config.json
