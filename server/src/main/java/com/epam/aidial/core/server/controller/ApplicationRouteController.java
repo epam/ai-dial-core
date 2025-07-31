@@ -28,6 +28,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
+
 @Slf4j
 public class ApplicationRouteController extends BaseRouteController {
 
@@ -65,6 +67,14 @@ public class ApplicationRouteController extends BaseRouteController {
     @Override
     protected void injectAdditionalHeaders(HttpClientRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_APPLICATION_ID, deploymentId);
+        if ((context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId())) {
+            proxy.getApplicationSchemaService().consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                if (appendApplicationPropertiesHeader) {
+                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
+                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
+                }
+            });
+        }
     }
 
     @Override
