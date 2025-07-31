@@ -1,8 +1,9 @@
-# Dynamic Setting for APi Keys
+# Dynamic Setting for API Keys
 
 In dynamic settings you can define API keys with their settings that will be available in DIAL. 
 
-> Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/access-control-intro) to learn more about API keys and access control.
+> * Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/access-control-intro) to learn more about API keys and access control.
+> * Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/access-management-keys) to learn how to manage API keys in DIAL Admin UI.
 
 ## keys
 

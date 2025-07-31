@@ -2,9 +2,12 @@
 
 Roles in DIAL are used to enable a roles-based access to resources (applications, models, files, conversations, toolsets and prompts) and also for cost control. In dynamic settings you can define roles with their settings.
 
+> * Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/access-control-intro) to learn more about roles and access control.
+> * Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/access-management-roles) to learn how to manage roles in DIAL Admin UI.
+
 ## roles
 
-A list of roles configure in DIAL Core with their [parameters](#rolesrole_name). Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/access-control-intro) to learn more about roles and access control.
+A list of roles configure in DIAL Core with their [parameters](#rolesrole_name). 
 
 * `<role_name>`: A unique role name.
 

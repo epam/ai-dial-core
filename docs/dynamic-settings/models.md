@@ -2,6 +2,8 @@
 
 In dynamic settings you can include language models and their parameters you wish to enable in DIAL.
 
+> Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-models) to learn how to manage models in DIAL Admin UI.
+
 ## models
 
 A list of deployed models and their [parameters](#modelsmodel_name).
@@ -30,7 +32,7 @@ An object containing parameters for each [model](#models).
 * `tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. gpt-3.5-turbo-0301, gpt-4-0314, or gpt-4-1106-vision-preview). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the tokenizeEndpoint provided by the model.
 * `userRoles`: A specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
 * `descriptionKeywords`: A list of keywords describes the model, e.g. code-gen, text2image.
-* `maxRetryAttempts`: The number of times DIAL Core will retry a connection in case of upstream errors (e.g. on timeouts or 5xx responses).
+* `maxRetryAttempts`: The number of times DIAL Core will [retry](https://docs.dialx.ai/platform/core/load-balancer#fallbacks) a connection in case of upstream errors (e.g. on timeouts or 5xx responses).
 * `inputAttachmentTypes`: A list of allowed MIME types for the input attachments.
 * `maxInputAttachments`: Maximum number of input attachments (default is zero when inputAttachmentTypes is unset, otherwise, infinity).
 * `author`: The model's developer.
@@ -216,7 +218,7 @@ Upstreams configurations. Use to configure [load balancing](https://docs.dialx.a
 * `endpoint`: One or more backend URLs to send requests to. Enables round-robin load balancing or fallback among multiple hosts.
 * `key`: API key, token, or credential passed to the upstream. 
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
-* `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to Load Balancer to learn more.
+* `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
 * `extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. It can be a JSON or String.
 
 **Example**

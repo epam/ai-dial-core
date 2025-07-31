@@ -2,6 +2,8 @@
 
 In dynamic settings you can include applications and their parameters you with to enable in DIAL.
 
+> Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-applications) to learn how to manage apps in DIAL Admin UI.
+
 ## applications
 
 A list of deployed applications and their [parameters](#applicationsapplication_name).
