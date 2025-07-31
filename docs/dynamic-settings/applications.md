@@ -39,7 +39,10 @@ An object containing parameters for each [application](#applications).
 * `editoUrl`: An optional field with a URL of the application's custom builder UI. Application builder allows end-users to create instances of apps using a [UI wizard](https://docs.dialx.ai/tutorials/user-guide#application-builder). Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps. 
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.         
 * `interceptors`: A list of interceptors to be triggered for the given application. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
+* `applications.<application_name>.applicationTypeSchemaId`: A schema ID of a schema-rich app.  The ID must exist in the config property `applicationTypeSchemas`.
+* `applications.<application_name>.applicationProperties`: Schema properties of a schema-rich app. The properties must conform to the application rich schema referenced by `applicationTypeSchemaId`.
 * `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
+* `routes`: A list of registered routes in the application. Refer to [applications.<application_name>.routes](#applicationsapplication_nameroutes) for more details.
 
 **Example**:
 
@@ -136,95 +139,89 @@ Use `features` to specify optional capabilities of the application. Refer to [DI
 `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not (default is `false`). 
 `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.     
 
-
-
-
-| applications.<application_name>.applicationTypeSchemaId        | Application rich schema ID.  The ID must exist in the config property `applicationTypeSchemas`. |
-| applications.<application_name>.applicationProperties          | Application rich schema properties. The properties must conform to the application rich schema referenced by `applicationTypeSchemaId`. |
-| applications.<application_name>.routes       | A list of registered routes in the application. A route is used to proxy request through DIAL Core to upstream server.<br />DIAL Core provides capabilities: rate limiting, role based authorization, request balancing and access to DIAL Core resources such as LLMs, applications, file storage.|
-| applications.<application_name>.routes.<route_name>.userRoles  | Route is accessible by user roles from this list.          |
-| applications.<application_name>.routes.<route_name>.response   | Pre-configured route's response:<br />`status` - http status code<br />`body` - http response body.<br />If the `response` is set then DIAL Core returns the response immediately.  |
-| applications.<application_name>.routes.<route_name>.rewritePath| A flag indicates that the path to the upstream server will be replaced with the path of the original request, if this flag is set to `true`               |
-| applications.<application_name>.routes.<route_name>.paths      | A list of paths to be matched request's path. If any path is matched, the request will be processed by this route.<br />**Note**. A path can be a plain string or a regular expression.|
-| applications.<application_name>.routes.<route_name>.methods    | A list of HTTP methods supported by this route             |
-| applications.<application_name>.routes.<route_name>.upstreams  | A list of upstream servers. <br />`endpoint`: Route endpoint.<br />`key`: Your API key.<br />`weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this enpoint from routing. Default value: 1.<br />`tier`: Specifies a tier group for the endpoint. Only positive numbers are allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [Load Balancer](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/5.load-balancer.md) to learn more.<br/>`extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. It can be a JSON or String.                 |    |
-| applications.<application_name>.routes.<route_name>.maxRetryAttempts             | Maximum number of retry attempts in case if upstream server returns unsuccessful response code. In this case load balancer will try to find another upstream from the list of available upstreams.               |
-| applications.<application_name>.routes.<route_name>.order      | The value determines the order within the application routes. The lower value means the higher priority. The value can't be negative integer. The default one is 2^31-1.               |
-| applications.<application_name>.routes.<route_name>.permissions| The list of permissions (`READ`, `WRITE`) are required to for access to the route. The default value is an empty list.              |
-| applications.<application_name>.routes.<route_name>.attachmentPaths              | The property specifies a list of attachment paths where DIAL Core should look for attachment links.               |
-| applications.<application_name>.routes.<route_name>.attachmentPaths.requestBody  | The property contains a list of JSON Paths' strings. The DIAL Core will look for attachments in the request body. |
-| applications.<application_name>.routes.<route_name>.attachmentPaths.responseBody | The property contains a list of JSON Paths' strings. The DIAL Core will look for attachments in the response body.|
-
-**Configuration Example:**
+**Example**:
 
 ```json
-"applications": {
-        "app": {
-            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
-            "displayName": "Forecast",
-            "iconUrl": "https://host/app.svg",
-            "description": "Addon that provides forecast",
-            "descriptionKeywords": ["code-gen"],
-            "userRoles": [
-                "Forecast"
-            ],
-            "forwardAuthToken": true,
-            "features": {
-                "rateEndpoint": "http://host/rate",
-                "tokenizeEndpoint": "http://host/tokinize",
-                "truncatePromptEndpoint": "http://host/truncate",
-                "configurationEndpoint": "http://host/configure",
-                "systemPromptSupported": false,
-                "toolsSupported": false,
-                "seedSupported":false,
-                "urlAttachmentsSupported": false,
-                "folderAttachmentsSupported": false,
-                "accessibleByPerRequestKey": true,
-                "contentPartsSupported": false
-            },
-            "maxInputAttachments": 10,
-            "inputAttachmentTypes": ["type1", "type2"],
-            "defaults": {
-                "paramStr": "value",
-                "paramBool": true,
-                "paramInt": 123,
-                "paramFloat": 0.25
-            },
-            "interceptors": ["interceptor1", "interceptor2", "interceptor3"],
-            "routes": {
-                "vector_store_query": {
-                    "paths": ["/v1/vector_store(/[^/]+)*$"],
-                    "rewritePath": true,
-                    "methods": ["GET", "HEAD"],
-                    "userRoles": ["role1"],
-                    "upstreams": [
-                        {
-                            "endpoint": "http://localhost:9876"
-                        },
-                        {
-                            "endpoint": "http://localhost:9877"
-                        }
-                    ],
-                    "order": 1,
-                    "permissions": ["WRITE"],
-                    "attachmentPaths": {
-                        "attachmentPaths": {
-                            "requestBody": ["@.attachments[*].url"],
-                            "responseBody": ["@.result.attachedFiles"]
-                        }
-                    }
-                },
-                "rate": {
-                    "paths": ["/v1/rate"],
-                    "rewritePath": true,
-                    "methods": ["GET", "HEAD"],
-                    "response": {
-                        "status": 200,
-                        "body": "OK"
-                    },
-                    "order": 2
-                }
-            }
-        }
+"features": {
+    "rateEndpoint": "http://host/rate",
+    "tokenizeEndpoint": "http://host/tokinize",
+    "truncatePromptEndpoint": "http://host/truncate",
+    "configurationEndpoint": "http://host/configure",
+    "systemPromptSupported": false,
+    "toolsSupported": false,
+    "seedSupported":false,
+    "urlAttachmentsSupported": false,
+    "folderAttachmentsSupported": false,
+    "accessibleByPerRequestKey": true,
+    "contentPartsSupported": false
     },
 ```
+
+#### applications.<application_name>.routes
+
+A list of registered routes in the application. A route is used to proxy requests through DIAL Core to an upstream server. DIAL Core provides capabilities such as rate limiting, role-based authorization, request balancing, and access to DIAL Core resources (LLMs, applications, file storage).
+
+* `applications.<application_name>.routes.<route_name>.userRoles`: Route is accessible by user roles from this list.
+* `applications.<application_name>.routes.<route_name>.response`: A pre-configured route's response. If the `response` is set, DIAL Core returns the response immediately. Available values:  
+    - `status`: HTTP status code  
+    - `body`: HTTP response body  
+* `*applications.<application_name>.routes.<route_name>.rewritePath`: A flag indicating that the path to the upstream server will be replaced with the path of the original request if this flag is set to `true`.
+* `*applications.<application_name>.routes.<route_name>.paths`: A list of paths to match the request's path. If any path is matched, the request will be processed by this route. **Note:** A path can be a plain string or a regular expression.
+* `applications.<application_name>.routes.<route_name>.methods`:  A list of HTTP methods supported by this route.
+* `applications.<application_name>.routes.<route_name>.upstreams`: A list of upstream servers with parameters:
+    * `endpoint`: A route's endpoint.
+    * `key`: Your API key.
+    * `weight`: Weight for upstream endpoint; positive number represents endpoint capacity, zero or negative disables this endpoint from routing. Default: 1.
+    * `tier`: Specifies a tier group for the endpoint. Only positive numbers are allowed. All requests will be routed to endpoints with the highest tier (lowest tier value); other endpoints may be used only if the highest tier endpoints are unavailable. Default: 0 (highest tier). [Learn more](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/5.load-balancer.md)
+    * `extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. Can be JSON or String.
+* `applications.<application_name>.routes.<route_name>.maxRetryAttempts`: Use this parameter to set the **maximum** number of retry attempts if the upstream server returns an unsuccessful response code. The load balancer will try to find another upstream from the list of available upstreams.
+* `applications.<application_name>.routes.<route_name>.order`: This parameter determines the order within the application routes. Lower value means higher priority. Cannot be a negative integer. Default: 2^31-1.
+* `applications.<application_name>.routes.<route_name>.permissions`: A list of permissions (`READ`, `WRITE`) required for access to the route. Default is an empty list.
+* `applications.<application_name>.routes.<route_name>.attachmentPaths`: Use this parameter to specify a list of attachment paths where DIAL Core should look for attachment links.
+* `applications.<application_name>.routes.<route_name>.attachmentPaths.requestBody`: This property contains a list of JSON Path strings. DIAL Core will look for attachments in the request body.
+* `applications.<application_name>.routes.<route_name>.attachmentPaths.responseBody`: This property contains a list of JSON Path strings. DIAL Core will look for attachments in the response body.
+
+**Example**:
+
+```json
+"routes": {
+    "vector_store_query": {
+        "paths": ["/v1/vector_store(/[^/]+)*$"],
+        "rewritePath": true,
+        "methods": ["GET", "HEAD"],
+        "userRoles": ["role1"],
+        "upstreams": [
+            {
+                "endpoint": "http://localhost:9876"
+            },
+            {
+                "endpoint": "http://localhost:9877"
+            }
+        ],
+        "order": 1,
+        "permissions": [
+            "WRITE"
+        ],
+        "attachmentPaths": {
+            "requestBody": [
+                "@.attachments[*].url"
+            ],
+            "responseBody": [
+                "@.result.attachedFiles"
+            ]
+        }
+    },
+    "rate": {
+        "paths": ["/v1/rate"],
+        "rewritePath": true,
+        "methods": ["GET", "HEAD"],
+        "response": {
+            "status": 200,
+            "body": "OK"
+        },
+        "order": 2
+    }
+}
+```
+
+
