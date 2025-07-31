@@ -36,11 +36,8 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
-import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
-import io.opentelemetry.api.trace.StatusCode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -135,11 +132,11 @@ public class Proxy implements Handler<HttpServerRequest> {
             if (error instanceof HttpException e) {
                 status = e.getStatus();
                 message = e.getMessage();
-            } else {
-                log.error("Can't handle request", error);
             }
 
             respond(request, status, message);
+
+            log.error("Can't handle request", error);
         }
     }
 

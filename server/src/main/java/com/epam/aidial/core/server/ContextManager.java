@@ -13,8 +13,6 @@ public class ContextManager {
      * Set ProxyContext in Vertx context only.
      * This simplifies context management by storing the entire ProxyContext object.
      * The AutoEnrichedOtelJsonLayout will extract fields directly from ProxyContext.
-     * MDC is not used here to avoid duplication, as it will be temporarily enriched
-     * during logging in AutoEnrichedOtelJsonLayout.
      */
     public static void setProxyContext(ProxyContext proxyContext) {
         if (proxyContext == null) {
@@ -41,7 +39,6 @@ public class ContextManager {
 
     /**
      * Clear context data from Vertx context.
-     * MDC is not cleared here as it's only temporarily enriched during logging.
      */
     public static void clearContext() {
         // Clear ProxyContext from Vertx context

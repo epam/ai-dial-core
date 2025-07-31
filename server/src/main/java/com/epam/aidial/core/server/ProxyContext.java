@@ -14,14 +14,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanContext;
-import io.opentelemetry.api.trace.StatusCode;
-import io.vertx.core.Context;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -32,9 +25,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -132,16 +123,8 @@ public class ProxyContext {
         }
         this.spanId = spanId;
 
-        // Set the ProxyContext in MDC and Vertx context
+        // Set the ProxyContext in Vertx context
         ContextManager.setProxyContext(this);
-
-        // Set trace context in MDC
-        SpanContext spanContext = Span.current().getSpanContext();
-        if (spanContext.isValid()) {
-            MDC.put("trace.id", spanContext.getTraceId());
-            MDC.put("span.id", spanContext.getSpanId());
-            MDC.put("trace.flags", spanContext.getTraceFlags().asHex());
-        }
     }
 
     private void initExtractedClaims(ExtractedClaims extractedClaims, Key originalKey) {
@@ -176,46 +159,12 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status, String body) {
-        // Set the entire ProxyContext in MDC and Vertx context
-        ContextManager.setProxyContext(this);
-
-        // Also store in Vertx context for the logging layout
-        Context vertxContext = Vertx.currentContext();
-        if (vertxContext != null) {
-            vertxContext.putLocal("http.status.code", String.valueOf(status.getCode()));
-        }
-
         if (body == null) {
             body = "";
         }
 
         if (status != HttpStatus.OK) {
-            String errorMessage = String.format("HTTP %d: %s", status.getCode(), body);
-            HttpException exception = new HttpException(status, errorMessage);
-
-            MDC.put("exception.type", exception.getClass().getSimpleName());
-            MDC.put("exception.message", exception.getMessage());
-            MDC.put("exception.stacktrace", Arrays.toString(exception.getStackTrace()));
-
-            try {
-                Span currentSpan = Span.current();
-                if (currentSpan.isRecording()) {
-                    currentSpan.recordException(exception, Attributes.of(
-                            AttributeKey.longKey("http.status.code"), (long) status.getCode(),
-                            AttributeKey.stringKey("user.project"), getProject() != null ? getProject() : "unknown"
-                    ));
-                    currentSpan.setStatus(StatusCode.ERROR, errorMessage);
-                    currentSpan.setAttribute("http.response.status.code", status.getCode());
-                }
-            } catch (Exception e) {
-                log.debug("Failed to add exception to span", e);
-            }
-
-            log.warn("Responding with error.");
-
-            MDC.remove("exception.type");
-            MDC.remove("exception.message");
-            MDC.remove("exception.stacktrace");
+            log.warn("Responding with error. Status: {}. Body: {}", status, body);
         }
 
         response.setStatusCode(status.getCode()).end(body);
