@@ -56,6 +56,10 @@
           "type": "boolean",
           "description": "If this flag is set to true, the header with properties will augment the request while proxying"
         },
+        "dial:applicationTypePlaybackSupport": {
+          "type": "boolean",
+          "description": "The flag is an indicator that the viewer support playback."
+        },
         "dial:applicationTypeRoutes": {
           "type": "object",
           "patternProperties": {
