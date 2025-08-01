@@ -48,8 +48,6 @@ class AutoEnrichedOtelJsonLayoutTest {
         MDC.clear();
         
         layout = new AutoEnrichedOtelJsonLayout();
-        layout.setServiceName("test-service");
-        layout.setServiceVersion("1.0.0");
         layout.start();
 
         objectMapper = new ObjectMapper();
@@ -103,7 +101,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertNotNull(jsonNode.get("ObservedTimestamp"));
         assertEquals("INFO", jsonNode.get("SeverityText").asText());
         assertEquals(9, jsonNode.get("SeverityNumber").asInt());
-        assertEquals("test-service", jsonNode.get("Resource").get("service.name").asText());
+        assertEquals("aidial-core", jsonNode.get("Resource").get("service.name").asText());
         assertEquals("Test message", jsonNode.get("Body").asText());
     }
 

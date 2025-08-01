@@ -47,25 +47,4 @@ public class ContextManager {
             vertxContext.removeLocal(PROXY_CONTEXT_KEY);
         }
     }
-
-    /**
-     * Get a value from Vertx context by key.
-     *
-     * @param key the key to look up
-     * @return the value as a String, or null if not found
-     */
-    public static String getContextValue(String key) {
-        try {
-            Context vertxContext = Vertx.currentContext();
-            if (vertxContext != null) {
-                Object localValue = vertxContext.getLocal(key);
-                if (localValue != null) {
-                    return localValue.toString();
-                }
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-        return null;
-    }
 }

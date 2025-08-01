@@ -122,9 +122,6 @@ public class ProxyContext {
             this.decodedSourceDeployment = null;
         }
         this.spanId = spanId;
-
-        // Set the ProxyContext in Vertx context
-        ContextManager.setProxyContext(this);
     }
 
     private void initExtractedClaims(ExtractedClaims extractedClaims, Key originalKey) {
@@ -163,11 +160,12 @@ public class ProxyContext {
             body = "";
         }
 
+        response.setStatusCode(status.getCode()).end(body);
+
         if (status != HttpStatus.OK) {
-            log.warn("Responding with error. Status: {}. Body: {}", status, body);
+            log.warn("Responding with error. Body: {}", body);
         }
 
-        response.setStatusCode(status.getCode()).end(body);
         return Future.succeededFuture();
     }
 

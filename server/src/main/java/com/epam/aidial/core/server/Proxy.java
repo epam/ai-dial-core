@@ -126,17 +126,22 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     private void handleError(Throwable error, HttpServerRequest request) {
         if (!request.response().ended()) {
-            HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-            String message = null;
+            HttpStatus status;
+            String message;
 
             if (error instanceof HttpException e) {
                 status = e.getStatus();
                 message = e.getMessage();
+            } else {
+                status = HttpStatus.INTERNAL_SERVER_ERROR;
+                message = null;
             }
 
             respond(request, status, message);
 
-            log.error("Can't handle request", error);
+            if (!(error instanceof HttpException)) {
+                log.error("Can't handle request", error);
+            }
         }
     }
 
@@ -294,6 +299,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId);
+            ContextManager.setProxyContext(context);
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);
             future = controller.handle();

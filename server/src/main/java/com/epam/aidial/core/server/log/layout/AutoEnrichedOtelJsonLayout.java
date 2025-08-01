@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -25,10 +24,9 @@ import java.util.stream.Stream;
 public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     private final ObjectMapper objectMapper;
-    @Setter
-    private String serviceName = "aidial-core";
-    @Setter
-    private String serviceVersion = AiDial.getVersion();
+
+    private final static String serviceName = "aidial-core";
+    private final static String serviceVersion = AiDial.getVersion();
 
     public AutoEnrichedOtelJsonLayout() {
         this.objectMapper = new ObjectMapper();
