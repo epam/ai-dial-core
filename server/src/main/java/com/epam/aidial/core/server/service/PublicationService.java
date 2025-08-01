@@ -314,6 +314,11 @@ public class PublicationService {
                     if (to.getType() == ResourceTypes.CONVERSATION) {
                         resourceService.computeResource(to, conversationBody -> PublicationUtil.replaceConversationLinks(conversationBody, to, replacementLinks));
                     }
+                    if (to.getType() == ResourceTypes.APPLICATION) {
+                        Application app = applicationService.getApplication(to).getValue();
+                        app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
+                        applicationService.putApplication(to, EtagHeader.ANY, null, app);
+                    }
                 }
             }
 
