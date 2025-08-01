@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -61,6 +62,14 @@ public class ApplicationRouteController extends BaseRouteController {
             Set<ResourceAccessType> expected = permissions.isEmpty() ? ResourceAccessType.READ_ONLY : permissions;
             return actual.containsAll(expected);
         });
+    }
+
+    @Override
+    protected boolean hasAccessByUserRoles(Route route) {
+        if (route.getUserRoles() != null) {
+            return super.hasAccessByUserRoles(route);
+        }
+        return context.getDeployment().hasAccess(context.getUserRoles());
     }
 
     @Override
