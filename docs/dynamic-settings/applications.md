@@ -1,6 +1,6 @@
 # Dynamic Setting for Applications
 
-In dynamic settings you can include applications and their parameters you with to enable in DIAL.
+In dynamic settings you can include applications and their parameters you wish to enable in DIAL.
 
 > Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-applications) to learn how to manage apps in DIAL Admin UI.
 
@@ -128,18 +128,18 @@ An object containing parameters for each [application](#applications).
 
 Use `features` to specify optional capabilities of the application. Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-applications#features) to learn more about features and the difference between model and app features. The following features are supported:
 
-`rateEndpoint`: A URL to call a custom rate-estimation API. Use this to compute cost or quota usage based on your own logic (e.g. grouping by tenant, complex billing rules). Exposed by DIAL Core as `<deployment name>/rate`.
-`tokenizeEndpoint`: A URL to call a custom tokenization service. When you need precise, app-wide token counting (for mixed-model or multi-step prompts) that the model adapter can’t provide. Exposed by DIAL Core as `<deployment name>/tokenize`.
-`truncatePromptEndpoint`: A URL to call your own prompt-truncation API. Handy if you implement advanced context-window management (e.g. dynamic summarization) before the actual app call. Exposed by DIAL Core as `<deployment name>/truncate_prompt`.
-`configurationEndpoint`: A URL to fetch dynamic app-specific settings (e.g. per-tenant max tokens, allowed parameters). Use this to drive runtime overrides from a remote config store. Use to request application configuration parameters as JSON schema. Exposed by DIAL Core as `<deployment name>/configuration`.
-`systemPromptSupported`: A boolean parameter that enables/disables an initial "system" message injection. Useful for orchestrating multi-step agents where you need to enforce a global policy at the application level. (default is `true`).
-`toolsSupported`: A boolean parameter that enables/disables tools/functions payloads in API calls. Switch on if your application makes external function calls (e.g. calendar lookup, database fetch). (default is `false`).
-`seedSupported`: A boolean parameter that enables/disables the `seed` parameter for reproducible results. Great for testing or deterministic pipelines. Disable to ensure randomized creativity. (default is `false`).
-`urlAttachmentsSupported`: A boolean parameter that enables/disables URL references (images, docs) as attachments in API requests. Must be enabled if your workflow downloads or processes remote assets via URLs. (default is `false`).
-`folderAttachmentsSupported`: A boolean parameter that enables/disables attachments of folders (batching multiple files). (default is `false`)
-`accessibleByPerRequestKey`: A boolean parameter that indicates whether the deployment is accessible using a per-request API key (default is `true`).
-`contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not (default is `false`). 
-`consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.     
+* `rateEndpoint`: A URL to call a custom rate-estimation API. Use this to compute cost or quota usage based on your own logic (e.g. grouping by tenant, complex billing rules). Exposed by DIAL Core as `<deployment name>/rate`.
+* `tokenizeEndpoint`: A URL to call a custom tokenization service. When you need precise, app-wide token counting (for mixed-model or multi-step prompts) that the model adapter can’t provide. Exposed by DIAL Core as `<deployment name>/tokenize`.
+* `truncatePromptEndpoint`: A URL to call your own prompt-truncation API. Handy if you implement advanced context-window management (e.g. dynamic summarization) before the actual app call. Exposed by DIAL Core as `<deployment name>/truncate_prompt`.
+* `configurationEndpoint`: A URL to fetch dynamic app-specific settings (e.g. per-tenant max tokens, allowed parameters). Use this to drive runtime overrides from a remote config store. Use to request application configuration parameters as JSON schema. Exposed by DIAL Core as `<deployment name>/configuration`.
+* `systemPromptSupported`: A boolean parameter that enables/disables an initial "system" message injection. Useful for orchestrating multi-step agents where you need to enforce a global policy at the application level. Default is `true`.
+* `toolsSupported`: A boolean parameter that enables/disables tools/functions payloads in API calls. Switch on if your application makes external function calls (e.g. calendar lookup, database fetch). Default is `false`.
+* `seedSupported`: A boolean parameter that enables/disables the `seed` parameter for reproducible results. Great for testing or deterministic pipelines. Disable to ensure randomized creativity. Default is `false`.
+* `urlAttachmentsSupported`: A boolean parameter that enables/disables URL references (images, docs) as attachments in API requests. Must be enabled if your workflow downloads or processes remote assets via URLs. Default is `false`.
+* `folderAttachmentsSupported`: A boolean parameter that enables/disables attachments of folders (batching multiple files). Default is `false`.
+* `accessibleByPerRequestKey`: A boolean parameter that indicates whether the deployment is accessible using a per-request API key. Default is `true`.
+* `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not.Default is `false`.
+* `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.     
 
 **Example**:
 
@@ -167,14 +167,14 @@ A list of registered routes in the application. A route is used to proxy request
 * `applications.<application_name>.routes.<route_name>.response`: A pre-configured route's response. If the `response` is set, DIAL Core returns the response immediately. Available values:  
     - `status`: HTTP status code  
     - `body`: HTTP response body  
-* `*applications.<application_name>.routes.<route_name>.rewritePath`: A flag indicating that the path to the upstream server will be replaced with the path of the original request if this flag is set to `true`.
-* `*applications.<application_name>.routes.<route_name>.paths`: A list of paths to match the request's path. If any path is matched, the request will be processed by this route. **Note:** A path can be a plain string or a regular expression.
+* `applications.<application_name>.routes.<route_name>.rewritePath`: A flag indicating that the path to the upstream server will be replaced with the path of the original request if this flag is set to `true`.
+* `applications.<application_name>.routes.<route_name>.paths`: A list of paths to match the request's path. If any path is matched, the request will be processed by this route. **Note:** A path can be a plain string or a regular expression.
 * `applications.<application_name>.routes.<route_name>.methods`:  A list of HTTP methods supported by this route.
 * `applications.<application_name>.routes.<route_name>.upstreams`: A list of upstream servers with parameters:
     * `endpoint`: A route's endpoint.
     * `key`: Your API key.
     * `weight`: Weight for upstream endpoint; positive number represents endpoint capacity, zero or negative disables this endpoint from routing. Default: 1.
-    * `tier`: Specifies a tier group for the endpoint. Only positive numbers are allowed. All requests will be routed to endpoints with the highest tier (lowest tier value); other endpoints may be used only if the highest tier endpoints are unavailable. Default: 0 (highest tier). [Learn more](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/5.load-balancer.md)
+    * `tier`: Specifies a tier group for the endpoint. Only positive numbers are allowed. All requests will be routed to endpoints with the highest tier (lowest tier value); other endpoints may be used only if the highest tier endpoints are unavailable. Default: 0 (highest tier). Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
     * `extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. Can be JSON or String.
 * `applications.<application_name>.routes.<route_name>.maxRetryAttempts`: Use this parameter to set the **maximum** number of retry attempts if the upstream server returns an unsuccessful response code. The load balancer will try to find another upstream from the list of available upstreams.
 * `applications.<application_name>.routes.<route_name>.order`: This parameter determines the order within the application routes. Lower value means higher priority. Cannot be a negative integer. Default: 2^31-1.
