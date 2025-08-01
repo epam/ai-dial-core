@@ -95,7 +95,7 @@ public class ResourceOperationController {
                     Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
                             accessService.lookupPermissions(resources, context);
 
-                    if (!(permissions.get(source).containsAll(ResourceAccessType.ALL) || accessService.hasAdminAccess(context))) {
+                    if (!permissions.get(source).containsAll(ResourceAccessType.ALL)) {
                         throw new PermissionDeniedException("no read and write access to source resource");
                     }
 
