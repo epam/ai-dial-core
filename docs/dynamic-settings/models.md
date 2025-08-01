@@ -174,9 +174,9 @@ In features you can specify optional capabilities of the model. You can use mode
 
 Some models adapters expose specialized HTTP endpoints for tokenization, rate estimation, prompt truncation, or live configuration. You can override the default Unified Protocol calls by specifying them in this section.
 
-* `rateEndpoint`: URL to invoke the model’s cost‐estimation or billing API. *(exposed by core as `<deployment name>/rate`)*. 
-* `tokenizeEndpoint`: URL to invoke a standalone tokenization service. *(exposed by DIAL Core as * `<deployment name>/tokenize`)*. Use when you need precise token counts before truncation or batching. Models without built-in tokenization require this.
-* `truncatePromptEndpoint`: URL to invoke a prompt‐truncation API *(exposed by DIAL Core as * `<deployment name>/truncate_prompt`)*. Ensures prompts are safely cut to max context length. Useful when working with very long user inputs. 
+* `rateEndpoint`: URL to invoke the model’s cost‐estimation or billing API. Exposed by DIAL Core as `<deployment name>/rate`. 
+* `tokenizeEndpoint`: URL to invoke a standalone tokenization service. Exposed by DIAL Core as `<deployment name>/tokenize`. Use when you need precise token counts before truncation or batching. Models without built-in tokenization require this.
+* `truncatePromptEndpoint`: URL to invoke a prompt‐truncation API. Exposed by DIAL Core as `<deployment name>/truncate_prompt`. Ensures prompts are safely cut to max context length. Useful when working with very long user inputs. 
 * `systemPromptSupported`: A boolean parameter to enable/disable a system‐level message (the "agent’s instructions") at the start of every chat. Disable for models that ignore or block system prompts. Default is `true`.
 * `toolsSupported`: A boolean parameter to enable/disable `tools` (a.k.a. functions) feature for safe external API calls. Enable if you plan to use DIAL Add-ons or function calling. Default is `false`.
 * `seedSupported`: A boolean parameter to enable/disable `seed` parameter for deterministic output. Use in testing or reproducible workflows. Default is `false`.
