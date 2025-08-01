@@ -128,18 +128,18 @@ An object containing parameters for each [application](#applications).
 
 Use `features` to specify optional capabilities of the application. Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-applications#features) to learn more about features and the difference between model and app features. The following features are supported:
 
-`rateEndpoint`: A URL to call a custom rate-estimation API. Use this to compute cost or quota usage based on your own logic (e.g. grouping by tenant, complex billing rules). Exposed by DIAL Core as `<deployment name>/rate`.
-`tokenizeEndpoint`: A URL to call a custom tokenization service. When you need precise, app-wide token counting (for mixed-model or multi-step prompts) that the model adapter can’t provide. Exposed by DIAL Core as `<deployment name>/tokenize`.
-`truncatePromptEndpoint`: A URL to call your own prompt-truncation API. Handy if you implement advanced context-window management (e.g. dynamic summarization) before the actual app call. Exposed by DIAL Core as `<deployment name>/truncate_prompt`.
-`configurationEndpoint`: A URL to fetch dynamic app-specific settings (e.g. per-tenant max tokens, allowed parameters). Use this to drive runtime overrides from a remote config store. Use to request application configuration parameters as JSON schema. Exposed by DIAL Core as `<deployment name>/configuration`.
-`systemPromptSupported`: A boolean parameter that enables/disables an initial "system" message injection. Useful for orchestrating multi-step agents where you need to enforce a global policy at the application level. (default is `true`).
-`toolsSupported`: A boolean parameter that enables/disables tools/functions payloads in API calls. Switch on if your application makes external function calls (e.g. calendar lookup, database fetch). (default is `false`).
-`seedSupported`: A boolean parameter that enables/disables the `seed` parameter for reproducible results. Great for testing or deterministic pipelines. Disable to ensure randomized creativity. (default is `false`).
-`urlAttachmentsSupported`: A boolean parameter that enables/disables URL references (images, docs) as attachments in API requests. Must be enabled if your workflow downloads or processes remote assets via URLs. (default is `false`).
-`folderAttachmentsSupported`: A boolean parameter that enables/disables attachments of folders (batching multiple files). (default is `false`)
-`accessibleByPerRequestKey`: A boolean parameter that indicates whether the deployment is accessible using a per-request API key (default is `true`).
-`contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not (default is `false`). 
-`consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.     
+* `rateEndpoint`: A URL to call a custom rate-estimation API. Use this to compute cost or quota usage based on your own logic (e.g. grouping by tenant, complex billing rules). Exposed by DIAL Core as `<deployment name>/rate`.
+* `tokenizeEndpoint`: A URL to call a custom tokenization service. When you need precise, app-wide token counting (for mixed-model or multi-step prompts) that the model adapter can’t provide. Exposed by DIAL Core as `<deployment name>/tokenize`.
+* `truncatePromptEndpoint`: A URL to call your own prompt-truncation API. Handy if you implement advanced context-window management (e.g. dynamic summarization) before the actual app call. Exposed by DIAL Core as * * * * `<deployment name>/truncate_prompt`.
+* `configurationEndpoint`: A URL to fetch dynamic app-specific settings (e.g. per-tenant max tokens, allowed parameters). Use this to drive runtime overrides from a remote config store. Use to request application configuration parameters as JSON schema. Exposed by DIAL Core as `<deployment name>/configuration`.
+* `systemPromptSupported`: A boolean parameter that enables/disables an initial "system" message injection. Useful for orchestrating multi-step agents where you need to enforce a global policy at the application level. (default is `true`).
+* `toolsSupported`: A boolean parameter that enables/disables tools/functions payloads in API calls. Switch on if your application makes external function calls (e.g. calendar lookup, database fetch). (default is `false`).
+* `seedSupported`: A boolean parameter that enables/disables the `seed` parameter for reproducible results. Great for testing or deterministic pipelines. Disable to ensure randomized creativity. (default is `false`).
+* `urlAttachmentsSupported`: A boolean parameter that enables/disables URL references (images, docs) as attachments in API requests. Must be enabled if your workflow downloads or processes remote assets via URLs. (default is `false`).
+* `folderAttachmentsSupported`: A boolean parameter that enables/disables attachments of folders (batching multiple files). (default is `false`)
+* `accessibleByPerRequestKey`: A boolean parameter that indicates whether the deployment is accessible using a per-request API key (default is `true`).
+* `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not (default is `false`). 
+* `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.     
 
 **Example**:
 
