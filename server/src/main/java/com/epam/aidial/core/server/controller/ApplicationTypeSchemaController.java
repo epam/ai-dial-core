@@ -109,6 +109,9 @@ public class ApplicationTypeSchemaController {
                 if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_ICON_URL)) {
                     filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_ICON_URL, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_ICON_URL));
                 }
+                if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_PLAYBACK_SUPPORT)) {
+                    filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_PLAYBACK_SUPPORT, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_PLAYBACK_SUPPORT));
+                }
 
                 filteredSchemas.add(filteredNode);
             }
