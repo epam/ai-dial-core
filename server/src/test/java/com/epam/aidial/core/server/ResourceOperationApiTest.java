@@ -332,7 +332,7 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testMoveFromPublicToPrivate() {
+    void testMoveFromPublicToPublic() {
         Response response = send(HttpMethod.PUT, "/v1/conversations/public/folder/conversation",
                 null, CONVERSATION_BODY_1, "authorization", "admin");
         verify(response, 200);

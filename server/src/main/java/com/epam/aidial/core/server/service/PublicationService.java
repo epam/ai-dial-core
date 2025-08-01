@@ -519,7 +519,7 @@ public class PublicationService {
         String sourceUrl = source.getUrl();
         String targetUrl = target.getUrl();
 
-        if (!accessService.hasReadAccess(source, context)) {
+        if (!(accessService.hasReadAccess(source, context) || accessService.hasAdminAccess(context))) {
             throw new PermissionDeniedException("You don't have permission to access resource " + sourceUrl);
         }
 
