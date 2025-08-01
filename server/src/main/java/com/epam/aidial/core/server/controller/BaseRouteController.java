@@ -157,6 +157,8 @@ public abstract class BaseRouteController implements Controller {
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setRequestBody(requestBody);
 
+        setupEnhancementFunctions();
+
         if (!enhancementFunctions.isEmpty()) {
             try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
@@ -178,6 +180,10 @@ public abstract class BaseRouteController implements Controller {
         proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
 
         sendRequest();
+    }
+
+    protected void setupEnhancementFunctions() {
+        // do nothing by default
     }
 
     private void setupProxyApiKeyData() {
@@ -280,12 +286,15 @@ public abstract class BaseRouteController implements Controller {
         BufferingReadStream responseStream = context.getResponseStream();
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
-        handleProxyResponseBody(proxyResponseBody).onFailure(error -> log.warn("Failed to handle proxy response. Trace: {}. Span: {}",
-                context.getTraceId(), context.getSpanId(), error)).onSuccess(ignore -> {
-                    HttpServerResponse response = context.getResponse();
-                    proxy.getLogStore().save(context);
-                    responseStream.end(response);
-                });
+        handleProxyResponseBody(proxyResponseBody).onComplete(result -> {
+            if (result.failed()) {
+                log.warn("Failed to handle proxy response. Trace: {}. Span: {}",
+                        context.getTraceId(), context.getSpanId(), result.cause());
+            }
+            HttpServerResponse response = context.getResponse();
+            responseStream.end(response);
+            proxy.getLogStore().save(context);
+        });
     }
 
     protected abstract Future<Void> handleProxyResponseBody(Buffer responseBody);

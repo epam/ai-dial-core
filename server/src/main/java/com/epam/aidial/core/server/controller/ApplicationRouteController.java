@@ -29,6 +29,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
+
 @Slf4j
 public class ApplicationRouteController extends BaseRouteController {
 
@@ -40,7 +42,6 @@ public class ApplicationRouteController extends BaseRouteController {
         super(proxy, context);
         this.deploymentId = deploymentId;
         this.routePath = routePath;
-        this.enhancementFunctions.add(new CollectRequestCustomAttachmentsFn(proxy, context));
     }
 
     @Override
@@ -74,19 +75,31 @@ public class ApplicationRouteController extends BaseRouteController {
     @Override
     protected void injectAdditionalHeaders(HttpClientRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_APPLICATION_ID, deploymentId);
+        if ((context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId())) {
+            proxy.getApplicationSchemaService().consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                if (appendApplicationPropertiesHeader) {
+                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
+                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
+                }
+            });
+        }
     }
 
     @Override
     protected Future<Void> handleProxyResponseBody(Buffer responseBody) {
-        try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            var fn = new CollectResponseCustomAttachmentsFn(proxy, context);
-            return fn.apply(tree);
-        } catch (IOException e) {
-            log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
-                    context.getTraceId(), context.getSpanId(), e);
-            return Future.failedFuture(e);
+        Route route = context.getRoute();
+        if (!route.getAttachmentPaths().getResponseBody().isEmpty()) {
+            try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                var fn = new CollectResponseCustomAttachmentsFn(proxy, context);
+                return fn.apply(tree);
+            } catch (IOException e) {
+                log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
+                        context.getTraceId(), context.getSpanId(), e);
+                return Future.failedFuture(e);
+            }
         }
+        return Future.succeededFuture();
     }
 
     @Override
@@ -119,5 +132,11 @@ public class ApplicationRouteController extends BaseRouteController {
         return routePath;
     }
 
-
+    @Override
+    protected void setupEnhancementFunctions() {
+        Route route = context.getRoute();
+        if (!route.getAttachmentPaths().getRequestBody().isEmpty()) {
+            enhancementFunctions.add(new CollectRequestCustomAttachmentsFn(proxy, context));
+        }
+    }
 }
