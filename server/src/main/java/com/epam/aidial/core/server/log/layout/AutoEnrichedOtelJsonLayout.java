@@ -25,8 +25,8 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     private final ObjectMapper objectMapper;
 
-    private final static String serviceName = "aidial-core";
-    private final static String serviceVersion = AiDial.getVersion();
+    private static final String serviceName = "aidial-core";
+    private static final String serviceVersion = AiDial.getVersion();
 
     public AutoEnrichedOtelJsonLayout() {
         this.objectMapper = new ObjectMapper();
