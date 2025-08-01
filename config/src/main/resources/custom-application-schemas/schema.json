@@ -58,7 +58,7 @@
         },
         "dial:applicationTypePlaybackSupport": {
           "type": "boolean",
-          "description": "The flag is an indicator that the viewer support playback."
+          "description": "The flag is an indicator that the viewer supports playback."
         },
         "dial:applicationTypeRoutes": {
           "type": "object",
