@@ -167,8 +167,8 @@ A list of registered routes in the application. A route is used to proxy request
 * `applications.<application_name>.routes.<route_name>.response`: A pre-configured route's response. If the `response` is set, DIAL Core returns the response immediately. Available values:  
     - `status`: HTTP status code  
     - `body`: HTTP response body  
-* `*applications.<application_name>.routes.<route_name>.rewritePath`: A flag indicating that the path to the upstream server will be replaced with the path of the original request if this flag is set to `true`.
-* `*applications.<application_name>.routes.<route_name>.paths`: A list of paths to match the request's path. If any path is matched, the request will be processed by this route. **Note:** A path can be a plain string or a regular expression.
+* `applications.<application_name>.routes.<route_name>.rewritePath`: A flag indicating that the path to the upstream server will be replaced with the path of the original request if this flag is set to `true`.
+* `applications.<application_name>.routes.<route_name>.paths`: A list of paths to match the request's path. If any path is matched, the request will be processed by this route. **Note:** A path can be a plain string or a regular expression.
 * `applications.<application_name>.routes.<route_name>.methods`:  A list of HTTP methods supported by this route.
 * `applications.<application_name>.routes.<route_name>.upstreams`: A list of upstream servers with parameters:
     * `endpoint`: A route's endpoint.
