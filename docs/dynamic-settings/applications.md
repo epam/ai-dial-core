@@ -1,6 +1,6 @@
 # Dynamic Setting for Applications
 
-In dynamic settings you can include applications and their parameters you with to enable in DIAL.
+In dynamic settings you can include applications and their parameters you wish to enable in DIAL.
 
 > Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-applications) to learn how to manage apps in DIAL Admin UI.
 
