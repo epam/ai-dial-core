@@ -1,19 +1,17 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
-import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -477,6 +475,75 @@ public class AccessServiceTest {
                 }
                 """));
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getOwnResourcesAccessForChainedSchemaRichApplication(Set.of(resource), context);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void testGetAdminAccess_WhenPublicResource() {
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "public/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
+        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getAdminAccess(Set.of(resource), context);
+
+        assertFalse(result.isEmpty());
+        assertEquals(Map.of(resource, ResourceAccessType.ALL), result);
+    }
+
+    @Test
+    public void testGetAdminAccess_WhenReviewResource() {
+        String reviewLocation = "/Users/sub/publications/123/";
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", reviewLocation, false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
+        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getAdminAccess(Set.of(resource), context);
+
+        assertFalse(result.isEmpty());
+        assertEquals(Map.of(resource, ResourceAccessType.ALL), result);
+    }
+
+    @Test
+    public void testGetAdminAccess_WhenPrivateResource() {
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "/Users/sub", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
+        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getAdminAccess(Set.of(resource), context);
 
         assertTrue(result.isEmpty());
     }
