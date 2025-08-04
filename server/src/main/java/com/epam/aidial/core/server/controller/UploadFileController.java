@@ -55,16 +55,16 @@ public class UploadFileController extends AccessControlBaseController {
                                 })
                                 .onFailure(error -> {
                                     writeStream.abortUpload(error);
-                                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
                                     context.respond(error, "Failed to upload file: " + resource.getUrl());
+                                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
                                 });
                     });
 
             return Future.succeededFuture();
         }, false)
                 .otherwise(error -> {
-                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
                     context.respond(error, "Failed to upload file: " + resource.getUrl());
+                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
                     return null;
                 });
     }

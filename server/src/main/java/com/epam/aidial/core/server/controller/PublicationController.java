@@ -212,11 +212,16 @@ public class PublicationController {
         } else if (error instanceof PermissionDeniedException e) {
             status = HttpStatus.FORBIDDEN;
             body = e.getMessage();
-        } else {
-            log.warn(message, error);
         }
 
         context.respond(status, body);
+        
+        if (!(error instanceof HttpException)
+                && !(error instanceof ResourceNotFoundException)
+                && !(error instanceof IllegalArgumentException)
+                && !(error instanceof PermissionDeniedException)) {
+            log.warn(message, error);
+        }
     }
 
     private ResourceDescriptor decodePublication(String path, boolean allowPublic) {

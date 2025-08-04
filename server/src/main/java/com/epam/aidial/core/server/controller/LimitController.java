@@ -36,15 +36,15 @@ public class LimitController {
 
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
-            log.warn("LimitController. Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            log.warn("LimitController. Forbidden deployment {}", deploymentId);
         } else if (error instanceof ResourceNotFoundException) {
-            log.warn("LimitController. Deployment not found {}", deploymentId, error);
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            log.warn("LimitController. Deployment not found {}", deploymentId, error);
         } else {
-            log.error("LimitController. Failed to get limit stats", error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to get limit stats for deployment=%s".formatted(deploymentId));
+            log.error("LimitController. Failed to get limit stats", error);
         }
     }
 

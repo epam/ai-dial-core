@@ -406,7 +406,6 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
-        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(tokenStatsTracker.getTokenStats(eq(context))).thenReturn(Future.succeededFuture(new TokenUsage()));

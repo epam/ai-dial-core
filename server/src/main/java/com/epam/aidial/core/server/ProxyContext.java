@@ -64,6 +64,8 @@ public class ProxyContext {
     private final String spanId;
     // OpenTelemetry parent span ID created by the Core
     private final String parentSpanId;
+    // OpenTelemetry trace flags
+    private final String traceFlags;
     // deployment name of the source(application/assistant/model) associated with the current request
     private final String sourceDeployment;
     private final String decodedSourceDeployment;
@@ -100,7 +102,8 @@ public class ProxyContext {
     private String userDisplayName;
     private CacheBreakpointContext cacheBreakpointContext;
 
-    public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData, ExtractedClaims extractedClaims, String traceId, String spanId) {
+    public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData,
+                        ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
         this.proxy = proxy;
         this.config = config;
         this.apiKeyData = apiKeyData;
@@ -122,6 +125,7 @@ public class ProxyContext {
             this.decodedSourceDeployment = null;
         }
         this.spanId = spanId;
+        this.traceFlags = traceFlags;
     }
 
     private void initExtractedClaims(ExtractedClaims extractedClaims, Key originalKey) {

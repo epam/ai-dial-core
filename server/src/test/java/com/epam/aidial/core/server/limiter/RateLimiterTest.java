@@ -119,7 +119,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -145,7 +145,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -178,7 +178,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
         apiKeyData.setPerRequestKey("per-request-key");
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -233,7 +233,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -317,7 +317,7 @@ public class RateLimiterTest {
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null));
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                null, "trace-id", "span-id");
+                null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -359,7 +359,7 @@ public class RateLimiterTest {
 
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                new ExtractedClaims("sub", List.of("role1"), "user-hash", Map.of(), null, null), "trace-id", "span-id");
+                new ExtractedClaims("sub", List.of("role1"), "user-hash", Map.of(), null, null), "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -415,7 +415,7 @@ public class RateLimiterTest {
 
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null), "trace-id", "span-id");
+                new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null), "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);

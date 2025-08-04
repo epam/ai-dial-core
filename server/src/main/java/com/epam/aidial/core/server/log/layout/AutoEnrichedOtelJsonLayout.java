@@ -55,6 +55,13 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 traceId = spanContext.getTraceId();
                 spanId = spanContext.getSpanId();
                 traceFlags = spanContext.getTraceFlags().asHex();
+            } else {
+                ProxyContext proxyContext = ContextManager.getProxyContext();
+                if (proxyContext != null) {
+                    traceId = proxyContext.getTraceId();
+                    spanId = proxyContext.getSpanId();
+                    traceFlags = proxyContext.getTraceFlags();
+                }
             }
         }
 
