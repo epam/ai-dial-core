@@ -314,25 +314,25 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 403);
 
-        // admin has access
+        // admin shouldn't have access to the private conversation
         response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "conversations/public/folder/conversation"
                 }
                 """, "authorization", "admin");
-        verify(response, 200);
+        verify(response, 403);
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation");
-        verify(response, 404);
+        verify(response, 200);
 
         response =  send(HttpMethod.GET, "/v1/conversations/public/folder/conversation", null, null,
                 "authorization", "admin");
-        verify(response, 200, CONVERSATION_BODY_1);
+        verify(response, 404);
     }
 
     @Test
-    void testMoveFromPublicToPrivate() {
+    void testMoveFromPublicToPublic() {
         Response response = send(HttpMethod.PUT, "/v1/conversations/public/folder/conversation",
                 null, CONVERSATION_BODY_1, "authorization", "admin");
         verify(response, 200);

@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -166,10 +167,12 @@ public class AccessService {
         return result;
     }
 
-    private Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
+    @VisibleForTesting
+    Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (hasAdminAccess(context)) {
             return resources.stream()
+                    .filter(resource -> resource.isPublic() || PublicationService.isReviewBucket(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 

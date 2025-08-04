@@ -1674,14 +1674,14 @@ public class FileApiTest extends ResourceBaseTest {
                     );
             return promise.future();
         }).compose((mapper) -> {
-            // Verify that admin has read access to the file
+            // Verify that admin doesn't have read access to the file
             Promise<Void> promise = Promise.promise();
             client.get(serverPort, "localhost", fileUrl)
                     .putHeader("Authorization", "admin")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            assertEquals(200, response.statusCode());
+                            assertEquals(403, response.statusCode());
                             checkpoint.flag();
                             promise.complete();
                         });

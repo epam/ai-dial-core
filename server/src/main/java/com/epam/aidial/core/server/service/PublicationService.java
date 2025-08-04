@@ -314,6 +314,11 @@ public class PublicationService {
                     if (to.getType() == ResourceTypes.CONVERSATION) {
                         resourceService.computeResource(to, conversationBody -> PublicationUtil.replaceConversationLinks(conversationBody, to, replacementLinks));
                     }
+                    if (to.getType() == ResourceTypes.APPLICATION) {
+                        Application app = applicationService.getApplication(to).getValue();
+                        app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
+                        applicationService.putApplication(to, EtagHeader.ANY, null, app);
+                    }
                 }
             }
 
@@ -519,7 +524,7 @@ public class PublicationService {
         String sourceUrl = source.getUrl();
         String targetUrl = target.getUrl();
 
-        if (!accessService.hasReadAccess(source, context)) {
+        if (!(accessService.hasReadAccess(source, context) || accessService.hasAdminAccess(context))) {
             throw new PermissionDeniedException("You don't have permission to access resource " + sourceUrl);
         }
 
