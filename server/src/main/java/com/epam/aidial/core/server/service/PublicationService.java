@@ -521,8 +521,8 @@ public class PublicationService {
         ResourceDescriptor target = ResourceDescriptorFactory.fromPublicUrl(resource.getTargetUrl());
         verifyResourceType(source);
 
-        String sourceUrl = source.getUrl();
-        String targetUrl = target.getUrl();
+        String sourceUrl = resource.getSourceUrl();
+        String targetUrl = resource.getTargetUrl();
 
         if (!(accessService.hasReadAccess(source, context) || accessService.hasAdminAccess(context))) {
             throw new PermissionDeniedException("You don't have permission to access resource " + sourceUrl);
@@ -555,10 +555,6 @@ public class PublicationService {
         if (!urls.add(targetUrl)) {
             throw new IllegalArgumentException("Target resources have duplicate urls: " + targetUrl);
         }
-
-        resource.setSourceUrl(sourceUrl);
-        resource.setTargetUrl(targetUrl);
-
 
         String targetSuffix = targetUrl.substring(source.getType().group().length() + 1);
 
