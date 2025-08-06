@@ -9,9 +9,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanContext;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -30,7 +28,6 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     public AutoEnrichedOtelJsonLayout() {
         this.objectMapper = new ObjectMapper();
-        this.objectMapper.registerModule(new JavaTimeModule());
     }
 
     public String doLayout(ILoggingEvent event) {
@@ -48,21 +45,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         String spanId = "";
         String traceFlags = "";
 
-        Span currentSpan = Span.current();
-        if (currentSpan != null) {
-            SpanContext spanContext = currentSpan.getSpanContext();
-            if (spanContext.isValid()) {
-                traceId = spanContext.getTraceId();
-                spanId = spanContext.getSpanId();
-                traceFlags = spanContext.getTraceFlags().asHex();
-            } else {
-                ProxyContext proxyContext = ContextManager.getProxyContext();
-                if (proxyContext != null) {
-                    traceId = proxyContext.getTraceId();
-                    spanId = proxyContext.getSpanId();
-                    traceFlags = proxyContext.getTraceFlags();
-                }
-            }
+        ProxyContext proxyContext = ContextManager.getProxyContext();
+        if (proxyContext != null) {
+            traceId = proxyContext.getTraceId();
+            spanId = proxyContext.getSpanId();
+            traceFlags = proxyContext.getTraceFlags();
         }
 
         Map<String, Object> attributes = new LinkedHashMap<>();

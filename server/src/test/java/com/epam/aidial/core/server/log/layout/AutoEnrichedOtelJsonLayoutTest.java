@@ -5,16 +5,11 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ApiKeyData;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanContext;
-import io.opentelemetry.api.trace.TraceFlags;
-import io.opentelemetry.api.trace.TraceState;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -251,18 +246,14 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
-    void shouldIncludeTraceContextFromOpenTelemetry() throws Exception {
-        // Mock OpenTelemetry Span
-        Span currentSpan = mock(Span.class);
-        SpanContext spanContext = SpanContext.create(
-                "22510e56eb9b21f6b03dbc038cd8fb71",
-                "8a46c76f1554b00a", 
-                TraceFlags.getSampled(),
-                TraceState.getDefault()
-        );
-        when(currentSpan.getSpanContext()).thenReturn(spanContext);
+    void shouldIncludeTraceContextFromProxyContext() throws Exception {
+        // Setup ProxyContext with trace info
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        when(proxyContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
+        when(proxyContext.getSpanId()).thenReturn("8a46c76f1554b00a");
+        when(proxyContext.getTraceFlags()).thenReturn("01");
         
-        spanMock.when(Span::current).thenReturn(currentSpan);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
 
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger testLogger = context.getLogger("test.logger");
@@ -331,20 +322,5 @@ class AutoEnrichedOtelJsonLayoutTest {
             assertEquals(levels[i].toString(), jsonNode.get("SeverityText").asText());
             assertEquals(expectedSeverities[i], jsonNode.get("SeverityNumber").asInt());
         }
-    }
-
-    @Test
-    void shouldHandleFallbackJson() throws Exception {
-        // Create a layout that will fail JSON serialization
-        AutoEnrichedOtelJsonLayout faultyLayout = new AutoEnrichedOtelJsonLayout() {
-            @Override
-            public String doLayout(ch.qos.logback.classic.spi.ILoggingEvent event) {
-                // Force an exception in the normal flow
-                throw new RuntimeException("Simulated serialization error");
-            }
-        };
-        
-        // This should not work because doLayout is overridden, but let's test the buildFallbackJson method directly
-        // We'll need to use reflection or create a test that triggers the fallback
     }
 }
