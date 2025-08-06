@@ -54,7 +54,6 @@
         },
         "dial:applicationTypeIconUrl": {
           "type": "string",
-          "format": "uri",
           "description": "URL to the icon of the custom application of given type"
         },
         "dial:appendApplicationPropertiesHeader": {
