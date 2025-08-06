@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -82,7 +83,7 @@ public class ApiKeyStoreTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        store = new ApiKeyStore(vertx, redissonClient, null);
+        store = new ApiKeyStore(vertx, redissonClient, null, new JsonObject());
     }
 
     @Test

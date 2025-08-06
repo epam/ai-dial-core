@@ -2371,7 +2371,15 @@ class PublicationApiTest extends ResourceBaseTest {
                    "routes" : { }
                  }""";
         verifyJsonNotExact(response, 200, correctResponse);
-
+        List<String> targetFiles = List.of(
+                "files/public/.xyz%20app%204/Unt%2026__0.0.1/nodes/1743404608.101931_1.json",
+                "files/public/.xyz%20app%204/Unt%2026__0.0.1/generate.json",
+                "files/public/.xyz%20app%204/Unt%2026__0.0_2.1"
+        );
+        for (var file : targetFiles) {
+            response = send(HttpMethod.GET, "/v1/" + file, null, null, "authorization", "admin");
+            verify(response, 200, "Test");
+        }
     }
 
     @Test
