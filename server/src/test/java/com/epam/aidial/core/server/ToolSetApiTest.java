@@ -41,13 +41,20 @@ public class ToolSetApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset", null, "");
         verifyJsonNotExact(response, 200, """
                 {
+                   "name" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
                    "endpoint" : "http://toolset/v1/mcp",
                    "display_name" : "My Toolset",
                    "display_version" : "1.0",
                    "icon_url" : "http://toolset/icon.svg",
                    "description" : "My toolset Description",
+                   "forward_auth_token" : false,
+                   "defaults" : { },
+                   "interceptors" : [ ],
+                   "description_keywords" : [ ],
+                   "max_retry_attempts" : 1,
+                   "dependencies" : [ ],
                    "transport" : "HTTP",
-                   "allowedTools" : [ "tool1", "tool2" ]
+                   "allowed_tools" : [ "tool1", "tool2" ]
                  }
                 """);
     }
@@ -59,6 +66,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                    "data" : [ {
+                     "id" : "git",
                      "toolset" : "git",
                      "description" : "Git remote tool set",
                      "owner" : "organization-owner",
@@ -91,6 +99,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/openai/toolsets/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset");
         verifyJsonNotExact(response, 200, """
                 {
+                  "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
+                  "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
                   "display_name": "My Toolset",
                   "display_version": "1.0",
                   "icon_url": "http://toolset/icon.svg",
@@ -114,6 +124,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                     "data" : [ {
+                      "id" : "git",
                       "toolset" : "git",
                       "description" : "Git remote tool set",
                       "owner" : "organization-owner",
@@ -126,6 +137,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                       "transport" : "HTTP",
                       "allowed_tools" : [ "branch", "remote" ]
                     }, {
+                      "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
+                      "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
                       "display_name" : "My Toolset",
                       "display_version" : "1.0",
                       "icon_url" : "http://toolset/icon.svg",
