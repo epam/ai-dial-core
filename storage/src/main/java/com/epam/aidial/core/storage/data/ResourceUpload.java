@@ -1,6 +1,7 @@
 package com.epam.aidial.core.storage.data;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.util.EtagBuilder;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import lombok.Data;
@@ -21,8 +22,10 @@ public class ResourceUpload {
     private final String contentType;
     private final long updatedAt;
     private final long createdAt;
+    private final EtagBuilder etagBuilder;
     private long contentLength;
     private int chunkNumber = 0;
+    private String etag;
 
     public ResourceUpload(BlobStorage blobStorage, MultipartUpload mpu, String contentType, long createdAt, long updatedAt) {
         this.multipartUpload = mpu;
@@ -30,6 +33,7 @@ public class ResourceUpload {
         this.contentType = contentType;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.etagBuilder = new EtagBuilder();
     }
 
     public void addChunk(ByteBuf chunk) throws IOException {
@@ -37,7 +41,15 @@ public class ResourceUpload {
             MultipartPart part = blobStorage.storeMultipartPart(multipartUpload, ++chunkNumber, payload);
             parts.add(part);
         }
+        etagBuilder.append(chunk.nioBuffer());
         contentLength += chunk.readableBytes();
+    }
+
+    public String calculateEtag() {
+        if (etag == null) {
+            etag = etagBuilder.build();
+        }
+        return etag;
     }
 
     public void abort() {

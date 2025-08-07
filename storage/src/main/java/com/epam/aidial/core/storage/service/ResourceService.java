@@ -495,7 +495,16 @@ public class ResourceService implements AutoCloseable {
             long updatedAt = resourceUpload.getUpdatedAt();
             Long createdAt = resourceUpload.getCreatedAt();
 
-            String etag = blobStore.completeMultipartUpload(multipartUpload, parts);
+            String etag = resourceUpload.calculateEtag();
+
+            blobStore.completeMultipartUpload(multipartUpload, parts);
+
+            Map<String, String> userMetadata =  new HashMap<>(multipartUpload.blobMetadata().getUserMetadata());
+            userMetadata.put(ETAG_ATTRIBUTE, etag);
+            String blobKey = blobKey(descriptor);
+            // override user metadata with the generated etag
+            blobStore.copy(blobKey, blobKey, userMetadata);
+
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
