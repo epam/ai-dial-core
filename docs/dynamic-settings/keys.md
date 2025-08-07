@@ -16,8 +16,8 @@ A list of defined API keys and their [parameters](#keysparameters).
 An object containing properties an each [API key](#keys).
 
 * `project`: Project name assigned to this key. **Required** 
-* `role`: A role assigned to a specific key. **Note:** a key is invalid if `role` and `roles` are missed. **Required**  
-* `roles`: A list of roles assigned to a specific key. **Note:** a key is invalid if `role` and `roles` are missed. 
+* `role`: A role assigned to a specific key. **Note**: At least one of `role`, `roles` must be provided. **Required**
+* `roles`: A list of roles assigned to a specific key. **Note**: At least one of `role`, `roles` must be provided. **Required**
 * `secured`: A boolean flag that indicates if the key is a secured key. If it's set to `true`, user request and deployment response won't be saved to the prompt log storage. Refer to [Secured Keys](https://docs.dialx.ai/platform/core/privacy#applications-audit-logs) for more details.
 
 

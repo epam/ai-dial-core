@@ -12,6 +12,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
@@ -40,16 +41,17 @@ public class ApiKeyStore {
     public static final String API_KEY_DATA_BUCKET = "api_key_data";
     public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
-    public static final Duration EXPIRE = Duration.ofMinutes(30);
-
     private final Vertx vertx;
     private final RedissonClient redis;
     private final String prefix;
 
-    public ApiKeyStore(Vertx vertx, RedissonClient redis, String prefix) {
+    private final Duration ttl;
+
+    public ApiKeyStore(Vertx vertx, RedissonClient redis, String prefix, JsonObject settings) {
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
+        this.ttl = Duration.ofSeconds(settings.getInteger("ttl", 1800));
     }
 
     /**
@@ -72,7 +74,7 @@ public class ApiKeyStore {
         if (!bucket.setIfAbsent(json)) {
             throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
         }
-        bucket.expire(EXPIRE);
+        bucket.expire(ttl);
     }
 
     public Future<Void> updatePerRequestApiKey(String key, Function<String, String> fn) {
