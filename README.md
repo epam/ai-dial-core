@@ -129,6 +129,7 @@ Priority order:
 | codeInterpreter.sessionTtl                    |       600000       |    No    |The session time to leave after the last API call
 | codeInterpreter.checkPeriod                   |       10000        |    No    |The interval at which to check active sessions for expiration
 | codeInterpreter.checkSize                     |       256          |    No    |The maximum number of active sessions to check in single check
+| perRequestApiKey.ttl                          |        1800        |    No    |The TTL in seconds of per request API key
 
 ### Storage requirements
 
