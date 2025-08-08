@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.Proxy;
@@ -10,10 +9,10 @@ import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -46,17 +45,18 @@ import static com.epam.aidial.core.storage.http.HttpStatus.INTERNAL_SERVER_ERROR
 public class ResourceController extends AccessControlBaseController {
 
     private final Vertx vertx;
-    private final EncryptionService encryptionService;
     private final ResourceService resourceService;
     private final ApplicationService applicationService;
     private final boolean metadata;
     private final AccessService accessService;
 
+    private final ToolSetService toolSetService;
+
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
         // PUT and DELETE require write access, GET - read
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
         this.vertx = proxy.getVertx();
-        this.encryptionService = proxy.getEncryptionService();
+        this.toolSetService = proxy.getToolSetService();
         this.applicationService = proxy.getApplicationService();
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
@@ -155,14 +155,14 @@ public class ResourceController extends AccessControlBaseController {
             Application application = result.getValue();
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
-                    : ProxyUtil.convertToString(clearApplicationProperties(application, context.getConfig()));
+                    : ProxyUtil.convertToString(clearApplicationProperties(application));
 
             return Pair.of(meta, body);
 
         }, false);
     }
 
-    private Application clearApplicationProperties(Application application, Config config) {
+    private Application clearApplicationProperties(Application application) {
         application.setEndpoint(null);
         Features features = application.getFeatures();
         if (features != null) {
@@ -260,6 +260,15 @@ public class ResourceController extends AccessControlBaseController {
                     return applicationService.putApplication(descriptor, etag, author, application).getKey();
                 }, false);
             });
+        } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {
+            responseFuture = requestFuture.compose(pair -> {
+                EtagHeader etag = pair.getKey();
+                ToolSet toolSet = ProxyUtil.convertToObject(pair.getValue(), ToolSet.class);
+                if (toolSet == null) {
+                    throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
+                }
+                return vertx.executeBlocking(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey(), false);
+            });
         } else {
             responseFuture = requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
@@ -316,7 +325,6 @@ public class ResourceController extends AccessControlBaseController {
         switch ((ResourceTypes) descriptor.getType()) {
             case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
             case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
-            case TOOL_SET -> ProxyUtil.convertToObject(body, ToolSet.class);
             default -> throw new IllegalArgumentException("Unsupported resource type " + descriptor.getType());
         }
     }

@@ -29,6 +29,7 @@ public class ToolSetData extends DeploymentData {
         ToolSetData data = new ToolSetData();
 
         data.setToolset(toolSet.getName());
+        data.setId(toolSet.getName());
         data.setDisplayName(toolSet.getDisplayName());
         data.setIconUrl(toolSet.getIconUrl());
         data.setDisplayVersion(toolSet.getDisplayVersion());
