@@ -187,27 +187,10 @@ public class AccessService {
      */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (!isApplicationContext(context)) {
-            resources = resources.stream()
-                    .filter(resource -> !resource.isHidden())
-                    .collect(Collectors.toUnmodifiableSet());
-        }
-
         return ruleService.getAllowedPublicResources(context, resources).stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(),
                         resource -> ResourceAccessType.READ_ONLY));
-    }
-
-    /**
-     * Checks if the context represents an application rather than a user.
-     * Applications should have access to their own published system resources.
-     *
-     * @param context The proxy context
-     * @return true if this appears to be an application context, false for user contexts
-     */
-    public static boolean isApplicationContext(ProxyContext context) {
-        return context.getApiKeyData().getPerRequestKey() != null;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
