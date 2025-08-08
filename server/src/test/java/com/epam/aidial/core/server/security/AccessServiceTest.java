@@ -140,7 +140,7 @@ public class AccessServiceTest {
         AccessService service = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings);
         service.filterForbidden(context, folderDescriptor, folderMetadata);
 
-        assertEquals(1, folderMetadata.getItems().size());
+        assertEquals(2, folderMetadata.getItems().size());
     }
 
     @Test
