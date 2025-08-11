@@ -57,6 +57,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -136,20 +137,17 @@ public class Proxy implements Handler<HttpServerRequest> {
         if (!request.response().ended()) {
             HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
             String message = null;
+            Map<String, String> headers = Map.of();
 
             if (error instanceof HttpException e) {
                 status = e.getStatus();
                 message = e.getMessage();
-
-                if (request.method() == HttpMethod.POST && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
-                    String resourceMetadata = resourceMetadataService.resolveResourceMetadataPath(request);
-                    request.response().putHeader("WWW-Authenticate", "Bearer resource_metadata=\"" + resourceMetadata + "\"");
-                }
+                headers = e.getHeaders();
             } else {
                 log.error("Can't handle request", error);
             }
 
-            respond(request, status, message);
+            respond(request, status, message, headers);
         }
     }
 
@@ -223,7 +221,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     /**
      * The method authorizes HTTP request by user access token or (and) API key.
      * <p>
-     *     There are four possible use cases:
+     * There are four possible use cases:
      *     <ol>
      *     <li>Both API key and access token are missed</li>
      *     <li>Both API key and access token are provided</li>
@@ -246,7 +244,12 @@ public class Proxy implements Handler<HttpServerRequest> {
         log.debug("Authorization header: {}", authorization);
 
         if (apiKey == null && authorization == null) {
-            return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided"));
+            Map<String, String> headers = Map.of();
+            if (request.method() == HttpMethod.POST && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
+                String resourceMetadata = resourceMetadataService.resolveResourceMetadataPath(request);
+                headers = Map.of("WWW-Authenticate", "Bearer resource_metadata=\"" + resourceMetadata + "\"");
+            }
+            return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided", headers));
         }
 
         if (apiKey != null && authorization == null) {
@@ -324,5 +327,10 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     private void respond(HttpServerRequest request, HttpStatus status, String body) {
         request.response().setStatusCode(status.getCode()).end(body == null ? "" : body);
+    }
+
+    private void respond(HttpServerRequest request, HttpStatus status, String body, Map<String, String> headers) {
+        headers.forEach(request.response()::putHeader);
+        respond(request, status, body);
     }
 }
