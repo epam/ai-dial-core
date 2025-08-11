@@ -51,13 +51,4 @@ public abstract class AccessControlBaseController {
      */
     protected abstract Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess);
 
-    protected boolean shouldHide(ResourceDescriptor resource) {
-        if (resource.isHidden() && resource.isPublic()) {
-            if (context.getApiKeyData().getPerRequestKey() != null) {
-                return false;
-            }
-            return !proxy.getAccessService().hasAdminAccess(context);
-        }
-        return false;
-    }
 }
