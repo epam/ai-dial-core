@@ -2,7 +2,7 @@ plugins {
     id "java"
     id 'checkstyle'
     id 'application'
-    id 'io.freefair.lombok' version '8.0.1'
+    id 'io.freefair.lombok' version '8.14'
 }
 
 allprojects {
@@ -16,7 +16,7 @@ allprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(17)
+            languageVersion = JavaLanguageVersion.of(24)
         }
     }
 
