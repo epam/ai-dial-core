@@ -182,6 +182,12 @@ public enum RouteTemplate {
     TOOL_SET_PROXY(
             "^/v1/toolset/(?<id>.+?)/mcp$",
             "/v1/toolset/{id}/mcp"
+    ),
+
+    // TODO: how to make this path similar to common Resource path?
+    TOOL_SET_CREDENTIALS(
+            "^/v1/toolsets2/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)/(?<id>.+?)/credentials$",
+            "/v1/toolset2/{bucket}/{path}/{id}/credentials"
     );
 
     private final Pattern pattern;

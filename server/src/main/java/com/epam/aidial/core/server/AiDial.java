@@ -25,9 +25,13 @@ import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
+import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthSettingsService;
+import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthorizationServerClient;
+import com.epam.aidial.core.server.service.toolset.registration.ToolsetRegistrationService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -167,6 +171,12 @@ public class AiDial {
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
+            ToolsetAuthorizationServerClient toolsetAuthorizationServerClient = new ToolsetAuthorizationServerClient(30);
+            ToolsetRegistrationService toolsetRegistrationService = new ToolsetRegistrationService(toolsetAuthorizationServerClient);
+            ToolsetAuthSettingsService toolsetAuthSettingsService = new ToolsetAuthSettingsService(toolsetRegistrationService);
+
+            ToolSetCredentialsService toolsetCredentialsService = new ToolSetCredentialsService(toolSetService, toolsetAuthorizationServerClient);
+
             HealthCheckController healthCheckController = new HealthCheckController(redis, vertx);
 
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
@@ -174,7 +184,8 @@ public class AiDial {
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, toolSetService, applicationSchemaService, version());
+                    consentService, deploymentService, healthCheckController, toolSetService, applicationSchemaService,
+                    toolsetCredentialsService, toolsetAuthSettingsService, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

@@ -148,6 +148,12 @@ public class ControllerSelector {
             return controller::getToolSets;
         });
 
+        get(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
+            String path = context.getRequest().path();
+            return () -> controller.handle(resourcePath(path));
+        });
+
         // POST routes
         post(RouteTemplate.POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -305,6 +311,14 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+
+        // TODO: should it be put like for Resource?
+        post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
+            String path = context.getRequest().path();
+            return () -> controller.handle(resourcePath(path));
+        });
+
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));

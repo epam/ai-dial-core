@@ -3,6 +3,8 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.ToolSetAuthSettings;
+import com.epam.aidial.core.config.ToolsetAuthenticationType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -13,6 +15,7 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthSettingsService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -49,6 +52,7 @@ public class ResourceController extends AccessControlBaseController {
     private final ApplicationService applicationService;
     private final boolean metadata;
     private final AccessService accessService;
+    private final ToolsetAuthSettingsService toolsetAuthSettingsService;
 
     private final ToolSetService toolSetService;
 
@@ -60,6 +64,7 @@ public class ResourceController extends AccessControlBaseController {
         this.applicationService = proxy.getApplicationService();
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
+        this.toolsetAuthSettingsService = proxy.getToolsetAuthSettingsService();
         this.metadata = metadata;
     }
 
@@ -133,8 +138,14 @@ public class ResourceController extends AccessControlBaseController {
         }
 
         EtagHeader etagHeader = ProxyUtil.etag(context.getRequest());
-        Future<Pair<ResourceItemMetadata, String>> responseFuture = (descriptor.getType() == ResourceTypes.APPLICATION)
-                ? getApplicationData(descriptor, hasWriteAccess, etagHeader) : getResourceData(descriptor, etagHeader);
+        Future<Pair<ResourceItemMetadata, String>> responseFuture;
+        if (descriptor.getType().equals(ResourceTypes.APPLICATION)) {
+            responseFuture = getApplicationData(descriptor, hasWriteAccess, etagHeader);
+        } else if (descriptor.getType().equals(ResourceTypes.TOOL_SET)) {
+            responseFuture = getToolsetData(descriptor, etagHeader);
+        } else {
+            responseFuture = getResourceData(descriptor, etagHeader);
+        }
 
         responseFuture.onSuccess(pair -> context.putHeader(HttpHeaders.ETAG, pair.getKey().getEtag())
                 .exposeHeaders()
@@ -187,6 +198,25 @@ public class ResourceController extends AccessControlBaseController {
             }
 
             return result;
+        }, false);
+    }
+
+    private Future<Pair<ResourceItemMetadata, String>> getToolsetData(ResourceDescriptor descriptor, EtagHeader etagHeader) {
+        return vertx.executeBlocking(() -> {
+            Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
+            ResourceItemMetadata meta = result.getKey();
+
+            ToolSet toolSet = result.getValue();
+            ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolsetAuthSettings();
+            if (toolsetAuthSettings != null
+                && toolsetAuthSettings.getToolsetAuthenticationType().equals(ToolsetAuthenticationType.OAUTH)) {
+                toolsetAuthSettings.setClientSecret(null);
+                toolsetAuthSettings.setTokenEndpoint(null);
+            }
+            String body = ProxyUtil.convertToString(toolSet);
+
+            return Pair.of(meta, body);
+
         }, false);
     }
 
@@ -271,6 +301,11 @@ public class ResourceController extends AccessControlBaseController {
                 EtagHeader etag = pair.getKey();
                 String body = pair.getValue();
                 validateRequestBody(descriptor, body);
+                if (descriptor.getType().equals(ResourceTypes.TOOL_SET)
+                        && resourceService.getResourceMetadata(descriptor) == null) {
+                    String updatedBody = getUpdatedToolsetBody(body, descriptor);
+                    return vertx.executeBlocking(() -> resourceService.putResource(descriptor, updatedBody, etag, author), false);
+                }
                 return vertx.executeBlocking(() -> resourceService.putResource(descriptor, body, etag, author), false);
             });
         }
@@ -281,6 +316,17 @@ public class ResourceController extends AccessControlBaseController {
                 .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
+    }
+
+    private String getUpdatedToolsetBody(String body, ResourceDescriptor descriptor) {
+        ToolSet toolSet = ProxyUtil.convertToObject(body, ToolSet.class);
+        if (toolSet != null) {
+            ToolSet updatedToolSet = toolsetAuthSettingsService.updateToolsetAuthSettings(toolSet);
+            return ProxyUtil.convertToString(updatedToolSet);
+        } else {
+            context.respond(BAD_REQUEST, "Can't register toolset " + descriptor.getName());
+            return null;
+        }
     }
 
     private Future<?> deleteResource(ResourceDescriptor descriptor) {

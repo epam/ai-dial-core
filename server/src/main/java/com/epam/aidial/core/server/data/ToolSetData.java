@@ -17,6 +17,7 @@ import java.util.List;
 public class ToolSetData extends DeploymentData {
     private String transport;
     private List<String> allowedTools;
+    private ToolsetAuthSettingsData toolsetAuthSettings;
 
     {
         setObject("toolset");
@@ -50,6 +51,7 @@ public class ToolSetData extends DeploymentData {
 
         data.setAllowedTools(toolSet.getAllowedTools());
         data.setTransport(toolSet.getTransport().toString());
+        data.setToolsetAuthSettings(ToolsetAuthSettingsData.toData(toolSet.getToolsetAuthSettings()));
 
         return data;
     }
