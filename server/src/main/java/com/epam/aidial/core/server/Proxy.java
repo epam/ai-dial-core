@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import com.epam.aidial.core.server.controller.ControllerTemplate;
 import com.epam.aidial.core.server.controller.HealthCheckController;
+import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -27,6 +28,7 @@ import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -56,6 +58,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Getter
@@ -64,6 +67,9 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+
+    public static final Pattern TOOLSET_PROXY_PATTERN = Pattern.compile("^/v1/toolset/(?<id>.+?)/mcp$");
+    public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = Pattern.compile("^/\\.well-known/oauth-protected-resource/v1/toolset/(?<id>.+?)/mcp$");
 
     // All new headers should start with X-DIAL- while existing may stay untouched
 
@@ -111,6 +117,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConsentService consentService;
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
+    private final WellKnownResourceMetadataService resourceMetadataService;
+    private final WellKnownResourceMetadataController resourceMetadataController;
     private final ToolSetService toolSetService;
     private final ApplicationSchemaService applicationSchemaService;
     private final String version;
@@ -132,6 +140,11 @@ public class Proxy implements Handler<HttpServerRequest> {
             if (error instanceof HttpException e) {
                 status = e.getStatus();
                 message = e.getMessage();
+
+                if (request.method() == HttpMethod.POST && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
+                    String resourceMetadata = resourceMetadataService.resolveResourceMetadataPath(request);
+                    request.response().putHeader("WWW-Authenticate", "Bearer resource_metadata=\"" + resourceMetadata + "\"");
+                }
             } else {
                 log.error("Can't handle request", error);
             }
@@ -187,6 +200,11 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         if (request.method() == HttpMethod.GET && path.equals(VERSION_PATH)) {
             respond(request, HttpStatus.OK, version);
+            return;
+        }
+
+        if (request.method() == HttpMethod.GET && TOOLSET_PROXY_METADATA_PATTERN.matcher(request.path()).matches()) {
+            resourceMetadataController.handle(request);
             return;
         }
 
