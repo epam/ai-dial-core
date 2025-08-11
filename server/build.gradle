@@ -45,6 +45,7 @@ dependencies {
     }
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 application {

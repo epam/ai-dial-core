@@ -15,6 +15,7 @@ import java.util.Map;
 
 /**
  * The container keeps data associated with API key.
+ *
  * <p>
  *     There are two types of API keys:
  *     <ul>

@@ -23,6 +23,7 @@ dependencies {
     testImplementation('com.github.codemonstur:embedded-redis:1.4.3') {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 test {

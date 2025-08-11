@@ -45,6 +45,7 @@ public class Features {
     /**
      * Try to create automatic cache, where it's possible. We will route request that is cached to same upstream.
      * But in case, when cache upstream is not available, we will fallback to another available upstream, and will create cache there.
+     *
      * <p>
      *  <b>Note</b>. Core should calculate hash for all prefixes for each request, and check their existence in Redis.
      * </p>

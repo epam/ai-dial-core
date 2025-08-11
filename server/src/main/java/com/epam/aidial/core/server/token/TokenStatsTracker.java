@@ -30,6 +30,7 @@ public class TokenStatsTracker {
 
     /**
      * Starts current span.
+     *
      * <p>
      *     Note. The method is blocking and shouldn't be run in the event loop thread.
      * </p>

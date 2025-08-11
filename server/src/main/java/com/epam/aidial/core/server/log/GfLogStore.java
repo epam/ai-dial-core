@@ -367,6 +367,7 @@ public class GfLogStore implements LogStore {
 
     /**
      * Determines if the given response is streaming.
+     *
      * <p>
      *     Streaming response is spitted into chunks. Each chunk starts with a new line and has a prefix: 'data:'.
      *     For example<br/>

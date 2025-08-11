@@ -16,6 +16,7 @@ import java.util.Set;
 
 /**
  * Collects attached files from the chat completion request and puts the result to API key data.
+ *
  * <p>
  *     Note. The function assigns a per-request key in the end of the processing.
  * </p>

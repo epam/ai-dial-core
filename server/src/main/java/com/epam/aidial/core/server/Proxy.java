@@ -204,6 +204,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * The method authorizes HTTP request by user access token or (and) API key.
+     *
      * <p>
      *     There are four possible use cases:
      *     <ol>
