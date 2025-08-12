@@ -41,9 +41,6 @@ public class FileMetadataController extends AccessControlBaseController {
         }
 
         proxy.getVertx().executeBlocking(() -> {
-            if (shouldHide(resource)) {
-                return null;
-            }
             MetadataBase result = resourceService.getMetadata(resource, token, limit, recursive);
             if (result == null) {
                 return null;
