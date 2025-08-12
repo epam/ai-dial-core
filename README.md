@@ -3,7 +3,7 @@
 ## Overview
 
 HTTP Proxy provides unified API to different chat completion and embedding models, assistants and applications.
-Written in Java 17 and built on top of [Eclipse Vert.x](https://vertx.io/).
+Written in Java 21 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ## Build
 
@@ -31,7 +31,7 @@ You should set env variables `GPR_USERNAME` and `GPR_PASSWORD` to valid values, 
 
 See more details [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) to generate personal access token in GitHub.
 
-Build the project with Gradle and Java 17:
+Build the project with Gradle and Java 21:
 
 ```
 ./gradlew build
