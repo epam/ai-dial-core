@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.server.data.wellknown.ResourceMetadata;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -10,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,111 +25,104 @@ public class WellKnownResourceMetadataServiceTest {
     private HttpServerRequest request;
 
     @Test
-    void constructor_withStringAuthorizationServers() {
+    void resolveResourceMetadataPath_withResourceHost() {
         JsonObject mcp = new JsonObject()
                 .put("security", new JsonObject()
                         .put("authorizationServers", "https://auth.example.com")
-                        .put("resourceHost", "example.com"));
+                        .put("resourceHost", "custom.com"));
         WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
 
-        assertEquals(List.of("https://auth.example.com"), service.getAuthorizationServers());
-    }
-
-    @Test
-    void constructor_withArrayAuthorizationServers() {
-        JsonObject mcp = new JsonObject()
-                .put("security", new JsonObject()
-                        .put("authorizationServers", new JsonArray()
-                                .add("https://a.com")
-                                .add("https://b.com")));
-        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
-
-        assertEquals(List.of("https://a.com", "https://b.com"), service.getAuthorizationServers());
-    }
-
-    @Test
-    void constructor_withNullAuthorizationServers() {
-        JsonObject mcp = new JsonObject()
-                .put("security", new JsonObject()
-                        .put("authorizationServers", null));
-        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
-
-        assertTrue(service.getAuthorizationServers().isEmpty());
-    }
-
-    @Test
-    void constructor_missingAuthorizationServersKey() {
-        JsonObject mcp = new JsonObject().put("security", new JsonObject());
-        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
-
-        assertTrue(service.getAuthorizationServers().isEmpty());
-    }
-
-    @Test
-    void constructor_withInvalidAuthorizationServersType_throwsException() {
-        JsonObject mcp = new JsonObject()
-                .put("security", new JsonObject()
-                        .put("authorizationServers", 123));
-
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new WellKnownResourceMetadataService(mcp)
-        );
-    }
-
-    @Test
-    void resolveResourceMetadataPath_withResourceHost() {
-        JsonObject mcp = new JsonObject()
-                .put("security", new JsonObject().put("resourceHost", "custom.com"));
-        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
         when(request.path()).thenReturn("/abc");
         when(request.authority()).thenReturn(HostAndPort.create("ignored.com", -1));
 
-        String result = service.resolveResourceMetadataPath(request);
-
-        assertEquals("https://custom.com/.well-known/oauth-protected-resource/abc", result);
+        Optional<String> pathOptional = service.resolveResourceMetadataPath(request);
+        assertTrue(pathOptional.isPresent());
+        assertEquals("https://custom.com/.well-known/oauth-protected-resource/abc", pathOptional.get());
     }
 
     @Test
     void resolveResourceMetadataPath_withoutResourceHost_usesRequestAuthority() {
-        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(new JsonObject());
+        JsonObject mcp = new JsonObject()
+                .put("security", new JsonObject()
+                        .put("authorizationServers", "https://auth.example.com"));
+        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
+
         when(request.path()).thenReturn("/x");
         when(request.authority()).thenReturn(HostAndPort.create("host.com", -1));
 
-        String result = service.resolveResourceMetadataPath(request);
-
-        assertEquals("https://host.com/.well-known/oauth-protected-resource/x", result);
+        Optional<String> pathOptional = service.resolveResourceMetadataPath(request);
+        assertTrue(pathOptional.isPresent());
+        assertEquals("https://host.com/.well-known/oauth-protected-resource/x", pathOptional.get());
     }
 
     @Test
-    void resolveResource_exactPath() {
-        JsonObject mcp = new JsonObject().put("security", new JsonObject().put("resourceHost", "h.com"));
+    void resolveResourceMetadataPath_returnsEmptyOptionalWhenDisabled() {
+        WellKnownResourceMetadataService service =
+                new WellKnownResourceMetadataService(new JsonObject()); // no auth servers
+
+        Optional<String> pathOptional = service.resolveResourceMetadataPath(request);
+
+        assertTrue(pathOptional.isEmpty());
+    }
+
+    @Test
+    void resolveResourceMetadata_exactPath_setsRootResource() {
+        JsonObject mcp = new JsonObject()
+                .put("security", new JsonObject()
+                        .put("authorizationServers", "https://auth.example.com")
+                        .put("resourceHost", "custom.com"));
         WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
+
         when(request.path()).thenReturn("/.well-known/oauth-protected-resource");
         when(request.authority()).thenReturn(HostAndPort.create("ignored.com", -1));
 
-        String result = service.resolveResource(request);
-
-        assertEquals("https://h.com", result);
+        Optional<ResourceMetadata> metadataOptional = service.resolveResourceMetadata(request);
+        assertTrue(metadataOptional.isPresent());
+        ResourceMetadata metadata = metadataOptional.get();
+        assertEquals("https://custom.com", metadata.getResource());
+        assertEquals(List.of("https://auth.example.com"), metadata.getAuthorizationServers());
     }
 
     @Test
-    void resolveResource_withSubPath() {
-        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(new JsonObject());
+    void resolveResourceMetadata_withSubPath_setsFullResource() {
+        JsonObject mcp = new JsonObject()
+                .put("security", new JsonObject()
+                        .put("authorizationServers", new JsonArray()
+                                .add("https://a.auth.example.com")
+                                .add("https://b.auth.example.com")));
+        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
+
         when(request.path()).thenReturn("/.well-known/oauth-protected-resource/data");
-        when(request.authority()).thenReturn(HostAndPort.create("example.org", -1));
+        when(request.authority()).thenReturn(HostAndPort.create("host.org", -1));
 
-        String result = service.resolveResource(request);
-
-        assertEquals("https://example.org/data", result);
+        Optional<ResourceMetadata> metadataOptional = service.resolveResourceMetadata(request);
+        assertTrue(metadataOptional.isPresent());
+        ResourceMetadata metadata = metadataOptional.get();
+        assertEquals("https://host.org/data", metadata.getResource());
+        assertEquals(List.of("https://a.auth.example.com", "https://b.auth.example.com"),
+                metadata.getAuthorizationServers());
     }
 
     @Test
-    void resolveResource_invalidPath_throwsException() {
+    void resolveResourceMetadata_returnsEmptyOptionalWhenDisabled() {
         WellKnownResourceMetadataService service =
-                new WellKnownResourceMetadataService(new JsonObject());
+                new WellKnownResourceMetadataService(new JsonObject()); // no auth servers
+
+        Optional<ResourceMetadata> metadataOptional = service.resolveResourceMetadata(request);
+
+        assertTrue(metadataOptional.isEmpty());
+    }
+
+    @Test
+    void resolveResourceMetadata_invalidPath_throwsException() {
+        JsonObject mcp = new JsonObject()
+                .put("security", new JsonObject()
+                        .put("authorizationServers", "https://auth.example.com"));
+        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
+
         when(request.path()).thenReturn("/invalid");
 
-        assertThrows(IllegalArgumentException.class, () -> service.resolveResource(request));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.resolveResourceMetadata(request));
     }
 }

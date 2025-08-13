@@ -11,7 +11,7 @@ import java.util.List;
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class ResourceMetadataData {
+public class ResourceMetadata {
     private String resource;
     @JsonProperty("authorization_servers")
     private List<String> authorizationServers;

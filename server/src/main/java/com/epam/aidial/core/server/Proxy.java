@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.controller.ControllerTemplate;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessService;
@@ -69,8 +70,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
 
-    public static final Pattern TOOLSET_PROXY_PATTERN = Pattern.compile("^/v1/toolset/(?<id>.+?)/mcp$");
-    public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = Pattern.compile("^/\\.well-known/oauth-protected-resource/v1/toolset/(?<id>.+?)/mcp$");
+    public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_PROXY.getPattern();
+    public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
 
     // All new headers should start with X-DIAL- while existing may stay untouched
 
@@ -246,8 +247,9 @@ public class Proxy implements Handler<HttpServerRequest> {
         if (apiKey == null && authorization == null) {
             Map<String, String> headers = Map.of();
             if (request.method() == HttpMethod.POST && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
-                String resourceMetadata = resourceMetadataService.resolveResourceMetadataPath(request);
-                headers = Map.of("WWW-Authenticate", "Bearer resource_metadata=\"" + resourceMetadata + "\"");
+                headers = resourceMetadataService.resolveResourceMetadataPath(request)
+                        .map(path -> Map.of("WWW-Authenticate", "Bearer resource_metadata=\"" + path + "\""))
+                        .orElse(Map.of());
             }
             return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided", headers));
         }

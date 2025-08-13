@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.server.data.wellknown.ResourceMetadata;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,8 +47,8 @@ class WellKnownResourceMetadataControllerTest {
     }
 
     @Test
-    void handle_noAuthorizationServers_returns404() {
-        when(service.getAuthorizationServers()).thenReturn(List.of());
+    void handle_noResourceMetadata_returns404() {
+        when(service.resolveResourceMetadata(any())).thenReturn(Optional.empty());
 
         controller.handle(request);
 
@@ -55,10 +57,12 @@ class WellKnownResourceMetadataControllerTest {
     }
 
     @Test
-    void handle_withAuthorizationServers_returns200() throws JsonProcessingException {
+    void handle_withResourceMetadata_returns200() throws JsonProcessingException {
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
-        when(service.getAuthorizationServers()).thenReturn(List.of("https://auth.example.com"));
-        when(service.resolveResource(any())).thenReturn("https://example.com/resource");
+        ResourceMetadata resourceMetadata = new ResourceMetadata();
+        resourceMetadata.setResource("https://example.com/resource");
+        resourceMetadata.setAuthorizationServers(List.of("https://auth.example.com"));
+        when(service.resolveResourceMetadata(any())).thenReturn(Optional.of(resourceMetadata));
 
         controller.handle(request);
 
@@ -78,8 +82,7 @@ class WellKnownResourceMetadataControllerTest {
 
     @Test
     void handle_exceptionDuringProcessing_returns500() {
-        when(service.getAuthorizationServers()).thenReturn(List.of("https://auth.example.com"));
-        when(service.resolveResource(any())).thenThrow(new RuntimeException("fail"));
+        when(service.resolveResourceMetadata(any())).thenThrow(new RuntimeException("fail"));
 
         controller.handle(request);
 
