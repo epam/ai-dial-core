@@ -248,7 +248,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         if (apiKey == null && authorization == null) {
             Map<String, String> headers = Map.of();
-            if (request.method() == HttpMethod.POST && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
+            if ((request.method() == HttpMethod.GET || request.method() == HttpMethod.POST) && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
                 headers = resourceMetadataService.resolveResourceMetadataPath(request)
                         .map(path -> Map.of("WWW-Authenticate", "Bearer resource_metadata=\"" + path + "\""))
                         .orElse(Map.of());
