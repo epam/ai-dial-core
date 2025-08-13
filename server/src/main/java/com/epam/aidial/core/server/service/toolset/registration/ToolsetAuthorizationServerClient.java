@@ -1,71 +1,78 @@
 package com.epam.aidial.core.server.service.toolset.registration;
 
-import java.io.IOException;
-import java.util.concurrent.TimeUnit;
-
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.hc.client5.http.classic.HttpClient;
-import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
-import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.ContentType;
-import org.apache.hc.core5.http.io.entity.EntityUtils;
-import org.apache.hc.core5.http.io.entity.HttpEntities;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @RequiredArgsConstructor
 public class ToolsetAuthorizationServerClient {
 
-    private final HttpClient client = HttpClients.createDefault();
-    private final long responseTimeout;
+    private final HttpClient httpClient = HttpClient.newHttpClient();
 
-    public  <R> R executeGet(String url, Class<R> responseType) {
+    public <R> R executeGet(String url, Class<R> responseType) {
         try {
-            HttpGet get = new HttpGet(url);
-            get.setConfig(createRequestConfig());
-            return execute(get, responseType);
-        } catch (IOException e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(createRequestConfig())
+                .GET()
+                .build();
 
-    }
-
-    public  <R> R executePost(String url, Object requestPayload, Class<R> responseType) {
-        try {
-            HttpPost post = new HttpPost(url);
-            post.setConfig(createRequestConfig());
-            String stringRequestPayload = ProxyUtil.convertToString(requestPayload);
-            assert stringRequestPayload != null;
-            post.setEntity(HttpEntities.create(stringRequestPayload, ContentType.APPLICATION_JSON));
-            return execute(post, responseType);
-        } catch (IOException e) {
+            return execute(request, responseType);
+        } catch (IOException | InterruptedException e) {
             log.error(e.getMessage());
             throw new RuntimeException(e);
         }
     }
 
-    private <R> R execute(HttpUriRequest request, Class<R> responseType) throws IOException {
-        return client.execute(request, response -> {
-            int status = response.getCode();
-            String body = EntityUtils.toString(response.getEntity());
-
-            if (status != 200 && status != 201) {
-                log.error("Error executing post: {}", response);
-                throw new HttpException(status, body);
+    public <R> R executePost(String url, Object requestPayload, String contentType, Class<R> responseType) {
+        try {
+            String stringPayload;
+            if (contentType.equals(ContentType.APPLICATION_JSON.toString())) {
+                stringPayload = ProxyUtil.convertToString(requestPayload);
+            } else {
+                stringPayload = requestPayload.toString();
             }
 
-            return ProxyUtil.convertToObject(body, responseType);
-        });
+            assert stringPayload != null;
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(createRequestConfig())
+                .header("Content-Type", contentType)
+                .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
+                .build();
+
+            return execute(request, responseType);
+        } catch (IOException | InterruptedException e) {
+            log.error(e.getMessage());
+            throw new RuntimeException(e);
+        }
     }
 
-    private RequestConfig createRequestConfig() {
-        return RequestConfig.custom().setResponseTimeout(responseTimeout, TimeUnit.SECONDS).build();
+    private <R> R execute(HttpRequest request, Class<R> responseType) throws IOException, InterruptedException {
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        int status = response.statusCode();
+        String body = response.body();
+
+        if (status != 200 && status != 201) {
+            log.error("Error executing request: {}", response);
+            throw new HttpException(status, body);
+        }
+
+        return ProxyUtil.convertToObject(body, responseType);
+    }
+
+    private java.time.Duration createRequestConfig() {
+        return java.time.Duration.ofSeconds(30);
     }
 }

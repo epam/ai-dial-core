@@ -10,6 +10,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.core5.http.ContentType;
 
 import java.util.List;
 
@@ -46,10 +47,15 @@ public class ToolsetRegistrationService {
         // TODO: where to get redirectUri?
         ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
             .clientName(toolSet.getName())
-            .redirectUris(List.of("http//:localhost:8080"))
+            .redirectUris(List.of("http://localhost:8080"))
             .build();
 
-        ClientRegistrationResponse clientRegistrationResponse = toolsetAuthorizationServerClient.executePost(registrationEndpoint, clientRegistrationRequest, ClientRegistrationResponse.class);
+        ClientRegistrationResponse clientRegistrationResponse = toolsetAuthorizationServerClient.executePost(
+            registrationEndpoint,
+            clientRegistrationRequest,
+            ContentType.APPLICATION_JSON.toString(),
+            ClientRegistrationResponse.class);
+
         ToolsetRegistration toolsetRegistration = createToolsetRegistration(
             clientRegistrationResponse,
             toolsetAuthorizationServerMetadata);
@@ -65,7 +71,6 @@ public class ToolsetRegistrationService {
             .clientId(clientRegistrationResponse.getClientId())
             .clientSecret(clientRegistrationResponse.getClientSecret())
             .redirectUri(clientRegistrationResponse.getRedirectUris().get(0))
-            .scope(clientRegistrationResponse.getScope())
             .authorizationEndpoint(toolsetAuthorizationServerMetadata.getAuthorizationEndpoint())
             .tokenEndpoint(toolsetAuthorizationServerMetadata.getTokenEndpoint())
             .build();

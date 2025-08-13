@@ -171,7 +171,7 @@ public class AiDial {
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
-            ToolsetAuthorizationServerClient toolsetAuthorizationServerClient = new ToolsetAuthorizationServerClient(30);
+            ToolsetAuthorizationServerClient toolsetAuthorizationServerClient = new ToolsetAuthorizationServerClient();
             ToolsetRegistrationService toolsetRegistrationService = new ToolsetRegistrationService(toolsetAuthorizationServerClient);
             ToolsetAuthSettingsService toolsetAuthSettingsService = new ToolsetAuthSettingsService(toolsetRegistrationService);
 

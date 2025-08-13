@@ -26,7 +26,4 @@ public class ClientRegistrationRequest {
 
     @JsonProperty("token_endpoint_auth_method")
     private String tokenEndpointAuthMethod;
-
-    @JsonProperty("scope")
-    private String scope;
 }

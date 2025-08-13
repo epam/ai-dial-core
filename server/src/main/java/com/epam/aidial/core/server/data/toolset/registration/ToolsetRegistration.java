@@ -10,7 +10,6 @@ public class ToolsetRegistration {
     private String toolSetName;
     private String clientId;
     private String clientSecret;
-    private String scope;
     private String authorizationEndpoint;
     private String tokenEndpoint;
     private String redirectUri;

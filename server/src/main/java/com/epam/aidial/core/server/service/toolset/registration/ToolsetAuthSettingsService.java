@@ -12,7 +12,7 @@ public class ToolsetAuthSettingsService {
 
     private final ToolsetRegistrationService toolsetRegistrationService;
 
-    public ToolSet updateToolsetAuthSettings(ToolSet toolSet) {
+    public void updateToolsetAuthSettings(ToolSet toolSet) {
         ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolsetAuthSettings();
         if (toolsetAuthSettings == null) {
             throw new IllegalArgumentException("ToolsetAuthSettings is not defined for Toolset: " + toolSet.getName());
@@ -24,7 +24,6 @@ public class ToolsetAuthSettingsService {
                 .toolsetAuthenticationType(ToolsetAuthenticationType.OAUTH)
                 .clientId(toolsetRegistration.getClientId())
                 .clientSecret(toolsetRegistration.getClientSecret())
-                .scope(toolsetRegistration.getScope())
                 .authorizationEndpoint(toolsetRegistration.getAuthorizationEndpoint())
                 .tokenEndpoint(toolsetRegistration.getTokenEndpoint())
                 .redirectUri(toolsetRegistration.getRedirectUri())
@@ -32,8 +31,6 @@ public class ToolsetAuthSettingsService {
 
             toolSet.setToolsetAuthSettings(updatedToolSetAuthSettings);
         }
-
-        return toolSet;
     }
 
     private boolean shouldRegisterToolset(ToolSetAuthSettings toolsetAuthSettings) {

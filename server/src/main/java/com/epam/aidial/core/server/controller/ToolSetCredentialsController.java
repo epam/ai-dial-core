@@ -1,10 +1,13 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ToolSetSignInRequest;
+import com.epam.aidial.core.config.ToolSetSignOutRequest;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.toolset.credentials.ToolSetCredentials;
+import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsService;
@@ -15,75 +18,88 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 
-import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
+import java.util.Map;
+import java.util.Set;
 
 @Slf4j
-public class ToolSetCredentialsController extends AccessControlBaseController {
+public class ToolSetCredentialsController {
 
+    private final ProxyContext context;
     private final Vertx vertx;
     private final ToolSetCredentialsService toolsetCredentialsService;
+    private final AccessService accessService;
+
+    private final EncryptionService encryptionService;
 
     public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
-        // TODO: which permissions do we need?
-        super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
-        this.vertx = context.getProxy().getVertx();
-        this.toolsetCredentialsService = context.getProxy().getToolsetCredentialsService();
+        this.context = context;
+        this.vertx = proxy.getVertx();
+        this.toolsetCredentialsService = proxy.getToolsetCredentialsService();
+        this.accessService = proxy.getAccessService();
+        this.encryptionService = proxy.getEncryptionService();
     }
 
-    @Override
-    protected Future<?> handle(ResourceDescriptor descriptor, boolean hasWriteAccess) {
-        if (descriptor.getType() != ResourceTypes.TOOL_SET) {
-            return context.respond(BAD_REQUEST, "Resource type not allowed: " + descriptor.getType());
-        }
-
-        if (descriptor.isFolder()) {
-            return context.respond(BAD_REQUEST, "Folder not allowed: " + descriptor.getUrl());
-        }
-
-        if (!ResourceDescriptorFactory.isValidResourcePath(descriptor)) {
-            return context.respond(BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
-        }
-
-        //TODO: add size validation?
-
-        if (context.getRequest().method() == HttpMethod.GET) {
-            return getToolSetCredentials(descriptor);
-        }
-
-        if (context.getRequest().method() == HttpMethod.POST) {
-            return createToolSetCredentials(descriptor);
-        }
-
-        return null;
-    }
-
-    // TODO: should not return full object with secrets
-    public Future<?> createToolSetCredentials(ResourceDescriptor descriptor) {
+    public Future<?> signIn() {
         context.getRequest()
             .body()
             .compose(body -> {
                 ToolSetSignInRequest toolSetSignInRequest = ProxyUtil.convertToObject(body, ToolSetSignInRequest.class);
-                return vertx.executeBlocking(() -> toolsetCredentialsService.createToolsetCredentials(descriptor, toolSetSignInRequest));
+                ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
+                    toolSetSignInRequest.getToolSetUrl(), encryptionService);
+
+                Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
+                    accessService.lookupPermissions(Set.of(resourceDescriptor), context);
+
+                if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
+                    throw new PermissionDeniedException("no read access to ToolSet resource");
+                }
+
+                return vertx.executeBlocking(() -> {
+                    ToolSetCredentials toolSetCredentials = toolsetCredentialsService.createToolsetCredentials(
+                        resourceDescriptor, toolSetSignInRequest);
+                    return clearToolsetCredentialsSecrets(toolSetCredentials);
+                });
             })
             .onSuccess(toolsetCredentials -> context.respond(HttpStatus.OK, toolsetCredentials))
-            .onFailure(error -> respondError("Can't create publication", error));
+            .onFailure(error -> respondError("Can't signIn into Toolset", error));
 
         return Future.succeededFuture();
     }
 
-    private Future<ToolSetCredentials> getToolSetCredentials(ResourceDescriptor descriptor) {
-        return vertx.executeBlocking(() -> {
-            ToolSetCredentials toolSetCredentials = toolsetCredentialsService.getToolSetCredentials(descriptor);
+    public Future<?> signOut() {
+        context.getRequest()
+            .body()
+            .compose(body -> vertx.executeBlocking(() -> {
+                ToolSetSignOutRequest toolSetSignOutRequest = ProxyUtil.convertToObject(body, ToolSetSignOutRequest.class);
+                ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
+                    toolSetSignOutRequest.getToolSetUrl(), encryptionService);
 
-            if (toolSetCredentials == null) {
-                throw new ResourceNotFoundException();
-            }
+                Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
+                    accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
-            return toolSetCredentials;
-        }, false);
+                if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
+                    throw new PermissionDeniedException("no read access to ToolSet resource");
+                }
+
+                return toolsetCredentialsService.deleteToolSetCredentials(resourceDescriptor, toolSetSignOutRequest);
+            }))
+            .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
+            .onFailure(error -> respondError("Can't signOut from Toolset", error));
+
+        return Future.succeededFuture();
+    }
+
+
+    // TODO: Create dto for 'public' credentials information?
+    private ToolSetCredentials clearToolsetCredentialsSecrets(ToolSetCredentials toolSetCredentials) {
+        return ToolSetCredentials.builder()
+            .toolSetName(toolSetCredentials.getToolSetName())
+            .toolsetAuthenticationType(toolSetCredentials.getToolsetAuthenticationType())
+            .credentialsLevel(toolSetCredentials.getCredentialsLevel())
+            .status(toolSetCredentials.getStatus())
+            .build();
     }
 
     private void respondError(String message, Throwable error) {

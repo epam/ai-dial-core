@@ -294,6 +294,9 @@ public class ResourceController extends AccessControlBaseController {
                 if (toolSet == null) {
                     throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
                 }
+                if (resourceService.getResourceMetadata(descriptor) == null) {
+                    toolsetAuthSettingsService.updateToolsetAuthSettings(toolSet);
+                }
                 return vertx.executeBlocking(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey(), false);
             });
         } else {
@@ -301,11 +304,6 @@ public class ResourceController extends AccessControlBaseController {
                 EtagHeader etag = pair.getKey();
                 String body = pair.getValue();
                 validateRequestBody(descriptor, body);
-                if (descriptor.getType().equals(ResourceTypes.TOOL_SET)
-                        && resourceService.getResourceMetadata(descriptor) == null) {
-                    String updatedBody = getUpdatedToolsetBody(body, descriptor);
-                    return vertx.executeBlocking(() -> resourceService.putResource(descriptor, updatedBody, etag, author), false);
-                }
                 return vertx.executeBlocking(() -> resourceService.putResource(descriptor, body, etag, author), false);
             });
         }
@@ -316,17 +314,6 @@ public class ResourceController extends AccessControlBaseController {
                 .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
-    }
-
-    private String getUpdatedToolsetBody(String body, ResourceDescriptor descriptor) {
-        ToolSet toolSet = ProxyUtil.convertToObject(body, ToolSet.class);
-        if (toolSet != null) {
-            ToolSet updatedToolSet = toolsetAuthSettingsService.updateToolsetAuthSettings(toolSet);
-            return ProxyUtil.convertToString(updatedToolSet);
-        } else {
-            context.respond(BAD_REQUEST, "Can't register toolset " + descriptor.getName());
-            return null;
-        }
     }
 
     private Future<?> deleteResource(ResourceDescriptor descriptor) {

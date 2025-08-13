@@ -148,12 +148,6 @@ public class ControllerSelector {
             return controller::getToolSets;
         });
 
-        get(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
-            ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
-            String path = context.getRequest().path();
-            return () -> controller.handle(resourcePath(path));
-        });
-
         // POST routes
         post(RouteTemplate.POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -228,6 +222,17 @@ public class ControllerSelector {
                 case "move" -> controller::move;
                 case "copy" -> controller::copy;
                 case "subscribe" -> controller::subscribe;
+                default -> null;
+            };
+        });
+        //TODO: re-implement using format similar to RESOURCE_OPERATIONS?
+        post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            String operation = pathMatcher.group(3);
+            ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
+
+            return switch (operation) {
+                case "signin" -> controller::signIn;
+                case "signout" -> controller::signOut;
                 default -> null;
             };
         });
@@ -308,13 +313,6 @@ public class ControllerSelector {
         });
         put(RouteTemplate.RESOURCE, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
-            String path = context.getRequest().path();
-            return () -> controller.handle(resourcePath(path));
-        });
-
-        // TODO: should it be put like for Resource?
-        post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
-            ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });

@@ -18,7 +18,6 @@ public class ToolsetAuthSettingsData {
 
     private ToolsetAuthenticationType toolsetAuthenticationType;
     private String clientId;
-    private String scope;
     private String authorizationEndpoint;
     private String redirectUri;
     private String apiKeyHeader;
@@ -28,7 +27,6 @@ public class ToolsetAuthSettingsData {
         return ToolsetAuthSettingsData.builder()
             .toolsetAuthenticationType(toolsetAuthSettings.getToolsetAuthenticationType())
             .clientId(toolsetAuthSettings.getClientId())
-            .scope(toolsetAuthSettings.getScope())
             .authorizationEndpoint(toolsetAuthSettings.getAuthorizationEndpoint())
             .redirectUri(toolsetAuthSettings.getRedirectUri())
             .apiKeyHeader(toolsetAuthSettings.getApiKeyHeader())
