@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -51,6 +52,7 @@ public class ApplicationService {
     private static final String DEPLOYMENTS_NAME = "deployments";
 
     private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
     private final ResourceService resourceService;
@@ -66,6 +68,7 @@ public class ApplicationService {
     private final ApplicationSchemaService applicationSchemaService;
 
     public ApplicationService(Vertx vertx,
+                              AsyncTaskExecutor taskExecutor,
                               RedissonClient redis,
                               ApiKeyStore apiKeyStore,
                               EncryptionService encryptionService,
@@ -78,6 +81,7 @@ public class ApplicationService {
         String pendingApplicationsKey = BlobStorageUtil.toStoragePath(lockService.getPrefix(), "pending-applications");
 
         this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
@@ -92,7 +96,7 @@ public class ApplicationService {
 
         if (controller.isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
-            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
+            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> taskExecutor.submit(this::checkApplications));
         }
     }
 
@@ -390,8 +394,8 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
-        vertx.executeBlocking(() -> launchApplication(context, resource), false)
-                .onFailure(error -> vertx.executeBlocking(() -> terminateApplication(resource, error.getMessage()), false));
+        taskExecutor.submit(() -> launchApplication(context, resource))
+                .onFailure(error -> taskExecutor.submit(() -> terminateApplication(resource, error.getMessage())));
 
         return result.get();
     }
@@ -432,7 +436,7 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
-        Future<Void> future = vertx.executeBlocking(() -> terminateApplication(resource, null), false);
+        Future<Void> future = taskExecutor.submit(() -> terminateApplication(resource, null));
         return Pair.of(result.get(), future);
     }
 

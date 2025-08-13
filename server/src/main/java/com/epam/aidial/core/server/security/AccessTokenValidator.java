@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -33,18 +34,18 @@ public class AccessTokenValidator {
 
     private final ConcurrentMap<String, Future<UserInfoResult>> userInfoCache = new ConcurrentHashMap<>();
 
-    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, HttpClient client) {
-        this(idpConfig, vertx, client, new HttpClientOptions());
+    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client) {
+        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions());
     }
 
-    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, HttpClient client, HttpClientOptions clientOptions) {
+    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client, HttpClientOptions clientOptions) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
         }
         GetUserRoleFunctionFactory factory = new GetUserRoleFunctionFactory(client);
         for (String idpKey : idpConfig.fieldNames()) {
-            providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, client, clientOptions, jwksUrl -> {
+            providers.add(new IdentityProvider(idpConfig.getJsonObject(idpKey), vertx, taskExecutor, client, clientOptions, jwksUrl -> {
                 try {
                     return new UrlJwkProvider(new URL(jwksUrl));
                 } catch (MalformedURLException e) {

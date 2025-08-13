@@ -53,10 +53,10 @@ public class InterceptorController {
 
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
             context.getRequest().body()
-                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                         handleRequestBody(body);
                         return null;
-                    }, false).onFailure(this::handleError))
+                    }).onFailure(this::handleError))
                     .onFailure(this::handleRequestBodyError);
             return null;
         });
