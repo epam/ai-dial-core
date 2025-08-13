@@ -5,11 +5,11 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ public class TokenStatsTracker {
     public static final String DEPLOYMENT_COST_STATS_BUCKET = "deployment_cost_stats";
     public static final String DEPLOYMENT_COST_STATS_LOCATION = DEPLOYMENT_COST_STATS_BUCKET + PATH_SEPARATOR;
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
 
     /**
@@ -35,7 +35,7 @@ public class TokenStatsTracker {
      * </p>
      */
     public Future<Void> startSpan(ProxyContext context) {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             ResourceDescriptor resource = toResource(context.getTraceId());
             resourceService.computeResource(resource, json -> {
                 TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
@@ -46,11 +46,11 @@ public class TokenStatsTracker {
                 return ProxyUtil.convertToString(traceContext);
             });
             return null;
-        }, false);
+        });
     }
 
     public Future<TokenUsage> getTokenStats(ProxyContext context) {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             ResourceDescriptor resource = toResource(context.getTraceId());
             String json = resourceService.getResource(resource);
             TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
@@ -58,7 +58,7 @@ public class TokenStatsTracker {
                 return null;
             }
             return traceContext.getStats(context);
-        }, false);
+        });
     }
 
     /**
@@ -67,11 +67,11 @@ public class TokenStatsTracker {
     public Future<Void> endSpan(ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         if (apiKeyData.getPerRequestKey() == null) {
-            return vertx.executeBlocking(() -> {
+            return taskExecutor.submit(() -> {
                 ResourceDescriptor resource = toResource(context.getTraceId());
                 resourceService.deleteResource(resource, EtagHeader.ANY);
                 return null;
-            }, false);
+            });
         } else {
             // we don't need to remove the span from trace context right now.
             // we can do it later when the initial span is completed
@@ -81,7 +81,7 @@ public class TokenStatsTracker {
 
     public Future<TokenUsage> updateModelStats(ProxyContext context) {
         ResourceDescriptor resource = toResource(context.getTraceId());
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             resourceService.computeResource(resource, json -> {
                 TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
                 if (traceContext == null) {
@@ -91,7 +91,7 @@ public class TokenStatsTracker {
                 return ProxyUtil.convertToString(traceContext);
             });
             return context.getTokenUsage();
-        }, false);
+        });
     }
 
     @Data

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
@@ -19,10 +20,10 @@ public class HealthCheckController {
             RedisNodes.MASTER_SLAVE, RedisNodes.SENTINEL_MASTER_SLAVE);
 
     private final RedissonClient redissonClient;
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
 
     public void handle(HttpServerRequest request) {
-        vertx.executeBlocking(() -> getRedisNodes().pingAll(), false)
+        taskExecutor.submit(() -> getRedisNodes().pingAll())
                 .onSuccess(ignore -> respond(request, HttpStatus.OK)).onFailure(error -> {
                     log.error("liveliness check probe is failed", error);
                     respond(request, HttpStatus.INTERNAL_SERVER_ERROR);

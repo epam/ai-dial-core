@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
@@ -53,7 +54,7 @@ public class RateLimiterTest {
     private static RedissonClient redissonClient;
 
     @Mock
-    private Vertx vertx;
+    private AsyncTaskExecutor taskExecutor;
 
     @Mock
     private EncryptionService encryptionService;
@@ -107,7 +108,7 @@ public class RateLimiterTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        rateLimiter = new RateLimiter(vertx, resourceService);
+        rateLimiter = new RateLimiter(taskExecutor, resourceService);
     }
 
     @Test
@@ -154,7 +155,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -187,7 +188,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -242,7 +243,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -326,7 +327,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -368,7 +369,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -424,7 +425,7 @@ public class RateLimiterTest {
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });

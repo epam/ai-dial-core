@@ -25,7 +25,7 @@ public class DownloadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");
         }
         EtagHeader etagHeader = ProxyUtil.etag(context.getRequest());
-        proxy.getVertx().executeBlocking(() -> proxy.getResourceService().getResourceStream(resource, etagHeader), false)
+        proxy.getTaskExecutor().submit(() -> proxy.getResourceService().getResourceStream(resource, etagHeader))
                 .compose(resourceStream -> {
                     if (resourceStream == null) {
                         return context.respond(HttpStatus.NOT_FOUND);

@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -44,6 +45,9 @@ public class UpstreamRouteTest {
     private Vertx vertx;
 
     @Mock
+    private AsyncTaskExecutor taskExecutor;
+
+    @Mock
     private UpstreamCacheService upstreamCacheService;
 
     @Mock
@@ -60,7 +64,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint4", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
         UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
@@ -108,7 +112,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
         UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
@@ -141,7 +145,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
         CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
@@ -165,7 +169,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.CACHE_PRIORITY);
         CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
@@ -189,7 +193,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of("prefix"), Map.of("prefix", "hash"), CachePolicy.CACHE_PRIORITY);
         CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
@@ -202,7 +206,7 @@ public class UpstreamRouteTest {
 
         HttpClientResponse response = mock(HttpClientResponse.class);
         when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn("prefix");
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
             callable.call();
             return Future.succeededFuture();
@@ -222,7 +226,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 1)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of("prefix"), Map.of("prefix", "hash"), CachePolicy.CACHE_PRIORITY);
         CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
@@ -239,7 +243,7 @@ public class UpstreamRouteTest {
 
         route.succeed(response, model);
 
-        verify(vertx, never()).executeBlocking(any(Callable.class), eq(false));
+        verify(taskExecutor, never()).submit(any(Callable.class));
         verify(upstreamCacheService, never()).updateEntry(isNull(), any(CachedUpstreamEntry.class), any(Model.class), any());
     }
 
@@ -252,7 +256,7 @@ public class UpstreamRouteTest {
                 new Upstream("endpoint2", null, null, 1, 0)
         ));
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         UpstreamRoute route = upstreamRouteProvider.get(model, null);
         assertNotNull(route.next());
 
@@ -265,7 +269,7 @@ public class UpstreamRouteTest {
 
         route.succeed(response, model);
 
-        verify(vertx, never()).executeBlocking(any(Callable.class), eq(false));
+        verify(taskExecutor, never()).submit(any(Callable.class));
         verify(upstreamCacheService, never()).updateEntry(isNull(), any(CachedUpstreamEntry.class), any(Model.class), any());
     }
 }

@@ -97,11 +97,11 @@ public class DeploymentPostController {
     }
 
     private Future<?> handleDeployment(String deploymentId, String deploymentApi) {
-        return proxy.getVertx().executeBlocking(() -> proxy.getDeploymentService().findDeployment(context, deploymentId), false)
-                .compose(dep -> proxy.getVertx().executeBlocking(() -> {
+        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
+                .compose(dep -> proxy.getTaskExecutor().submit(() -> {
                     proxy.getConsentService().verifyUserConsent(context, dep);
                     return dep;
-                }, false))
+                }))
                 .map(dep -> {
                     Features features = dep.getFeatures();
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
@@ -202,10 +202,10 @@ public class DeploymentPostController {
         setupProxyApiKeyData(new ApiKeyData());
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
             context.getRequest().body()
-                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                         handleRequestBody(body);
                         return null;
-                    }, false).onFailure(this::handleError))
+                    }).onFailure(this::handleError))
                     .onFailure(this::handleRequestBodyError);
             return null;
         });
