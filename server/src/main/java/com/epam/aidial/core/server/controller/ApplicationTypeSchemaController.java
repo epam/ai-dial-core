@@ -4,13 +4,13 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
 import lombok.extern.slf4j.Slf4j;
 
@@ -26,15 +26,15 @@ public class ApplicationTypeSchemaController {
     private static final String ID_PARAM = "id";
 
     private final ProxyContext context;
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
 
     public ApplicationTypeSchemaController(ProxyContext context) {
         this.context = context;
-        this.vertx = context.getProxy().getVertx();
+        this.taskExecutor = context.getProxy().getTaskExecutor();
     }
 
     public Future<?> handleGetMetaSchema() {
-        return vertx.executeBlocking(MetaSchemaHolder::getCustomApplicationMetaSchema)
+        return taskExecutor.submit(MetaSchemaHolder::getCustomApplicationMetaSchema)
                 .onSuccess(metaSchema -> context.respond(HttpStatus.OK, metaSchema))
                 .onFailure(throwable -> context.respond(throwable, FAILED_READ_SCHEMA_MESSAGE));
     }
@@ -81,7 +81,7 @@ public class ApplicationTypeSchemaController {
     }
 
     public Future<?> handleGetSchema() {
-        return vertx.executeBlocking(this::getSchema)
+        return taskExecutor.submit(this::getSchema)
                 .onSuccess(schemaNode -> context.respond(HttpStatus.OK, schemaNode))
                 .onFailure(throwable -> context.respond(throwable, FAILED_READ_SCHEMA_MESSAGE));
     }
@@ -120,7 +120,7 @@ public class ApplicationTypeSchemaController {
     }
 
     public Future<?> handleListSchemas() {
-        return vertx.executeBlocking(this::listSchemas)
+        return taskExecutor.submit(this::listSchemas)
                 .onSuccess(schemas -> context.respond(HttpStatus.OK, schemas))
                 .onFailure(throwable -> context.respond(throwable, FAILED_READ_SCHEMA_MESSAGE));
     }

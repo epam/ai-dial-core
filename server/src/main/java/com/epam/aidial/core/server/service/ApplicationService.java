@@ -96,7 +96,7 @@ public class ApplicationService {
 
         if (controller.isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
-            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
+            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> taskExecutor.submit(this::checkApplications));
         }
     }
 

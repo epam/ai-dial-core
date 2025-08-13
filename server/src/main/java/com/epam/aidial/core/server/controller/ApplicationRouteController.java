@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -53,7 +52,7 @@ public class ApplicationRouteController extends BaseRouteController {
             // it looks like deployment id is not a custom application
             return Future.succeededFuture(true);
         }
-        return proxy.getVertx().executeBlocking(() -> {
+        return proxy.getTaskExecutor().submit(() -> {
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = proxy.getAccessService().lookupPermissions(Set.of(appResource), context);
             Set<ResourceAccessType> actual = result.get(appResource);
             if (actual == null) {
@@ -104,7 +103,7 @@ public class ApplicationRouteController extends BaseRouteController {
 
     @Override
     protected Future<Collection<Route>> getRoutes() {
-        return proxy.getVertx().executeBlocking(() -> {
+        return proxy.getTaskExecutor().submit(() -> {
             Deployment deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             context.setDeployment(deployment);
             if (deployment instanceof Application application) {

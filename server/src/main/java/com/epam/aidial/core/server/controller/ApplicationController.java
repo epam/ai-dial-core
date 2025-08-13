@@ -24,7 +24,6 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -80,7 +79,7 @@ public class ApplicationController {
         Config config = context.getConfig();
         Proxy proxy = context.getProxy();
 
-        return proxy.getVertx().executeBlocking(() -> {
+        return proxy.getTaskExecutor().submit(() -> {
             List<Application> list = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {

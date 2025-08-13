@@ -44,7 +44,7 @@ public class UploadFileController extends AccessControlBaseController {
                     .uploadHandler(upload -> {
                         String contentType = upload.contentType();
                         Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                        BlobWriteStream writeStream = new BlobWriteStream(proxy.getVertx(), proxy.getResourceService(),
+                        BlobWriteStream writeStream = new BlobWriteStream(proxy.getTaskExecutor(), proxy.getResourceService(),
                                 resource, etag, contentType, author);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {

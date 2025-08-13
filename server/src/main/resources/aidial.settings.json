@@ -77,5 +77,8 @@
   },
   "perRequestApiKey": {
     "ttl": 1800
+  },
+  "asyncTaskExecutor": {
+    "useVirtualThreads": true
   }
 }

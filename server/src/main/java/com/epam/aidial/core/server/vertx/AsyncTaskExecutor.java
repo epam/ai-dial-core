@@ -4,23 +4,50 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.ContextInternal;
-import lombok.AllArgsConstructor;
+import io.vertx.core.json.JsonObject;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadFactory;
 
-import static java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor;
+import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 
-@AllArgsConstructor
+/**
+ * The executor runs tasks in virtual threads.
+ */
 public class AsyncTaskExecutor {
 
-    private static final Executor EXECUTOR = newVirtualThreadPerTaskExecutor();
+    private static final Executor VIRTUAL_THREAD_PER_TASK_EXECUTOR;
+
+    static {
+        ThreadFactory threadFactory = Thread.ofVirtual().name("dial.x-virtual-thread-", 0).factory();
+        VIRTUAL_THREAD_PER_TASK_EXECUTOR = newThreadPerTaskExecutor(threadFactory);
+    }
 
     private final Vertx vertx;
 
+    /**
+     * Use Vertx worker pool
+     */
+    private final boolean useVirtualThreads;
+
+    public AsyncTaskExecutor(Vertx vertx, JsonObject settings) {
+        this.vertx = vertx;
+        useVirtualThreads = settings.getBoolean("useVirtualThreads", Boolean.TRUE);
+    }
+
+    /**
+     * Submits the task asynchronously.
+     *
+     * @param blockingCall - the task to be executed
+     * @return the result of the blocking cal
+     */
     public <T> Future<T> submit(Callable<T> blockingCall) {
+        if (!useVirtualThreads) {
+            return vertx.executeBlocking(blockingCall, false);
+        }
         ContextInternal context = (ContextInternal) vertx.getOrCreateContext();
-        Promise<T> promise = Promise.promise();
+        Promise<T> promise = context.promise();
 
         Runnable task = () -> context.dispatch(() -> {
             try {
@@ -31,7 +58,7 @@ public class AsyncTaskExecutor {
             }
         });
 
-        EXECUTOR.execute(task);
+        VIRTUAL_THREAD_PER_TASK_EXECUTOR.execute(task);
         return promise.future();
     }
 }

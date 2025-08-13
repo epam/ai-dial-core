@@ -146,7 +146,7 @@ class CodeInterpreterController {
 
         return service.downloadFile(context, data.getSessionId(), data.getPath(), (stream, size) -> {
             response.putHeader(HttpHeaders.CONTENT_LENGTH, Long.toString(size));
-            return new InputStreamReader(vertx, stream)
+            return new InputStreamReader(vertx, taskExecutor, stream)
                     .pipe()
                     .endOnFailure(false)
                     .to(response);

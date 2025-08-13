@@ -38,7 +38,7 @@ public class DownloadFileController extends AccessControlBaseController {
                             .exposeHeaders()
                             .getResponse();
 
-                    InputStreamReader stream = new InputStreamReader(proxy.getVertx(), resourceStream.inputStream());
+                    InputStreamReader stream = new InputStreamReader(proxy.getVertx(), proxy.getTaskExecutor(), resourceStream.inputStream());
                     stream.pipe()
                             .endOnFailure(false)
                             .to(response)

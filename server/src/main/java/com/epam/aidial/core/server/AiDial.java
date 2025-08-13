@@ -116,7 +116,7 @@ public class AiDial {
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             client = vertx.createHttpClient(clientOptions);
 
-            AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx);
+            AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
             LogStore logStore = new GfLogStore();
 
@@ -133,7 +133,7 @@ public class AiDial {
             redis = CacheClientFactory.create(toJsonNode(settings("redis")));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            TimerService timerService = new VertxTimerService(vertx);
+            TimerService timerService = new VertxTimerService(vertx, taskExecutor);
             ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
@@ -152,13 +152,13 @@ public class AiDial {
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService);
-            CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, redis, resourceService,
+            CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
             TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
-                    vertx, settings("resources").getLong("heartbeatPeriod"));
+                    vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
 
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
