@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -97,7 +98,7 @@ public class DeploymentPostControllerTest {
     private TokenStatsTracker tokenStatsTracker;
 
     @Mock
-    private Vertx vertx;
+    private AsyncTaskExecutor taskExecutor;
 
     @Mock
     private ApplicationSchemaService applicationSchemaService;
@@ -124,9 +125,9 @@ public class DeploymentPostControllerTest {
         config.setApplications(new HashMap<>());
         Application app = new Application();
         config.getApplications().put("app1", app);
-        when(proxy.getVertx()).thenReturn(vertx);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(vertx.executeBlocking(any(Callable.class), eq(false)))
+        when(taskExecutor.submit(any(Callable.class)))
                 .thenReturn(Future.failedFuture(new ResourceNotFoundException("Not found")));
 
         controller.handle("unknown-app", "chat/completions");
@@ -149,9 +150,9 @@ public class DeploymentPostControllerTest {
         apiKeyData.setPerRequestKey("perRequestKey");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         config.getApplications().put("app1", app);
-        when(proxy.getVertx()).thenReturn(vertx);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(vertx.executeBlocking(any(Callable.class), eq(false)))
+        when(taskExecutor.submit(any(Callable.class)))
                 .thenReturn(Future.succeededFuture(app));
 
         controller.handle("unknown-app", "chat/completions");
@@ -431,8 +432,8 @@ public class DeploymentPostControllerTest {
         Application application = new Application();
         application.setName("applications/bucket/app1");
         application.setEndpoint("http://fake.com");
-        when(proxy.getVertx()).thenReturn(vertx);
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
+        when(taskExecutor.submit(any(Callable.class))).thenReturn(Future.succeededFuture(application));
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);

@@ -28,7 +28,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -188,27 +187,10 @@ public class AccessService {
      */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (!isApplicationContext(context)) {
-            resources = resources.stream()
-                    .filter(resource -> !resource.isHidden())
-                    .collect(Collectors.toUnmodifiableSet());
-        }
-
         return ruleService.getAllowedPublicResources(context, resources).stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(),
                         resource -> ResourceAccessType.READ_ONLY));
-    }
-
-    /**
-     * Checks if the context represents an application rather than a user.
-     * Applications should have access to their own published system resources.
-     *
-     * @param context The proxy context
-     * @return true if this appears to be an application context, false for user contexts
-     */
-    public static boolean isApplicationContext(ProxyContext context) {
-        return context.getApiKeyData().getPerRequestKey() != null;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
@@ -345,32 +327,8 @@ public class AccessService {
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
-            if (!isApplicationContext(context)) {
-                if (folder.getItems() != null) {
-                    folder.setItems(folder.getItems().stream()
-                            .map(this::recursiveFilterHiddenResource)
-                            .filter(Objects::nonNull)
-                            .toList());
-                }
-            }
             ruleService.filterForbidden(context, descriptor, folder);
         }
-    }
-
-    public MetadataBase recursiveFilterHiddenResource(MetadataBase metadata) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
-        if (resource.isHidden()) {
-            return null;
-        }
-        if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
-            List<MetadataBase> items = folderMetadata.getItems().stream()
-                    .map(this::recursiveFilterHiddenResource)
-                    .filter(Objects::nonNull)
-                    .toList();
-
-            folderMetadata.setItems(items);
-        }
-        return metadata;
     }
 
     public void populatePermissions(ProxyContext context, Collection<MetadataBase> metadata) {

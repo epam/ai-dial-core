@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.token;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -44,7 +45,7 @@ public class TokenStatsTrackerTest {
     private static RedissonClient redissonClient;
 
     @Mock
-    private Vertx vertx;
+    private AsyncTaskExecutor taskExecutor;
 
     @Mock
     private EncryptionService encryptionService;
@@ -96,7 +97,7 @@ public class TokenStatsTrackerTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(vertx, resourceService);
+        tracker = new TokenStatsTracker(taskExecutor, resourceService);
     }
 
     /**
@@ -104,7 +105,7 @@ public class TokenStatsTrackerTest {
      */
     @Test
     public void testWorkflow() {
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });

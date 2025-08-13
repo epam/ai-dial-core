@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notifications;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -16,17 +17,17 @@ import lombok.extern.slf4j.Slf4j;
 public class NotificationController {
 
     private final ProxyContext context;
-    private final Vertx vertx;
     private final NotificationService service;
+    private final AsyncTaskExecutor taskExecutor;
 
     public NotificationController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.vertx = proxy.getVertx();
         this.service = proxy.getNotificationService();
+        this.taskExecutor = proxy.getTaskExecutor();
     }
 
     public Future<?> listNotifications() {
-        vertx.executeBlocking(() -> service.listNotification(context), false)
+        taskExecutor.submit(() -> service.listNotification(context))
                 .onSuccess(notifications -> context.respond(HttpStatus.OK, new Notifications(notifications)))
                 .onFailure(error -> respondError("Can't list notifications", error));
 
@@ -38,10 +39,10 @@ public class NotificationController {
                 .body()
                 .compose(body -> {
                     DeleteNotificationRequest request = ProxyUtil.convertToObject(body, DeleteNotificationRequest.class);
-                    return vertx.executeBlocking(() -> {
+                    return taskExecutor.submit(() -> {
                         service.deleteNotification(context, request);
                         return null;
-                    }, false);
+                    });
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete notifications", error));

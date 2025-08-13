@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.vertx.stream;
 
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
@@ -31,7 +32,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     public static final int MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final ResourceDescriptor resource;
     private final EtagHeader etag;
@@ -52,21 +53,21 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private final String author;
 
-    public BlobWriteStream(Vertx vertx,
+    public BlobWriteStream(AsyncTaskExecutor taskExecutor,
                            ResourceService resourceService,
                            ResourceDescriptor resource,
                            EtagHeader etag,
                            String contentType) {
-        this(vertx, resourceService, resource, etag, contentType, null);
+        this(taskExecutor, resourceService, resource, etag, contentType, null);
     }
 
-    public BlobWriteStream(Vertx vertx,
+    public BlobWriteStream(AsyncTaskExecutor taskExecutor,
                            ResourceService resourceService,
                            ResourceDescriptor resource,
                            EtagHeader etag,
                            String contentType,
                            String author) {
-        this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.resourceService = resourceService;
         this.resource = resource;
         this.etag = etag;
@@ -108,7 +109,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     @Override
     public void end(Handler<AsyncResult<Void>> handler) {
-        Future<Void> result = vertx.executeBlocking(() -> {
+        Future<Void> result = taskExecutor.submit(() -> {
             synchronized (BlobWriteStream.this) {
                 if (exception != null) {
                     throw new RuntimeException(exception);
@@ -151,7 +152,7 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     @Override
     public WriteStream<Buffer> drainHandler(Handler<Void> handler) {
-        vertx.executeBlocking(() -> {
+        taskExecutor.submit(() -> {
             synchronized (BlobWriteStream.this) {
                 try {
                     if (resourceUpload == null) {
