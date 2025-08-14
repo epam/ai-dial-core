@@ -3,7 +3,7 @@
 ## Overview
 
 HTTP Proxy provides unified API to different chat completion and embedding models, assistants and applications.
-Written in Java 17 and built on top of [Eclipse Vert.x](https://vertx.io/).
+Written in Java 21 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ## Build
 
@@ -31,7 +31,7 @@ You should set env variables `GPR_USERNAME` and `GPR_PASSWORD` to valid values, 
 
 See more details [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) to generate personal access token in GitHub.
 
-Build the project with Gradle and Java 17:
+Build the project with Gradle and Java 21:
 
 ```
 ./gradlew build
@@ -130,6 +130,7 @@ Priority order:
 | codeInterpreter.checkPeriod                   |       10000        |    No    |The interval at which to check active sessions for expiration
 | codeInterpreter.checkSize                     |        256         |    No    |The maximum number of active sessions to check in single check
 | perRequestApiKey.ttl                          |        1800        |    No    |The TTL in seconds of per request API key
+| asyncTaskExecutor.useVirtualThreads                          |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.
 
 ### Storage requirements
 
@@ -146,17 +147,17 @@ specified via "config.reload" static setting. Refer to [example](sample/aidial.c
 
 Dynamic settings can include the following parameters:
 
-|Parameter          | Description  |
-|----------------------------------------------------------------------------------|----------|
-| routes  | A list of registered routes in DIAL Core. Refer to [Routes](/docs/dynamic-settings/routes.md) to see dynamic settings.   |
-| interceptors  | A list of deployed DIAL Interceptors and their parameters. Refer to [Interceptors](/docs/dynamic-settings/interceptors.md) to see dynamic settings.   |
-| applications  | A list of deployed applications and their parameters. Refer to [Applications](/docs/dynamic-settings/applications.md) to see dynamic settings.   |
-| models  | A list of deployed models and their parameters. Refer to [Models](/docs/dynamic-settings/models.md) to see dynamic settings.   |
-| toolsets  | A list of available toolsets and their parameters. Refer to [Toolsets](/docs/dynamic-settings/toolsets.md) to see dynamic settings.   |
-| roles  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.   |
-| keys  | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.   |
-| retriableErrorCodes| List of retriable error codes for handling outages at LLM providers.  |
-| applicationTypeSchemas               | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema)                |
+|Parameter          | Description                                                                                                                                                                                                                                                                     |
+|----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| routes  | A list of registered routes in DIAL Core. Refer to [Routes](/docs/dynamic-settings/routes.md) to see dynamic settings.                                                                                                                                                          |
+| interceptors  | A list of deployed DIAL Interceptors and their parameters. Refer to [Interceptors](/docs/dynamic-settings/interceptors.md) to see dynamic settings.                                                                                                                             |
+| applications  | A list of deployed applications and their parameters. Refer to [Applications](/docs/dynamic-settings/applications.md) to see dynamic settings.                                                                                                                                  |
+| models  | A list of deployed models and their parameters. Refer to [Models](/docs/dynamic-settings/models.md) to see dynamic settings.                                                                                                                                                    |
+| toolsets  | A list of available toolsets and their parameters. Refer to [Toolsets](/docs/dynamic-settings/toolsets.md) to see dynamic settings.                                                                                                                                             |
+| roles  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.                                                                                                                                                           |
+| keys  | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
+| retriableErrorCodes| List of retriable error codes for handling outages at LLM providers.                                                                                                                                                                                                            |
+| applicationTypeSchemas               | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
 
 #### Obsolete Dynamic Settings
 

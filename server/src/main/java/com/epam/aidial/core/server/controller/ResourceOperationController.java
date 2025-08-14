@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -41,7 +42,7 @@ public class ResourceOperationController {
             ResourceTypes.FILE, ResourceTypes.CONVERSATION, ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final ProxyContext context;
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final EncryptionService encryptionService;
     private final ResourceOperationService resourceOperationService;
     private final LockService lockService;
@@ -50,7 +51,7 @@ public class ResourceOperationController {
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.vertx = proxy.getVertx();
+        this.taskExecutor = proxy.getTaskExecutor();
         this.encryptionService = proxy.getEncryptionService();
         this.resourceOperationService = proxy.getResourceOperationService();
         this.lockService = proxy.getLockService();
@@ -104,10 +105,10 @@ public class ResourceOperationController {
                     }
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
-                    return vertx.executeBlocking(() -> lockService.underBucketLocks(buckets, () -> {
+                    return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
                         resourceOperationService.moveResource(source, destination, request.isOverwrite());
                         return null;
-                    }), false);
+                    }));
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
@@ -159,10 +160,10 @@ public class ResourceOperationController {
                         throw new PermissionDeniedException("no write access to destination resource");
                     }
 
-                    return vertx.executeBlocking(() -> {
+                    return taskExecutor.submit(() -> {
                         resourceOperationService.copyResource(source, destination, request.isOverwrite());
                         return null;
-                    }, false);
+                    });
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
@@ -185,12 +186,12 @@ public class ResourceOperationController {
                             .putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
                             .write(""); // to force writing header
 
-                    return vertx.executeBlocking(() -> {
+                    return taskExecutor.submit(() -> {
                         ResourceTopic.Subscription subscription =
                                 resourceOperationService.subscribeResources(resources, subscriber);
                         heartbeatService.subscribe(heartbeat);
                         return subscription;
-                    }, false);
+                    });
                 })
                 .onSuccess(subscription -> response.closeHandler(event -> {
                     heartbeatService.unsubscribe(heartbeat);

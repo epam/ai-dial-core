@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
@@ -15,10 +16,10 @@ public class HeartbeatService implements Closeable {
     private final long timer;
     private final ConcurrentMap<Runnable, Long> subscribers = new ConcurrentHashMap<>();
 
-    public HeartbeatService(Vertx vertx, long heartbeatPeriod) {
+    public HeartbeatService(Vertx vertx, AsyncTaskExecutor taskExecutor, long heartbeatPeriod) {
         this.vertx = vertx;
         this.heartbeatPeriod = heartbeatPeriod;
-        this.timer = vertx.setPeriodic(heartbeatPeriod / 2, ignore -> vertx.executeBlocking(this::sendHeartbeats));
+        this.timer = vertx.setPeriodic(heartbeatPeriod / 2, ignore -> taskExecutor.submit(this::sendHeartbeats));
     }
 
     public void subscribe(Runnable subscriber) {

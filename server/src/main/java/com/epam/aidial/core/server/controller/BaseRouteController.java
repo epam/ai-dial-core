@@ -108,10 +108,10 @@ public abstract class BaseRouteController implements Controller {
             setupProxyApiKeyData();
             context.getRequest().body()
                     .onFailure(this::handleRequestBodyError)
-                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                         handleRequestBody(body);
                         return null;
-                    }, false));
+                    }));
         } else {
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(context);

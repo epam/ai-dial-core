@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.vertx.stream;
 
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.netty.buffer.Unpooled;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -21,6 +22,7 @@ public class InputStreamReader implements ReadStream<Buffer> {
     private static final int DEFAULT_READ_BUFFER_SIZE = 32768;
 
     private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final InputStream in;
     private final InboundBuffer<Buffer> queue;
     private final int bufferSize;
@@ -29,12 +31,13 @@ public class InputStreamReader implements ReadStream<Buffer> {
     private Handler<Void> endHandler;
     private Handler<Throwable> exceptionHandler;
 
-    public InputStreamReader(Vertx vertx, InputStream stream) {
-        this(vertx, stream, DEFAULT_READ_BUFFER_SIZE);
+    public InputStreamReader(Vertx vertx, AsyncTaskExecutor taskExecutor, InputStream stream) {
+        this(vertx, taskExecutor, stream, DEFAULT_READ_BUFFER_SIZE);
     }
 
-    public InputStreamReader(Vertx vertx, InputStream in, int bufferSize) {
+    public InputStreamReader(Vertx vertx, AsyncTaskExecutor taskExecutor, InputStream in, int bufferSize) {
         this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.in = in;
         this.queue = new InboundBuffer<>(vertx.getOrCreateContext(), 32);
         this.bufferSize = bufferSize;
@@ -87,7 +90,7 @@ public class InputStreamReader implements ReadStream<Buffer> {
     }
 
     private void readDataFromStream() {
-        Future<Buffer> fetchResult = vertx.executeBlocking(() -> {
+        Future<Buffer> fetchResult = taskExecutor.submit(() -> {
             try {
                 byte[] data = in.readNBytes(bufferSize);
                 return BufferImpl.buffer(Unpooled.wrappedBuffer(data));

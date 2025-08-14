@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -29,7 +30,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import jakarta.validation.ValidationException;
@@ -47,7 +47,7 @@ import static com.epam.aidial.core.storage.http.HttpStatus.INTERNAL_SERVER_ERROR
 @SuppressWarnings("checkstyle:Indentation")
 public class ResourceController extends AccessControlBaseController {
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final ApplicationService applicationService;
     private final boolean metadata;
@@ -59,7 +59,7 @@ public class ResourceController extends AccessControlBaseController {
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
         // PUT and DELETE require write access, GET - read
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
-        this.vertx = proxy.getVertx();
+        this.taskExecutor = proxy.getTaskExecutor();
         this.toolSetService = proxy.getToolSetService();
         this.applicationService = proxy.getApplicationService();
         this.accessService = proxy.getAccessService();
@@ -108,7 +108,7 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        vertx.executeBlocking(() -> {
+        taskExecutor.submit(() -> {
             MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
             if (result == null) {
                 return null;
@@ -118,7 +118,7 @@ public class ResourceController extends AccessControlBaseController {
                 accessService.populatePermissions(context, List.of(result));
             }
             return result;
-        }, false).onSuccess(result -> {
+        }).onSuccess(result -> {
             if (result == null) {
                 context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
             } else {
@@ -156,7 +156,7 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private Future<Pair<ResourceItemMetadata, String>> getApplicationData(ResourceDescriptor descriptor, boolean hasWriteAccess, EtagHeader etagHeader) {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, Application> result = applicationService.getApplication(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
 
@@ -167,7 +167,7 @@ public class ResourceController extends AccessControlBaseController {
 
             return Pair.of(meta, body);
 
-        }, false);
+        });
     }
 
     private Application clearApplicationProperties(Application application) {
@@ -190,7 +190,7 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescriptor descriptor, EtagHeader etag) {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(descriptor, etag);
 
             if (result == null) {
@@ -198,11 +198,11 @@ public class ResourceController extends AccessControlBaseController {
             }
 
             return result;
-        }, false);
+        });
     }
 
     private Future<Pair<ResourceItemMetadata, String>> getToolsetData(ResourceDescriptor descriptor, EtagHeader etagHeader) {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
 
@@ -217,7 +217,7 @@ public class ResourceController extends AccessControlBaseController {
 
             return Pair.of(meta, body);
 
-        }, false);
+        });
     }
 
     private void validateCustomApplication(Application application) {
@@ -282,10 +282,10 @@ public class ResourceController extends AccessControlBaseController {
             responseFuture = requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class);
-                return vertx.executeBlocking(() -> {
+                return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application).getKey();
-                }, false);
+                });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {
             responseFuture = requestFuture.compose(pair -> {
@@ -297,14 +297,14 @@ public class ResourceController extends AccessControlBaseController {
                 if (resourceService.getResourceMetadata(descriptor) == null) {
                     toolsetAuthSettingsService.updateToolsetAuthSettings(toolSet);
                 }
-                return vertx.executeBlocking(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey(), false);
+                return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey());
             });
         } else {
             responseFuture = requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 String body = pair.getValue();
                 validateRequestBody(descriptor, body);
-                return vertx.executeBlocking(() -> resourceService.putResource(descriptor, body, etag, author), false);
+                return taskExecutor.submit(() -> resourceService.putResource(descriptor, body, etag, author));
             });
         }
 
@@ -323,7 +323,7 @@ public class ResourceController extends AccessControlBaseController {
 
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        vertx.executeBlocking(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag), false)
+        taskExecutor.submit(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag))
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);

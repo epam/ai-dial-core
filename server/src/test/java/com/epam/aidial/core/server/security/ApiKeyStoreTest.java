@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -42,7 +43,7 @@ public class ApiKeyStoreTest {
     private static RedissonClient redissonClient;
 
     @Mock
-    private Vertx vertx;
+    private AsyncTaskExecutor taskExecutor;
 
     private ApiKeyStore store;
 
@@ -83,7 +84,7 @@ public class ApiKeyStoreTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        store = new ApiKeyStore(vertx, redissonClient, null, new JsonObject());
+        store = new ApiKeyStore(taskExecutor, redissonClient, null, new JsonObject());
     }
 
     @Test
@@ -95,7 +96,7 @@ public class ApiKeyStoreTest {
 
     @Test
     public void testAddProjectKeys() {
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -135,7 +136,7 @@ public class ApiKeyStoreTest {
 
         assertNotNull(apiKeyData.getPerRequestKey());
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -149,7 +150,7 @@ public class ApiKeyStoreTest {
 
     @Test
     public void testInvalidateApiKey() {
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -165,7 +166,7 @@ public class ApiKeyStoreTest {
 
     @Test
     public void testUpdateApiKey() {
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });

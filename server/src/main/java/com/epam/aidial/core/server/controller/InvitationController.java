@@ -9,7 +9,6 @@ import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.LockService;
 import io.vertx.core.Future;
 
@@ -32,12 +31,12 @@ public class InvitationController {
     }
 
     public Future<?> getInvitations() {
-        proxy.getVertx()
-                .executeBlocking(() -> {
+        proxy.getTaskExecutor()
+                .submit(() -> {
                     String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return invitationService.getMyInvitations(bucket, bucketLocation);
-                }, false)
+                })
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(error -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage()));
         return Future.succeededFuture();
@@ -46,11 +45,11 @@ public class InvitationController {
     public Future<?> getOrAcceptInvitation(String invitationId) {
         boolean accept = Boolean.parseBoolean(context.getRequest().getParam("accept"));
         if (accept) {
-            proxy.getVertx()
-                    .executeBlocking(() -> {
+            proxy.getTaskExecutor()
+                    .submit(() -> {
                         shareService.acceptSharedResources(context, invitationId);
                         return null;
-                    }, false)
+                    })
                     .onSuccess(ignore -> context.respond(HttpStatus.OK))
                     .onFailure(error -> {
                         if (error instanceof ResourceNotFoundException) {
@@ -62,8 +61,8 @@ public class InvitationController {
                         }
                     });
         } else {
-            proxy.getVertx()
-                    .executeBlocking(() -> invitationService.getInvitation(invitationId), false)
+            proxy.getTaskExecutor()
+                    .submit(() -> invitationService.getInvitation(invitationId))
                     .onSuccess(invitation -> {
                         if (invitation == null) {
                             context.respond(HttpStatus.NOT_FOUND, "No invitation found for ID " + invitationId);
@@ -76,15 +75,15 @@ public class InvitationController {
     }
 
     public Future<?> deleteInvitation(String invitationId) {
-        proxy.getVertx()
-                .executeBlocking(() -> {
+        proxy.getTaskExecutor()
+                .submit(() -> {
                     String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
                     return lockService.underBucketLock(bucketLocation, () -> {
                         invitationService.deleteInvitation(bucket, invitationId);
                         return null;
                     });
-                }, false)
+                })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(error -> {
                     String errorMessage = error.getMessage();

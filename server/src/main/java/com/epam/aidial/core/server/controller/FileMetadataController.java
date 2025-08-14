@@ -40,7 +40,7 @@ public class FileMetadataController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Limit is out of allowed range: [0, 1000]");
         }
 
-        proxy.getVertx().executeBlocking(() -> {
+        proxy.getTaskExecutor().submit(() -> {
             MetadataBase result = resourceService.getMetadata(resource, token, limit, recursive);
             if (result == null) {
                 return null;
@@ -50,7 +50,7 @@ public class FileMetadataController extends AccessControlBaseController {
                 accessService.populatePermissions(context, List.of(result));
             }
             return result;
-        }, false).onSuccess(result -> {
+        }).onSuccess(result -> {
             if (result == null) {
                 context.respond(HttpStatus.NOT_FOUND);
             } else {

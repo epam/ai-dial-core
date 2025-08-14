@@ -8,8 +8,8 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClientResponse;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -62,13 +62,14 @@ public class UpstreamRoute {
 
     private final UpstreamCacheService upstreamCacheService;
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
 
-    public UpstreamRoute(Vertx vertx, UpstreamCacheService upstreamCacheService, TieredBalancer balancer, int maxRetryAttempts, UpstreamCacheContext upstreamCacheContext) {
+    public UpstreamRoute(AsyncTaskExecutor taskExecutor, UpstreamCacheService upstreamCacheService,
+                         TieredBalancer balancer, int maxRetryAttempts, UpstreamCacheContext upstreamCacheContext) {
         this.balancer = balancer;
         this.maxRetryAttempts = maxRetryAttempts;
         this.upstreamCacheContext = upstreamCacheContext;
-        this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.upstreamCacheService = upstreamCacheService;
     }
 
@@ -164,10 +165,10 @@ public class UpstreamRoute {
         String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
         String extraMetadata = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXTRA_METADATA);
         CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), breakpointPath, extraMetadata);
-        vertx.executeBlocking(() -> {
+        taskExecutor.submit(() -> {
             upstreamCacheService.updateEntry(hash, entry, model, expireAt);
             return null;
-        }, false).onFailure(error -> log.error("Error occurred while updating cached upstream entry", error));
+        }).onFailure(error -> log.error("Error occurred while updating cached upstream entry", error));
     }
 
     public String getBreakpointPath() {

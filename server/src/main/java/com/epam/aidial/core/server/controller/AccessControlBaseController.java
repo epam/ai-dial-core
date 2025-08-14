@@ -29,11 +29,11 @@ public abstract class AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
-        return proxy.getVertx()
-                .executeBlocking(() -> {
+        return proxy.getTaskExecutor()
+                .submit(() -> {
                     AccessService service = proxy.getAccessService();
                     return service.lookupPermissions(Set.of(resource), context).get(resource);
-                }, false)
+                })
                 .compose(permissions -> {
                     boolean hasAccess = permissions.contains(isWriteAccess
                             ? ResourceAccessType.WRITE : ResourceAccessType.READ);

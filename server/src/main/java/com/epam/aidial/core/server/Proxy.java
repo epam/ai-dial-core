@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthSetti
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -117,6 +118,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ApplicationSchemaService applicationSchemaService;
     private final ToolSetCredentialsService toolsetCredentialsService;
     private final ToolsetAuthSettingsService toolsetAuthSettingsService;
+    private final AsyncTaskExecutor taskExecutor;
     private final String version;
 
     @Override
