@@ -14,11 +14,11 @@ import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
@@ -39,7 +39,7 @@ public class ToolSetProxyController implements Controller {
 
     private final ProxyContext context;
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
 
     private final DeploymentService deploymentService;
 
@@ -52,7 +52,7 @@ public class ToolSetProxyController implements Controller {
     private final LogStore logStore;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
-        this.vertx = proxy.getVertx();
+        this.taskExecutor = proxy.getTaskExecutor();
         this.deploymentService = proxy.getDeploymentService();
         this.rateLimiter = proxy.getRateLimiter();
         this.httpClient = proxy.getClient();
@@ -64,7 +64,7 @@ public class ToolSetProxyController implements Controller {
 
     @Override
     public Future<?> handle() {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
                 return toolSet;

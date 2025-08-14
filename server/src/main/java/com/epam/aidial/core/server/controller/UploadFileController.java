@@ -37,14 +37,14 @@ public class UploadFileController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Resource name and/or parent folders must not end with .(dot)");
         }
         String author = context.getUserDisplayName();
-        return proxy.getVertx().executeBlocking(() -> {
+        return proxy.getTaskExecutor().submit(() -> {
             EtagHeader etag = validateRequest(context.getRequest(), resource);
             context.getRequest()
                     .setExpectMultipart(true)
                     .uploadHandler(upload -> {
                         String contentType = upload.contentType();
                         Pipe<Buffer> pipe = new PipeImpl<>(upload).endOnFailure(false);
-                        BlobWriteStream writeStream = new BlobWriteStream(proxy.getVertx(), proxy.getResourceService(),
+                        BlobWriteStream writeStream = new BlobWriteStream(proxy.getTaskExecutor(), proxy.getResourceService(),
                                 resource, etag, contentType, author);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
@@ -61,7 +61,7 @@ public class UploadFileController extends AccessControlBaseController {
                     });
 
             return Future.succeededFuture();
-        }, false)
+        })
                 .otherwise(error -> {
                     context.respond(error, "Failed to upload file: " + resource.getUrl());
                     log.warn("Failed to upload file: {}", resource.getUrl(), error);

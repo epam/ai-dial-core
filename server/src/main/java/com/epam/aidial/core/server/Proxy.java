@@ -31,6 +31,7 @@ import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterServic
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -113,6 +114,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final HealthCheckController healthCheckController;
     private final ToolSetService toolSetService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final AsyncTaskExecutor taskExecutor;
     private final String version;
 
     @Override

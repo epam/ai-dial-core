@@ -19,11 +19,11 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -35,7 +35,6 @@ import java.util.Objects;
 public class ApplicationController {
 
     private final ProxyContext context;
-    private final Vertx vertx;
     private final EncryptionService encryptionService;
     private final AccessService accessService;
     private final ApplicationService applicationService;
@@ -45,19 +44,21 @@ public class ApplicationController {
 
     private final DeploymentService.DeploymentExtractor deploymentExtractor;
 
+    private final AsyncTaskExecutor taskExecutor;
+
     public ApplicationController(ProxyContext context) {
         this.context = context;
-        this.vertx = context.getProxy().getVertx();
         this.encryptionService = context.getProxy().getEncryptionService();
         this.accessService = context.getProxy().getAccessService();
         this.applicationService = context.getProxy().getApplicationService();
         this.deploymentService = context.getProxy().getDeploymentService();
         this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
         this.deploymentExtractor = new ApplicationDeploymentExtractor();
+        this.taskExecutor = context.getProxy().getTaskExecutor();
     }
 
     public Future<?> getApplication(String applicationId) {
-        vertx.executeBlocking(() -> deploymentService.findDeployment(context, applicationId), false)
+        taskExecutor.submit(() -> deploymentService.findDeployment(context, applicationId))
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
@@ -78,7 +79,7 @@ public class ApplicationController {
         Config config = context.getConfig();
         Proxy proxy = context.getProxy();
 
-        return proxy.getVertx().executeBlocking(() -> {
+        return proxy.getTaskExecutor().submit(() -> {
             List<Application> list = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
@@ -102,7 +103,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.deployApplication(context, resource), false);
+                    return taskExecutor.submit(() -> applicationService.deployApplication(context, resource));
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
@@ -117,7 +118,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.undeployApplication(resource), false);
+                    return taskExecutor.submit(() -> applicationService.undeployApplication(resource));
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
@@ -132,7 +133,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.redeployApplication(context, resource), false);
+                    return taskExecutor.submit(() -> applicationService.redeployApplication(context, resource));
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
@@ -147,7 +148,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.getApplicationLogs(resource), false);
+                    return taskExecutor.submit(() -> applicationService.getApplicationLogs(resource));
                 })
                 .onSuccess(logs -> context.respond(HttpStatus.OK, logs))
                 .onFailure(this::respondError);

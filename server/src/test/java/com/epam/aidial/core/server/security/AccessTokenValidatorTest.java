@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -39,6 +40,9 @@ public class AccessTokenValidatorTest {
 
     @Mock
     private Vertx vertx;
+    
+    @Mock
+    private AsyncTaskExecutor taskExecutor;
 
     @Mock
     private HttpClient client;
@@ -54,7 +58,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_01() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         Future<ExtractedClaims> future = validator.extractClaims(null);
         assertNotNull(future);
         future.onComplete(res -> {
@@ -65,7 +69,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_02() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         Future<ExtractedClaims> future = validator.extractClaims("bad-auth-header");
         assertNotNull(future);
         future.onComplete(res -> {
@@ -76,7 +80,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_03() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         Future<ExtractedClaims> future = validator.extractClaims("bearer bad-token");
         assertNotNull(future);
         future.onComplete(res -> {
@@ -87,7 +91,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_04() throws NoSuchAlgorithmException {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider1 = mock(IdentityProvider.class);
         when(provider1.match(any(DecodedJWT.class))).thenReturn(false);
         IdentityProvider provider2 = mock(IdentityProvider.class);
@@ -107,7 +111,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_05() throws NoSuchAlgorithmException {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider1 = mock(IdentityProvider.class);
         when(provider1.match(any(DecodedJWT.class))).thenReturn(false);
         IdentityProvider provider2 = mock(IdentityProvider.class);
@@ -133,7 +137,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_06() throws NoSuchAlgorithmException {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(false);
         when(provider.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future
@@ -158,7 +162,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_07() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider = mock(IdentityProvider.class);
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
@@ -172,7 +176,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_08() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), null, null);
@@ -190,7 +194,7 @@ public class AccessTokenValidatorTest {
 
     @Test
     public void testExtractClaims_09() {
-        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, client);
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), "project1", null);

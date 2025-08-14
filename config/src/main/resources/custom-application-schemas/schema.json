@@ -121,6 +121,9 @@
                 "dial:order": {
                   "type": "integer"
                 },
+                "dial:maxRetryAttempts" : {
+                  "type": "integer"
+                },
                 "dial:permissions": {
                   "type": "array",
                   "items": {
@@ -131,23 +134,17 @@
                 "dial:attachmentPaths": {
                   "type": "object",
                   "properties": {
-                    "dial:attachmentPaths": {
-                      "type": "object",
-                      "properties": {
-                        "dial:requestBody": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "dial:responseBody": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      "additionalProperties": false
+                    "dial:requestBody": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dial:responseBody": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "additionalProperties": false

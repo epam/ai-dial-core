@@ -19,7 +19,7 @@ public class ConsentController {
     private Proxy proxy;
 
     public Future<?> requestConsent(String deploymentId) {
-        proxy.getVertx().executeBlocking(() -> proxy.getConsentService().buildConsent(context, deploymentId), false).onSuccess(consent -> {
+        proxy.getTaskExecutor().submit(() -> proxy.getConsentService().buildConsent(context, deploymentId)).onSuccess(consent -> {
             context.respond(HttpStatus.OK, consent);
         }).onFailure(error -> handleRequestError(deploymentId, error));
         return Future.succeededFuture();
@@ -43,10 +43,10 @@ public class ConsentController {
                         return Future.succeededFuture();
                     }
 
-                    return proxy.getVertx().executeBlocking(() -> {
+                    return proxy.getTaskExecutor().submit(() -> {
                         proxy.getConsentService().acceptConsent(context, deploymentId, request.getConsent());
                         return null;
-                    }, false);
+                    });
                 })
                 .onSuccess(ignored -> context.respond(HttpStatus.OK))
                 .onFailure(error -> handleRequestError(deploymentId, error));
