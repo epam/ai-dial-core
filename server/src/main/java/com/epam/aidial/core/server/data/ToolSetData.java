@@ -35,6 +35,7 @@ public class ToolSetData extends DeploymentData {
         data.setDisplayVersion(toolSet.getDisplayVersion());
         data.setDescription(toolSet.getDescription());
         data.setDescriptionKeywords(toolSet.getDescriptionKeywords());
+        data.setReference(toolSet.getReference());
 
         data.setMaxRetryAttempts(toolSet.getMaxRetryAttempts());
 
