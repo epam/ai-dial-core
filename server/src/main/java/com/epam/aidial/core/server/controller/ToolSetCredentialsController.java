@@ -49,12 +49,7 @@ public class ToolSetCredentialsController {
                 ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
                     toolSetSignInRequest.getToolSetUrl(), encryptionService);
 
-                Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
-                    accessService.lookupPermissions(Set.of(resourceDescriptor), context);
-
-                if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
-                    throw new PermissionDeniedException("no read access to ToolSet resource");
-                }
+                verifyAccess(resourceDescriptor);
 
                 return vertx.executeBlocking(() -> {
                     ToolSetCredentials toolSetCredentials = toolsetCredentialsService.createToolsetCredentials(
@@ -76,14 +71,9 @@ public class ToolSetCredentialsController {
                 ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
                     toolSetSignOutRequest.getToolSetUrl(), encryptionService);
 
-                Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
-                    accessService.lookupPermissions(Set.of(resourceDescriptor), context);
+                verifyAccess(resourceDescriptor);
 
-                if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
-                    throw new PermissionDeniedException("no read access to ToolSet resource");
-                }
-
-                return toolsetCredentialsService.deleteToolSetCredentials(resourceDescriptor, toolSetSignOutRequest);
+                return toolsetCredentialsService.deleteToolSetCredentials(toolSetSignOutRequest);
             }))
             .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
             .onFailure(error -> respondError("Can't signOut from Toolset", error));
@@ -91,6 +81,15 @@ public class ToolSetCredentialsController {
         return Future.succeededFuture();
     }
 
+    //TODO: implement more granular checks (global for owners, etc.)
+    private void verifyAccess(ResourceDescriptor resourceDescriptor) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
+            accessService.lookupPermissions(Set.of(resourceDescriptor), context);
+
+        if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
+            throw new PermissionDeniedException("no read access to ToolSet resource");
+        }
+    }
 
     // TODO: Create dto for 'public' credentials information?
     private ToolSetCredentials clearToolsetCredentialsSecrets(ToolSetCredentials toolSetCredentials) {

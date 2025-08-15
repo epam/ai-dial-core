@@ -51,7 +51,7 @@ public class ToolSetData extends DeploymentData {
 
         data.setAllowedTools(toolSet.getAllowedTools());
         data.setTransport(toolSet.getTransport().toString());
-        data.setToolsetAuthSettings(ToolsetAuthSettingsData.toData(toolSet.getToolsetAuthSettings()));
+        data.setToolsetAuthSettings(ToolsetAuthSettingsData.toData(toolSet.getToolSetAuthSettings()));
 
         return data;
     }

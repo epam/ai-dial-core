@@ -36,6 +36,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.validation.ToolSetAuthSettingsValidator;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
@@ -176,7 +177,8 @@ public class AiDial {
 
             ToolsetAuthorizationServerClient toolsetAuthorizationServerClient = new ToolsetAuthorizationServerClient();
             ToolsetRegistrationService toolsetRegistrationService = new ToolsetRegistrationService(toolsetAuthorizationServerClient);
-            ToolsetAuthSettingsService toolsetAuthSettingsService = new ToolsetAuthSettingsService(toolsetRegistrationService);
+            ToolSetAuthSettingsValidator toolSetAuthSettingsValidator = new ToolSetAuthSettingsValidator();
+            ToolsetAuthSettingsService toolsetAuthSettingsService = new ToolsetAuthSettingsService(toolsetRegistrationService, toolSetAuthSettingsValidator);
 
             ToolSetCredentialsService toolsetCredentialsService = new ToolSetCredentialsService(toolSetService, toolsetAuthorizationServerClient);
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);

@@ -9,5 +9,6 @@ public class ToolSetSignInRequest {
     private CredentialsLevel credentialsLevel;
     private ToolsetAuthenticationType authenticationType;
     private String code;
+    private String scope;
     private String apiKey;
 }

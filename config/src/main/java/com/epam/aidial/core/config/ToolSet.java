@@ -27,7 +27,7 @@ public class ToolSet extends Deployment {
 
     // TODO: might be moved closer to other credentails code
     @JsonAlias({"authSettings", "auth_settings"})
-    private ToolSetAuthSettings toolsetAuthSettings;
+    private ToolSetAuthSettings toolSetAuthSettings;
 
     public enum Transport {
         HTTP, SSE;

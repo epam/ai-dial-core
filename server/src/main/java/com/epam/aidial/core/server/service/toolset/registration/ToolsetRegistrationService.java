@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service.toolset.registration;
 
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.server.data.toolset.registration.ToolsetAuthorizationServerMetadata;
 import com.epam.aidial.core.server.data.toolset.registration.ToolsetAuthorizationServerProtectedResourceMetadata;
 import com.epam.aidial.core.server.data.toolset.registration.ClientRegistrationRequest;
@@ -19,39 +20,27 @@ import java.util.List;
 public class ToolsetRegistrationService {
     private static final String AUTH_SERVER_ENDPOINT = "%s/.well-known/oauth-authorization-server";
     private static final String PROTECTED_RESOURCE_ENDPOINT = "%s/.well-known/oauth-protected-resource";
+    private static final String AUTHORIZE_ENDPOINT = "%s/authorize";
+    private static final String TOKEN_ENDPOINT = "%s/token";
 
     private final ToolsetAuthorizationServerClient toolsetAuthorizationServerClient;
 
-    public ToolsetRegistration registerToolset(ToolSet toolSet) {
+    public ToolsetRegistration createDynamicToolSetRegistration(ToolSet toolSet) {
         String toolSetName = toolSet.getName();
-        log.info("Start toolset registration: {}.", toolSetName);
-        String toolSetEndpoint = toolSet.getEndpoint();
-        String toolSetAuthServerEndpoint = null;
-        try {
-            String toolSetProtectedResourceEndpoint = String.format(PROTECTED_RESOURCE_ENDPOINT, toolSetEndpoint);
-            ToolsetAuthorizationServerProtectedResourceMetadata toolsetAuthorizationServerProtectedResourceMetadata =
-                toolsetAuthorizationServerClient.executeGet(toolSetProtectedResourceEndpoint, ToolsetAuthorizationServerProtectedResourceMetadata.class);
-            toolSetAuthServerEndpoint = toolsetAuthorizationServerProtectedResourceMetadata.getAuthorizationServers().get(0);
-            log.debug("ToolSetAuthServerEndpoint: {}", toolSetAuthServerEndpoint);
-        } catch (HttpException e) {
-            if (e.getStatus().equals(HttpStatus.NOT_FOUND)) {
-                toolSetAuthServerEndpoint = String.format(AUTH_SERVER_ENDPOINT, toolSetEndpoint);
-            }
-        }
-        ToolsetAuthorizationServerMetadata toolsetAuthorizationServerMetadata =
-            toolsetAuthorizationServerClient.executeGet(toolSetAuthServerEndpoint, ToolsetAuthorizationServerMetadata.class);
+        log.info("Start ToolSet: {} registration.", toolSetName);
 
-        String registrationEndpoint = toolsetAuthorizationServerMetadata.getRegistrationEndpoint();
-        log.debug("ToolSetRegistrationEndpoint: {}", registrationEndpoint);
+        String baseToolSetEndpoint = getBaseToolSetEndpoint(toolSet);
+        String toolSetAuthServerEndpoint = getToolSetAuthorizationServerEndpoint(baseToolSetEndpoint);
+        ToolsetAuthorizationServerMetadata toolsetAuthorizationServerMetadata = getToolsetAuthorizationServerMetadata(toolSetAuthServerEndpoint);
+        String toolSetRedirectUri = getToolSetRedirectUri(toolSet);
 
-        // TODO: where to get redirectUri?
         ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
-            .clientName(toolSet.getName())
-            .redirectUris(List.of("http://localhost:8080"))
+            .clientName(toolSetName)
+            .redirectUris(List.of(toolSetRedirectUri))
             .build();
 
         ClientRegistrationResponse clientRegistrationResponse = toolsetAuthorizationServerClient.executePost(
-            registrationEndpoint,
+            toolsetAuthorizationServerMetadata.getRegistrationEndpoint(),
             clientRegistrationRequest,
             ContentType.APPLICATION_JSON.toString(),
             ClientRegistrationResponse.class);
@@ -60,8 +49,51 @@ public class ToolsetRegistrationService {
             clientRegistrationResponse,
             toolsetAuthorizationServerMetadata);
 
-        log.info("Finished toolset {} registration.", toolSet.getName());
+        log.info("Finished ToolSet {} registration.", toolSetName);
         return toolsetRegistration;
+    }
+
+    public ToolsetRegistration createStaticToolSetRegistration(ToolSet toolSet) {
+        ToolSetAuthSettings toolSetAuthSettings = toolSet.getToolSetAuthSettings();
+        String baseToolSetEndpoint = getBaseToolSetEndpoint(toolSet);
+        String toolSetAuthServerEndpoint = getToolSetAuthorizationServerEndpoint(baseToolSetEndpoint);
+        String toolSetAuthorizationEndpoint;
+        String tokenEndpoint;
+
+        try {
+            ToolsetAuthorizationServerMetadata authorizationServerMetadata = getToolsetAuthorizationServerMetadata(toolSetAuthServerEndpoint);
+            toolSetAuthorizationEndpoint = authorizationServerMetadata.getAuthorizationEndpoint();
+            tokenEndpoint = authorizationServerMetadata.getTokenEndpoint();
+        } catch (HttpException e) {
+            log.error(e.getMessage(), e);
+            toolSetAuthorizationEndpoint = String.format(AUTHORIZE_ENDPOINT, baseToolSetEndpoint);
+            tokenEndpoint = String.format(TOKEN_ENDPOINT, baseToolSetEndpoint);
+        }
+
+        return ToolsetRegistration.builder()
+            .toolSetName(toolSet.getName())
+            .clientId(toolSetAuthSettings.getClientId())
+            .clientSecret(toolSetAuthSettings.getClientSecret())
+            .redirectUri(toolSetAuthSettings.getRedirectUri())
+            .authorizationEndpoint(toolSetAuthorizationEndpoint)
+            .tokenEndpoint(tokenEndpoint)
+            .build();
+    }
+
+    private String getBaseToolSetEndpoint(ToolSet toolSet) {
+        String toolSetEndpoint = toolSet.getEndpoint();
+        String baseToolSetEndpoint = toolSetEndpoint.endsWith("/mcp")
+                                     ? toolSetEndpoint.substring(0, toolSetEndpoint.lastIndexOf("/mcp"))
+                                     : toolSetEndpoint;
+        log.debug("ToolSet {} base endpoint: {}", toolSet.getName(), baseToolSetEndpoint);
+        return baseToolSetEndpoint;
+    }
+
+    private String getToolSetRedirectUri(ToolSet toolSet) {
+        ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
+        String toolSetRedirectUri = toolsetAuthSettings.getRedirectUri();
+        log.debug("ToolSet {} RedirectUri: {}", toolSet.getName(), toolSetRedirectUri);
+        return toolSetRedirectUri;
     }
 
     private ToolsetRegistration createToolsetRegistration(ClientRegistrationResponse clientRegistrationResponse,
@@ -74,6 +106,44 @@ public class ToolsetRegistrationService {
             .authorizationEndpoint(toolsetAuthorizationServerMetadata.getAuthorizationEndpoint())
             .tokenEndpoint(toolsetAuthorizationServerMetadata.getTokenEndpoint())
             .build();
+    }
+
+    private String getToolSetAuthorizationServerEndpoint(String baseToolSetEndpoint) {
+        String toolSetAuthServerEndpoint;
+        try {
+            ToolsetAuthorizationServerProtectedResourceMetadata toolsetAuthorizationServerProtectedResourceMetadata =
+                getToolsetAuthorizationServerProtectedResourceMetadata(baseToolSetEndpoint);
+
+            List<String> authorizationServers = toolsetAuthorizationServerProtectedResourceMetadata.getAuthorizationServers();
+            if (authorizationServers == null || authorizationServers.isEmpty()) {
+                throw new RuntimeException("No authorization servers defined for dynamic client registration.");
+            }
+            //TODO: should we get the first one?
+            toolSetAuthServerEndpoint = toolsetAuthorizationServerProtectedResourceMetadata.getAuthorizationServers().getFirst();
+        } catch (HttpException e) {
+            if (e.getStatus().equals(HttpStatus.NOT_FOUND)) {
+                toolSetAuthServerEndpoint = String.format(AUTH_SERVER_ENDPOINT, baseToolSetEndpoint);
+            } else {
+                log.error(e.getMessage(), e);
+                throw new RuntimeException("Error getting authorization servers for dynamic client registration.");
+            }
+        }
+        log.debug("ToolSetAuthServerEndpoint: {}", toolSetAuthServerEndpoint);
+        return toolSetAuthServerEndpoint;
+    }
+
+    private ToolsetAuthorizationServerMetadata getToolsetAuthorizationServerMetadata(String toolSetAuthServerEndpoint) {
+        ToolsetAuthorizationServerMetadata toolsetAuthorizationServerMetadata = toolsetAuthorizationServerClient.executeGet(toolSetAuthServerEndpoint, ToolsetAuthorizationServerMetadata.class);
+        log.debug("ToolsetAuthorizationServerMetadata: {}", toolsetAuthorizationServerMetadata);
+        return toolsetAuthorizationServerMetadata;
+    }
+
+    private ToolsetAuthorizationServerProtectedResourceMetadata getToolsetAuthorizationServerProtectedResourceMetadata(String baseToolSetEndpoint) {
+        String toolSetProtectedResourceEndpoint = String.format(PROTECTED_RESOURCE_ENDPOINT, baseToolSetEndpoint);
+        ToolsetAuthorizationServerProtectedResourceMetadata toolsetAuthorizationServerProtectedResourceMetadata =
+            toolsetAuthorizationServerClient.executeGet(toolSetProtectedResourceEndpoint, ToolsetAuthorizationServerProtectedResourceMetadata.class);
+        log.debug("ToolsetAuthorizationServerProtectedResourceMetadata: {}", toolsetAuthorizationServerProtectedResourceMetadata);
+        return toolsetAuthorizationServerProtectedResourceMetadata;
     }
 }
 

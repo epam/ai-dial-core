@@ -14,12 +14,14 @@ public class ToolSetCredentials {
     private String toolSetName;
     private CredentialsLevel credentialsLevel;
     private ToolsetAuthenticationType toolsetAuthenticationType;
+    //TODO: what to do with status?
     private ToolsetCredentialsStatus status;
 
-    // TODO: do we need apiKeyHeader in cred?
     private String apiKeyHeader;
     private String apiKey;
 
     private String accessToken;
     private String refreshToken;
+    private long createdAt;
+    private long expiresIn;
 }

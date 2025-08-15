@@ -42,7 +42,6 @@ public class ToolSetService {
     }
 
     public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet) {
-        toolSet.setName(resource.getUrl());
         String body = ProxyUtil.convertToString(toolSet);
         ResourceItemMetadata metadata = resourceService.putResource(resource, body, etag, author);
         return Pair.of(metadata, toolSet);

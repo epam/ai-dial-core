@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,6 +20,7 @@ import lombok.experimental.Accessors;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ToolSetAuthSettings {
 
+    @NotNull(message = "ToolsetAuthenticationType must be defined")
     @JsonAlias({"toolsetAuthenticationType", "toolset_authentication_type"})
     private ToolsetAuthenticationType toolsetAuthenticationType;
 
@@ -27,9 +29,6 @@ public class ToolSetAuthSettings {
 
     @JsonAlias({"clientSecret", "client_secret"})
     private String clientSecret;
-
-    @JsonAlias({"scope"})
-    private String scope;
 
     @JsonAlias({"authorizationEndpoint", "authorization_endpoint"})
     private String authorizationEndpoint;

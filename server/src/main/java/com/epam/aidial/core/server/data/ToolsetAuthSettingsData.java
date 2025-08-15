@@ -18,8 +18,8 @@ public class ToolsetAuthSettingsData {
 
     private ToolsetAuthenticationType toolsetAuthenticationType;
     private String clientId;
-    private String authorizationEndpoint;
     private String redirectUri;
+    private String authorizationEndpoint;
     private String apiKeyHeader;
 
     @JsonIgnore

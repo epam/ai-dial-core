@@ -207,7 +207,7 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             ToolSet toolSet = result.getValue();
-            ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolsetAuthSettings();
+            ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
             if (toolsetAuthSettings != null
                 && toolsetAuthSettings.getToolsetAuthenticationType().equals(ToolsetAuthenticationType.OAUTH)) {
                 toolsetAuthSettings.setClientSecret(null);
@@ -294,6 +294,9 @@ public class ResourceController extends AccessControlBaseController {
                 if (toolSet == null) {
                     throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
                 }
+                toolSet.setName(descriptor.getUrl());
+                //TODO: now it registers auth settings only on ToolSet create.
+                // should we apply registration on update as well?
                 if (resourceService.getResourceMetadata(descriptor) == null) {
                     toolsetAuthSettingsService.updateToolsetAuthSettings(toolSet);
                 }
