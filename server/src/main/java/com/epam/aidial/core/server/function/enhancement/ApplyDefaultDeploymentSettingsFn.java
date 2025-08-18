@@ -22,25 +22,39 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
 
     @Override
     public Boolean apply(ObjectNode tree) {
-        boolean applied = false;
-        if (shouldApply(context)) {
+        applyInterceptorDefaults(tree);
+        applyDeploymentDefaults(tree);
+        return true;
+    }
 
+    private void applyInterceptorDefaults(ObjectNode tree) {
+        ObjectNode customFields = (ObjectNode) tree.get("custom_fields");
+        if (customFields != null) {
+            customFields.remove("interceptor_configuration");
+        }
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Interceptor) {
+            applyDefaults(tree, deployment);
+        }
+    }
+
+    private void applyDeploymentDefaults(ObjectNode tree) {
+        if (shouldApply(context)) {
             Deployment deployment = context.getDeployment();
             if (deployment instanceof Interceptor) {
                 String deploymentId = context.getInitialDeployment();
                 deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             }
-            if (!deployment.getDefaults().isEmpty()) {
-                applied = true;
-            }
-            for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
-                String key = e.getKey();
-                JsonNode update = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
-                tree.set(key, copy(tree.get(key), update));
-            }
+            applyDefaults(tree, deployment);
         }
+    }
 
-        return applied;
+    private void applyDefaults(ObjectNode tree, Deployment deployment) {
+        for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
+            String key = e.getKey();
+            JsonNode update = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
+            tree.set(key, copy(tree.get(key), update));
+        }
     }
 
     /**

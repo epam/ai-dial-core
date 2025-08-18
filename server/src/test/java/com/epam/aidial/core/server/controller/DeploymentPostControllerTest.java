@@ -299,7 +299,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleRequestBody_NotOverrideModelName() {
+    public void testHandleRequestBody_NotOverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(upstreamRoute.next()).thenReturn(new Upstream());
@@ -331,7 +331,12 @@ public class DeploymentPostControllerTest {
 
         controller.handleRequestBody(requestBody);
 
-        assertEquals(requestBody, context.getRequestBody());
+        Buffer updatedBody = context.getRequestBody();
+        assertNotNull(updatedBody);
+
+        byte[] content = updatedBody.getBytes();
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
+        assertEquals(tree.get("model").asText(), "name");
 
     }
 

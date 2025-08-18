@@ -1,13 +1,16 @@
 package com.epam.aidial.core.server.function.enhancement;
 
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -20,6 +23,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -81,8 +86,19 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
         proxyApiKeyData.setInterceptorIndex(0);
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor1");
+        interceptor.setDefaults(Map.of("custom_fields", Map.of("interceptor_configuration", Map.of("foo", "bar"))));
+        when(context.getDeployment()).thenReturn(interceptor);
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
-        when(context.getDeployment()).thenReturn(model);
+
+        when(context.getDeployment()).thenReturn(interceptor);
+
+        when(context.getInitialDeployment()).thenReturn("model");
+        DeploymentService deploymentService = mock(DeploymentService.class);
+        when(proxy.getDeploymentService()).thenReturn(deploymentService);
+        when(deploymentService.findDeployment(eq(context), eq("model"))).thenReturn(model);
+
         JsonNode result = ProxyUtil.MAPPER.readTree("{}");
 
         assertTrue(fn.apply((ObjectNode) result));
@@ -90,6 +106,8 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         assertEquals(0.45, result.get("key3").asDouble());
         assertEquals("str", result.get("key4").asText());
         assertTrue(result.get("key1").asBoolean());
+        ObjectNode interceptorConfig = (ObjectNode) result.get("custom_fields").get("interceptor_configuration");
+        assertEquals("bar", interceptorConfig.get("foo").asText());
     }
 
     @Test
@@ -125,10 +143,23 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         proxyApiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
         proxyApiKeyData.setInterceptorIndex(1);
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
-        JsonNode result = ProxyUtil.MAPPER.readTree("{}");
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor2");
+        interceptor.setDefaults(Map.of("custom_fields", Map.of("interceptor_configuration", Map.of("foo", "bar"))));
+        when(context.getDeployment()).thenReturn(interceptor);
+        JsonNode result = ProxyUtil.MAPPER.readTree("""
+                {
+                 "custom_fields": {
+                   "interceptor_configuration": {
+                     "x": "val"
+                   }
+                 }
+                }
+                """);
 
-        assertFalse(fn.apply((ObjectNode) result));
-        assertTrue(result.isEmpty());
+        assertTrue(fn.apply((ObjectNode) result));
+        assertEquals("""
+                {"custom_fields":{"interceptor_configuration":{"foo":"bar"}}}""", result.toString());
     }
 
     @Test
@@ -137,6 +168,8 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         Map<String, Object> defaults = Map.of("key1", true, "key2", 123, "key3", 0.45, "key4", "str");
         model.setDefaults(defaults);
         model.setName("model");
+        Interceptor interceptor = new Interceptor();
+        interceptor.setDefaults(Map.of("custom_fields", Map.of("interceptor_configuration", Map.of("foo", "bar"))));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setInterceptors(List.of("interceptor1"));
         apiKeyData.setInterceptorIndex(0);
@@ -146,9 +179,18 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
         when(context.getInitialDeployment()).thenReturn("model");
         when(context.getDeployment()).thenReturn(model);
-        JsonNode result = ProxyUtil.MAPPER.readTree("{}");
+        JsonNode result = ProxyUtil.MAPPER.readTree("""
+                {
+                 "custom_fields": {
+                   "interceptor_configuration": {
+                     "x": "val"
+                   }
+                 }
+                }
+                """);
 
-        assertFalse(fn.apply((ObjectNode) result));
-        assertTrue(result.isEmpty());
+        assertTrue(fn.apply((ObjectNode) result));
+        assertEquals("""
+                {"custom_fields":{}}""", result.toString());
     }
 }
