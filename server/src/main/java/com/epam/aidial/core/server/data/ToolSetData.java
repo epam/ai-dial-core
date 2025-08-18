@@ -21,7 +21,6 @@ public class ToolSetData extends DeploymentData {
     {
         setObject("toolset");
         setScaleSettings(null);
-        setFeatures(null);
     }
 
     @JsonIgnore
@@ -36,6 +35,7 @@ public class ToolSetData extends DeploymentData {
         data.setDescription(toolSet.getDescription());
         data.setDescriptionKeywords(toolSet.getDescriptionKeywords());
         data.setReference(toolSet.getReference());
+        data.setFeatures(FeaturesData.createFeatures(toolSet.getFeatures()));
 
         data.setMaxRetryAttempts(toolSet.getMaxRetryAttempts());
 
