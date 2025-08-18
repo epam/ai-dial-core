@@ -111,6 +111,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(request.method()).thenReturn(HttpMethod.POST);
 
         when(response.getStatusCode()).thenReturn(200);
+        when(response.ended()).thenReturn(true);
 
         when(proxyContext.getProject()).thenReturn("test-project");
         when(proxyContext.getUserSub()).thenReturn("test-user");
@@ -215,6 +216,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(request.method()).thenReturn(HttpMethod.GET);
 
         when(response.getStatusCode()).thenReturn(502);
+        when(response.ended()).thenReturn(true);
 
         when(proxyContext.getProject()).thenReturn("proxy-project");
         when(proxyContext.getUserSub()).thenReturn("proxy-user");

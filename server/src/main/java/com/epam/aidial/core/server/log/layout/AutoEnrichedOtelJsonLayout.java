@@ -93,7 +93,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                     attributes.put("request.method", proxyContext.getRequest().method().name());
                     attributes.put("request.uri", proxyContext.getRequest().uri());
                 }
-                if (proxyContext.getResponse() != null) {
+                if (proxyContext.getResponse() != null && proxyContext.getResponse().ended()) {
                     attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
                     attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
                 }
