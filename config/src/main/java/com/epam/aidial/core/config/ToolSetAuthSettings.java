@@ -21,8 +21,8 @@ import lombok.experimental.Accessors;
 public class ToolSetAuthSettings {
 
     @NotNull(message = "ToolsetAuthenticationType must be defined")
-    @JsonAlias({"toolsetAuthenticationType", "toolset_authentication_type"})
-    private ToolsetAuthenticationType toolsetAuthenticationType;
+    @JsonAlias({"authenticationType", "authentication_type"})
+    private AuthenticationType authenticationType;
 
     @JsonAlias({"clientId", "client_id"})
     private String clientId;

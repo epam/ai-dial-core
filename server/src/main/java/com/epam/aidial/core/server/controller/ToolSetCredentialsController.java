@@ -47,7 +47,7 @@ public class ToolSetCredentialsController {
             .compose(body -> {
                 ToolSetSignInRequest toolSetSignInRequest = ProxyUtil.convertToObject(body, ToolSetSignInRequest.class);
                 ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
-                    toolSetSignInRequest.getToolSetUrl(), encryptionService);
+                    toolSetSignInRequest.getToolsetUrl(), encryptionService);
 
                 verifyAccess(resourceDescriptor);
 
@@ -69,7 +69,7 @@ public class ToolSetCredentialsController {
             .compose(body -> vertx.executeBlocking(() -> {
                 ToolSetSignOutRequest toolSetSignOutRequest = ProxyUtil.convertToObject(body, ToolSetSignOutRequest.class);
                 ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
-                    toolSetSignOutRequest.getToolSetUrl(), encryptionService);
+                    toolSetSignOutRequest.getToolsetUrl(), encryptionService);
 
                 verifyAccess(resourceDescriptor);
 
@@ -95,7 +95,7 @@ public class ToolSetCredentialsController {
     private ToolSetCredentials clearToolsetCredentialsSecrets(ToolSetCredentials toolSetCredentials) {
         return ToolSetCredentials.builder()
             .toolSetName(toolSetCredentials.getToolSetName())
-            .toolsetAuthenticationType(toolSetCredentials.getToolsetAuthenticationType())
+            .authenticationType(toolSetCredentials.getAuthenticationType())
             .credentialsLevel(toolSetCredentials.getCredentialsLevel())
             .status(toolSetCredentials.getStatus())
             .build();

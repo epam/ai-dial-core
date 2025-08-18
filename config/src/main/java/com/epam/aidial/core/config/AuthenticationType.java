@@ -1,6 +1,6 @@
 package com.epam.aidial.core.config;
 
-public enum ToolsetAuthenticationType {
+public enum AuthenticationType {
 
     OAUTH,
     API_KEY,

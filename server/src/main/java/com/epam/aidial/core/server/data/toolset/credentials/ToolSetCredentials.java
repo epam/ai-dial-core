@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.data.toolset.credentials;
 
 import com.epam.aidial.core.config.CredentialsLevel;
-import com.epam.aidial.core.config.ToolsetAuthenticationType;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ToolsetCredentialsStatus;
 
 import lombok.Builder;
@@ -13,7 +13,7 @@ public class ToolSetCredentials {
 
     private String toolSetName;
     private CredentialsLevel credentialsLevel;
-    private ToolsetAuthenticationType toolsetAuthenticationType;
+    private AuthenticationType authenticationType;
     //TODO: what to do with status?
     private ToolsetCredentialsStatus status;
 

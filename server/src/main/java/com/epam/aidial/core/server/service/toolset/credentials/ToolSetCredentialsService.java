@@ -4,7 +4,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.ToolSetSignInRequest;
 import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.config.ToolSetSignOutRequest;
-import com.epam.aidial.core.config.ToolsetAuthenticationType;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ToolsetCredentialsStatus;
 import com.epam.aidial.core.server.data.toolset.credentials.TokenRequest;
 import com.epam.aidial.core.server.data.toolset.credentials.TokenResponse;
@@ -38,15 +38,15 @@ public class ToolSetCredentialsService {
         ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
 
         ToolSetCredentials toolSetCredentials;
-        if (toolSetSignInRequest.getAuthenticationType() == ToolsetAuthenticationType.API_KEY) {
+        if (toolSetSignInRequest.getAuthenticationType() == AuthenticationType.API_KEY) {
             toolSetCredentials = createApiKeyToolSetCredentials(toolSetName, toolsetAuthSettings.getApiKeyHeader(), toolSetSignInRequest);
         }
 
-        else if (toolSetSignInRequest.getAuthenticationType() == ToolsetAuthenticationType.OAUTH) {
+        else if (toolSetSignInRequest.getAuthenticationType() == AuthenticationType.OAUTH) {
             toolSetCredentials = createOauthToolSetCredentials(toolSetName, toolsetAuthSettings, toolSetSignInRequest);
         }
 
-        else if (toolSetSignInRequest.getAuthenticationType() == ToolsetAuthenticationType.NONE) {
+        else if (toolSetSignInRequest.getAuthenticationType() == AuthenticationType.NONE) {
             toolSetCredentials = createNoneAuthToolSetCredentials(toolSetName, toolSetSignInRequest);
         }
         else {
@@ -67,7 +67,7 @@ public class ToolSetCredentialsService {
         return ToolSetCredentials.builder()
             .toolSetName(toolSetName)
             .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
-            .toolsetAuthenticationType(toolSetSignInRequest.getAuthenticationType())
+            .authenticationType(toolSetSignInRequest.getAuthenticationType())
             .apiKeyHeader(apiKeyHeader)
             .apiKey(toolSetSignInRequest.getApiKey())
             .createdAt(System.currentTimeMillis())
@@ -87,7 +87,7 @@ public class ToolSetCredentialsService {
         return ToolSetCredentials.builder()
             .toolSetName(toolSetName)
             .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
-            .toolsetAuthenticationType(toolSetSignInRequest.getAuthenticationType())
+            .authenticationType(toolSetSignInRequest.getAuthenticationType())
             .accessToken(tokenResponse.getAccessToken())
             .refreshToken(tokenResponse.getRefreshToken())
             .expiresIn(tokenResponse.getExpiresIn())
@@ -128,7 +128,7 @@ public class ToolSetCredentialsService {
         return ToolSetCredentials.builder()
             .toolSetName(toolSetName)
             .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
-            .toolsetAuthenticationType(toolSetSignInRequest.getAuthenticationType())
+            .authenticationType(toolSetSignInRequest.getAuthenticationType())
             .createdAt(System.currentTimeMillis())
             .status(ToolsetCredentialsStatus.SIGNED_IN)
             .build();
@@ -143,7 +143,7 @@ public class ToolSetCredentialsService {
     }
 
     public boolean deleteToolSetCredentials(ToolSetSignOutRequest toolSetSignOutRequest) {
-        String toolSetName = toolSetSignOutRequest.getToolSetUrl();
+        String toolSetName = toolSetSignOutRequest.getToolsetUrl();
 
         if (!toolSetCredentialsMap.containsKey(toolSetName)) {
             throw new ResourceNotFoundException(String.format("Credentials for ToolSet %s not found", toolSetName));

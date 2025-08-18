@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class ToolSetSignOutRequest {
 
-    private String toolSetUrl;
+    private String toolsetUrl;
     private CredentialsLevel credentialsLevel;
-    private ToolsetAuthenticationType authenticationType;
+    private AuthenticationType authenticationType;
 }

@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.config.ToolsetAuthenticationType;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -142,9 +142,9 @@ public class ToolSetProxyController implements Controller {
     private void addToolsetCredentials(HttpClientRequest proxyRequest) {
         String toolSetName = context.getDeployment().getName();
         ToolSetCredentials toolSetCredentials = toolSetCredentialsService.getToolSetCredentials(toolSetName);
-        if (ToolsetAuthenticationType.OAUTH.equals(toolSetCredentials.getToolsetAuthenticationType())) {
+        if (AuthenticationType.OAUTH.equals(toolSetCredentials.getAuthenticationType())) {
             proxyRequest.putHeader("Authorization", "Bearer " + toolSetCredentials.getAccessToken());
-        } else if (ToolsetAuthenticationType.API_KEY.equals(toolSetCredentials.getToolsetAuthenticationType())) {
+        } else if (AuthenticationType.API_KEY.equals(toolSetCredentials.getAuthenticationType())) {
             proxyRequest.putHeader(toolSetCredentials.getApiKeyHeader(), toolSetCredentials.getApiKey());
         }
     }

@@ -4,7 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.ToolSetAuthSettings;
-import com.epam.aidial.core.config.ToolsetAuthenticationType;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -209,7 +209,7 @@ public class ResourceController extends AccessControlBaseController {
             ToolSet toolSet = result.getValue();
             ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
             if (toolsetAuthSettings != null
-                && toolsetAuthSettings.getToolsetAuthenticationType().equals(ToolsetAuthenticationType.OAUTH)) {
+                && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
                 toolsetAuthSettings.setClientSecret(null);
                 toolsetAuthSettings.setTokenEndpoint(null);
             }

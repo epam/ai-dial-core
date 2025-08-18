@@ -5,9 +5,9 @@ import lombok.Data;
 @Data
 public class ToolSetSignInRequest {
 
-    private String toolSetUrl;
+    private String toolsetUrl;
     private CredentialsLevel credentialsLevel;
-    private ToolsetAuthenticationType authenticationType;
+    private AuthenticationType authenticationType;
     private String code;
     private String scope;
     private String apiKey;

@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.ToolSetAuthSettings;
-import com.epam.aidial.core.config.ToolsetAuthenticationType;
+import com.epam.aidial.core.config.AuthenticationType;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -16,7 +16,7 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ToolsetAuthSettingsData {
 
-    private ToolsetAuthenticationType toolsetAuthenticationType;
+    private AuthenticationType authenticationType;
     private String clientId;
     private String redirectUri;
     private String authorizationEndpoint;
@@ -25,7 +25,7 @@ public class ToolsetAuthSettingsData {
     @JsonIgnore
     public static ToolsetAuthSettingsData toData(ToolSetAuthSettings toolsetAuthSettings) {
         return ToolsetAuthSettingsData.builder()
-            .toolsetAuthenticationType(toolsetAuthSettings.getToolsetAuthenticationType())
+            .authenticationType(toolsetAuthSettings.getAuthenticationType())
             .clientId(toolsetAuthSettings.getClientId())
             .authorizationEndpoint(toolsetAuthSettings.getAuthorizationEndpoint())
             .redirectUri(toolsetAuthSettings.getRedirectUri())

@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.service.toolset.registration;
 
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.ToolSetAuthSettings;
-import com.epam.aidial.core.config.ToolsetAuthenticationType;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.server.data.toolset.registration.ToolsetRegistration;
 import com.epam.aidial.core.server.validation.ToolSetAuthSettingsValidator;
 
@@ -27,7 +27,7 @@ public class ToolsetAuthSettingsService {
                                                   : toolsetRegistrationService.createStaticToolSetRegistration(toolSet);
 
         ToolSetAuthSettings updatedToolSetAuthSettings = ToolSetAuthSettings.builder()
-            .toolsetAuthenticationType(ToolsetAuthenticationType.OAUTH)
+            .authenticationType(AuthenticationType.OAUTH)
             .clientId(toolsetRegistration.getClientId())
             .clientSecret(toolsetRegistration.getClientSecret())
             .authorizationEndpoint(toolsetRegistration.getAuthorizationEndpoint())
@@ -39,7 +39,7 @@ public class ToolsetAuthSettingsService {
     }
 
     private boolean shouldRegisterToolsetDynamically(ToolSetAuthSettings toolsetAuthSettings) {
-        return ToolsetAuthenticationType.OAUTH.equals(toolsetAuthSettings.getToolsetAuthenticationType())
+        return AuthenticationType.OAUTH.equals(toolsetAuthSettings.getAuthenticationType())
             && toolsetAuthSettings.getClientId() == null
             && toolsetAuthSettings.getClientSecret() == null;
     }
