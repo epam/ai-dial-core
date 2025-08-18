@@ -6,7 +6,9 @@ import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import com.epam.aidial.core.server.controller.ControllerTemplate;
 import com.epam.aidial.core.server.controller.HealthCheckController;
+import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessService;
@@ -27,6 +29,7 @@ import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -56,7 +59,10 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Getter
@@ -65,6 +71,9 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+
+    public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_PROXY.getPattern();
+    public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
 
     // All new headers should start with X-DIAL- while existing may stay untouched
 
@@ -112,6 +121,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConsentService consentService;
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
+    private final WellKnownResourceMetadataService resourceMetadataService;
+    private final WellKnownResourceMetadataController resourceMetadataController;
     private final ToolSetService toolSetService;
     private final ApplicationSchemaService applicationSchemaService;
     private final AsyncTaskExecutor taskExecutor;
@@ -130,16 +141,19 @@ public class Proxy implements Handler<HttpServerRequest> {
         if (!request.response().ended()) {
             HttpStatus status;
             String message;
+            Map<String, String> headers;
 
             if (error instanceof HttpException e) {
                 status = e.getStatus();
                 message = e.getMessage();
+                headers = e.getHeaders();
             } else {
                 status = HttpStatus.INTERNAL_SERVER_ERROR;
                 message = null;
+                headers = Map.of();
             }
 
-            respond(request, status, message);
+            respond(request, status, message, headers);
 
             if (!(error instanceof HttpException)) {
                 log.error("Can't handle request", error);
@@ -197,15 +211,19 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
+        if (request.method() == HttpMethod.GET && TOOLSET_PROXY_METADATA_PATTERN.matcher(request.path()).matches()) {
+            resourceMetadataController.handle(request);
+            return;
+        }
+
         Config config = configStore.get();
         SpanContext spanContext = Span.current().getSpanContext();
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
-        String traceFlags = spanContext.getTraceFlags().asHex();
 
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId, traceFlags))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
@@ -219,6 +237,12 @@ public class Proxy implements Handler<HttpServerRequest> {
      *     <li>Both API key and access token are provided</li>
      *     <li>Just API key is provided</li>
      *     <li>Just access token is provided</li>
+     *     </ol>
+     *     The 1st use case has two sub-cases:
+     *     <ol>
+     *     <li>Path matches {@link Proxy#TOOLSET_PROXY_PATTERN} and request method is GET or POST.
+     *     The response includes {@code WWW-Authenticate} header with resource metadata</li>
+     *     <li>Other cases. The request is rejected with 401</li>
      *     </ol>
      *     The 2nd use case has two sub-cases:
      *     <ol>
@@ -236,7 +260,13 @@ public class Proxy implements Handler<HttpServerRequest> {
         log.debug("Authorization header: {}", authorization);
 
         if (apiKey == null && authorization == null) {
-            return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided"));
+            Map<String, String> headers = Map.of();
+            if ((request.method() == HttpMethod.GET || request.method() == HttpMethod.POST) && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
+                headers = resourceMetadataService.resolveResourceMetadataPath(request)
+                        .map(path -> Map.of("WWW-Authenticate", "Bearer resource_metadata=\"" + path + "\""))
+                        .orElse(Map.of());
+            }
+            return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "At least API-KEY or Authorization header must be provided", headers));
         }
 
         if (apiKey != null && authorization == null) {
@@ -318,5 +348,10 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     private void respond(HttpServerRequest request, HttpStatus status, String body) {
         request.response().setStatusCode(status.getCode()).end(body == null ? "" : body);
+    }
+
+    private void respond(HttpServerRequest request, HttpStatus status, String body, Map<String, String> headers) {
+        headers.forEach(request.response()::putHeader);
+        respond(request, status, body);
     }
 }

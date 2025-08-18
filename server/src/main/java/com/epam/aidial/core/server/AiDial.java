@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.controller.HealthCheckController;
+import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -27,6 +28,7 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
+import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
@@ -172,12 +174,16 @@ public class AiDial {
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
+            WellKnownResourceMetadataService resourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
+            WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(resourceMetadataService);
+
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, toolSetService, applicationSchemaService, taskExecutor, version());
+                    consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
+                    toolSetService, applicationSchemaService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
