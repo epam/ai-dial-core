@@ -113,20 +113,6 @@ This method indicates that no authentication is required for the ToolSet.
 
 ---
 
-#### **Response Body**
-```json
-{
-    "status": "success",
-    "toolset_url": "toolsets/{bucket}/{path}"
-}
-```
-
-| **Field**   | **Type**   | **Description**                             |
-|-------------|------------|---------------------------------------------|
-| `status`    | `string`   | Operation status: will always return `success`. |
-| `toolset_url`   | `string` | The unique identifier for the created ToolSet. |
-
----
 
 ### **1.2 Get ToolSet (GET)**
 
@@ -205,15 +191,6 @@ POST /v1/toolsets/{bucket}/{path}/signin
 
 ---
 
-#### **Response Body**
-```json
-{
-    "status": "success",
-    "toolset_url": "toolsets/{bucket}/{path}"
-}
-```
-
----
 
 ### **2.2 ToolSet Signout (POST)**
 
@@ -237,19 +214,10 @@ POST /v1/toolsets/{bucket}/{path}/signout
 
 ---
 
-#### **Response Body**
-```json
-{
-    "status": "success",
-    "toolset_url": "toolsets/{bucket}/{path}"
-}
-```
-
----
 
 ### **2.3 Signin-Status (POST)**
 
-This operation allows querying the login status for a specific **credentials_level** and **toolset_url**.
+This operation allows querying the signin status for a specific **credentials_level** and **toolset_url**.
 
 ---
 
@@ -269,21 +237,21 @@ POST /v1/toolsets/{bucket}/{path}/signin-status
 ---
 
 #### **Response Body**
-- **Logged In**
+- **Signed In**
 ```json
 {
     "toolset_url": "toolsets/{bucket}/{path}",
     "credentials_level": "GLOBAL",
-    "status": "logged_in"
+    "status": "signed_in"
 }
 ```
 
-- **Logged Out**
+- **Signed Out**
 ```json
 {
     "toolset_url": "toolsets/{bucket}/{path}",
     "credentials_level": "APP",
-    "status": "logged_out"
+    "status": "signed_out"
 }
 ```
 
@@ -291,7 +259,7 @@ POST /v1/toolsets/{bucket}/{path}/signin-status
 |-----------------------|------------|---------------------------------------------------------------------------------|
 | `toolset_url`         | `string`   | The name or path identifier for the ToolSet.                                    |
 | `credentials_level`   | `string`   | Specifies the credentials scope checked.                                        |
-| `status`              | `string`   | Indicates whether the ToolSet credentials are valid (`logged_in`) or invalid (`logged_out`). |
+| `status`              | `string`   | Indicates whether the ToolSet credentials are valid (`signed_in`) or invalid (`signed_out`). |
 
 ---
 
