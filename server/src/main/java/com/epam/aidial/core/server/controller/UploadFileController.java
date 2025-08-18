@@ -49,7 +49,7 @@ public class UploadFileController extends AccessControlBaseController {
                                 resource, etag, contentType, author);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
-                                    log.info("Uploading file takes: {}", System.currentTimeMillis() - start);
+                                    log.info("Uploading file {} takes: {}", resource.getUrl(), System.currentTimeMillis() - start);
                                     FileMetadata metadata = writeStream.getMetadata();
                                     context.putHeader(HttpHeaders.ETAG, metadata.getEtag())
                                             .exposeHeaders()

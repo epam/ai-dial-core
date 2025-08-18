@@ -505,7 +505,7 @@ public class ResourceService implements AutoCloseable {
             // override user metadata with the generated etag
             long start = System.currentTimeMillis();
             blobStore.copy(blobKey, blobKey, userMetadata);
-            log.info("Copy blob to itself takes: {}", System.currentTimeMillis() - start);
+            log.info("Copy blob {} to itself takes: {}", descriptor.getUrl(), System.currentTimeMillis() - start);
 
 
             ResourceEvent.Action action = metadata == null
