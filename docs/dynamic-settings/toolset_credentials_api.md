@@ -12,7 +12,7 @@ This document outlines updates for the **ToolSet API** that include modification
 | **Get ToolSet**       | GET      | Added `auth_settings` to the response body to expose authentication-related details.                                                                          |
 | **ToolSet Signin**    | POST     | New API introduced to handle ToolSet authentication. Supports **OAUTH** and **API_KEY** authentication types.                                                 |
 | **ToolSet Signout**   | POST     | New API introduced to handle ToolSet logout. Supports **OAUTH** and **API_KEY** authentication types.                                                         |
-| **Signin-Status**     | POST     | New operation added under `/v1/toolsets/{bucket}/{path}`. Allows checking login status (`signed_in` or `signed_out`) for specific credentials levels.         |
+| **Signin-Status**     | POST     | New operation added under `/v1/ops/toolset/{operation}`. Allows checking login status (`signed_in`, `signed_out` or failed) for specific credentials levels.  |
 
 ---
 
