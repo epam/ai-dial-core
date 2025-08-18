@@ -78,8 +78,7 @@ public class DeploymentFeatureController {
         proxy.getTaskExecutor().submit(() -> {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
             return null;
-        })
-                .onSuccess(ignore -> sendRequest(endpoint)).onFailure(this::handleError);
+        }).onSuccess(ignore -> sendRequest(endpoint)).onFailure(this::handleError);
 
     }
 
