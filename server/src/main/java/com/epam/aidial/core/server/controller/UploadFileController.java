@@ -29,6 +29,7 @@ public class UploadFileController extends AccessControlBaseController {
 
     @Override
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
+        long start = System.currentTimeMillis();
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");
         }
@@ -48,6 +49,7 @@ public class UploadFileController extends AccessControlBaseController {
                                 resource, etag, contentType, author);
                         pipe.to(writeStream)
                                 .onSuccess(success -> {
+                                    log.info("Uploading file takes: {}", System.currentTimeMillis() - start);
                                     FileMetadata metadata = writeStream.getMetadata();
                                     context.putHeader(HttpHeaders.ETAG, metadata.getEtag())
                                             .exposeHeaders()
