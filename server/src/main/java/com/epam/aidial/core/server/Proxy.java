@@ -60,7 +60,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -223,7 +222,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId, "01"))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
