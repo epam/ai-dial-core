@@ -84,22 +84,18 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
     }
 
     private void enrichAttributesFromContext(ILoggingEvent event, Map<String, Object> attributes) {
-        try {
-            ProxyContext proxyContext = ContextManager.getProxyContext();
-            if (proxyContext != null) {
-                attributes.put("user.project", proxyContext.getProject());
-                attributes.put("user.sub", proxyContext.getUserSub());
-                if (proxyContext.getRequest() != null) {
-                    attributes.put("request.method", proxyContext.getRequest().method().name());
-                    attributes.put("request.uri", proxyContext.getRequest().uri());
-                }
-                if (proxyContext.getResponse() != null && proxyContext.getResponse().ended()) {
-                    attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
-                    attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
-                }
+        ProxyContext proxyContext = ContextManager.getProxyContext();
+        if (proxyContext != null) {
+            attributes.put("user.project", proxyContext.getProject());
+            attributes.put("user.sub", proxyContext.getUserSub());
+            if (proxyContext.getRequest() != null) {
+                attributes.put("request.method", proxyContext.getRequest().method().name());
+                attributes.put("request.uri", proxyContext.getRequest().uri());
             }
-        } catch (Exception e) {
-            // Ignore
+            if (proxyContext.getResponse().ended()) {
+                attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
+                attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
+            }
         }
     }
 
@@ -118,18 +114,14 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
     }
 
     private void enrichOpenTelemetrySpan(ILoggingEvent event, Map<String, Object> attributes) {
-        try {
-            Span currentSpan = Span.current();
-            if (!currentSpan.isRecording()) {
-                return;
-            }
+        Span currentSpan = Span.current();
+        if (!currentSpan.isRecording()) {
+            return;
+        }
 
-            // Set span attributes from already collected data
-            for (Map.Entry<String, Object> entry : attributes.entrySet()) {
-                currentSpan.setAttribute(entry.getKey(), String.valueOf(entry.getValue()));
-            }
-        } catch (Exception e) {
-            // Ignore
+        // Set span attributes from already collected data
+        for (Map.Entry<String, Object> entry : attributes.entrySet()) {
+            currentSpan.setAttribute(entry.getKey(), String.valueOf(entry.getValue()));
         }
     }
 

@@ -55,6 +55,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         
         // Mock Span
         spanMock = mockStatic(Span.class);
+        Span mockSpan = mock(Span.class);
+        when(mockSpan.isRecording()).thenReturn(false);
+        spanMock.when(Span::current).thenReturn(mockSpan);
     }
     
     @AfterEach
@@ -150,12 +153,15 @@ class AutoEnrichedOtelJsonLayoutTest {
         // Setup ProxyContext
         ProxyContext proxyContext = mock(ProxyContext.class);
         HttpServerRequest request = mock(HttpServerRequest.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
         when(request.uri()).thenReturn("/v1/chat/completions");
         when(request.method()).thenReturn(HttpMethod.POST);
+        when(response.ended()).thenReturn(false); // Response not ended yet
         
         when(proxyContext.getProject()).thenReturn("proxy-project");
         when(proxyContext.getUserSub()).thenReturn("proxy-user");
         when(proxyContext.getRequest()).thenReturn(request);
+        when(proxyContext.getResponse()).thenReturn(response);
         
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
 
@@ -251,9 +257,12 @@ class AutoEnrichedOtelJsonLayoutTest {
     void shouldIncludeTraceContextFromProxyContext() throws Exception {
         // Setup ProxyContext with trace info
         ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
         when(proxyContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
         when(proxyContext.getSpanId()).thenReturn("8a46c76f1554b00a");
         when(proxyContext.getTraceFlags()).thenReturn("01");
+        when(proxyContext.getResponse()).thenReturn(response);
         
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
 
