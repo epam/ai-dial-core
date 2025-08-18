@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -26,6 +27,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -36,11 +39,11 @@ import org.mockito.quality.Strictness;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
-import static com.epam.aidial.core.server.Proxy.HEALTH_CHECK_PATH;
 import static com.epam.aidial.core.storage.blobstore.Storage.DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.HTTP_VERSION_NOT_SUPPORTED;
@@ -78,6 +81,8 @@ public class ProxyTest {
     private BlobStorage storage;
     @Mock
     private ResourceService resourceService;
+    @Mock
+    private WellKnownResourceMetadataService resourceMetadataService;
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private HttpServerRequest request;
@@ -159,6 +164,22 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(UNAUTHORIZED.getCode());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"GET", "POST"})
+    public void testHandle_MissingApiKeyAndToken_PathMatchesToolsetProxyPattern(String method) {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.valueOf(method));
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.path()).thenReturn("/v1/toolset/test/mcp");
+        when(resourceMetadataService.resolveResourceMetadataPath(request)).thenReturn(Optional.of("example.com"));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).putHeader("WWW-Authenticate", "Bearer resource_metadata=\"example.com\"");
     }
 
     @Test

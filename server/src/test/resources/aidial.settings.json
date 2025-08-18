@@ -68,5 +68,11 @@
     "admin": {
       "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
     }
+  },
+  "toolsets": {
+    "security": {
+      "authorizationServers": "https://example.com",
+      "resourceHost": "localhost"
+    }
   }
 }
