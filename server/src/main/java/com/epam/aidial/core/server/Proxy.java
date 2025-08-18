@@ -231,6 +231,12 @@ public class Proxy implements Handler<HttpServerRequest> {
      *     <li>Just API key is provided</li>
      *     <li>Just access token is provided</li>
      *     </ol>
+     *     The 1st use case has two sub-cases:
+     *     <ol>
+     *     <li>Path matches {@link Proxy#TOOLSET_PROXY_PATTERN} and request method is GET or POST.
+     *     The response includes {@code WWW-Authenticate} header with resource metadata</li>
+     *     <li>Other cases. The request is rejected with 401</li>
+     *     </ol>
      *     The 2nd use case has two sub-cases:
      *     <ol>
      *     <li>API key is equal to access token. The credentials could be either access token or API key</li>

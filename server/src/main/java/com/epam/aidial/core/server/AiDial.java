@@ -174,7 +174,7 @@ public class AiDial {
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
-            WellKnownResourceMetadataService resourceMetadataService = new WellKnownResourceMetadataService(settings("toolset"));
+            WellKnownResourceMetadataService resourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(resourceMetadataService);
 
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
