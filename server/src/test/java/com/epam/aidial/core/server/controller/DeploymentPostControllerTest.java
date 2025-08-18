@@ -336,7 +336,7 @@ public class DeploymentPostControllerTest {
 
         byte[] content = updatedBody.getBytes();
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
-        assertEquals(tree.get("model").asText(), "name");
+        assertEquals("name", tree.get("model").asText());
 
     }
 
