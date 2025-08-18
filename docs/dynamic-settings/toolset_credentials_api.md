@@ -157,109 +157,186 @@ The **Get ToolSet** API retrieves the details of a ToolSet. The new addition to 
 
 ---
 
+
 ## **2. New APIs**
 
+The **ToolSet API** introduces new authentication-related operations under a new **path format**:
+```
+POST /v1/ops/toolset/{operation}
+```
+
+### **Operation Format**
+| **Operation**   | **Description**                                                                                                                                                    |
+|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `signin`        | Handles user authentication for the specified ToolSet.                                                                                                             |
+| `signout`       | Explicitly logs out the user by removing stored credentials for the ToolSet.                                                                                        |
+| `signin-status` | Retrieves the login status of a ToolSet (e.g., `signed_in`, `signed_out`, `failed`).                                                                               |
+
 ---
 
-### **2.1 ToolSet Signin (POST)**
-
-This API enables users to authenticate and sign in to the ToolSet.
-
----
+### **2.1 ToolSet Signin**
 
 #### **Endpoint**
+
 ```
-POST /v1/toolsets/{bucket}/{path}/signin
+POST /v1/ops/toolset/signin
 ```
 
+#### **Description**
+
+Authenticates the user for a specified ToolSet using OAUTH or API_KEY.
+
+---
+
 #### **Request Body**
+
+##### **OAUTH**
 ```json
 {
-    "toolset_url": "toolsets/{bucket}/{path}",
+    "url": "toolsets/{bucket}/{path}",
     "credentials_level": "GLOBAL",
     "authentication_type": "OAUTH",
-    "code": "your-auth-code"
+    "code": "auth-code"
 }
 ```
 
-| **Field**            | **Type**   | **Description**                                                                 |
-|-----------------------|------------|---------------------------------------------------------------------------------|
-| `toolset_url`         | `string`   | The unique identifier for the ToolSet.                                         |
-| `credentials_level`   | `string`   | Scope of the credentials: **GLOBAL**, **APP**, or **USER**.                    |
-| `authentication_type` | `string`   | The authentication method in use.                                              |
-| `code`                | `string`   | Authorization code required for OAUTH-based authentication.                    |
+##### **API-KEY**
+```json
+{
+    "url": "toolsets/{bucket}/{path}",
+    "credentials_level": "GLOBAL",
+    "authentication_type": "API_KEY",
+    "api_key_header": "api_key_header-name",
+    "api_key": "your_api_key"
+}
+```
+
+| **Field**             | **Type**   | **Required**         | **Description**                                                                 |
+|-----------------------|------------|----------------------|---------------------------------------------------------------------------------|
+| ` url`                | `string`   | Yes                  | The ToolSet URL (e.g., `toolsets/{bucket}/{path}`).                              |
+| `credentials_level`   | `string`   | Yes                  | The scope of credentials for the ToolSet (`GLOBAL`, `APP`, or `USER`).          |
+| `authentication_type` | `string`   | Yes                  | The authentication method used (`OAUTH` or `API_KEY`).                          |
+| `code`                | `string`   | Required for OAUTH   | The authorization code used in OAUTH authentication flows.                     |
+| `api_key_header`      | `string`   | Required for API_KEY | The HTTP header where the API key should be sent for API_KEY authentication.   |
+| `api_key`             | `string`   | Required for API_KEY | The API key value.                                                             |
 
 ---
 
 
-### **2.2 ToolSet Signout (POST)**
-
-This API explicitly logs out users from a ToolSet.
-
----
+### **2.2 ToolSet Signout**
 
 #### **Endpoint**
+
 ```
-POST /v1/toolsets/{bucket}/{path}/signout
+POST /v1/ops/toolset/signout
 ```
+
+#### **Description**
+
+Logs the user out from the ToolSet by removing the associated credentials. This operation is for explicitly clearing stored credentials.
+
+---
 
 #### **Request Body**
 ```json
 {
-    "toolset_url": "toolsets/{bucket}/{path}",
+    "url": "toolsets/{bucket}/{path}",
     "credentials_level": "GLOBAL",
     "authentication_type": "OAUTH"
 }
 ```
 
+| **Field**            | **Type**   | **Required** | **Description**                                                                 |
+|-----------------------|------------|--------------|---------------------------------------------------------------------------------|
+| `toolset_url`         | `string`   | Yes          | The ToolSet URL (e.g., `toolsets/{bucket}/{path}`).                              |
+| `credentials_level`   | `string`   | Yes          | The scope of credentials for the ToolSet (`GLOBAL`, `APP`, or `USER`).          |
+| `authentication_type` | `string`   | Yes          | The authentication method used (`OAUTH` or `API_KEY`).                          |
+
 ---
 
 
-### **2.3 Signin-Status (POST)**
-
-This operation allows querying the signin status for a specific **credentials_level** and **toolset_url**.
-
----
+### **2.3 Signin-Status**
 
 #### **Endpoint**
+
 ```
-POST /v1/toolsets/{bucket}/{path}/signin-status
+POST /v1/ops/toolset/signin-status
 ```
+
+#### **Description**
+
+Checks and returns the user's current login status (`signed_in`, `signed_out`, `failed`) for a given ToolSet.
+
+---
 
 #### **Request Body**
 ```json
 {
-    "toolset_url": "toolsets/my-bucket/my-toolset-path",
+    "url": "toolsets/{bucket}/{path}",
     "credentials_level": "GLOBAL"
 }
 ```
 
+| **Field**           | **Type**   | **Required** | **Description**                                                                  |
+|---------------------|------------|--------------|----------------------------------------------------------------------------------|
+| `url`               | `string`   | Yes          | The ToolSet URL (e.g., `toolsets/{bucket}/{path}`).                              |
+| `credentials_level` | `string`   | Yes          | Specifies the scope of credentials (`GLOBAL`, `APP`, `USER`).                    |
+
 ---
 
 #### **Response Body**
-- **Signed In**
+
+##### **If Logged In**
 ```json
 {
-    "toolset_url": "toolsets/{bucket}/{path}",
+    "url": "toolsets/{bucket}/{path}",
     "credentials_level": "GLOBAL",
     "status": "signed_in"
 }
 ```
 
-- **Signed Out**
+##### **If No Credentials Stored**
 ```json
 {
-    "toolset_url": "toolsets/{bucket}/{path}",
-    "credentials_level": "APP",
+    "url": "toolsets/{bucket}/{path}",
+    "credentials_level": "GLOBAL",
     "status": "signed_out"
 }
 ```
 
-| **Field**            | **Type**   | **Description**                                                                 |
-|-----------------------|------------|---------------------------------------------------------------------------------|
-| `toolset_url`         | `string`   | The name or path identifier for the ToolSet.                                    |
-| `credentials_level`   | `string`   | Specifies the credentials scope checked.                                        |
-| `status`              | `string`   | Indicates whether the ToolSet credentials are valid (`signed_in`) or invalid (`signed_out`). |
+##### **If Access Token Refresh Fails**
+```json
+{
+    "url": "toolsets/{bucket}/{path}",
+    "credentials_level": "GLOBAL",
+    "status": "failed"
+}
+```
+
+| **Field**           | **Type**   | **Description**                                                                             |
+|---------------------|------------|-------------------------------------------------------------------------------------------|
+| `url`               | `string`   | The unique identifier for the ToolSet (e.g., `toolsets/{bucket}/{path}`).                  |
+| `credentials_level` | `string`   | The scope of credentials checked (`GLOBAL`, `APP`, `USER`).                                |
+| `status`            | `string`   | The current login status: `signed_in`, `signed_out` (no stored credentials), or `failed`. |
+
+---
+
+### **Signin-Status: Understanding Status**
+| **Status**        | **Description**                                                                                                   |
+|--------------------|-------------------------------------------------------------------------------------------------------------------|
+| `signed_in`        | The user is signed in, and the access token is valid.                                                            |
+| `signed_out`       | No credentials are currently stored for the specified ToolSet.                                                   |
+| `failed`           | The access token expired, and the attempt to refresh the token via the refresh token has failed (e.g., expired). |
+
+---
+
+### **Summary of New API Endpoints**
+
+| **Operation**         | **Path**                                | **Description**                                                                                  |
+|-----------------------|------------------------------------------|--------------------------------------------------------------------------------------------------|
+| **ToolSet Signin**     | `POST /v1/ops/toolset/signin`           | Authenticates a user with the specified ToolSet.                                                |
+| **ToolSet Signout**    | `POST /v1/ops/toolset/signout`          | Logs the user out from the specified ToolSet and removes stored credentials.                    |
+| **Signin-Status**      | `POST /v1/ops/toolset/signin-status`    | Checks the user's login status for the specified ToolSet (e.g., `signed_in`, `signed_out`, `failed`).   |
 
 ---
 
