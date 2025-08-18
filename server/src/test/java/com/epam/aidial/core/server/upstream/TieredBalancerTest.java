@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
@@ -33,6 +34,9 @@ public class TieredBalancerTest {
 
     @Mock
     private Vertx vertx;
+
+    @Mock
+    private AsyncTaskExecutor taskExecutor;
 
     @Mock
     private UpstreamCacheService upstreamCacheService;
@@ -121,7 +125,7 @@ public class TieredBalancerTest {
         when(generator.nextInt(4)).thenAnswer(cb -> counter.incrementAndGet());
         Supplier<Random> factory = () -> generator;
 
-        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, factory, upstreamCacheService);
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, factory, upstreamCacheService);
 
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
 

@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
@@ -33,6 +34,9 @@ public class UpstreamRouteProviderTest {
     private Vertx vertx;
 
     @Mock
+    private AsyncTaskExecutor taskExecutor;
+
+    @Mock
     private UpstreamCacheService upstreamCacheService;
 
     @Mock
@@ -40,7 +44,7 @@ public class UpstreamRouteProviderTest {
 
     @Test
     public void testGet_UpstreamsNotChanged() {
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         Application application = new Application();
         application.setName("app");
         UpstreamRoute route1 = provider.get(application, null);
@@ -63,7 +67,7 @@ public class UpstreamRouteProviderTest {
         upstream1.setWeight(2);
         model.setUpstreams(List.of(upstream1));
 
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
         UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
         route1.next();
@@ -96,7 +100,7 @@ public class UpstreamRouteProviderTest {
         upstream2.setWeight(2);
         model.setUpstreams(List.of(upstream1, upstream2));
 
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
         CachedUpstreamEntry entry = new CachedUpstreamEntry("upstream2", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
@@ -121,7 +125,7 @@ public class UpstreamRouteProviderTest {
         upstream2.setWeight(2);
         model.setUpstreams(List.of(upstream1, upstream2));
 
-        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, () -> generator, upstreamCacheService);
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
         CachedUpstreamEntry entry = new CachedUpstreamEntry("test", "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);

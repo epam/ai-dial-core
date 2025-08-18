@@ -42,7 +42,7 @@ public class DeploymentFeatureController {
 
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()
-        return proxy.getVertx().executeBlocking(() -> proxy.getDeploymentService().findDeployment(context, deploymentId), false).map(dep -> {
+        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId)).map(dep -> {
             if (dep instanceof Application application) {
                 dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
             }
@@ -75,11 +75,10 @@ public class DeploymentFeatureController {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         setupProxyApiKeyData(proxyApiKeyData);
 
-        proxy.getVertx().executeBlocking(() -> {
+        proxy.getTaskExecutor().submit(() -> {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
             return null;
-        }, false)
-                .onSuccess(ignore -> sendRequest(endpoint)).onFailure(this::handleError);
+        }).onSuccess(ignore -> sendRequest(endpoint)).onFailure(this::handleError);
 
     }
 

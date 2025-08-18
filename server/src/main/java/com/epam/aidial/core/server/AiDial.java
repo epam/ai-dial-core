@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.controller.HealthCheckController;
+import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -27,11 +28,13 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
+import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
@@ -115,10 +118,12 @@ public class AiDial {
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             client = vertx.createHttpClient(clientOptions);
 
+            AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
+
             LogStore logStore = new GfLogStore();
 
             if (accessTokenValidator == null) {
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client, clientOptions);
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions);
             }
 
             if (storage == null) {
@@ -130,15 +135,15 @@ public class AiDial {
             redis = CacheClientFactory.create(toJsonNode(settings("redis")));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            TimerService timerService = new VertxTimerService(vertx);
+            TimerService timerService = new VertxTimerService(vertx, taskExecutor);
             ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-            ApiKeyStore apiKeyStore = new ApiKeyStore(vertx, redis, storage.getPrefix(), settings("perRequestApiKey"));
+            ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService);
-            ApplicationService applicationService = new ApplicationService(vertx, redis, apiKeyStore, encryptionService,
+            ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     resourceService, lockService, operatorService, applicationSchemaService, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService, lockService, applicationSchemaService);
             RuleService ruleService = new RuleService(resourceService);
@@ -148,17 +153,17 @@ public class AiDial {
                     resourceService, invitationService, shareService, lockService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
-            RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
-            CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, redis, resourceService,
+            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService);
+            CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
-                    vertx, settings("resources").getLong("heartbeatPeriod"));
+                    vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
 
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
-            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new, upstreamCacheService);
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
             ToolSetService toolSetService = new ToolSetService(resourceService);
 
@@ -167,14 +172,18 @@ public class AiDial {
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
-            HealthCheckController healthCheckController = new HealthCheckController(redis, vertx);
+            HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
+
+            WellKnownResourceMetadataService resourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
+            WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(resourceMetadataService);
 
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, toolSetService, applicationSchemaService, version());
+                    consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
+                    toolSetService, applicationSchemaService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

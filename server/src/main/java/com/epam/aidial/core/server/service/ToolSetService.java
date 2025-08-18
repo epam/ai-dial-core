@@ -41,6 +41,16 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
+    public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet) {
+        toolSet.setName(resource.getUrl());
+        if (toolSet.getReference() == null) {
+            toolSet.setReference(ProxyUtil.generateReference());
+        }
+        String body = ProxyUtil.convertToString(toolSet);
+        ResourceItemMetadata metadata = resourceService.putResource(resource, body, etag, author);
+        return Pair.of(metadata, toolSet);
+    }
+
     private static void verifyToolSet(ResourceDescriptor resource) {
         if (resource.isFolder() || resource.getType() != ResourceTypes.TOOL_SET) {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
