@@ -67,12 +67,6 @@ public enum RouteTemplate {
             "/v1/metadata/files/{bucket}/{path}"
     ),
 
-    // TODO: is it fine to use 'operation' here?
-    TOOL_SET_CREDENTIALS(
-        "^/v1/toolsets/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)/(signin|signout)",
-        "/v1/toolsets/{bucket}/{path}/{operation}"
-    ),
-
     RESOURCE(
             "^/v1/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
@@ -158,6 +152,11 @@ public enum RouteTemplate {
     CODE_INTERPRETER(
             "^/v1/ops/code_interpreter/(open_session|close_session|get_session|execute_code|upload_file|download_file|list_files|transfer_input_file|transfer_output_file)$",
             "/v1/ops/code_interpreter/{operation}"
+    ),
+
+    TOOL_SET_CREDENTIALS(
+        "^/v1/ops/toolset/(signin|signout)",
+        "/v1/ops/toolset/{operation}"
     ),
 
     // Other routes

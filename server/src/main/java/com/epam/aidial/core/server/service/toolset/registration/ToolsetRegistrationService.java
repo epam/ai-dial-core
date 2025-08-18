@@ -54,7 +54,7 @@ public class ToolsetRegistrationService {
     }
 
     public ToolsetRegistration createStaticToolSetRegistration(ToolSet toolSet) {
-        ToolSetAuthSettings toolSetAuthSettings = toolSet.getToolSetAuthSettings();
+        ToolSetAuthSettings toolSetAuthSettings = toolSet.getAuthSettings();
         String baseToolSetEndpoint = getBaseToolSetEndpoint(toolSet);
         String toolSetAuthServerEndpoint = getToolSetAuthorizationServerEndpoint(baseToolSetEndpoint);
         String toolSetAuthorizationEndpoint;
@@ -90,7 +90,7 @@ public class ToolsetRegistrationService {
     }
 
     private String getToolSetRedirectUri(ToolSet toolSet) {
-        ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
+        ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
         String toolSetRedirectUri = toolsetAuthSettings.getRedirectUri();
         log.debug("ToolSet {} RedirectUri: {}", toolSet.getName(), toolSetRedirectUri);
         return toolSetRedirectUri;

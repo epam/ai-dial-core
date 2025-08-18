@@ -35,7 +35,7 @@ public class ToolSetCredentialsService {
                                                        ToolSetSignInRequest toolSetSignInRequest) {
         ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
         String toolSetName = toolSet.getName();
-        ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
+        ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
 
         ToolSetCredentials toolSetCredentials;
         if (toolSetSignInRequest.getAuthenticationType() == AuthenticationType.API_KEY) {
@@ -103,7 +103,6 @@ public class ToolSetCredentialsService {
         TokenRequest tokenRequest = TokenRequest.builder()
             .clientId(toolsetAuthSettings.getClientId())
             .clientSecret(toolsetAuthSettings.getClientSecret())
-            .scope(toolSetSignInRequest.getScope())
             .code(toolSetSignInRequest.getCode())
             // TODO: do we need to support different?
             .grantType("authorization_code")
@@ -143,7 +142,7 @@ public class ToolSetCredentialsService {
     }
 
     public boolean deleteToolSetCredentials(ToolSetSignOutRequest toolSetSignOutRequest) {
-        String toolSetName = toolSetSignOutRequest.getToolsetUrl();
+        String toolSetName = toolSetSignOutRequest.getUrl();
 
         if (!toolSetCredentialsMap.containsKey(toolSetName)) {
             throw new ResourceNotFoundException(String.format("Credentials for ToolSet %s not found", toolSetName));

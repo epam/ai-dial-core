@@ -225,9 +225,9 @@ public class ControllerSelector {
                 default -> null;
             };
         });
-        //TODO: re-implement using format similar to RESOURCE_OPERATIONS?
+
         post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
-            String operation = pathMatcher.group(3);
+            String operation = pathMatcher.group(1);
             ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
 
             return switch (operation) {

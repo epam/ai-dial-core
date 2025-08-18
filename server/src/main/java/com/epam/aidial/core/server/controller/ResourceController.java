@@ -207,7 +207,7 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             ToolSet toolSet = result.getValue();
-            ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
+            ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
             if (toolsetAuthSettings != null
                 && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
                 toolsetAuthSettings.setClientSecret(null);

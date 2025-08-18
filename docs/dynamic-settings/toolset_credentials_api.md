@@ -206,7 +206,6 @@ Authenticates the user for a specified ToolSet using OAUTH or API_KEY.
     "url": "toolsets/{bucket}/{path}",
     "credentials_level": "GLOBAL",
     "authentication_type": "API_KEY",
-    "api_key_header": "api_key_header-name",
     "api_key": "your_api_key"
 }
 ```
@@ -217,7 +216,6 @@ Authenticates the user for a specified ToolSet using OAUTH or API_KEY.
 | `credentials_level`   | `string`   | Yes                  | The scope of credentials for the ToolSet (`GLOBAL`, `APP`, or `USER`).        |
 | `authentication_type` | `string`   | Yes                  | The authentication method used (`OAUTH` or `API_KEY`).                        |
 | `code`                | `string`   | Required for OAUTH   | The authorization code used in OAUTH authentication flows.                    |
-| `api_key_header`      | `string`   | Required for API_KEY | The HTTP header where the API key should be sent for API_KEY authentication.  |
 | `api_key`             | `string`   | Required for API_KEY | The API key value.                                                            |
 
 ---

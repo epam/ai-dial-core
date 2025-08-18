@@ -15,7 +15,7 @@ public class ToolsetAuthSettingsService {
     private final ToolSetAuthSettingsValidator toolSetAuthSettingsValidator;
 
     public void updateToolsetAuthSettings(ToolSet toolSet) {
-        ToolSetAuthSettings toolsetAuthSettings = toolSet.getToolSetAuthSettings();
+        ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
         if (toolsetAuthSettings == null) {
             throw new IllegalArgumentException("ToolSetAuthSettings is not defined for ToolSet: " + toolSet.getName());
         }
@@ -35,7 +35,7 @@ public class ToolsetAuthSettingsService {
             .redirectUri(toolsetRegistration.getRedirectUri())
             .build();
 
-        toolSet.setToolSetAuthSettings(updatedToolSetAuthSettings);
+        toolSet.setAuthSettings(updatedToolSetAuthSettings);
     }
 
     private boolean shouldRegisterToolsetDynamically(ToolSetAuthSettings toolsetAuthSettings) {
