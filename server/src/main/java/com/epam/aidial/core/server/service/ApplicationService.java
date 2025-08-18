@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.controller.ApplicationUtil;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -469,7 +468,7 @@ public class ApplicationService {
         application.setForwardAuthToken(false);
 
         if (application.getReference() == null) {
-            application.setReference(ApplicationUtil.generateReference());
+            application.setReference(ProxyUtil.generateReference());
         }
 
         Application.Function function = application.getFunction();

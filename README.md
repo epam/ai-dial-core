@@ -124,7 +124,7 @@ Priority order:
 | invitations.ttlInSeconds                      |       259200       |    No    |Invitation time to live in seconds.
 | access.admin.rules                            |         -          |    No    |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions (READ and WRITE access to any resource, approving publication requests from DIAL users. <br /> **Configuration example for DIAL Core**:<br /> "access": {"admin": {"rules": [{"function": "EQUAL","source": "roles","targets": ["admin"]}]}} <br /> **Where**, <br /> `function` - a matching function one of TRUE (any user is admin), FALSE (noone is admin), EQUAL, CONTAIN, REGEX <br /> `source` - the path to the claim in the JWT token payload that should be evaluated against the targets. <br /> `targets` - is an array of values that the system checks for in the source claim.
 | access.createCodeAppRoles                     |         -          |    No    |The list of user roles to be allowed to create custom code applications or run code interpreter. **Note**. Calls by per request key are permitted even if the originator doesn't have permissions.
-| applications.includeCustomApps                |       false        |    No    |The flag indicates whether custom applications should be included into openai listing
+| applications.includeCustomApps                |       false        |    No    |The flag indicates whether applications should be included into openai listing (required for Code Apps, Custom Apps, Quick Apps, etc)
 | applications.controllerEndpoint               |         -          |    No    |The endpoint to Application Controller Web Service that manages deployments for applications with functions 
 | applications.controllerTimeout                |       240000       |    No    |The timeout of operations to Application Controller Web Service
 | codeInterpreter.sessionImage                  |         -          |    No    |The code interpreter session image to use
@@ -149,17 +149,17 @@ specified via "config.reload" static setting. Refer to [example](sample/aidial.c
 
 Dynamic settings can include the following parameters:
 
-|Parameter          | Description  |
-|----------------------------------------------------------------------------------|----------|
-| routes  | A list of registered routes in DIAL Core. Refer to [Routes](/docs/dynamic-settings/routes.md) to see dynamic settings.   |
-| interceptors  | A list of deployed DIAL Interceptors and their parameters. Refer to [Interceptors](/docs/dynamic-settings/interceptors.md) to see dynamic settings.   |
-| applications  | A list of deployed applications and their parameters. Refer to [Applications](/docs/dynamic-settings/applications.md) to see dynamic settings.   |
-| models  | A list of deployed models and their parameters. Refer to [Models](/docs/dynamic-settings/models.md) to see dynamic settings.   |
-| toolsets  | A list of available toolsets and their parameters. Refer to [Toolsets](/docs/dynamic-settings/toolsets.md) to see dynamic settings.   |
-| roles  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.   |
-| keys  | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.   |
-| retriableErrorCodes| List of retriable error codes for handling outages at LLM providers.  |
-| applicationTypeSchemas               | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema)                |
+|Parameter          | Description                                                                                                                                                                                                                                                                     |
+|----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| routes  | A list of registered routes in DIAL Core. Refer to [Routes](/docs/dynamic-settings/routes.md) to see dynamic settings.                                                                                                                                                          |
+| interceptors  | A list of deployed DIAL Interceptors and their parameters. Refer to [Interceptors](/docs/dynamic-settings/interceptors.md) to see dynamic settings.                                                                                                                             |
+| applications  | A list of deployed applications and their parameters. Refer to [Applications](/docs/dynamic-settings/applications.md) to see dynamic settings.                                                                                                                                  |
+| models  | A list of deployed models and their parameters. Refer to [Models](/docs/dynamic-settings/models.md) to see dynamic settings.                                                                                                                                                    |
+| toolsets  | A list of available toolsets and their parameters. Refer to [Toolsets](/docs/dynamic-settings/toolsets.md) to see dynamic settings.                                                                                                                                             |
+| roles  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.                                                                                                                                                           |
+| keys  | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
+| retriableErrorCodes| List of retriable error codes for handling outages at LLM providers.                                                                                                                                                                                                            |
+| applicationTypeSchemas               | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
 
 #### Obsolete Dynamic Settings
 
