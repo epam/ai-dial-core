@@ -36,7 +36,7 @@ public class CollectRequestApplicationFilesFn extends BaseRequestFunction<Object
                 throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Typed application's properties not set");
             }
             ApplicationSchemaService applicationSchemaService = proxy.getApplicationSchemaService();
-            List<ResourceDescriptor> resources = applicationSchemaService.getServerFiles(application);
+            List<ResourceDescriptor> resources = applicationSchemaService.getFiles(application);
             appendFilesToProxyApiKeyData(resources);
             return false;
         } catch (HttpException ex) {
