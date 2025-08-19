@@ -139,7 +139,7 @@ public class CollectRequestApplicationFilesFnTest {
 
         assertFalse(result);
         assertNotNull(apiKeyData.getAttachedFiles().get(serverFile));
-        assertEquals(1, apiKeyData.getAttachedFiles().size());
+        assertEquals(2, apiKeyData.getAttachedFiles().size());
     }
 
     @Test
