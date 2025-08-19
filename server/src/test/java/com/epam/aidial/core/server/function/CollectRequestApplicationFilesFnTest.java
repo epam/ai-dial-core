@@ -107,7 +107,7 @@ public class CollectRequestApplicationFilesFnTest {
         when(proxy.getAccessService()).thenReturn(accessService);
         ResourceDescriptor file = mock(ResourceDescriptor.class);
         when(file.getUrl()).thenReturn(serverFile);
-        when(applicationSchemaService.getServerFiles(eq(application))).thenReturn(List.of(file));
+        when(applicationSchemaService.getFiles(eq(application))).thenReturn(List.of(file));
 
         boolean result = fn.apply(tree);
 
@@ -165,7 +165,7 @@ public class CollectRequestApplicationFilesFnTest {
         when(file1.getUrl()).thenReturn(ragFiles[0]);
         ResourceDescriptor file2 = mock(ResourceDescriptor.class);
         when(file2.getUrl()).thenReturn(ragFiles[1]);
-        when(applicationSchemaService.getServerFiles(eq(application))).thenReturn(List.of(file1, file2));
+        when(applicationSchemaService.getFiles(eq(application))).thenReturn(List.of(file1, file2));
 
         boolean result = fn.apply(tree);
 
@@ -189,7 +189,7 @@ public class CollectRequestApplicationFilesFnTest {
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         when(proxy.getAccessService()).thenReturn(accessService);
         ResourceDescriptor file = mock(ResourceDescriptor.class);
-        when(applicationSchemaService.getServerFiles(eq(application))).thenReturn(List.of(file));
+        when(applicationSchemaService.getFiles(eq(application))).thenReturn(List.of(file));
         when(accessService.hasReadAccess(any(), any())).thenReturn(false); //Has no Read Access
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
