@@ -19,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -39,9 +38,6 @@ class AutoEnrichedOtelJsonLayoutTest {
 
     @BeforeEach
     void setUp() {
-        // Clear MDC before each test to ensure clean state
-        MDC.clear();
-        
         layout = new AutoEnrichedOtelJsonLayout();
         layout.start();
 
@@ -62,9 +58,6 @@ class AutoEnrichedOtelJsonLayoutTest {
     
     @AfterEach
     void tearDown() {
-        // Clear MDC after each test to prevent leakage
-        MDC.clear();
-        
         // Close static mocks
         if (vertxMock != null) {
             vertxMock.close();
@@ -114,6 +107,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(request.method()).thenReturn(HttpMethod.POST);
 
         when(response.getStatusCode()).thenReturn(200);
+        when(response.getStatusMessage()).thenReturn("OK");
         when(response.ended()).thenReturn(true);
 
         when(proxyContext.getProject()).thenReturn("test-project");
@@ -208,7 +202,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         JsonNode jsonNode = objectMapper.readTree(result);
 
         JsonNode attributes = jsonNode.get("Attributes");
-        assertEquals("", attributes.asText());
+        assertNotNull(attributes);
+        assertTrue(attributes.isObject());
+        assertEquals(0, attributes.size());
     }
 
     @Test
@@ -222,6 +218,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(request.method()).thenReturn(HttpMethod.GET);
 
         when(response.getStatusCode()).thenReturn(502);
+        when(response.getStatusMessage()).thenReturn("Bad Gateway");
         when(response.ended()).thenReturn(true);
 
         when(proxyContext.getProject()).thenReturn("proxy-project");
