@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.data.toolset.credentials;
 
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.AuthenticationType;
-import com.epam.aidial.core.config.ToolsetCredentialsStatus;
+import com.epam.aidial.core.config.ToolsetAuthStatus;
 
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +15,7 @@ public class ToolSetCredentials {
     private CredentialsLevel credentialsLevel;
     private AuthenticationType authenticationType;
     //TODO: what to do with status?
-    private ToolsetCredentialsStatus status;
+    private ToolsetAuthStatus status;
 
     private String apiKeyHeader;
     private String apiKey;
@@ -24,4 +24,5 @@ public class ToolSetCredentials {
     private String refreshToken;
     private long createdAt;
     private long expiresIn;
+    private String userSub;
 }

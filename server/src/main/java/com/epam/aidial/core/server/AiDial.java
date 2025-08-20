@@ -25,6 +25,7 @@ import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.toolset.credentials.ToolSetAuthStatusService;
 import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
@@ -181,6 +182,7 @@ public class AiDial {
             ToolsetAuthSettingsService toolsetAuthSettingsService = new ToolsetAuthSettingsService(toolsetRegistrationService, toolSetAuthSettingsValidator);
 
             ToolSetCredentialsService toolsetCredentialsService = new ToolSetCredentialsService(toolSetService, toolsetAuthorizationServerClient);
+            ToolSetAuthStatusService toolSetAuthStatusService = new ToolSetAuthStatusService(toolsetCredentialsService);
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
@@ -189,7 +191,7 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, toolSetService, applicationSchemaService,
-                    toolsetCredentialsService, toolsetAuthSettingsService, taskExecutor, version());
+                    toolsetCredentialsService, toolsetAuthSettingsService, toolSetAuthStatusService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

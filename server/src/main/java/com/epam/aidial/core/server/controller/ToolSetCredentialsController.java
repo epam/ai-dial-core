@@ -30,7 +30,6 @@ public class ToolSetCredentialsController {
     private final Vertx vertx;
     private final ToolSetCredentialsService toolsetCredentialsService;
     private final AccessService accessService;
-
     private final EncryptionService encryptionService;
 
     public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
@@ -53,7 +52,7 @@ public class ToolSetCredentialsController {
 
                 return vertx.executeBlocking(() -> {
                     ToolSetCredentials toolSetCredentials = toolsetCredentialsService.createToolsetCredentials(
-                        resourceDescriptor, toolSetSignInRequest);
+                        resourceDescriptor, toolSetSignInRequest, context);
                     return clearToolsetCredentialsSecrets(toolSetCredentials);
                 });
             })
@@ -73,7 +72,7 @@ public class ToolSetCredentialsController {
 
                 verifyAccess(resourceDescriptor);
 
-                return toolsetCredentialsService.deleteToolSetCredentials(toolSetSignOutRequest);
+                return toolsetCredentialsService.deleteToolSetCredentials(toolSetSignOutRequest, context);
             }))
             .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
             .onFailure(error -> respondError("Can't signOut from Toolset", error));

@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ToolsetAuthStatus;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -21,6 +22,9 @@ public class ToolsetAuthSettingsData {
     private String redirectUri;
     private String authorizationEndpoint;
     private String apiKeyHeader;
+    private ToolsetAuthStatus globalAuthStatus;
+    private ToolsetAuthStatus appLevelAuthStatus;
+    private ToolsetAuthStatus userLevelAuthStatus;
 
     @JsonIgnore
     public static ToolsetAuthSettingsData toData(ToolSetAuthSettings toolsetAuthSettings) {
@@ -30,6 +34,9 @@ public class ToolsetAuthSettingsData {
             .authorizationEndpoint(toolsetAuthSettings.getAuthorizationEndpoint())
             .redirectUri(toolsetAuthSettings.getRedirectUri())
             .apiKeyHeader(toolsetAuthSettings.getApiKeyHeader())
+            .globalAuthStatus(toolsetAuthSettings.getGlobalAuthStatus())
+            .appLevelAuthStatus(toolsetAuthSettings.getAppLevelAuthStatus())
+            .userLevelAuthStatus(toolsetAuthSettings.getUserLevelAuthStatus())
             .build();
     }
 }

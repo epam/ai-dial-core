@@ -1,6 +1,6 @@
 package com.epam.aidial.core.config;
 
-public enum ToolsetCredentialsStatus {
+public enum ToolsetAuthStatus {
 
     SIGNED_IN,
     SIGNED_OUT,

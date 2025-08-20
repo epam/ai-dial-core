@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.toolset.credentials.ToolSetAuthStatusService;
 import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthSettingsService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -53,6 +54,7 @@ public class ResourceController extends AccessControlBaseController {
     private final boolean metadata;
     private final AccessService accessService;
     private final ToolsetAuthSettingsService toolsetAuthSettingsService;
+    private final ToolSetAuthStatusService toolSetAuthStatusService;
 
     private final ToolSetService toolSetService;
 
@@ -65,6 +67,7 @@ public class ResourceController extends AccessControlBaseController {
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
         this.toolsetAuthSettingsService = proxy.getToolsetAuthSettingsService();
+        this.toolSetAuthStatusService = proxy.getToolSetAuthStatusService();
         this.metadata = metadata;
     }
 
@@ -208,8 +211,8 @@ public class ResourceController extends AccessControlBaseController {
 
             ToolSet toolSet = result.getValue();
             ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
-            if (toolsetAuthSettings != null
-                && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
+            toolSetAuthStatusService.setToolSetAuthStatuses(toolSet);
+            if (toolsetAuthSettings != null && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
                 toolsetAuthSettings.setClientSecret(null);
                 toolsetAuthSettings.setTokenEndpoint(null);
             }

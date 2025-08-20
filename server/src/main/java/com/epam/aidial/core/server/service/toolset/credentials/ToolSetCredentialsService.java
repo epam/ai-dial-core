@@ -1,11 +1,13 @@
 package com.epam.aidial.core.server.service.toolset.credentials;
 
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.ToolSetSignInRequest;
 import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.config.ToolSetSignOutRequest;
 import com.epam.aidial.core.config.AuthenticationType;
-import com.epam.aidial.core.config.ToolsetCredentialsStatus;
+import com.epam.aidial.core.config.ToolsetAuthStatus;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.toolset.credentials.TokenRequest;
 import com.epam.aidial.core.server.data.toolset.credentials.TokenResponse;
 import com.epam.aidial.core.server.data.toolset.credentials.ToolSetCredentials;
@@ -32,7 +34,8 @@ public class ToolSetCredentialsService {
     private final Map<String, List<ToolSetCredentials>> toolSetCredentialsMap = new HashMap<>();
 
     public ToolSetCredentials createToolsetCredentials(ResourceDescriptor resource,
-                                                       ToolSetSignInRequest toolSetSignInRequest) {
+                                                       ToolSetSignInRequest toolSetSignInRequest,
+                                                       ProxyContext contex) {
         ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
         String toolSetName = toolSet.getName();
         ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
@@ -52,9 +55,59 @@ public class ToolSetCredentialsService {
         else {
             throw new IllegalArgumentException(String.format("Invalid ToolsetAuthenticationType: %s", toolSetSignInRequest.getAuthenticationType()));
         }
+
+        if (toolSetSignInRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
+            toolSetCredentials.setUserSub(contex.getUserSub());
+        }
+
         toolSetCredentialsMap.computeIfAbsent(toolSetName, k -> new ArrayList<>()).add(toolSetCredentials);
         log.info("ToolSet signIn done. {}", toolSetName);
         return toolSetCredentials;
+    }
+
+    public ToolSetCredentials getToolSetCredentials(String toolSetName) {
+        if (!toolSetCredentialsMap.containsKey(toolSetName)) {
+            throw new ResourceNotFoundException(String.format("Credentials for ToolSet %s not found", toolSetName));
+        }
+        // TODO: implement logic for choosing creds
+        return toolSetCredentialsMap.get(toolSetName).get(0);
+    }
+
+    public List<ToolSetCredentials> getAllToolSetCredentials(String toolSetName) {
+        return toolSetCredentialsMap.getOrDefault(toolSetName, new ArrayList<>());
+    }
+
+    public boolean deleteToolSetCredentials(ToolSetSignOutRequest toolSetSignOutRequest,
+                                            ProxyContext contex) {
+        String toolSetName = toolSetSignOutRequest.getUrl();
+
+        if (!toolSetCredentialsMap.containsKey(toolSetName)) {
+            throw new ResourceNotFoundException(String.format("Credentials for ToolSet %s not found", toolSetName));
+        }
+
+        List<ToolSetCredentials> toolSetCredentialsList = toolSetCredentialsMap.get(toolSetName);
+
+        if (toolSetCredentialsList == null || toolSetCredentialsList.isEmpty()) {
+            return false;
+        }
+
+        boolean removed = false;
+
+        if (toolSetSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
+            removed = toolSetCredentialsList.removeIf(
+                toolSetCredentials -> toolSetCredentials.getCredentialsLevel().equals(toolSetSignOutRequest.getCredentialsLevel()));
+        } else if (toolSetSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
+            removed = toolSetCredentialsList.removeIf(
+                toolSetCredentials -> toolSetCredentials.getCredentialsLevel().equals(toolSetSignOutRequest.getCredentialsLevel())
+            && toolSetCredentials.getUserSub().equals(contex.getUserSub()));
+        }
+
+        if (toolSetCredentialsList.isEmpty()) {
+            toolSetCredentialsMap.remove(toolSetName);
+        }
+
+        log.info("ToolSet signOut done. {}", toolSetName);
+        return removed;
     }
 
     private ToolSetCredentials createApiKeyToolSetCredentials(String toolSetName,
@@ -71,7 +124,7 @@ public class ToolSetCredentialsService {
             .apiKeyHeader(apiKeyHeader)
             .apiKey(toolSetSignInRequest.getApiKey())
             .createdAt(System.currentTimeMillis())
-            .status(ToolsetCredentialsStatus.SIGNED_IN)
+            .status(ToolsetAuthStatus.SIGNED_IN)
             .build();
     }
 
@@ -92,7 +145,7 @@ public class ToolSetCredentialsService {
             .refreshToken(tokenResponse.getRefreshToken())
             .expiresIn(tokenResponse.getExpiresIn())
             .createdAt(System.currentTimeMillis())
-            .status(ToolsetCredentialsStatus.SIGNED_IN)
+            .status(ToolsetAuthStatus.SIGNED_IN)
             .build();
     }
 
@@ -129,38 +182,7 @@ public class ToolSetCredentialsService {
             .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
             .authenticationType(toolSetSignInRequest.getAuthenticationType())
             .createdAt(System.currentTimeMillis())
-            .status(ToolsetCredentialsStatus.SIGNED_IN)
+            .status(ToolsetAuthStatus.SIGNED_IN)
             .build();
-    }
-
-    public ToolSetCredentials getToolSetCredentials(String toolSetName) {
-        if (!toolSetCredentialsMap.containsKey(toolSetName)) {
-            throw new ResourceNotFoundException(String.format("Credentials for ToolSet %s not found", toolSetName));
-        }
-        // TODO: implement logic for choosing creds
-        return toolSetCredentialsMap.get(toolSetName).get(0);
-    }
-
-    public boolean deleteToolSetCredentials(ToolSetSignOutRequest toolSetSignOutRequest) {
-        String toolSetName = toolSetSignOutRequest.getUrl();
-
-        if (!toolSetCredentialsMap.containsKey(toolSetName)) {
-            throw new ResourceNotFoundException(String.format("Credentials for ToolSet %s not found", toolSetName));
-        }
-
-        List<ToolSetCredentials> toolSetCredentialsList = toolSetCredentialsMap.get(toolSetName);
-
-        if (toolSetCredentialsList == null || toolSetCredentialsList.isEmpty()) {
-            return false;
-        }
-
-        boolean removed = toolSetCredentialsList.removeIf(
-            toolSetCredentials -> toolSetCredentials.getCredentialsLevel().equals(toolSetSignOutRequest.getCredentialsLevel()));
-
-        if (toolSetCredentialsList.isEmpty()) {
-            toolSetCredentialsMap.remove(toolSetName);
-        }
-        log.info("ToolSet signOut done. {}", toolSetName);
-        return removed;
     }
 }

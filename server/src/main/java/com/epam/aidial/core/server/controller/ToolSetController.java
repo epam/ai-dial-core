@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.toolset.credentials.ToolSetAuthStatusService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -28,6 +29,8 @@ public class ToolSetController {
 
     private final ToolSetService toolSetService;
 
+    private final ToolSetAuthStatusService toolSetAuthStatusService;
+
     private final AsyncTaskExecutor taskExecutor;
 
     public ToolSetController(ProxyContext context) {
@@ -35,12 +38,14 @@ public class ToolSetController {
         this.taskExecutor = context.getProxy().getTaskExecutor();
         this.deploymentService = context.getProxy().getDeploymentService();
         this.toolSetService = context.getProxy().getToolSetService();
+        this.toolSetAuthStatusService = context.getProxy().getToolSetAuthStatusService();
     }
 
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
+                toolSetAuthStatusService.setToolSetAuthStatuses(toolSet);
                 return toolSet;
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
@@ -71,7 +76,9 @@ public class ToolSetController {
             @SuppressWarnings("unchecked")
             @Override
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
-                return toolSetService.getToolSet(resource).getValue();
+                ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
+                toolSetAuthStatusService.setToolSetAuthStatuses(toolSet);
+                return toolSet;
             }
         });
     }
