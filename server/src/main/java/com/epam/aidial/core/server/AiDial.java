@@ -255,6 +255,10 @@ public class AiDial {
         return version;
     }
 
+    public static String getVersion() {
+        return version();
+    }
+
     private static JsonObject fileSettings() throws IOException {
         String file = System.getenv().get("AIDIAL_SETTINGS");
         if (file == null) {

@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -35,6 +36,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.slf4j.Logger;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +46,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
+import static com.epam.aidial.core.server.Proxy.HEALTH_CHECK_PATH;
 import static com.epam.aidial.core.storage.blobstore.Storage.DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.HTTP_VERSION_NOT_SUPPORTED;
@@ -82,6 +85,8 @@ public class ProxyTest {
     @Mock
     private ResourceService resourceService;
     @Mock
+    private HealthCheckController healthCheckController;
+    @Mock
     private WellKnownResourceMetadataService resourceMetadataService;
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
@@ -93,6 +98,9 @@ public class ProxyTest {
     @InjectMocks
     private Proxy proxy;
 
+    @Mock
+    private Logger mockLogger;
+
     @BeforeEach
     public void beforeEach() {
         when(resourceService.getMaxSize()).thenReturn(67108864);
@@ -100,6 +108,11 @@ public class ProxyTest {
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD)).thenReturn(null);
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS)).thenReturn(null);
         when(response.setStatusCode(anyInt())).thenReturn(response);
+
+        // Mock params() to avoid NullPointerException in error handling
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(request.params()).thenReturn(params);
     }
 
     @AfterEach
@@ -151,6 +164,19 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(REQUEST_ENTITY_TOO_LARGE.getCode());
+    }
+
+    @Test
+    public void testHandle_HealthCheck() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.path()).thenReturn(HEALTH_CHECK_PATH);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+
+        proxy.handle(request);
+
+        verify(healthCheckController).handle(request);
     }
 
     @Test
@@ -621,5 +647,95 @@ public class ProxyTest {
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_MAX_AGE, "86400");
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET");
         verify(response).putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, "Api-Key");
+    }
+
+    @Test
+    public void testHandleError_RuntimeException() {
+        // Setup
+        // Use the same response mock as the regular tests
+        when(response.ended()).thenReturn(false);
+        when(response.end(anyString())).thenReturn(Future.succeededFuture());
+
+        // Create a new request mock that throws an exception
+        HttpServerRequest errorRequest = mock(HttpServerRequest.class);
+        when(errorRequest.response()).thenReturn(response);
+        when(errorRequest.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(errorRequest.method()).thenReturn(HttpMethod.GET);
+        when(errorRequest.path()).thenReturn("/test-path");
+
+        // Mock params() to return a valid MultiMap to avoid NullPointerException
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(errorRequest.params()).thenReturn(params);
+
+        // Simulate a RuntimeException when headers() is called
+        RuntimeException runtimeException = new RuntimeException("Test runtime exception");
+        when(errorRequest.headers()).thenThrow(runtimeException);
+
+        // Execute
+        proxy.handle(errorRequest);
+
+        // Verify
+        verify(response).setStatusCode(500);
+    }
+
+    @Test
+    public void testHandleError_SeriousError() {
+        // Setup
+        // Use the same response mock as the regular tests
+        when(response.ended()).thenReturn(false);
+        when(response.end(anyString())).thenReturn(Future.succeededFuture());
+
+        // Create a new request mock that throws an exception
+        HttpServerRequest errorRequest = mock(HttpServerRequest.class);
+        when(errorRequest.response()).thenReturn(response);
+        when(errorRequest.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(errorRequest.method()).thenReturn(HttpMethod.GET);
+        when(errorRequest.path()).thenReturn("/test-path");
+
+        // Mock params() to return a valid MultiMap to avoid NullPointerException
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(errorRequest.params()).thenReturn(params);
+
+        // Simulate a serious Error when headers() is called
+        Error seriousError = new OutOfMemoryError("Test serious error");
+        when(errorRequest.headers()).thenThrow(seriousError);
+
+        // Execute
+        proxy.handle(errorRequest);
+
+        // Verify
+        verify(response).setStatusCode(500);
+    }
+
+    @Test
+    public void testHandleError_CheckedException() {
+        // Setup
+        // Use the same response mock as the regular tests
+        when(response.ended()).thenReturn(false);
+        when(response.end(anyString())).thenReturn(Future.succeededFuture());
+
+        // Create a new request mock that throws an exception
+        HttpServerRequest errorRequest = mock(HttpServerRequest.class);
+        when(errorRequest.response()).thenReturn(response);
+        when(errorRequest.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(errorRequest.method()).thenReturn(HttpMethod.GET);
+        when(errorRequest.path()).thenReturn("/test-path");
+
+        // Mock params() to return a valid MultiMap to avoid NullPointerException
+        MultiMap params = mock(MultiMap.class);
+        when(params.toString()).thenReturn("test-params");
+        when(errorRequest.params()).thenReturn(params);
+
+        // Simulate a runtime exception when getHeader() is called (can't use checked exceptions)
+        RuntimeException runtimeException = new RuntimeException("Test runtime exception");
+        when(errorRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenThrow(runtimeException);
+
+        // Execute
+        proxy.handle(errorRequest);
+
+        // Verify
+        verify(response).setStatusCode(500);
     }
 }
