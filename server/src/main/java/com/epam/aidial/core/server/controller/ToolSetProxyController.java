@@ -141,7 +141,7 @@ public class ToolSetProxyController implements Controller {
 
     private void addToolsetCredentials(HttpClientRequest proxyRequest) {
         String toolSetName = context.getDeployment().getName();
-        ToolSetCredentials toolSetCredentials = toolSetCredentialsService.getToolSetCredentials(toolSetName);
+        ToolSetCredentials toolSetCredentials = toolSetCredentialsService.getToolSetCredentials(toolSetName, context);
         if (AuthenticationType.OAUTH.equals(toolSetCredentials.getAuthenticationType())) {
             proxyRequest.putHeader("Authorization", "Bearer " + toolSetCredentials.getAccessToken());
         } else if (AuthenticationType.API_KEY.equals(toolSetCredentials.getAuthenticationType())) {

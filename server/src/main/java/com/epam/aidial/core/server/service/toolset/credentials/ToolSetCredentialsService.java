@@ -65,12 +65,32 @@ public class ToolSetCredentialsService {
         return toolSetCredentials;
     }
 
-    public ToolSetCredentials getToolSetCredentials(String toolSetName) {
+    public ToolSetCredentials getToolSetCredentials(String toolSetName,
+                                                    ProxyContext contex) {
         if (!toolSetCredentialsMap.containsKey(toolSetName)) {
             throw new ResourceNotFoundException(String.format("Credentials for ToolSet %s not found", toolSetName));
         }
-        // TODO: implement logic for choosing creds
-        return toolSetCredentialsMap.get(toolSetName).get(0);
+
+        List<ToolSetCredentials> toolSetCredentialsList = toolSetCredentialsMap.get(toolSetName);
+        String userSub = contex.getUserSub();
+
+        for (ToolSetCredentials credentials : toolSetCredentialsList) {
+            if (credentials.getCredentialsLevel() == CredentialsLevel.USER
+                && userSub != null
+                && userSub.equals(credentials.getUserSub())) {
+                return credentials;
+            }
+        }
+
+        for (ToolSetCredentials credentials : toolSetCredentialsList) {
+            if (credentials.getCredentialsLevel() == CredentialsLevel.GLOBAL) {
+                return credentials;
+            }
+        }
+
+        // TODO: implement logic for APP level creds
+
+        throw new ResourceNotFoundException(String.format("Credentials (Global or Personal) for ToolSet %s not found", toolSetName));
     }
 
     public List<ToolSetCredentials> getAllToolSetCredentials(String toolSetName) {
