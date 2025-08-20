@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.toolset.credentials.ToolSetAuthStatusService;
+import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsManager;
 import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
@@ -117,6 +118,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final HealthCheckController healthCheckController;
     private final ToolSetService toolSetService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final ToolSetCredentialsManager toolSetCredentialsManager;
     private final ToolSetCredentialsService toolsetCredentialsService;
     private final ToolsetAuthSettingsService toolsetAuthSettingsService;
     private final ToolSetAuthStatusService toolSetAuthStatusService;

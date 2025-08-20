@@ -10,7 +10,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsService;
+import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsManager;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -28,14 +28,14 @@ public class ToolSetCredentialsController {
 
     private final ProxyContext context;
     private final Vertx vertx;
-    private final ToolSetCredentialsService toolsetCredentialsService;
+    private final ToolSetCredentialsManager toolSetCredentialsManager;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
 
     public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
         this.vertx = proxy.getVertx();
-        this.toolsetCredentialsService = proxy.getToolsetCredentialsService();
+        this.toolSetCredentialsManager = proxy.getToolSetCredentialsManager();
         this.accessService = proxy.getAccessService();
         this.encryptionService = proxy.getEncryptionService();
     }
@@ -51,7 +51,7 @@ public class ToolSetCredentialsController {
                 verifyAccess(resourceDescriptor);
 
                 return vertx.executeBlocking(() -> {
-                    ToolSetCredentials toolSetCredentials = toolsetCredentialsService.createToolsetCredentials(
+                    ToolSetCredentials toolSetCredentials = toolSetCredentialsManager.createToolsetCredentials(
                         resourceDescriptor, toolSetSignInRequest, context);
                     return clearToolsetCredentialsSecrets(toolSetCredentials);
                 });
@@ -72,7 +72,7 @@ public class ToolSetCredentialsController {
 
                 verifyAccess(resourceDescriptor);
 
-                return toolsetCredentialsService.deleteToolSetCredentials(toolSetSignOutRequest, context);
+                return toolSetCredentialsManager.deleteToolSetCredentials(toolSetSignOutRequest, context);
             }))
             .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
             .onFailure(error -> respondError("Can't signOut from Toolset", error));

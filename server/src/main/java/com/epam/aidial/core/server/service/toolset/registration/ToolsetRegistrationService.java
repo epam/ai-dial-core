@@ -109,7 +109,7 @@ public class ToolsetRegistrationService {
     }
 
     private String getToolSetAuthorizationServerEndpoint(String baseToolSetEndpoint) {
-        String toolSetAuthServerEndpoint;
+        String toolSetAuthServerBaseEndpoint;
         try {
             ToolsetAuthorizationServerProtectedResourceMetadata toolsetAuthorizationServerProtectedResourceMetadata =
                 getToolsetAuthorizationServerProtectedResourceMetadata(baseToolSetEndpoint);
@@ -119,17 +119,18 @@ public class ToolsetRegistrationService {
                 throw new RuntimeException("No authorization servers defined for dynamic client registration.");
             }
             //TODO: should we get the first one?
-            toolSetAuthServerEndpoint = toolsetAuthorizationServerProtectedResourceMetadata.getAuthorizationServers().getFirst();
+            toolSetAuthServerBaseEndpoint = toolsetAuthorizationServerProtectedResourceMetadata.getAuthorizationServers().getFirst();
         } catch (HttpException e) {
             if (e.getStatus().equals(HttpStatus.NOT_FOUND)) {
-                toolSetAuthServerEndpoint = String.format(AUTH_SERVER_ENDPOINT, baseToolSetEndpoint);
+                toolSetAuthServerBaseEndpoint = baseToolSetEndpoint;
             } else {
                 log.error(e.getMessage(), e);
                 throw new RuntimeException("Error getting authorization servers for dynamic client registration.");
             }
         }
-        log.debug("ToolSetAuthServerEndpoint: {}", toolSetAuthServerEndpoint);
-        return toolSetAuthServerEndpoint;
+        String toolSetAuthServerWellKnownEndpoint = String.format(AUTH_SERVER_ENDPOINT, toolSetAuthServerBaseEndpoint);
+        log.debug("ToolSetAuthServerEndpoint: {}", toolSetAuthServerWellKnownEndpoint);
+        return toolSetAuthServerWellKnownEndpoint;
     }
 
     private ToolsetAuthorizationServerMetadata getToolsetAuthorizationServerMetadata(String toolSetAuthServerEndpoint) {

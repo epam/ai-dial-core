@@ -1,0 +1,235 @@
+package com.epam.aidial.core.server.service.toolset.credentials;
+
+import java.util.List;
+
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.ToolSetAuthSettings;
+import com.epam.aidial.core.config.ToolSetSignInRequest;
+import com.epam.aidial.core.config.ToolSetSignOutRequest;
+import com.epam.aidial.core.config.ToolsetAuthStatus;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.toolset.credentials.RefreshTokenRequest;
+import com.epam.aidial.core.server.data.toolset.credentials.TokenRequest;
+import com.epam.aidial.core.server.data.toolset.credentials.TokenResponse;
+import com.epam.aidial.core.server.data.toolset.credentials.ToolSetCredentials;
+import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthorizationServerClient;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+
+import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@RequiredArgsConstructor
+public class ToolSetCredentialsManager {
+
+    private final ToolSetService toolSetService;
+    private final ToolsetAuthorizationServerClient toolsetAuthorizationServerClient;
+    private final ToolSetCredentialsService toolSetCredentialsService;
+
+    public ToolSetCredentials createToolsetCredentials(ResourceDescriptor resource,
+                                                       ToolSetSignInRequest toolSetSignInRequest,
+                                                       ProxyContext contex) {
+        ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
+        String toolSetName = toolSet.getName();
+        ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
+
+        ToolSetCredentials toolSetCredentials;
+        if (toolSetSignInRequest.getAuthenticationType() == AuthenticationType.API_KEY) {
+            toolSetCredentials = createApiKeyToolSetCredentials(toolSetName, toolsetAuthSettings.getApiKeyHeader(), toolSetSignInRequest);
+        }
+
+        else if (toolSetSignInRequest.getAuthenticationType() == AuthenticationType.OAUTH) {
+            toolSetCredentials = createOauthToolSetCredentials(toolSetName, toolsetAuthSettings, toolSetSignInRequest);
+        }
+
+        else if (toolSetSignInRequest.getAuthenticationType() == AuthenticationType.NONE) {
+            toolSetCredentials = createNoneAuthToolSetCredentials(toolSetName, toolSetSignInRequest);
+        }
+        else {
+            throw new IllegalArgumentException(String.format("Invalid ToolsetAuthenticationType: %s", toolSetSignInRequest.getAuthenticationType()));
+        }
+
+        if (toolSetSignInRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
+            toolSetCredentials.setUserSub(contex.getUserSub());
+        }
+
+        toolSetCredentialsService.addToolSetCredentials(toolSetCredentials);
+        log.info("ToolSet signIn done. {}", toolSetName);
+        return toolSetCredentials;
+    }
+
+    public ToolSetCredentials getToolSetCredentials(ToolSet toolSet,
+                                                    ProxyContext contex) {
+        String toolSetName = toolSet.getName();
+        List<ToolSetCredentials> toolSetCredentialsList = toolSetCredentialsService.getAllToolSetCredentials(toolSetName);
+        String userSub = contex.getUserSub();
+
+        for (ToolSetCredentials credentials : toolSetCredentialsList) {
+            if (credentials.getCredentialsLevel() == CredentialsLevel.USER
+                && userSub != null
+                && userSub.equals(credentials.getUserSub())) {
+                if (credentials.isTokenExpired()) {
+                    updateExpiredToolSetCredentials(credentials, toolSet);
+                    toolSetCredentialsService.updateToolSetCredentials(toolSetName, toolSetCredentialsList);
+                }
+                return credentials;
+            }
+        }
+
+        for (ToolSetCredentials credentials : toolSetCredentialsList) {
+            if (credentials.getCredentialsLevel() == CredentialsLevel.GLOBAL) {
+                if (credentials.isTokenExpired()) {
+                    updateExpiredToolSetCredentials(credentials, toolSet);
+                    toolSetCredentialsService.updateToolSetCredentials(toolSetName, toolSetCredentialsList);
+                }
+                return credentials;
+            }
+        }
+
+        // TODO: implement logic for APP level creds
+
+        throw new ResourceNotFoundException(String.format("Credentials (Global or Personal) for ToolSet %s not found", toolSetName));
+    }
+
+    public List<ToolSetCredentials> getAllToolSetCredentials(String toolSetName) {
+        return toolSetCredentialsService.getAllToolSetCredentials(toolSetName);
+    }
+
+    public boolean deleteToolSetCredentials(ToolSetSignOutRequest toolSetSignOutRequest,
+                                            ProxyContext contex) {
+        String toolSetName = toolSetSignOutRequest.getUrl();
+        List<ToolSetCredentials> toolSetCredentialsList = toolSetCredentialsService.getAllToolSetCredentials(toolSetName);
+
+        if (toolSetCredentialsList == null || toolSetCredentialsList.isEmpty()) {
+            return false;
+        }
+
+        boolean removed = false;
+
+        if (toolSetSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
+            removed = toolSetCredentialsList.removeIf(
+                toolSetCredentials -> toolSetCredentials.getCredentialsLevel().equals(toolSetSignOutRequest.getCredentialsLevel()));
+        } else if (toolSetSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
+            removed = toolSetCredentialsList.removeIf(
+                toolSetCredentials -> toolSetCredentials.getCredentialsLevel().equals(toolSetSignOutRequest.getCredentialsLevel())
+                    && toolSetCredentials.getUserSub().equals(contex.getUserSub()));
+        }
+
+        toolSetCredentialsService.updateToolSetCredentials(toolSetName, toolSetCredentialsList);
+
+        log.info("ToolSet signOut done. {}", toolSetName);
+        return removed;
+    }
+
+    private ToolSetCredentials createApiKeyToolSetCredentials(String toolSetName,
+                                                              String apiKeyHeader,
+                                                              ToolSetSignInRequest toolSetSignInRequest) {
+        if (toolSetSignInRequest.getCode() != null) {
+            throw new IllegalArgumentException("Code is not required when auth type is API_KEY");
+        }
+
+        return ToolSetCredentials.builder()
+            .toolSetName(toolSetName)
+            .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
+            .authenticationType(toolSetSignInRequest.getAuthenticationType())
+            .apiKeyHeader(apiKeyHeader)
+            .apiKey(toolSetSignInRequest.getApiKey())
+            .createdAt(System.currentTimeMillis())
+            .status(ToolsetAuthStatus.SIGNED_IN)
+            .build();
+    }
+
+    private ToolSetCredentials createOauthToolSetCredentials(String toolSetName,
+                                                             ToolSetAuthSettings toolsetAuthSettings,
+                                                             ToolSetSignInRequest toolSetSignInRequest) {
+        if (toolSetSignInRequest.getApiKey() != null) {
+            throw new IllegalArgumentException("Api key is not required when auth type is OAUTH");
+        }
+
+        TokenResponse tokenResponse = getToken(toolSetName, toolsetAuthSettings, toolSetSignInRequest);
+
+        return ToolSetCredentials.builder()
+            .toolSetName(toolSetName)
+            .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
+            .authenticationType(toolSetSignInRequest.getAuthenticationType())
+            .accessToken(tokenResponse.getAccessToken())
+            .refreshToken(tokenResponse.getRefreshToken())
+            .expiresIn(tokenResponse.getExpiresIn())
+            .createdAt(System.currentTimeMillis())
+            .status(ToolsetAuthStatus.SIGNED_IN)
+            .build();
+    }
+
+    private TokenResponse getToken(String toolSetName,
+                                   ToolSetAuthSettings toolsetAuthSettings,
+                                   ToolSetSignInRequest toolSetSignInRequest) {
+        log.debug("Start Toolset {} token retrieval", toolSetName);
+        TokenRequest tokenRequest = TokenRequest.builder()
+            .clientId(toolsetAuthSettings.getClientId())
+            .clientSecret(toolsetAuthSettings.getClientSecret())
+            .code(toolSetSignInRequest.getCode())
+            // TODO: do we need to support different?
+            .grantType("authorization_code")
+            .redirectUri(toolsetAuthSettings.getRedirectUri())
+            .build();
+
+        TokenResponse tokenResponse = toolsetAuthorizationServerClient.executePost(
+            toolsetAuthSettings.getTokenEndpoint(),
+            tokenRequest.buildFormData(),
+            "application/x-www-form-urlencoded",
+            TokenResponse.class);
+        log.debug("Finished Toolset {} token retrieval", toolSetName);
+        return tokenResponse;
+    }
+
+    private ToolSetCredentials createNoneAuthToolSetCredentials(String toolSetName,
+                                                                ToolSetSignInRequest toolSetSignInRequest) {
+        if (toolSetSignInRequest.getApiKey() != null || toolSetSignInRequest.getCode() != null) {
+            throw new IllegalArgumentException("Neither Api key nor Code is not required when auth type is None");
+        }
+
+        return ToolSetCredentials.builder()
+            .toolSetName(toolSetName)
+            .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
+            .authenticationType(toolSetSignInRequest.getAuthenticationType())
+            .createdAt(System.currentTimeMillis())
+            .status(ToolsetAuthStatus.SIGNED_IN)
+            .build();
+    }
+
+    private TokenResponse getToken(String toolSetName,
+                                   String refreshToken,
+                                   ToolSetAuthSettings toolsetAuthSettings) {
+        log.debug("Start Toolset {} reresh token retrieval", toolSetName);
+        RefreshTokenRequest tokenRequest = RefreshTokenRequest.builder()
+            .clientId(toolsetAuthSettings.getClientId())
+            .clientSecret(toolsetAuthSettings.getClientSecret())
+            .grantType("refresh_token")
+            .refreshToken(refreshToken)
+            .build();
+
+        TokenResponse tokenResponse = toolsetAuthorizationServerClient.executePost(
+            toolsetAuthSettings.getTokenEndpoint(),
+            tokenRequest.buildFormData(),
+            "application/x-www-form-urlencoded",
+            TokenResponse.class);
+        log.debug("Finished Toolset {} token retrieval", toolSetName);
+        return tokenResponse;
+    }
+
+    private void updateExpiredToolSetCredentials(ToolSetCredentials toolSetCredentials,
+                                                               ToolSet toolSet) {
+        TokenResponse refreshedToken = getToken(toolSet.getName(),
+            toolSetCredentials.getRefreshToken(), toolSet.getAuthSettings());
+
+        toolSetCredentials.setExpiresIn(refreshedToken.getExpiresIn());
+        toolSetCredentials.setCreatedAt(System.currentTimeMillis());
+        toolSetCredentials.setAccessToken(refreshedToken.getAccessToken());
+        toolSetCredentials.setRefreshToken(refreshedToken.getRefreshToken());
+    }
+}

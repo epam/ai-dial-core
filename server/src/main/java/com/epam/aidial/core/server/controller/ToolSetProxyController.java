@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsManager;
 import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -55,7 +56,7 @@ public class ToolSetProxyController implements Controller {
 
     private final LogStore logStore;
 
-    private final ToolSetCredentialsService toolSetCredentialsService;
+    private final ToolSetCredentialsManager toolSetCredentialsManager;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         this.taskExecutor = proxy.getTaskExecutor();
@@ -66,7 +67,7 @@ public class ToolSetProxyController implements Controller {
         this.logStore = proxy.getLogStore();
         this.context = context;
         this.toolSetId = toolSetId;
-        this.toolSetCredentialsService = proxy.getToolsetCredentialsService();
+        this.toolSetCredentialsManager = proxy.getToolSetCredentialsManager();
     }
 
     @Override
@@ -140,12 +141,14 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void addToolsetCredentials(HttpClientRequest proxyRequest) {
-        String toolSetName = context.getDeployment().getName();
-        ToolSetCredentials toolSetCredentials = toolSetCredentialsService.getToolSetCredentials(toolSetName, context);
-        if (AuthenticationType.OAUTH.equals(toolSetCredentials.getAuthenticationType())) {
-            proxyRequest.putHeader("Authorization", "Bearer " + toolSetCredentials.getAccessToken());
-        } else if (AuthenticationType.API_KEY.equals(toolSetCredentials.getAuthenticationType())) {
-            proxyRequest.putHeader(toolSetCredentials.getApiKeyHeader(), toolSetCredentials.getApiKey());
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof ToolSet toolSet) {
+            ToolSetCredentials toolSetCredentials = toolSetCredentialsManager.getToolSetCredentials(toolSet, context);
+            if (AuthenticationType.OAUTH.equals(toolSetCredentials.getAuthenticationType())) {
+                proxyRequest.putHeader("Authorization", "Bearer " + toolSetCredentials.getAccessToken());
+            } else if (AuthenticationType.API_KEY.equals(toolSetCredentials.getAuthenticationType())) {
+                proxyRequest.putHeader(toolSetCredentials.getApiKeyHeader(), toolSetCredentials.getApiKey());
+            }
         }
     }
 

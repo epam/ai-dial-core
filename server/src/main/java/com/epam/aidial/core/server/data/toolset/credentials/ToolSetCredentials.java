@@ -25,4 +25,11 @@ public class ToolSetCredentials {
     private long createdAt;
     private long expiresIn;
     private String userSub;
+
+    public boolean isTokenExpired() {
+        if (authenticationType.equals(AuthenticationType.OAUTH)) {
+            return createdAt + expiresIn * 1000 <= System.currentTimeMillis();
+        }
+        return true;
+    }
 }

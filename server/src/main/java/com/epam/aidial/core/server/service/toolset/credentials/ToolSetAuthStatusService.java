@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.service.toolset.credentials;
 
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.ToolsetAuthStatus;
@@ -14,10 +13,10 @@ import java.util.Optional;
 @AllArgsConstructor
 public class ToolSetAuthStatusService {
 
-    private final ToolSetCredentialsService credentialsService;
+    private final ToolSetCredentialsManager toolSetCredentialsManager;
 
     public void setToolSetAuthStatuses(ToolSet toolSet) {
-        List<ToolSetCredentials> allToolSetCredentials = credentialsService.getAllToolSetCredentials(toolSet.getName());
+        List<ToolSetCredentials> allToolSetCredentials = toolSetCredentialsManager.getAllToolSetCredentials(toolSet.getName());
         setUserAuthStatus(toolSet, allToolSetCredentials);
         setGlobalAuthStatus(toolSet, allToolSetCredentials);
     }
@@ -27,7 +26,7 @@ public class ToolSetAuthStatusService {
         Optional<ToolSetCredentials> userToolSetCredentials = allToolSetCredentials.stream()
             .filter(toolSetCredentials -> toolSetCredentials.getCredentialsLevel().equals(CredentialsLevel.USER))
             .findFirst();
-        if (userToolSetCredentials.isPresent() && verifyToolSetCredentialsValid(userToolSetCredentials.get())) {
+        if (userToolSetCredentials.isPresent() && !userToolSetCredentials.get().isTokenExpired()) {
             toolSet.getAuthSettings().setUserLevelAuthStatus(ToolsetAuthStatus.SIGNED_IN);
         } else {
             toolSet.getAuthSettings().setUserLevelAuthStatus(ToolsetAuthStatus.SIGNED_OUT);
@@ -39,17 +38,10 @@ public class ToolSetAuthStatusService {
         Optional<ToolSetCredentials> globalToolSetCredentials = allToolSetCredentials.stream()
             .filter(toolSetCredentials -> toolSetCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL))
             .findFirst();
-        if (globalToolSetCredentials.isPresent() && verifyToolSetCredentialsValid(globalToolSetCredentials.get())) {
+        if (globalToolSetCredentials.isPresent() && !globalToolSetCredentials.get().isTokenExpired()) {
             toolSet.getAuthSettings().setGlobalAuthStatus(ToolsetAuthStatus.SIGNED_IN);
         } else {
             toolSet.getAuthSettings().setGlobalAuthStatus(ToolsetAuthStatus.SIGNED_OUT);
         }
-    }
-
-    private boolean verifyToolSetCredentialsValid(ToolSetCredentials toolSetCredentials) {
-        if (toolSetCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
-            return toolSetCredentials.getCreatedAt() + toolSetCredentials.getExpiresIn() * 1000 > System.currentTimeMillis();
-        }
-        return true;
     }
 }
