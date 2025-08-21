@@ -93,8 +93,7 @@ public class ApplicationRouteController extends BaseRouteController {
                 var fn = new CollectResponseCustomAttachmentsFn(proxy, context);
                 return fn.apply(tree);
             } catch (IOException e) {
-                log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
-                        context.getTraceId(), context.getSpanId(), e);
+                log.warn("Can't parse JSON response body. Error:", e);
                 return Future.failedFuture(e);
             }
         }

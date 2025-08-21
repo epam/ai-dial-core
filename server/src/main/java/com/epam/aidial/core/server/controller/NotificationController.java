@@ -60,10 +60,12 @@ public class NotificationController {
         } else if (error instanceof IllegalArgumentException e) {
             status = HttpStatus.BAD_REQUEST;
             body = e.getMessage();
-        } else {
-            log.warn(message, error);
         }
 
         context.respond(status, body);
+        
+        if (!(error instanceof HttpException) && !(error instanceof IllegalArgumentException)) {
+            log.warn(message, error);
+        }
     }
 }
