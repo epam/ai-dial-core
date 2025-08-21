@@ -143,7 +143,7 @@ public class ResourceDescriptor {
     }
 
     public boolean isPublic() {
-        return bucketLocation.equals(PUBLIC_LOCATION);
+        return bucketLocation.startsWith(PUBLIC_LOCATION);
     }
 
     public boolean isPrivate() {
