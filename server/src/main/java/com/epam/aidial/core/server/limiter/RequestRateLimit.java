@@ -5,6 +5,9 @@ import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.Data;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 public class RequestRateLimit {
     private final RateBucket hour = new RateBucket(RateWindow.HOUR);
@@ -21,7 +24,30 @@ public class RequestRateLimit {
             long hourRetryAfter = hour.retryAfter(limit.getRequestHour());
             long dayRetryAfter = day.retryAfter(limit.getRequestDay());
             long retryAfter = Math.max(hourRetryAfter, dayRetryAfter);
-            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, retryAfter);
+            List<String> limits = new ArrayList<>();
+            StringBuilder displayError = new StringBuilder("You've exceeded your");
+            if (dayTotal >= limit.getRequestDay()) {
+                limits.add("daily");
+            }
+            if (hourTotal >= limit.getRequestHour()) {
+                limits.add("minutely");
+            }
+            for (int i = 0; i < limits.size(); i++) {
+                if (i > 0) {
+                    if (i == limits.size() - 1) {
+                        displayError.append(" and");
+                    } else {
+                        displayError.append(',');
+                    }
+                }
+                displayError.append(' ');
+                displayError.append(limits.get(i));
+            }
+            displayError.append(" request limit");
+            if (limits.size() > 1) {
+                displayError.append('s');
+            }
+            return new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, errorMsg, displayError.toString(), retryAfter);
         } else {
             hour.add(timestamp, count);
             day.add(timestamp, count);

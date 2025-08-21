@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -50,7 +51,6 @@ public class ProxyUtil {
             .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
             .add(HttpHeaders.UPGRADE, "whatever")
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
-            .add(HttpHeaders.ACCEPT_ENCODING, "whatever")
             .add(Proxy.HEADER_API_KEY, "whatever");
     public static final String METADATA_PREFIX = "metadata/";
 
@@ -277,7 +277,7 @@ public class ProxyUtil {
         try {
             return MAPPER.readValue(payload, clazz);
         } catch (JsonProcessingException e) {
-            log.error("Failed to convert payload to the object", e);
+            log.warn("Failed to convert payload to the object", e);
             if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
                 String missingField = mismatchedInputException.getPath().stream()
                         .map(JsonMappingException.Reference::getFieldName)
@@ -313,5 +313,9 @@ public class ProxyUtil {
 
     public static EtagHeader etag(HttpServerRequest request) {
         return EtagHeader.fromHeader(request.getHeader(HttpHeaders.IF_MATCH), request.getHeader(HttpHeaders.IF_NONE_MATCH), request.method().name());
+    }
+
+    public String generateReference() {
+        return UUID.randomUUID().toString();
     }
 }

@@ -314,25 +314,25 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 403);
 
-        // admin has access
+        // admin shouldn't have access to the private conversation
         response = send(HttpMethod.POST, "/v1/ops/resource/move", null, """
                 {
                    "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                    "destinationUrl": "conversations/public/folder/conversation"
                 }
                 """, "authorization", "admin");
-        verify(response, 200);
+        verify(response, 403);
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation");
-        verify(response, 404);
+        verify(response, 200);
 
         response =  send(HttpMethod.GET, "/v1/conversations/public/folder/conversation", null, null,
                 "authorization", "admin");
-        verify(response, 200, CONVERSATION_BODY_1);
+        verify(response, 404);
     }
 
     @Test
-    void testMoveFromPublicToPrivate() {
+    void testMoveFromPublicToPublic() {
         Response response = send(HttpMethod.PUT, "/v1/conversations/public/folder/conversation",
                 null, CONVERSATION_BODY_1, "authorization", "admin");
         verify(response, 200);
@@ -357,5 +357,36 @@ public class ResourceOperationApiTest extends ResourceBaseTest {
         response =  send(HttpMethod.GET, "/v1/conversations/public/folder2/conversation2",
                 null, null, "authorization", "admin");
         verify(response, 200, CONVERSATION_BODY_1);
+    }
+
+    @Test
+    void testCopyResourceWorkflow() {
+        // upload resource
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"");
+
+        // verify resource can be downloaded
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+
+        // verify copy operation
+        response = send(HttpMethod.POST, "/v1/ops/resource/copy", null, """
+                {
+                   "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                   "destinationUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder2/conversation2"
+                }
+                """);
+        verify(response, 200);
+
+        // verify old resource still exists
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+
+        // verify new resource can be downloaded
+        response = resourceRequest(HttpMethod.GET, "/folder2/conversation2");
+        verifyJson(response, 200, CONVERSATION_BODY_1);
+        // verify the resource has the same author
+        response = metadata("/folder2/conversation2");
+        verifyNotExact(response, 200, "\"author\":\"EPM-RTC-GPT\"");
     }
 }

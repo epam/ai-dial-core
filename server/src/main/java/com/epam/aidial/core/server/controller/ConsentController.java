@@ -19,7 +19,7 @@ public class ConsentController {
     private Proxy proxy;
 
     public Future<?> requestConsent(String deploymentId) {
-        proxy.getVertx().executeBlocking(() -> proxy.getConsentService().buildConsent(context, deploymentId), false).onSuccess(consent -> {
+        proxy.getTaskExecutor().submit(() -> proxy.getConsentService().buildConsent(context, deploymentId)).onSuccess(consent -> {
             context.respond(HttpStatus.OK, consent);
         }).onFailure(error -> handleRequestError(deploymentId, error));
         return Future.succeededFuture();
@@ -33,7 +33,7 @@ public class ConsentController {
                     try {
                         request = ProxyUtil.convertToObject(buffer, AcceptConsentRequest.class);
                     } catch (Exception e) {
-                        log.error("Invalid request body provided", e);
+                        log.warn("Invalid request body provided", e);
                         context.respond(HttpStatus.BAD_REQUEST, "Invalid request body provided");
                         return Future.succeededFuture();
                     }
@@ -43,10 +43,10 @@ public class ConsentController {
                         return Future.succeededFuture();
                     }
 
-                    return proxy.getVertx().executeBlocking(() -> {
+                    return proxy.getTaskExecutor().submit(() -> {
                         proxy.getConsentService().acceptConsent(context, deploymentId, request.getConsent());
                         return null;
-                    }, false);
+                    });
                 })
                 .onSuccess(ignored -> context.respond(HttpStatus.OK))
                 .onFailure(error -> handleRequestError(deploymentId, error));
@@ -55,10 +55,10 @@ public class ConsentController {
 
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
-            log.error("Forbidden deployment {}. Project: {}. User sub: {}", deploymentId, context.getProject(), context.getUserSub());
+            log.warn("Forbidden deployment {}", deploymentId);
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof ResourceNotFoundException) {
-            log.error("Deployment not found {}", deploymentId, error);
+            log.warn("Deployment not found {}", deploymentId, error);
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
             log.error("Failed to process user consent", error);

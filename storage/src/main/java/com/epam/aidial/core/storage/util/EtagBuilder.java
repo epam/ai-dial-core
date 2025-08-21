@@ -24,7 +24,7 @@ public class EtagBuilder {
         byte[] bytes = digest.digest();
         return IntStream.range(0, bytes.length)
                 .mapToObj(i -> String.format("%02x", bytes[i]))
-                .collect(Collectors.joining());
+                .collect(Collectors.joining("", "\"", "\""));
     }
 
     public static String generateEtag(byte[] bytes) {

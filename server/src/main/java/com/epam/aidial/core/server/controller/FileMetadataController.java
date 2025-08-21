@@ -40,26 +40,27 @@ public class FileMetadataController extends AccessControlBaseController {
             return context.respond(HttpStatus.BAD_REQUEST, "Limit is out of allowed range: [0, 1000]");
         }
 
-        proxy.getVertx().executeBlocking(() -> {
-            try {
-                MetadataBase metadata = resourceService.getMetadata(resource, token, limit, recursive);
-                if (metadata != null) {
-                    accessService.filterForbidden(context, resource, metadata);
-                    if (context.getBooleanRequestQueryParam("permissions")) {
-                        accessService.populatePermissions(context, List.of(metadata));
-                    }
-                    context.respond(HttpStatus.OK, getContentType(), metadata);
-                } else {
-                    context.respond(HttpStatus.NOT_FOUND);
-                }
-            } catch (Exception ex) {
-                log.error("Failed to list files", ex);
-                context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Failed to list files by path %s".formatted(resource.getUrl()));
+        proxy.getTaskExecutor().submit(() -> {
+            MetadataBase result = resourceService.getMetadata(resource, token, limit, recursive);
+            if (result == null) {
+                return null;
             }
-
-            return null;
-        }, false);
+            accessService.filterForbidden(context, resource, result);
+            if (context.getBooleanRequestQueryParam("permissions")) {
+                accessService.populatePermissions(context, List.of(result));
+            }
+            return result;
+        }).onSuccess(result -> {
+            if (result == null) {
+                context.respond(HttpStatus.NOT_FOUND);
+            } else {
+                context.respond(HttpStatus.OK, getContentType(), result);
+            }
+        }).onFailure(error -> {
+            log.warn("Can't list files: {}", resource.getUrl(), error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to list files by path %s".formatted(resource.getUrl()));
+        });
 
         return Future.succeededFuture();
     }

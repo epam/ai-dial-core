@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -25,7 +25,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class FileApiTest extends ResourceBaseTest {
 
     private static final String TEST_FILE_CONTENT = "Test file content";
-    private static final String TEST_FILE_ETAG = "ac79653edeb65ab5563585f2d5f14fe9";
+    private static final String TEST_FILE_ETAG = "\"ac79653edeb65ab5563585f2d5f14fe9\"";
 
     @Test
     public void testBucket(Vertx vertx, VertxTestContext context) {
@@ -135,7 +134,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType":"FOLDER",
                                       "resourceType":"FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items":[]
                                     }
                                     """, response.body());
@@ -164,7 +163,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType":"FOLDER",
                                       "resourceType":"FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items":[]
                                     }
                                     """, response.body());
@@ -246,7 +245,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -358,7 +357,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -412,7 +411,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -442,7 +441,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -487,7 +486,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ {
                                         "name" : "файл.txt",
                                         "parentPath" : null,
@@ -495,7 +494,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "text/custom"
@@ -566,7 +565,10 @@ public class FileApiTest extends ResourceBaseTest {
                                                "contentType" : "application/x-binary"
                                              }
                                             """, response.body());
-                                    Assertions.assertNotNull(response.getHeader(HttpHeaders.ETAG));
+                                    String etag = response.getHeader(HttpHeaders.ETAG);
+                                    Assertions.assertNotNull(etag);
+                                    Assertions.assertTrue(etag.startsWith("\""));
+                                    Assertions.assertTrue(etag.endsWith("\""));
 
                                     checkpoint.flag();
                                     promise.complete();
@@ -827,7 +829,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-GPT",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -875,7 +877,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ {
                                         "name" : "file.txt",
                                         "parentPath" : "appdata/EPM-RTC-RAIL",
@@ -883,7 +885,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "text/custom"
@@ -933,7 +935,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1014,7 +1016,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1083,7 +1085,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1133,7 +1135,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -1163,7 +1165,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -1196,7 +1198,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/custom"
@@ -1225,7 +1227,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ {
                                         "name" : "file.txt",
                                         "parentPath" : null,
@@ -1233,7 +1235,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "text/custom"
@@ -1244,7 +1246,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/",
                                         "nodeType" : "FOLDER",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
                                         "items" : null
                                       } ]
                                     }
@@ -1277,7 +1279,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -1307,7 +1309,7 @@ public class FileApiTest extends ResourceBaseTest {
                                                       "resourceType" : "FILE",
                                                       "createdAt" : "@ignore",
                                                       "updatedAt" : "@ignore",
-                                                      "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                                      "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                                       "author" : "EPM-RTC-RAIL",
                                                       "contentLength" : 17,
                                                       "contentType" : "binary/octet-stream"
@@ -1336,7 +1338,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
                                       "items" : [ {
                                         "name" : "image.png",
                                         "parentPath" : null,
@@ -1344,7 +1346,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "image/png"
@@ -1382,7 +1384,7 @@ public class FileApiTest extends ResourceBaseTest {
                                               "resourceType" : "FILE",
                                               "createdAt" : "@ignore",
                                               "updatedAt" : "@ignore",
-                                              "etag" : "ac79653edeb65ab5563585f2d5f14fe9",
+                                              "etag" : "\\"ac79653edeb65ab5563585f2d5f14fe9\\"",
                                               "author" : "EPM-RTC-RAIL",
                                               "contentLength" : 17,
                                               "contentType" : "text/plan"
@@ -1430,7 +1432,7 @@ public class FileApiTest extends ResourceBaseTest {
         Checkpoint checkpoint = context.checkpoint(8);
         WebClient client = WebClient.create(vertx);
         String newContent = "NEW CONTENT";
-        String newEtag = "bb6ed8b95d44dba4f8e4a99ebaca9a00";
+        String newEtag = "\"bb6ed8b95d44dba4f8e4a99ebaca9a00\"";
 
         Future.succeededFuture().compose((mapper) -> {
             Promise<Void> promise = Promise.promise();
@@ -1604,7 +1606,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "resourceType":"FILE",
                                       "createdAt":"@ignore",
                                       "updatedAt":"@ignore",
-                                      "etag":"bb6ed8b95d44dba4f8e4a99ebaca9a00",
+                                      "etag":"\\"bb6ed8b95d44dba4f8e4a99ebaca9a00\\"",
                                       "contentLength":11,
                                       "contentType":"text/custom",
                                       "author": "EPM-RTC-RAIL"
@@ -1672,14 +1674,14 @@ public class FileApiTest extends ResourceBaseTest {
                     );
             return promise.future();
         }).compose((mapper) -> {
-            // Verify that admin has read access to the file
+            // Verify that admin doesn't have read access to the file
             Promise<Void> promise = Promise.promise();
             client.get(serverPort, "localhost", fileUrl)
                     .putHeader("Authorization", "admin")
                     .as(BodyCodec.string())
                     .send(context.succeeding(response -> {
                         context.verify(() -> {
-                            assertEquals(200, response.statusCode());
+                            assertEquals(403, response.statusCode());
                             checkpoint.flag();
                             promise.complete();
                         });

@@ -17,12 +17,12 @@ public class ConfigController implements Controller {
     @Override
     public Future<?> handle() throws Exception {
         Proxy proxy = context.getProxy();
-        proxy.getVertx().executeBlocking(() -> {
+        proxy.getTaskExecutor().submit(() -> {
             if (proxy.getAccessService().hasAdminAccess(context)) {
                 return context.getProxy().getConfigStore().reload();
             }
             throw new PermissionDeniedException("User must be admin");
-        }, false)
+        })
                 .onSuccess(config -> context.respond(HttpStatus.OK, config))
                 .onFailure(this::handleError);
         return Future.succeededFuture();

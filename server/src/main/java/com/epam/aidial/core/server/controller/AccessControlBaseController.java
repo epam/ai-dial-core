@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
@@ -24,16 +24,16 @@ public abstract class AccessControlBaseController {
 
         try {
             resource = ResourceDescriptorFactory.fromAnyUrl(resourceUrl, proxy.getEncryptionService());
-        } catch (IllegalArgumentException e) {
+        } catch (Exception e) {
             String errorMessage = e.getMessage() != null ? e.getMessage() : ("Invalid resource url provided: " + resourceUrl);
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
         }
 
-        return proxy.getVertx()
-                .executeBlocking(() -> {
+        return proxy.getTaskExecutor()
+                .submit(() -> {
                     AccessService service = proxy.getAccessService();
                     return service.lookupPermissions(Set.of(resource), context).get(resource);
-                }, false)
+                })
                 .compose(permissions -> {
                     boolean hasAccess = permissions.contains(isWriteAccess
                             ? ResourceAccessType.WRITE : ResourceAccessType.READ);
@@ -50,4 +50,5 @@ public abstract class AccessControlBaseController {
      * @return a successful future to read the request body after its completion.
      */
     protected abstract Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess);
+
 }

@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.CopyResourcesRequest;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
@@ -12,7 +14,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -37,10 +39,10 @@ import java.util.stream.Collectors;
 public class ResourceOperationController {
 
     private static final Set<ResourceType> SUBSCRIPTION_ALLOWED_TYPES = Set.of(
-            ResourceTypes.FILE, ResourceTypes.CONVERSATION, ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
+            ResourceTypes.FILE, ResourceTypes.CONVERSATION, ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final ProxyContext context;
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final EncryptionService encryptionService;
     private final ResourceOperationService resourceOperationService;
     private final LockService lockService;
@@ -49,7 +51,7 @@ public class ResourceOperationController {
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.vertx = proxy.getVertx();
+        this.taskExecutor = proxy.getTaskExecutor();
         this.encryptionService = proxy.getEncryptionService();
         this.resourceOperationService = proxy.getResourceOperationService();
         this.lockService = proxy.getLockService();
@@ -65,7 +67,7 @@ public class ResourceOperationController {
                     try {
                         request = ProxyUtil.convertToObject(buffer, MoveResourcesRequest.class);
                     } catch (Exception e) {
-                        log.error("Invalid request body provided", e);
+                        log.warn("Invalid request body provided", e);
                         throw new IllegalArgumentException("Can't initiate move resource request. Incorrect body provided");
                     }
 
@@ -103,10 +105,65 @@ public class ResourceOperationController {
                     }
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
-                    return vertx.executeBlocking(() -> lockService.underBucketLocks(buckets, () -> {
+                    return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
                         resourceOperationService.moveResource(source, destination, request.isOverwrite());
                         return null;
-                    }), false);
+                    }));
+                })
+                .onSuccess(ignore -> context.respond(HttpStatus.OK))
+                .onFailure(this::handleServiceError);
+
+        return Future.succeededFuture();
+    }
+
+    public Future<?> copy() {
+        context.getRequest()
+                .body()
+                .compose(buffer -> {
+                    CopyResourcesRequest request;
+                    try {
+                        request = ProxyUtil.convertToObject(buffer, CopyResourcesRequest.class);
+                    } catch (Exception e) {
+                        throw new IllegalArgumentException("bad request body");
+                    }
+
+                    String sourceUrl = request.getSourceUrl();
+                    if (sourceUrl == null) {
+                        throw new IllegalArgumentException("sourceUrl must be provided");
+                    }
+
+                    String destinationUrl = request.getDestinationUrl();
+                    if (destinationUrl == null) {
+                        throw new IllegalArgumentException("destinationUrl must be provided");
+                    }
+
+                    ResourceDescriptor source = ResourceDescriptorFactory.fromAnyUrl(sourceUrl, encryptionService);
+                    ResourceDescriptor destination = ResourceDescriptorFactory.fromAnyUrl(destinationUrl, encryptionService);
+
+                    if (!source.getType().equals(destination.getType())) {
+                        throw new IllegalArgumentException("source and destination resources must have same type");
+                    }
+
+                    if (source.getUrl().equals(destination.getUrl())) {
+                        throw new IllegalArgumentException("source and destination resources must have different urls");
+                    }
+
+                    Set<ResourceDescriptor> resources = Set.of(source, destination);
+                    Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
+                            accessService.lookupPermissions(resources, context);
+
+                    if (!permissions.get(source).contains(ResourceAccessType.READ)) {
+                        throw new PermissionDeniedException("no read access to source resource");
+                    }
+
+                    if (!permissions.get(destination).contains(ResourceAccessType.WRITE)) {
+                        throw new PermissionDeniedException("no write access to destination resource");
+                    }
+
+                    return taskExecutor.submit(() -> {
+                        resourceOperationService.copyResource(source, destination, request.isOverwrite());
+                        return null;
+                    });
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
@@ -129,12 +186,12 @@ public class ResourceOperationController {
                             .putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
                             .write(""); // to force writing header
 
-                    return vertx.executeBlocking(() -> {
+                    return taskExecutor.submit(() -> {
                         ResourceTopic.Subscription subscription =
                                 resourceOperationService.subscribeResources(resources, subscriber);
                         heartbeatService.subscribe(heartbeat);
                         return subscription;
-                    }, false);
+                    });
                 })
                 .onSuccess(subscription -> response.closeHandler(event -> {
                     heartbeatService.unsubscribe(heartbeat);

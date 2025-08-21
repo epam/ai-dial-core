@@ -1,13 +1,26 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.storage.data.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.Data;
 
 import java.util.EnumSet;
 import java.util.Set;
 
-public record SharedResource(
-        String url,
-        Set<ResourceAccessType> permissions) {
+@Data
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class SharedResource {
+    String url;
+    Set<ResourceAccessType> permissions;
+
+    public SharedResource() {
+    }
+
+    public SharedResource(String url, Set<ResourceAccessType> permissions) {
+        this.url = url;
+        this.permissions = permissions;
+    }
+
     public SharedResource withUrl(String url) {
         return new SharedResource(url, permissions);
     }

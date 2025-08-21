@@ -8,9 +8,9 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
-import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
@@ -53,10 +53,7 @@ public class RateLimiterTest {
     private static RedissonClient redissonClient;
 
     @Mock
-    private Vertx vertx;
-
-    @Mock
-    private EncryptionService encryptionService;
+    private AsyncTaskExecutor taskExecutor;
 
     @Mock
     private BlobStorage blobStorage;
@@ -107,7 +104,7 @@ public class RateLimiterTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        rateLimiter = new RateLimiter(vertx, resourceService);
+        rateLimiter = new RateLimiter(taskExecutor, resourceService);
     }
 
     @Test
@@ -123,7 +120,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -149,12 +146,12 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -182,12 +179,12 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
         apiKeyData.setPerRequestKey("per-request-key");
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -237,12 +234,12 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -321,12 +318,12 @@ public class RateLimiterTest {
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null));
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                null, "trace-id", "span-id");
+                null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -363,12 +360,12 @@ public class RateLimiterTest {
 
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                new ExtractedClaims("sub", List.of("role1"), "user-hash", Map.of(), null, null), "trace-id", "span-id");
+                new ExtractedClaims("sub", List.of("role1"), "user-hash", Map.of(), null, null), "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -419,12 +416,12 @@ public class RateLimiterTest {
 
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null), "trace-id", "span-id");
+                new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null), "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
 
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });

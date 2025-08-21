@@ -1235,7 +1235,7 @@ public class ShareApiTest extends ResourceBaseTest {
                   ]
                 }
                 """);
-        verify(response, 400, "Resource conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/conversation does not belong to the user");
+        verify(response, 400, "Resource conversations/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder/conversation is not allowed to be shared by the user");
     }
 
     @Test
@@ -1897,5 +1897,133 @@ public class ShareApiTest extends ResourceBaseTest {
             Response response = operationRequest(endpoint, "", "api-key", perRequestKey.getPerRequestKey());
             verify(response, 403, expectedError);
         }
+    }
+
+    @Test
+    public void testReShareWorkflow() {
+
+        // create conversation
+        var response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
+
+        // you're not allowed to share with share permission only
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40",
+                      "permissions": ["SHARE"],
+                      "canReshare": true
+                    }
+                  ]
+                }
+                """);
+        verify(response, 400);
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40",
+                      "permissions": ["READ", "SHARE"],
+                      "canReshare": true
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
+        verify(response, 200, CONVERSATION_BODY_1);
+
+        // verify user2 has shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "resources" : [ {
+                    "name" : "conversation 1@",
+                    "parentPath" : "folder",
+                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
+                    "nodeType" : "ITEM",
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ", "SHARE" ]
+                    } ]
+                }
+                """);
+
+        // user 2 doesn't allow to share the resource with WRITE permission
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "permissions": ["WRITE"],
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
+                    }
+                  ]
+                }
+                """, "Api-key", "proxyKey2");
+        verify(response, 400);
+
+        // initialize share request for user 3
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
+                    }
+                  ]
+                }
+                """, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // accept invitation by user 3
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
+        verify(response, 200);
+
+        // verify user 3 has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey3");
+        verify(response, 200, CONVERSATION_BODY_1);
+
+        // revoke share access
+        response = operationRequest("/v1/ops/resource/share/revoke", """
+                {
+                  "resources": [
+                    {
+                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        // verify user2 has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user3 has access to the conversation
+        response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey3");
+        verify(response, 403);
+
     }
 }

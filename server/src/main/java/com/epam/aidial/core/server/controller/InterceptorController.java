@@ -5,9 +5,11 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -38,29 +40,29 @@ public class InterceptorController {
     public InterceptorController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
-        this.enhancementFunctions = List.of(new CollectRequestAttachmentsFn(proxy, context), new CollectRequestDataFn(proxy, context));
+        this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+                new CollectRequestDataFn(proxy, context));
     }
 
     public Future<?> handle() {
-        log.info("Received request from client. Trace: {}. Span: {}. Project: {}. Deployment: {}. Headers: {}",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName(),
+        log.info("Received request from client. Deployment: {}. Headers: {}",
+                context.getDeployment().getName(),
                 context.getRequest().headers().size());
 
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
             context.getRequest().body()
-                    .onSuccess(body -> proxy.getVertx().executeBlocking(() -> {
+                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                         handleRequestBody(body);
                         return null;
-                    }, false).onFailure(this::handleError))
+                    }).onFailure(this::handleError))
                     .onFailure(this::handleRequestBodyError);
             return null;
         });
     }
 
     private void handleError(Throwable error) {
-        log.error("Can't handle request. Project: {}. User sub: {}. Trace: {}. Span: {}. Error: {}",
-                context.getProject(), context.getUserSub(), context.getTraceId(), context.getSpanId(), error.getMessage());
+        log.error("Can't handle request. Error: {}", error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
@@ -79,8 +81,7 @@ public class InterceptorController {
             } else {
                 respond(HttpStatus.BAD_REQUEST);
             }
-            log.warn("Can't process JSON request body. Trace: {}. Span: {}. Error:",
-                    context.getTraceId(), context.getSpanId(), e);
+            log.warn("Can't process JSON request body.  Error:", e);
             return;
         }
         sendRequest();
@@ -110,30 +111,24 @@ public class InterceptorController {
     }
 
     private void handleRequestBodyError(Throwable error) {
-        log.warn("Failed to receive client body. Trace: {}. Span: {}. Error: {}",
-                context.getTraceId(), context.getSpanId(), error.getMessage());
-
         respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        log.warn("Failed to receive client body. Error: {}", error.getMessage());
     }
 
     /**
      * Called when proxy failed to connect to the origin.
      */
     private void handleProxyConnectionError(Throwable error) {
-        log.warn("Can't connect to origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}. Error: {}",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(), error.getMessage());
-
         respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
+        log.warn("Can't connect to origin.  Deployment: {}. Address: {}. Error: {}",
+                context.getDeployment().getName(),
+                context.getDeployment().getEndpoint(), error.getMessage());
     }
 
 
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to interceptor. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName(),
-                proxyRequest.connection().remoteAddress());
+        log.info("Connected to interceptor. Deployment: {}. Address: {}",
+                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -157,21 +152,17 @@ public class InterceptorController {
      * Called when proxy failed to receive response header from origin.
      */
     private void handleProxyResponseError(Throwable error) {
-        log.warn("Proxy failed to receive response header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Address: {}. Error:",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName(),
+        log.warn("Proxy failed to receive response header from origin. Address: {}. Error:",
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
     }
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        log.info("Received header from origin. Trace: {}. Span: {}. Project: {}. Deployment: {}. Endpoint: {}. Status: {}. Headers: {}",
-                context.getTraceId(), context.getSpanId(),
-                context.getProject(), context.getDeployment().getName(),
+        log.info("Received header from origin. Endpoint: {}. Status: {}. Headers: {}",
                 context.getDeployment().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseAttachmentsFn(proxy, context) : null;
+        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseChatCompletionAttachmentsFn(proxy, context) : null;
 
         BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024), handler);
@@ -199,8 +190,7 @@ public class InterceptorController {
         Buffer responseBody = context.getResponseStream().getContent();
         collectResponseAttachments(responseBody).onComplete(result -> {
             if (result.failed()) {
-                log.warn("Failed to collect attachments from response. Trace: {}. Span: {}",
-                        context.getTraceId(), context.getSpanId(), result.cause());
+                log.warn("Failed to collect attachments from response. Error:", result.cause());
             }
             completeProxyResponse(responseStream);
         });
@@ -212,11 +202,10 @@ public class InterceptorController {
         }
         try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            var fn = new CollectResponseAttachmentsFn(proxy, context);
+            var fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
             return fn.apply(tree);
         } catch (Throwable e) {
-            log.warn("Can't parse JSON response body. Trace: {}. Span: {}. Error:",
-                    context.getTraceId(), context.getSpanId(), e);
+            log.warn("Can't parse JSON response body. Error:", e);
             return Future.failedFuture(e);
         }
     }
@@ -231,8 +220,7 @@ public class InterceptorController {
      * Called when proxy failed to send response to the client.
      */
     private void handleResponseError(Throwable error) {
-        log.warn("Can't send response to client. Trace: {}. Span: {}. Error:",
-                context.getTraceId(), context.getSpanId(), error);
+        log.warn("Can't send response to client. Error:", error);
 
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete

@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.validation.ValidationModule;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,6 +28,10 @@ import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.epam.aidial.core.config.Config.ASSISTANT;
@@ -67,11 +72,19 @@ public final class FileConfigStore implements ConfigStore {
             log.debug("Config loading is started");
             Config config = loadConfig();
 
+            List<Route> sortedRoutes = new ArrayList<>();
             for (Map.Entry<String, Route> entry : config.getRoutes().entrySet()) {
                 String name = entry.getKey();
                 Route route = entry.getValue();
                 route.setName(name);
                 log.debug("Loading {}", route);
+                sortedRoutes.add(route);
+            }
+            sortedRoutes.sort(Comparator.comparingInt(Route::getOrder));
+            LinkedHashMap<String, Route> routes = config.getRoutes();
+            routes.clear();
+            for (Route route : sortedRoutes) {
+                routes.put(route.getName(), route);
             }
 
             for (Map.Entry<String, Model> entry : config.getModels().entrySet()) {
@@ -134,7 +147,14 @@ public final class FileConfigStore implements ConfigStore {
                 String name = entry.getKey();
                 Interceptor interceptor = entry.getValue();
                 interceptor.setName(name);
-                log.debug("Interceptor {}", interceptor);
+                log.debug("Loading {}", interceptor);
+            }
+
+            for (Map.Entry<String, ToolSet> entry : config.getToolsets().entrySet()) {
+                String name = entry.getKey();
+                ToolSet toolSet = entry.getValue();
+                toolSet.setName(name);
+                log.debug("Loading {}", toolSet);
             }
 
             this.config = config;

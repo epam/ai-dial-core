@@ -93,6 +93,14 @@ public class EtagHeader {
         return new EtagHeader(ifMatchTags, ifNoneMatchTags, method);
     }
 
+    public static String quoteIfNeeded(String etag) {
+        if (etag != null && (etag.isEmpty() || etag.charAt(0) != '"')) {
+            return "\"" + etag + "\"";
+        }
+
+        return etag;
+    }
+
     @Nullable
     private static Set<String> parseIfNoneMatch(@Nullable String value) {
         if (ANY_TAG.equals(value)) {
@@ -115,9 +123,6 @@ public class EtagHeader {
     }
 
     private static Set<String> parseTagValue(String value) {
-        return Arrays.stream(value.split(","))
-                .map(tag -> StringUtils.strip(tag, "\""))
-                .collect(Collectors.toUnmodifiableSet());
+        return Arrays.stream(value.split(",")).collect(Collectors.toUnmodifiableSet());
     }
-
 }

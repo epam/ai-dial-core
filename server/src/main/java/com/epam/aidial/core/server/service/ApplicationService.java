@@ -2,25 +2,17 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.controller.ApplicationUtil;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.data.SharedResourcesResponse;
-import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
-import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
-import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.NodeType;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
-import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -29,6 +21,10 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -41,21 +37,21 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
-
 
 @Slf4j
 public class ApplicationService {
 
     private static final String DEPLOYMENTS_NAME = "deployments";
-    private static final int PAGE_SIZE = 1000;
 
     private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
     private final ResourceService resourceService;
@@ -68,21 +64,27 @@ public class ApplicationService {
     @Getter
     private final boolean includeCustomApps;
 
+    private final ApplicationSchemaService applicationSchemaService;
+
     public ApplicationService(Vertx vertx,
+                              AsyncTaskExecutor taskExecutor,
                               RedissonClient redis,
                               ApiKeyStore apiKeyStore,
                               EncryptionService encryptionService,
                               ResourceService resourceService,
                               LockService lockService,
                               ApplicationOperatorService operatorService,
+                              ApplicationSchemaService applicationSchemaService,
                               Supplier<String> idGenerator,
                               JsonObject settings) {
         String pendingApplicationsKey = BlobStorageUtil.toStoragePath(lockService.getPrefix(), "pending-applications");
 
         this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
+        this.applicationSchemaService = applicationSchemaService;
         this.lockService = lockService;
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
@@ -93,67 +95,24 @@ public class ApplicationService {
 
         if (controller.isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
-            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkApplications));
+            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> taskExecutor.submit(this::checkApplications));
         }
     }
 
-    public List<Application> getAllApplications(ProxyContext context) {
-        List<Application> applications = new ArrayList<>();
-        applications.addAll(getPrivateApplications(context));
-        applications.addAll(getSharedApplications(context));
-        applications.addAll(getPublicApplications(context));
-        return applications;
-    }
-
-    public List<Application> getPrivateApplications(ProxyContext context) {
-        String location = BucketBuilder.buildInitiatorBucket(context);
-        String bucket = encryptionService.encrypt(location);
-
-        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, bucket, location, null);
-        return getApplications(folder, context);
-    }
-
-    public List<Application> getSharedApplications(ProxyContext context) {
-        String location = BucketBuilder.buildInitiatorBucket(context);
-        String bucket = encryptionService.encrypt(location);
-
-        ListSharedResourcesRequest request = new ListSharedResourcesRequest();
-        request.setResourceTypes(Set.of(ResourceTypes.APPLICATION));
-
-        ShareService shares = context.getProxy().getShareService();
-        SharedResourcesResponse response = shares.listSharedWithMe(bucket, location, request);
-        Set<MetadataBase> metadata = response.getResources();
-
-        List<Application> list = new ArrayList<>();
-
-        for (MetadataBase meta : metadata) {
-            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-
-            if (meta instanceof ResourceItemMetadata) {
-                try {
-                    Application application = getApplication(resource).getValue();
-                    boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(),
-                            resource.getDecodedUrl());
-                    if (!applicationRequestInfoAboutItSelf) {
-                        application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(context, resource, application);
-                    }
-                    list.add(application);
-                } catch (ResourceNotFoundException ignore) {
-                    // skip shared app which might be deleted incidentally
-                    log.warn("Shared application is not found: {}", meta.getUrl());
-                }
-            } else {
-                list.addAll(getApplications(resource, context));
-            }
+    private static String getTargetFolderForCustomAppFiles(ResourceDescriptor target) {
+        if (target.isFolder()) {
+            throw new IllegalArgumentException("Target url must be a file");
         }
-
-        return list;
-    }
-
-    public List<Application> getPublicApplications(ProxyContext context) {
-        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
-        AccessService accessService = context.getProxy().getAccessService();
-        return getApplications(folder, page -> accessService.filterForbidden(context, folder, page), context);
+        if (target.getType() != ResourceTypes.APPLICATION) {
+            throw new IllegalArgumentException("Target url must be an application type");
+        }
+        String appName = target.getName();
+        String appPath = target.getParentPath();
+        if (appPath == null) {
+            return "." + appName + ResourceDescriptor.PATH_SEPARATOR;
+        } else {
+            return appPath + ResourceDescriptor.PATH_SEPARATOR + "." + appName + ResourceDescriptor.PATH_SEPARATOR;
+        }
     }
 
     public Pair<ResourceItemMetadata, Application> getApplication(ResourceDescriptor resource) {
@@ -182,53 +141,6 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    public List<Application> getApplications(ResourceDescriptor resource, ProxyContext ctx) {
-        Consumer<ResourceFolderMetadata> noop = ignore -> {
-        };
-        return getApplications(resource, noop, ctx);
-    }
-
-    public List<Application> getApplications(ResourceDescriptor resource,
-                                             Consumer<ResourceFolderMetadata> filter, ProxyContext ctx) {
-        if (!resource.isFolder() || resource.getType() != ResourceTypes.APPLICATION) {
-            throw new IllegalArgumentException("Invalid application folder: " + resource.getUrl());
-        }
-
-        List<Application> applications = new ArrayList<>();
-        String nextToken = null;
-
-        do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(resource, nextToken, PAGE_SIZE, true);
-            if (folder == null) {
-                break;
-            }
-
-            filter.accept(folder);
-
-            for (MetadataBase meta : folder.getItems()) {
-                if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == ResourceTypes.APPLICATION) {
-                    try {
-                        ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-                        Application application = getApplication(item).getValue();
-                        boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
-                                resource.getDecodedUrl());
-                        if (applicationRequestInfoAboutItSelf) {
-                            application = ApplicationTypeSchemaUtils.filterCustomClientPropertiesWhenNoWriteAccess(ctx, item, application);
-                        }
-                        application = ApplicationTypeSchemaUtils.modifyEndpointsForCustomApplication(ctx.getConfig(), application);
-                        applications.add(application);
-                    } catch (ResourceNotFoundException ignore) {
-                        // deleted while fetching
-                    }
-                }
-            }
-
-            nextToken = folder.getNextToken();
-        } while (nextToken != null);
-
-        return applications;
-    }
-
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author, Application application) {
         prepareApplication(resource, application);
 
@@ -236,10 +148,7 @@ public class ApplicationService {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             Application.Function function = application.getFunction();
 
-            if (application.getApplicationTypeSchemaId() != null && existing != null
-                    && existing.getApplicationProperties() != null && application.getApplicationProperties() == null) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, "The application with schema can not be updated to the one without properties");
-            }
+            verifySchemaRichApp(application, existing);
 
             if (function != null) {
                 if (existing == null || existing.getFunction() == null) {
@@ -274,6 +183,13 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
+    private static void verifySchemaRichApp(Application application, Application existing) {
+        if (application.getApplicationTypeSchemaId() != null && existing != null
+                && existing.getApplicationProperties() != null && application.getApplicationProperties() == null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "The application with schema can not be updated to the one without properties");
+        }
+    }
+
     public void deleteApplication(ResourceDescriptor resource, EtagHeader etag) {
         verifyApplication(resource);
         MutableObject<Application> reference = new MutableObject<>();
@@ -293,10 +209,20 @@ public class ApplicationService {
             return null;
         });
 
-        Application application = reference.getValue();
+        Application application = reference.get();
 
-        if (isPublicOrReview(resource) && application.getFunction() != null) {
-            deleteFolder(application.getFunction().getSourceFolder());
+        if (isPublicOrReview(resource)) {
+            if (application.getFunction() != null) {
+                deleteFolder(application.getFunction().getSourceFolder());
+            }
+            List<ResourceDescriptor> appFiles = applicationSchemaService.getFiles(application);
+            for (ResourceDescriptor file : appFiles) {
+                if (file.isFolder()) {
+                    resourceService.deleteFolder(file);
+                } else {
+                    resourceService.deleteResource(file, EtagHeader.ANY);
+                }
+            }
         }
     }
 
@@ -318,8 +244,26 @@ public class ApplicationService {
         boolean isPublicOrReview = isPublicOrReview(destination);
         String sourceFolder = (function == null) ? null : function.getSourceFolder();
 
+        Map<String, String> fileReplacementLinks;
+        List<ResourceDescriptor> sourceAppFiles = List.of();
+        List<ResourceDescriptor> destAppFiles = List.of();
+        if (isPublicOrReview) {
+            sourceAppFiles = applicationSchemaService.getFiles(application);
+            destAppFiles = toDestAppFiles(source, destination, sourceAppFiles);
+            fileReplacementLinks = new HashMap<>();
+            for (int i = 0; i < sourceAppFiles.size(); i++) {
+                ResourceDescriptor sourceFile = sourceAppFiles.get(i);
+                ResourceDescriptor destFile = destAppFiles.get(i);
+                fileReplacementLinks.put(sourceFile.getDecodedUrl(), destFile.getUrl());
+            }
+        } else {
+            fileReplacementLinks = Map.of();
+        }
+
         resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
+
+            verifySchemaRichApp(application, existing);
 
             if (function != null) {
                 if (existing == null || existing.getFunction() == null) {
@@ -349,14 +293,65 @@ public class ApplicationService {
                 }
             }
 
+            if (isPublicOrReview) {
+                replaceLinksInAppProperties(application, fileReplacementLinks);
+            }
+
             return ProxyUtil.convertToString(application);
         });
 
-        // for public/review application source folder is equal to target folder
-        // source files are copied to read-only deployment bucket for such applications
-        if (isPublicOrReview && function != null) {
-            copyFolder(sourceFolder, function.getSourceFolder(), false);
+        if (isPublicOrReview) {
+            if (function != null) {
+                // for public/review application source folder is equal to target folder
+                // source files are copied to read-only deployment bucket for such applications
+                copyFolder(sourceFolder, function.getSourceFolder());
+            }
+            for (int i = 0; i < sourceAppFiles.size(); i++) {
+                ResourceDescriptor sourceFile = sourceAppFiles.get(i);
+                ResourceDescriptor destFile = destAppFiles.get(i);
+                if (sourceFile.isFolder()) {
+                    resourceService.copyFolder(sourceFile, destFile, false);
+                } else {
+                    if (!resourceService.copyResource(sourceFile, destFile, null, false)) {
+                        throw new IllegalArgumentException("Can't copy source file: " + source.getUrl()
+                                + " to destination file: " + destFile.getUrl());
+                    }
+                }
+            }
         }
+    }
+
+    private static List<ResourceDescriptor> toDestAppFiles(ResourceDescriptor source, ResourceDescriptor dest, List<ResourceDescriptor> sourceAppFiles) {
+        if (sourceAppFiles.isEmpty()) {
+            return List.of();
+        }
+        String targetFolder = getTargetFolderForCustomAppFiles(dest);
+        if (isPublicOrReview(source)) {
+            return toDestAppFiles(dest, sourceAppFiles, targetFolder, ResourceDescriptor::getName);
+        } else {
+            Map<String, Integer> fileNameToCount = new HashMap<>();
+            Function<ResourceDescriptor, String> fn = file -> createUniqueFileName(file, fileNameToCount);
+            return toDestAppFiles(dest, sourceAppFiles, targetFolder, fn);
+        }
+    }
+
+    private static List<ResourceDescriptor> toDestAppFiles(ResourceDescriptor dest,
+                                                           List<ResourceDescriptor> sourceAppFiles, String targetFolder,
+                                                           Function<ResourceDescriptor, String> fn) {
+        List<ResourceDescriptor> result = new ArrayList<>();
+        for (ResourceDescriptor file : sourceAppFiles) {
+            String path = targetFolder + fn.apply(file);
+            if (file.isFolder()) {
+                path += ResourceDescriptor.PATH_SEPARATOR;
+            }
+            ResourceDescriptor target = ResourceDescriptorFactory.fromDecoded(
+                    ResourceTypes.FILE,
+                    dest.getBucketName(),
+                    dest.getBucketLocation(),
+                    path);
+            result.add(target);
+        }
+        return result;
     }
 
     public Application redeployApplication(ProxyContext context, ResourceDescriptor resource) {
@@ -398,10 +393,10 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
-        vertx.executeBlocking(() -> launchApplication(context, resource), false)
-                .onFailure(error -> vertx.executeBlocking(() -> terminateApplication(resource, error.getMessage()), false));
+        taskExecutor.submit(() -> launchApplication(context, resource))
+                .onFailure(error -> taskExecutor.submit(() -> terminateApplication(resource, error.getMessage())));
 
-        return result.getValue();
+        return result.get();
     }
 
     public Application undeployApplication(ResourceDescriptor resource) {
@@ -440,8 +435,8 @@ public class ApplicationService {
             return ProxyUtil.convertToString(application);
         });
 
-        Future<Void> future = vertx.executeBlocking(() -> terminateApplication(resource, null), false);
-        return Pair.of(result.getValue(), future);
+        Future<Void> future = taskExecutor.submit(() -> terminateApplication(resource, null));
+        return Pair.of(result.get(), future);
     }
 
     public Application.Logs getApplicationLogs(ResourceDescriptor resource) {
@@ -473,7 +468,7 @@ public class ApplicationService {
         application.setForwardAuthToken(false);
 
         if (application.getReference() == null) {
-            application.setReference(ApplicationUtil.generateReference());
+            application.setReference(ProxyUtil.generateReference());
         }
 
         Application.Function function = application.getFunction();
@@ -515,7 +510,9 @@ public class ApplicationService {
             try {
                 ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(function.getSourceFolder(), encryptionService);
 
-                if (!folder.isFolder() || folder.getType() != ResourceTypes.FILE || !folder.getBucketName().equals(resource.getBucketName())) {
+                if (!folder.isFolder() || folder.getType() != ResourceTypes.FILE
+                        // admin may update the code app in the review stage
+                        || (!folder.getBucketName().equals(resource.getBucketName()) && !isPublicOrReview(resource))) {
                     throw new IllegalArgumentException();
                 }
 
@@ -571,7 +568,7 @@ public class ApplicationService {
             // for public/review application source folder is equal to target folder
             // source files are copied to read-only deployment bucket for such applications
             if (!isPublicOrReview(resource)) {
-                copyFolder(function.getSourceFolder(), function.getTargetFolder(), false);
+                copyFolder(function.getSourceFolder(), function.getTargetFolder());
             }
 
             ApiKeyData key = new ApiKeyData();
@@ -712,15 +709,15 @@ public class ApplicationService {
         }
     }
 
-    private void copyFolder(String sourceFolderUrl, String targetFolderUrl, boolean overwrite) {
+    private void copyFolder(String sourceFolderUrl, String targetFolderUrl) {
         ResourceDescriptor sourceFolder = ResourceDescriptorFactory.fromAnyUrl(sourceFolderUrl, encryptionService);
         ResourceDescriptor targetFolder = ResourceDescriptorFactory.fromAnyUrl(targetFolderUrl, encryptionService);
-        resourceService.copyFolder(sourceFolder, targetFolder, overwrite);
+        resourceService.copyFolder(sourceFolder, targetFolder, false);
     }
 
-    private boolean deleteFolder(String folderUrl) {
+    private void deleteFolder(String folderUrl) {
         ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(folderUrl, encryptionService);
-        return resourceService.deleteFolder(folder);
+        resourceService.deleteFolder(folder);
     }
 
     private static String buildMapping(String endpoint, String path) {
@@ -729,5 +726,56 @@ public class ApplicationService {
 
     private static boolean isPublicOrReview(ResourceDescriptor resource) {
         return resource.isPublic() || PublicationService.isReviewBucket(resource);
+    }
+
+    public static void replaceLinksInAppProperties(Application application, Map<String, String> replacementLinks) {
+        JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
+        replaceTextNodes(customProperties, replacementLinks, null, null);
+        Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
+        });
+        application.setApplicationProperties(customPropertiesMap);
+    }
+
+    private static void replaceTextNodes(JsonNode node, Map<String, String> replacementMap, JsonNode parent, String fieldName) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> replaceTextNodes(entry.getValue(), replacementMap, node, entry.getKey()));
+        } else if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) {
+                JsonNode childNode = node.get(i);
+                if (childNode.isTextual()) {
+                    String decodedUrl = UrlUtil.tryDecodePath(childNode.textValue());
+                    String replacement = replacementMap.get(decodedUrl);
+                    if (replacement != null) {
+                        ((ArrayNode) node).set(i, replacement);
+                    }
+                } else {
+                    replaceTextNodes(childNode, replacementMap, node, String.valueOf(i));
+                }
+            }
+        } else if (node.isTextual()) {
+            String decodedUrl = UrlUtil.tryDecodePath(node.textValue());
+            String replacement = replacementMap.get(decodedUrl);
+            if (replacement != null && parent.isObject()) {
+                ((ObjectNode) parent).put(fieldName, replacement);
+            }
+        }
+    }
+
+    private static String createUniqueFileName(ResourceDescriptor sourceDescriptor, Map<String, Integer> fileNamesTaken) {
+        String fileName = sourceDescriptor.getName();
+        int count = fileNamesTaken.getOrDefault(fileName, 0) + 1;
+        fileNamesTaken.put(fileName, count);
+
+        if (count > 1) {
+            int index = fileName.lastIndexOf('.');
+            if (sourceDescriptor.isFolder() || index == -1) {
+                // File has no extension or folder
+                fileName = fileName + "_" + count;
+            } else {
+                // File has extension
+                fileName = fileName.substring(0, index) + "_" + count + fileName.substring(index);
+            }
+        }
+        return fileName;
     }
 }

@@ -103,7 +103,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -140,7 +141,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -193,7 +195,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                   "routes" : { }
                 }
                 """);
 
@@ -229,7 +232,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -282,7 +286,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -319,7 +324,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -372,7 +378,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -409,7 +416,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -458,7 +466,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                   "routes" : { }
                 }
                 """);
 
@@ -515,7 +524,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -699,7 +709,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
     }
@@ -781,7 +792,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "env" : {
                       "VAR" : "VAL"
                     }
-                  }
+                  },
+                  "routes" : { }
                 }
                 """);
 
@@ -878,7 +890,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "temperature" : true,
                       "addons" : true,
                       "cache" : false,
-                      "auto_caching" : false
+                      "auto_caching" : false,
+                      "parallel_tool_calls" : true
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -899,7 +912,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "env" : {
                         "VAR" : "VAL"
                       }
-                    }
+                    },
+                    "routes" : { }
                 }
                 """);
 
@@ -934,12 +948,73 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "temperature" : true,
                       "addons" : true,
                       "cache" : false,
-                      "auto_caching" : false
+                      "auto_caching" : false,
+                      "parallel_tool_calls" : true
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
-                    "max_retry_attempts" : 1
-                  }, {
+                    "max_retry_attempts" : 1,
+                    "routes" : { }
+                  },
+                  {
+                      "id" : "app-route",
+                      "application" : "app-route",
+                      "display_name" : "10k",
+                      "icon_url" : "http://localhost:7001/logo10k.png",
+                      "description" : "Some description of the application for testing",
+                      "reference" : "app-route",
+                      "owner" : "organization-owner",
+                      "object" : "application",
+                      "status" : "succeeded",
+                      "created_at" : 1672534800,
+                      "updated_at" : 1672534800,
+                      "features" : {
+                        "rate" : true,
+                        "tokenize" : false,
+                        "truncate_prompt" : false,
+                        "configuration" : true,
+                        "system_prompt" : false,
+                        "tools" : false,
+                        "seed" : false,
+                        "url_attachments" : false,
+                        "folder_attachments" : false,
+                        "allow_resume" : true,
+                        "accessible_by_per_request_key" : true,
+                        "content_parts" : false,
+                        "temperature" : true,
+                        "addons" : true,
+                        "cache" : false,
+                        "auto_caching" : false,
+                        "parallel_tool_calls" : true
+                      },
+                      "defaults" : { },
+                      "description_keywords" : [ ],
+                      "max_retry_attempts" : 1,
+                      "routes" : {
+                        "index-search" : {
+                          "name" : null,
+                          "userRoles" : null,
+                          "response" : null,
+                          "rewritePath" : true,
+                          "paths" : [ "/v1/index(/[^/]+)*$" ],
+                          "methods" : [ "DELETE", "POST", "PUT" ],
+                          "upstreams" : [ {
+                            "endpoint" : "http://localhost:4848",
+                            "extraData" : null,
+                            "weight" : 1,
+                            "tier" : 0
+                          } ],
+                          "maxRetryAttempts" : 1,
+                          "order" : 2147483647,
+                          "permissions" : [ ],
+                          "attachmentPaths" : {
+                            "requestBody" : [ "@.attachments[*].url" ],
+                            "responseBody" : [ "@.result.attachedFiles" ]
+                          }
+                        }
+                      }
+                  },
+                  {
                     "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
                     "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
                     "display_name" : "My App",
@@ -965,7 +1040,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "temperature" : true,
                       "addons" : true,
                       "cache" : false,
-                      "auto_caching" : false
+                      "auto_caching" : false,
+                      "parallel_tool_calls" : true
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -986,7 +1062,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "env" : {
                         "VAR" : "VAL"
                       }
-                    }
+                    },
+                    "routes" : { }
                   } ],
                   "object" : "list"
                 }

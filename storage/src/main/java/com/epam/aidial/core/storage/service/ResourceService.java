@@ -4,17 +4,20 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import lombok.Builder;
 import lombok.Getter;
@@ -25,6 +28,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
+import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
@@ -56,8 +60,10 @@ import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
+
+    private static final String BASE58_PREFIX = "base58_";
     // Default ETag for old records
-    public static final String DEFAULT_ETAG = "0";
+    public static final String DEFAULT_ETAG = "\"0\"";
     private static final String BODY_ATTRIBUTE = "body";
     private static final String CONTENT_TYPE_ATTRIBUTE = "content_type";
     private static final String CONTENT_LENGTH_ATTRIBUTE = "content_length";
@@ -208,44 +214,49 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
-        List<MetadataBase> resources = set.stream().map(meta -> {
-            Map<String, String> metadata = meta.getUserMetadata();
-            String path = meta.getName();
-            ResourceDescriptor description = descriptor.resolveByPath(path);
-
-            if (meta.getType() != StorageType.BLOB) {
-                return new ResourceFolderMetadata(description);
-            }
-
-            Long createdAt = null;
-            Long updatedAt = null;
-            String author = null;
-
-            if (metadata != null) {
-                createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
-                updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
-                author = metadata.get(AUTHOR_ATTRIBUTE);
-            }
-
-            if (createdAt == null && meta.getCreationDate() != null) {
-                createdAt = meta.getCreationDate().getTime();
-            }
-
-            if (updatedAt == null && meta.getLastModified() != null) {
-                updatedAt = meta.getLastModified().getTime();
-            }
-
-            if (description.getType().requireCompression()) {
-                return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt).setAuthor(author);
-            }
-
-            return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
-                    .setCreatedAt(createdAt)
-                    .setAuthor(author)
-                    .setUpdatedAt(updatedAt);
-        }).toList();
+        List<MetadataBase> resources = set.stream()
+                // blob store never returns folder however local FS provider may return
+                .filter(meta -> !recursive || meta.getType() == StorageType.BLOB)
+                .map(meta -> storageToResourceMetadata(meta, descriptor)).toList();
 
         return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
+    }
+
+    private static MetadataBase storageToResourceMetadata(StorageMetadata meta, ResourceDescriptor folder) {
+        Map<String, String> metadata = meta.getUserMetadata();
+        String path = meta.getName();
+        ResourceDescriptor description = folder.resolveByPath(path);
+
+        if (meta.getType() != StorageType.BLOB) {
+            return new ResourceFolderMetadata(description);
+        }
+
+        Long createdAt = null;
+        Long updatedAt = null;
+        String author = null;
+
+        if (metadata != null) {
+            createdAt = metadata.containsKey(CREATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(CREATED_AT_ATTRIBUTE)) : null;
+            updatedAt = metadata.containsKey(UPDATED_AT_ATTRIBUTE) ? Long.parseLong(metadata.get(UPDATED_AT_ATTRIBUTE)) : null;
+            author = decode(metadata.get(AUTHOR_ATTRIBUTE));
+        }
+
+        if (createdAt == null && meta.getCreationDate() != null) {
+            createdAt = meta.getCreationDate().getTime();
+        }
+
+        if (updatedAt == null && meta.getLastModified() != null) {
+            updatedAt = meta.getLastModified().getTime();
+        }
+
+        if (description.getType().requireCompression()) {
+            return new ResourceItemMetadata(description).setCreatedAt(createdAt).setUpdatedAt(updatedAt).setAuthor(author);
+        }
+
+        return new FileMetadata(description, meta.getSize(), BlobStorage.resolveContentType((BlobMetadata) meta))
+                .setCreatedAt(createdAt)
+                .setAuthor(author)
+                .setUpdatedAt(updatedAt);
     }
 
     @Nullable
@@ -286,7 +297,7 @@ public class ResourceService implements AutoCloseable {
                 .setCreatedAt(result.createdAt)
                 .setUpdatedAt(result.updatedAt)
                 .setAuthor(result.author)
-                .setEtag(result.etag());
+                .setEtag(result.etag);
     }
 
     public boolean hasResource(ResourceDescriptor descriptor) {
@@ -479,11 +490,12 @@ public class ResourceService implements AutoCloseable {
             flushToBlobStore(redisKey);
 
             MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
+            List<MultipartPart> parts = resourceUpload.getParts();
 
             long updatedAt = resourceUpload.getUpdatedAt();
             Long createdAt = resourceUpload.getCreatedAt();
 
-            String etag = blobStore.completeMultipartUpload(multipartUpload, resourceUpload.getParts());
+            String etag = blobStore.completeMultipartUpload(multipartUpload, parts);
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
@@ -702,7 +714,7 @@ public class ResourceService implements AutoCloseable {
                 ? Long.parseLong(meta.getUserMetadata().get(UPDATED_AT_ATTRIBUTE))
                 : null;
         String resourceType = meta.getUserMetadata().get(RESOURCE_TYPE_ATTRIBUTE);
-        String author = meta.getUserMetadata().get(AUTHOR_ATTRIBUTE);
+        String author = decode(meta.getUserMetadata().get(AUTHOR_ATTRIBUTE));
 
         // Get times from blob metadata if available for files that didn't store it in user metadata
         if (createdAt == null && meta.getCreationDate() != null) {
@@ -771,7 +783,7 @@ public class ResourceService implements AutoCloseable {
         }
 
         byte[] body = fields.getOrDefault(BODY_ATTRIBUTE, ArrayUtils.EMPTY_BYTE_ARRAY);
-        String etag = RedisUtil.redisToString(fields.get(ETAG_ATTRIBUTE), DEFAULT_ETAG);
+        String etag = EtagHeader.quoteIfNeeded(RedisUtil.redisToString(fields.get(ETAG_ATTRIBUTE), DEFAULT_ETAG));
         String contentType = RedisUtil.redisToString(fields.get(CONTENT_TYPE_ATTRIBUTE), null);
         Long contentLength = RedisUtil.redisToLong(fields.get(CONTENT_LENGTH_ATTRIBUTE));
         Long createdAt = RedisUtil.redisToLong(fields.get(CREATED_AT_ATTRIBUTE));
@@ -830,8 +842,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     private String redisKey(ResourceDescriptor descriptor) {
-        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
-        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
+        return RedisUtil.redisKey(descriptor, prefix);
     }
 
     private static long time() {
@@ -867,15 +878,33 @@ public class ResourceService implements AutoCloseable {
             metadata.put(RESOURCE_TYPE_ATTRIBUTE, resourceType);
         }
         if (author != null) {
-            metadata.put(AUTHOR_ATTRIBUTE, author);
+            metadata.put(AUTHOR_ATTRIBUTE, encode(author));
         }
 
         return metadata;
     }
 
+    @VisibleForTesting
+    static String encode(String val) {
+        if (StringUtils.isEmpty(val)) {
+            return val;
+        }
+        return BASE58_PREFIX + Base58.encode(val.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @VisibleForTesting
+    static String decode(String val) {
+        if (val == null || !val.startsWith(BASE58_PREFIX)) {
+            return val;
+        }
+        String decoded = val.substring(BASE58_PREFIX.length());
+        return new String(Base58.decode(decoded), StandardCharsets.UTF_8);
+    }
+
     private static String extractEtag(BlobMetadata meta) {
         Map<String, String> attributes = meta.getUserMetadata();
-        return attributes.getOrDefault(ETAG_ATTRIBUTE, meta.getETag());
+        String etag = attributes.get(ETAG_ATTRIBUTE);
+        return (etag == null) ? meta.getETag() : EtagHeader.quoteIfNeeded(etag);
     }
 
     @Builder

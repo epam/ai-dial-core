@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Route;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -22,6 +23,16 @@ public class ApplicationData extends DeploymentData {
         setScaleSettings(null);
     }
 
+    /**
+     * Indicates whether the application is invalid.
+     * Only applicable for schema-rich applications.
+     * Set to true when validation fails (e.g., missing required properties or schema violations).
+     * Null when the application is valid.
+     * This is a read-only property (not parsed from JSON).
+     */
+    @Nullable
+    public Boolean invalid = null;
+
     @Nullable
     private Map<String, Object> applicationProperties; //all custom application properties will land there
 
@@ -30,4 +41,6 @@ public class ApplicationData extends DeploymentData {
     private URI applicationTypeSchemaId;
 
     private Application.Function function;
+
+    private Map<String, Route> routes;
 }

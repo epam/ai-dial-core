@@ -1,24 +1,24 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -27,7 +27,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import jakarta.validation.ValidationException;
@@ -45,18 +44,19 @@ import static com.epam.aidial.core.storage.http.HttpStatus.INTERNAL_SERVER_ERROR
 @SuppressWarnings("checkstyle:Indentation")
 public class ResourceController extends AccessControlBaseController {
 
-    private final Vertx vertx;
-    private final EncryptionService encryptionService;
+    private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final ApplicationService applicationService;
     private final boolean metadata;
     private final AccessService accessService;
 
+    private final ToolSetService toolSetService;
+
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
         // PUT and DELETE require write access, GET - read
         super(proxy, context, !HttpMethod.GET.equals(context.getRequest().method()));
-        this.vertx = proxy.getVertx();
-        this.encryptionService = proxy.getEncryptionService();
+        this.taskExecutor = proxy.getTaskExecutor();
+        this.toolSetService = proxy.getToolSetService();
         this.applicationService = proxy.getApplicationService();
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
@@ -103,22 +103,26 @@ public class ResourceController extends AccessControlBaseController {
             return context.respond(BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
-        vertx.executeBlocking(() -> resourceService.getMetadata(descriptor, token, limit, recursive), false)
-                .onSuccess(result -> {
-                    if (result == null) {
-                        context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
-                    } else {
-                        accessService.filterForbidden(context, descriptor, result);
-                        if (context.getBooleanRequestQueryParam("permissions")) {
-                            accessService.populatePermissions(context, List.of(result));
-                        }
-                        context.respond(HttpStatus.OK, getContentType(), result);
-                    }
-                })
-                .onFailure(error -> {
-                    log.warn("Can't list resource: {}", descriptor.getUrl(), error);
-                    context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-                });
+        taskExecutor.submit(() -> {
+            MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
+            if (result == null) {
+                return null;
+            }
+            accessService.filterForbidden(context, descriptor, result);
+            if (context.getBooleanRequestQueryParam("permissions")) {
+                accessService.populatePermissions(context, List.of(result));
+            }
+            return result;
+        }).onSuccess(result -> {
+            if (result == null) {
+                context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
+            } else {
+                context.respond(HttpStatus.OK, getContentType(), result);
+            }
+        }).onFailure(error -> {
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+            log.warn("Can't list resource: {}", descriptor.getUrl(), error);
+        });
 
         return Future.succeededFuture();
     }
@@ -141,21 +145,21 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private Future<Pair<ResourceItemMetadata, String>> getApplicationData(ResourceDescriptor descriptor, boolean hasWriteAccess, EtagHeader etagHeader) {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, Application> result = applicationService.getApplication(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
-                    : ProxyUtil.convertToString(clearApplicationProperties(application, context.getConfig()));
+                    : ProxyUtil.convertToString(clearApplicationProperties(application));
 
             return Pair.of(meta, body);
 
-        }, false);
+        });
     }
 
-    private Application clearApplicationProperties(Application application, Config config) {
+    private Application clearApplicationProperties(Application application) {
         application.setEndpoint(null);
         Features features = application.getFeatures();
         if (features != null) {
@@ -164,11 +168,18 @@ public class ResourceController extends AccessControlBaseController {
             features.setTokenizeEndpoint(null);
             features.setTruncatePromptEndpoint(null);
         }
-        return ApplicationTypeSchemaUtils.filterCustomClientProperties(config, application);
+        try {
+            return proxy.getApplicationSchemaService().filterCustomClientProperties(application);
+        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+            log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+            application.setApplicationProperties(null);
+            application.setInvalid(true);
+            return application;
+        }
     }
 
     private Future<Pair<ResourceItemMetadata, String>> getResourceData(ResourceDescriptor descriptor, EtagHeader etag) {
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(descriptor, etag);
 
             if (result == null) {
@@ -176,21 +187,23 @@ public class ResourceController extends AccessControlBaseController {
             }
 
             return result;
-        }, false);
+        });
     }
 
     private void validateCustomApplication(Application application) {
         try {
             checkCreateCodeApp(application);
-            Config config = context.getConfig();
-            List<ResourceDescriptor> files = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService,
-                    resourceService);
-            files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
-                    .findAny().ifPresent(file -> {
-                        throw new HttpException(BAD_REQUEST, "No read access to file: " + file.getUrl());
-                    });
-        } catch (ValidationException | IllegalArgumentException | ApplicationTypeSchemaValidationException e) {
-            throw new HttpException(BAD_REQUEST, "Custom application validation failed", e);
+            if (application.getApplicationProperties() != null) {
+                List<ResourceDescriptor> files = proxy.getApplicationSchemaService().getFiles(application);
+                files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
+                        .findAny().ifPresent(file -> {
+                            throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
+                        });
+            }
+        } catch (IllegalArgumentException | ValidationException e) {
+            throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.getMessage()), e);
+        } catch (ApplicationTypeSchemaValidationException e) {
+            throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.validationMessages), e);
         } catch (ApplicationTypeResourceException e) {
             throw new HttpException(FORBIDDEN, "Failed to access application resource " + e.getResourceUri(), e);
         } catch (ApplicationTypeSchemaProcessingException e) {
@@ -239,17 +252,26 @@ public class ResourceController extends AccessControlBaseController {
             responseFuture = requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class);
-                return vertx.executeBlocking(() -> {
+                return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application).getKey();
-                }, false);
+                });
+            });
+        } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {
+            responseFuture = requestFuture.compose(pair -> {
+                EtagHeader etag = pair.getKey();
+                ToolSet toolSet = ProxyUtil.convertToObject(pair.getValue(), ToolSet.class);
+                if (toolSet == null) {
+                    throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
+                }
+                return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey());
             });
         } else {
             responseFuture = requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 String body = pair.getValue();
                 validateRequestBody(descriptor, body);
-                return vertx.executeBlocking(() -> resourceService.putResource(descriptor, body, etag, author), false);
+                return taskExecutor.submit(() -> resourceService.putResource(descriptor, body, etag, author));
             });
         }
 
@@ -268,7 +290,7 @@ public class ResourceController extends AccessControlBaseController {
 
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        vertx.executeBlocking(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag), false)
+        taskExecutor.submit(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag))
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);
@@ -291,8 +313,8 @@ public class ResourceController extends AccessControlBaseController {
         } else if (error instanceof PermissionDeniedException) {
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else {
-            log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+            log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
         }
     }
 

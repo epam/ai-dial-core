@@ -3,6 +3,7 @@ package com.epam.aidial.core.config;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
@@ -11,6 +12,7 @@ import lombok.experimental.Accessors;
 
 import java.net.URI;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Data
@@ -28,10 +30,27 @@ public class Application extends Deployment {
     @JsonAlias({"applicationTypeSchemaId", "application_type_schema_id"})
     private URI applicationTypeSchemaId;
 
+    private String viewerUrl;
+
+    private String editorUrl;
+
+    // maintain the order of routes defined in the app config
+    private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+
     @JsonIgnore
     public Boolean hasApplicationTypeSchemaId() {
         return applicationTypeSchemaId != null;
     }
+
+    /**
+     * Indicates whether the application is invalid.
+     * Only applicable for schema-rich applications.
+     * Set to true when validation fails (e.g., missing required properties or schema violations).
+     * Null when the application is valid.
+     * This is a read-only property (not parsed from JSON).
+     */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Boolean invalid = null;
 
     @Data
     @Accessors(chain = true)
@@ -111,6 +130,7 @@ public class Application extends Deployment {
 
     public Application(Application source) {
         super();
+        this.setInvalid(source.getInvalid());
         this.setName(source.getName());
         this.setEndpoint(source.getEndpoint());
         this.setDisplayName(source.getDisplayName());
@@ -129,5 +149,9 @@ public class Application extends Deployment {
         this.setFunction(source.getFunction());
         this.setApplicationProperties(source.getApplicationProperties());
         this.setApplicationTypeSchemaId(source.getApplicationTypeSchemaId());
+        this.setAuthor(source.getAuthor());
+        this.setCreatedAt(source.getCreatedAt());
+        this.setUpdatedAt(source.getUpdatedAt());
+        this.setRoutes(source.getRoutes());
     }
 }

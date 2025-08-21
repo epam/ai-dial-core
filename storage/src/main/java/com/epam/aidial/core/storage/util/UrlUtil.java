@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 
 @UtilityClass
 public class UrlUtil {
@@ -24,11 +25,17 @@ public class UrlUtil {
     private static final Pattern ABSOLUTE_URL_PATTERN = Pattern.compile("^[a-z][a-z0-9-+.]*?://", Pattern.CASE_INSENSITIVE);
 
     @SneakyThrows
-    public String encodePathSegment(String segment) {
+    public String encodePathSegment(@Nullable String segment) {
+        if (segment == null) {
+            return null;
+        }
         return ENCODER.escape(segment);
     }
 
-    public String encodePath(String path) {
+    public String encodePath(@Nullable String path) {
+        if (path == null) {
+            return null;
+        }
         StringBuilder builder = new StringBuilder();
 
         for (int i = 0; i < path.length(); i++) {
@@ -46,12 +53,15 @@ public class UrlUtil {
         return builder.toString();
     }
 
-    public String decodePath(String path) {
+    public String decodePath(@Nullable String path) {
         return decodePath(path, true);
     }
 
     @SneakyThrows
-    public String decodePath(String path, boolean checkUri) {
+    public String decodePath(@Nullable String path, boolean checkUri) {
+        if (path == null) {
+            return null;
+        }
         if (checkUri) {
             try {
                 URI uri = new URI(path);
@@ -65,15 +75,23 @@ public class UrlUtil {
         return new String(DECODER.decode(path.getBytes(Charset.defaultCharset())));
     }
 
-    public boolean isAbsoluteUrl(String url) {
-        return ABSOLUTE_URL_PATTERN.matcher(url).find();
+    public String tryDecodePath(@Nullable String path) {
+        try {
+            return decodePath(path, false);
+        } catch (RuntimeException e) {
+            return path; // Return original path if decoding fails
+        }
     }
 
-    public boolean isDataUrl(String url) {
-        return url.startsWith("data:");
+    public boolean isAbsoluteUrl(@Nullable String url) {
+        return url != null && ABSOLUTE_URL_PATTERN.matcher(url).find();
     }
 
-    public boolean isFolder(String url) {
-        return url.endsWith(ResourceDescriptor.PATH_SEPARATOR);
+    public boolean isDataUrl(@Nullable String url) {
+        return url != null && url.startsWith("data:");
+    }
+
+    public boolean isFolder(@Nullable String url) {
+        return url != null && url.endsWith(ResourceDescriptor.PATH_SEPARATOR);
     }
 }

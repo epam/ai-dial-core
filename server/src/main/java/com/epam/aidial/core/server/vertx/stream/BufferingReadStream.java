@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.util.EventStreamParser;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.streams.Pipe;
@@ -29,7 +30,10 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     // set the position to unset by default
     private int lastChunkPos = -1;
     private final EventStreamParser eventStreamParser;
+    // a chain of futures supplied by eventStreamParser
     private Future<Boolean> streamHandlerFuture;
+    // promise on input stream is completed
+    private final Promise<Void> endStream;
 
     public BufferingReadStream(ReadStream<Buffer> stream) {
         this(stream, 512, null);
@@ -42,6 +46,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, BaseResponseFunction streamHandler) {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
+        this.endStream = Promise.promise();
         if (streamHandler == null) {
             this.eventStreamParser = null;
         } else {
@@ -135,6 +140,10 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         }
     }
 
+    public Future<Void> endStreamFuture() {
+        return endStream.future();
+    }
+
     private synchronized void handleChunk(Buffer chunk) {
         int pos = content.length();
         content.appendBuffer(chunk);
@@ -173,15 +182,20 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private synchronized void handleEnd(Void ignored) {
         ended = true;
         if (streamHandlerFuture == null) {
+            endStream.tryComplete();
             notifyOnEnd(ignored);
         } else {
-            streamHandlerFuture.onComplete(ignore -> notifyOnEnd(ignored));
+            streamHandlerFuture.onComplete(ignore -> {
+                endStream.tryComplete();
+                notifyOnEnd(ignored);
+            });
         }
     }
 
     private synchronized void handleException(Throwable exception) {
         error = exception;
         ended = true;
+        endStream.tryFail(exception);
         notifyOnException(exception);
     }
 

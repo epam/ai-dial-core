@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AssistantData;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -61,7 +62,7 @@ public class AssistantController {
         data.setIconUrl(assistant.getIconUrl());
         data.setDescription(assistant.getDescription());
         data.setAddons(assistant.getAddons());
-        data.setFeatures(DeploymentController.createFeatures(assistant.getFeatures()));
+        data.setFeatures(FeaturesData.createFeatures(assistant.getFeatures()));
         data.setInputAttachmentTypes(assistant.getInputAttachmentTypes());
         data.setMaxInputAttachments(assistant.getMaxInputAttachments());
         data.setDefaults(assistant.getDefaults());

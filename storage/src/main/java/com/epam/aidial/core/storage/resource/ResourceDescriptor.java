@@ -7,7 +7,9 @@ import lombok.Getter;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 @Getter
@@ -141,11 +143,29 @@ public class ResourceDescriptor {
     }
 
     public boolean isPublic() {
-        return bucketLocation.equals(PUBLIC_LOCATION);
+        return bucketLocation.startsWith(PUBLIC_LOCATION);
     }
 
     public boolean isPrivate() {
         return !isPublic();
+    }
+
+    /**
+     * Checks if a resource is a published application system resource that should be hidden from users.
+     *
+     * <p>Published application system resources are identified by:
+     * - Folders that start with a dot (.) - these are hidden folders containing published app versions
+     * - Files located within any folder that starts with a dot
+     * - Examples: ".quick_app_name_0.0.1/", ".mind_map_name_0.0.2/document.json"
+     *
+     * <p>These resources should only be accessible by applications (deployments), not by regular users.
+     *
+     * @return true if this is a published application system resource that should be hidden from users
+     */
+    public boolean isHidden() {
+        return Stream.concat(getParentFolders().stream(), Stream.of(getName()))
+                .filter(Objects::nonNull)
+                .anyMatch(folder -> folder.startsWith("."));
     }
 
     /**
@@ -206,6 +226,30 @@ public class ResourceDescriptor {
 
         boolean isFolder = UrlUtil.isFolder(path);
         return new ResourceDescriptor(type, name, parentFolders, bucketName, bucketLocation, isFolder);
+    }
+
+    /**
+     * Calculates the relative path of a file within a folder.
+     *
+     * @param fileDescriptor The file descriptor to calculate the relative path for.
+     * @return The relative path of the file within the folder.
+     */
+    public String getRelativePath(ResourceDescriptor fileDescriptor) {
+        if (!this.isFolder) {
+            throw new IllegalStateException("Current resource must be a folder to calculate relative paths.");
+        }
+        if (!fileDescriptor.getBucketName().equals(this.bucketName)) {
+            throw new IllegalArgumentException("File descriptor must belong to the same bucket as the folder.");
+        }
+
+        String folderPath = this.getAbsoluteFilePath();
+        String filePath = fileDescriptor.getAbsoluteFilePath();
+
+        if (!filePath.startsWith(folderPath)) {
+            throw new IllegalArgumentException("File descriptor is not within the folder.");
+        }
+
+        return filePath.substring(folderPath.length());
     }
 
     @Override

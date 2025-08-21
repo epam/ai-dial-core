@@ -15,18 +15,23 @@ public class MetaSchemaHolder {
     public static final String APPLICATION_TYPE_EDITOR_URL = "dial:applicationTypeEditorUrl";
     public static final String APPLICATION_TYPE_VIEWER_URL = "dial:applicationTypeViewerUrl";
     public static final String APPLICATION_TYPE_DISPLAY_NAME = "dial:applicationTypeDisplayName";
+    public static final String APPLICATION_TYPE_ICON_URL = "dial:applicationTypeIconUrl";
     public static final String APPLICATION_TYPE_COMPLETION_ENDPOINT = "dial:applicationTypeCompletionEndpoint";
     public static final String APPLICATION_TYPE_CONFIGURATION_ENDPOINT = "dial:applicationTypeConfigurationEndpoint";
     public static final String APPLICATION_TYPE_RATE_ENDPOINT = "dial:applicationTypeRateEndpointEndpoint";
     public static final String APPLICATION_TYPE_TOKENIZE_ENDPOINT = "dial:applicationTypeTokenizeEndpointEndpoint";
     public static final String APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT = "dial:applicationTypeTruncatePromptEndpoint";
+    public static final String APPLICATION_TYPE_PLAYBACK_SUPPORT = "dial:applicationTypePlaybackSupport";
+
+    public static final String APPLICATION_TYPE_ROUTES = "dial:applicationTypeRoutes";
+
     public static final String PROPERTY_KIND = "dial:propertyKind";
     public static final String PROPERTY_ORDER = "dial:propertyOrder";
     public static final String APPLICATION_TYPE_ID_FIELD = "$id";
 
     public static String getCustomApplicationMetaSchema() {
         try (InputStream inputStream = MetaSchemaHolder.class.getClassLoader()
-                .getResourceAsStream("custom-application-schemas/schema")) {
+                .getResourceAsStream("custom-application-schemas/schema.json")) {
             assert inputStream != null;
             return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (Exception e) {
@@ -39,6 +44,7 @@ public class MetaSchemaHolder {
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_EDITOR_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_VIEWER_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_DISPLAY_NAME))
+                .keyword(new NonValidationKeyword(APPLICATION_TYPE_ICON_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_COMPLETION_ENDPOINT))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_CONFIGURATION_ENDPOINT))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_RATE_ENDPOINT))
@@ -46,6 +52,8 @@ public class MetaSchemaHolder {
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT))
                 .keyword(new NonValidationKeyword(PROPERTY_KIND))
                 .keyword(new NonValidationKeyword(PROPERTY_ORDER))
+                .keyword(new NonValidationKeyword(APPLICATION_TYPE_ROUTES))
+                .keyword(new NonValidationKeyword(APPLICATION_TYPE_PLAYBACK_SUPPORT))
                 .keyword(new NonValidationKeyword("$defs"))
                 .format(new DialFileFormat());
     }

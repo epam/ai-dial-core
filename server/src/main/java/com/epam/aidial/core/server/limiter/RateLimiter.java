@@ -11,11 +11,11 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,7 +30,7 @@ public class RateLimiter {
     private static final Limit DEFAULT_LIMIT = new Limit();
     private static final String DEFAULT_USER_ROLE = "default";
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
 
     private final ResourceService resourceService;
 
@@ -49,7 +49,7 @@ public class RateLimiter {
 
             String tokensPath = getPathToTokens(roleBasedEntity.getName());
             ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
-            return vertx.executeBlocking(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()), false);
+            return taskExecutor.submit(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -70,10 +70,10 @@ public class RateLimiter {
                 } else {
                     log.warn("Limit must be positive for {}", name);
                 }
-                return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", -1));
+                return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return vertx.executeBlocking(() -> checkLimit(context, limit, roleBasedEntity), false);
+            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -86,7 +86,7 @@ public class RateLimiter {
                 return Future.succeededFuture();
             }
             Limit limit = getLimitByUser(context, roleBasedEntity);
-            return vertx.executeBlocking(() -> getLimitStats(context, limit, roleBasedEntity.getName()), false);
+            return taskExecutor.submit(() -> getLimitStats(context, limit, roleBasedEntity.getName()));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }

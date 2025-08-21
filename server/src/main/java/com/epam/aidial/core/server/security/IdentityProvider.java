@@ -8,6 +8,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.Verification;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -68,7 +69,7 @@ public class IdentityProvider {
     // the flag determines if user email should be obfuscated
     private final boolean obfuscateUserEmail;
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
 
     private final HttpClient client;
     private final HttpClientOptions clientOptions;
@@ -94,17 +95,17 @@ public class IdentityProvider {
      */
     private final String[] userDisplayName;
 
-    public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client,
+    public IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
-        this(settings, vertx, client, new HttpClientOptions(), jwkProviderSupplier, factory);
+        this(settings, vertx, taskExecutor, client, new HttpClientOptions(), jwkProviderSupplier, factory);
     }
 
-    public IdentityProvider(JsonObject settings, Vertx vertx, HttpClient client, HttpClientOptions clientOptions,
+    public IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client, HttpClientOptions clientOptions,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
         }
-        this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.client = client;
         this.clientOptions = clientOptions;
 
@@ -232,7 +233,7 @@ public class IdentityProvider {
          * extract the value and put it into another future (Promise) which holds a valid context of a current request.
          * */
         Promise<JwkResult> promise = Promise.promise();
-        cache.computeIfAbsent(kid, key -> vertx.executeBlocking(() -> {
+        cache.computeIfAbsent(kid, key -> taskExecutor.submit(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();
             try {
@@ -242,7 +243,7 @@ public class IdentityProvider {
                 jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
             }
             return jwkResult;
-        }, false)).onSuccess(promise::complete).onFailure(promise::fail);
+        })).onSuccess(promise::complete).onFailure(promise::fail);
         return promise.future();
     }
 

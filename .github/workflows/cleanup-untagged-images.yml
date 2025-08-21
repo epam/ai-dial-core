@@ -11,10 +11,6 @@ jobs:
     permissions:
       packages: write
     steps:
-      - uses: snok/container-retention-policy@4f22ef80902ad409ed55a99dc5133cc1250a0d03 # v3.0.0
+      - uses: dataaxiom/ghcr-cleanup-action@cd0cdb900b5dbf3a6f2cc869f0dbb0b8211f50c4 # v1.0.16
         with:
-          account: ${{ github.repository_owner }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          image-names: ${{ github.event.repository.name }}
-          tag-selection: "untagged"
-          cut-off: "1d"
+          delete-untagged: true

@@ -1,9 +1,12 @@
 package com.epam.aidial.core.server.security;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -11,12 +14,13 @@ import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,6 +34,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
+@Slf4j
 public class AccessService {
 
     private final EncryptionService encryptionService;
@@ -39,6 +44,8 @@ public class AccessService {
 
     private final List<String> createCodeAppRoles;
 
+    private final ApplicationSchemaService applicationSchemaService;
+
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
@@ -47,15 +54,18 @@ public class AccessService {
             this::getReviewAccess,
             this::getPublicAccess,
             this::getSharedAccess,
-            AccessService::getAppSelfAccess);
+            AccessService::getAppSelfAccess,
+            this::getOwnResourcesAccessForChainedSchemaRichApplication);
 
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
                          RuleService ruleService,
+                         ApplicationSchemaService applicationSchemaService,
                          JsonObject settings) {
         this.encryptionService = encryptionService;
         this.shareService = shareService;
         this.ruleService = ruleService;
+        this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
@@ -156,10 +166,12 @@ public class AccessService {
         return result;
     }
 
-    private Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
+    @VisibleForTesting
+    Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (hasAdminAccess(context)) {
             return resources.stream()
+                    .filter(resource -> resource.isPublic() || PublicationService.isReviewBucket(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 
@@ -216,6 +228,23 @@ public class AccessService {
         }
 
         return result;
+    }
+
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        if (context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
+            List<ResourceDescriptor> applicationFiles = applicationSchemaService.getFiles(application);
+            String location = BucketBuilder.buildInitiatorBucket(context);
+            Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+            for (ResourceDescriptor resource : resources) {
+                if (resource.getBucketLocation().equals(location) && applicationFiles.contains(resource)) {
+                    result.put(resource, ResourceAccessType.READ_ONLY);
+                }
+            }
+            return result;
+        } else {
+            return Map.of();
+        }
     }
 
     public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
@@ -313,12 +342,16 @@ public class AccessService {
     }
 
     private void expandMetadata(MetadataBase metadata, Map<ResourceDescriptor, MetadataBase> result) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
-        result.put(resource, metadata);
-        if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
-            for (MetadataBase item : folderMetadata.getItems()) {
-                expandMetadata(item, result);
+        try {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
+            result.put(resource, metadata);
+            if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
+                for (MetadataBase item : folderMetadata.getItems()) {
+                    expandMetadata(item, result);
+                }
             }
+        } catch (Exception error) {
+            log.warn("Unable to expand resource metadata {} due to the error: ", metadata.getUrl(), error);
         }
     }
 

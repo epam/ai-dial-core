@@ -1,5 +1,10 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
@@ -9,6 +14,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Slf4j
@@ -79,7 +85,7 @@ class ResourceApiTest extends ResourceBaseTest {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "CREATE",
                   "timestamp" : "@ignore",
-                  "etag" : "70edd26b3686de5efcdae93fcc87c2bb"
+                  "etag" : "\\"70edd26b3686de5efcdae93fcc87c2bb\\""
                 }
                 """, events.take());
 
@@ -88,7 +94,7 @@ class ResourceApiTest extends ResourceBaseTest {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "UPDATE",
                   "timestamp" : "@ignore",
-                  "etag" : "82833ed7a10a4f99253fccdef4091ad9"
+                  "etag" : "\\"82833ed7a10a4f99253fccdef4091ad9\\""
                 }
                 """, events.take());
 
@@ -109,33 +115,33 @@ class ResourceApiTest extends ResourceBaseTest {
         verify(response, 404, "Not found: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_1);
-        verifyNotExact(response, 200, "\"etag\":\"70edd26b3686de5efcdae93fcc87c2bb\"");
-        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+        verifyNotExact(response, 200, "\"etag\":\"\\\"70edd26b3686de5efcdae93fcc87c2bb\\\"\"");
+        assertEquals("\"70edd26b3686de5efcdae93fcc87c2bb\"", response.headers().get("etag"));
         assertEquals("etag", response.headers().get("access-control-expose-headers"));
 
         response = resourceRequest(HttpMethod.GET, "/folder/conversation", CONVERSATION_BODY_1);
         verify(response, 200);
-        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+        assertEquals("\"70edd26b3686de5efcdae93fcc87c2bb\"", response.headers().get("etag"));
         assertEquals("etag", response.headers().get("access-control-expose-headers"));
 
         response = metadata("/folder/conversation");
-        verifyNotExact(response, 200, "\"etag\":\"70edd26b3686de5efcdae93fcc87c2bb\"");
+        verifyNotExact(response, 200, "\"etag\":\"\\\"70edd26b3686de5efcdae93fcc87c2bb\\\"\"");
 
         response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "123");
         verifyNotExact(response, 412, "If-match condition is failed for etag");
 
-        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "70edd26b3686de5efcdae93fcc87c2bb");
-        verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
-        assertEquals("82833ed7a10a4f99253fccdef4091ad9", response.headers().get("etag"));
+        response = resourceRequest(HttpMethod.PUT, "/folder/conversation", CONVERSATION_BODY_2, "if-match", "\"70edd26b3686de5efcdae93fcc87c2bb\"");
+        verifyNotExact(response, 200, "\"etag\":\"\\\"82833ed7a10a4f99253fccdef4091ad9\\\"\"");
+        assertEquals("\"82833ed7a10a4f99253fccdef4091ad9\"", response.headers().get("etag"));
         assertEquals("etag", response.headers().get("access-control-expose-headers"));
 
         response = metadata("/folder/conversation");
-        verifyNotExact(response, 200, "\"etag\":\"82833ed7a10a4f99253fccdef4091ad9\"");
+        verifyNotExact(response, 200, "\"etag\":\"\\\"82833ed7a10a4f99253fccdef4091ad9\\\"\"");
 
         response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "123");
         verifyNotExact(response, 412, "If-match condition is failed for etag");
 
-        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "82833ed7a10a4f99253fccdef4091ad9");
+        response = resourceRequest(HttpMethod.DELETE, "/folder/conversation", "", "if-match", "\"82833ed7a10a4f99253fccdef4091ad9\"");
         verify(response, 200, "");
     }
 
@@ -212,11 +218,11 @@ class ResourceApiTest extends ResourceBaseTest {
         response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "unsupported");
         verifyNotExact(response, 200, CONVERSATION_BODY_1);
 
-        response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "70edd26b3686de5efcdae93fcc87c2bb");
+        response = resourceRequest(HttpMethod.GET, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "\"70edd26b3686de5efcdae93fcc87c2bb\"");
         assertEquals(304, response.status());
-        assertEquals("70edd26b3686de5efcdae93fcc87c2bb", response.headers().get("etag"));
+        assertEquals("\"70edd26b3686de5efcdae93fcc87c2bb\"", response.headers().get("etag"));
 
-        response = resourceRequest(HttpMethod.PUT, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "70edd26b3686de5efcdae93fcc87c2bb");
+        response = resourceRequest(HttpMethod.PUT, "/folder/big", CONVERSATION_BODY_1, "if-none-match", "\"70edd26b3686de5efcdae93fcc87c2bb\"");
         assertEquals(412, response.status());
     }
 
@@ -422,5 +428,104 @@ class ResourceApiTest extends ResourceBaseTest {
                   }
                 """);
         Assertions.assertEquals(400, response.status());
+    }
+
+    @Test
+    void testApplicationWithTypeSchemaGet_ReturnedInvalid_WhenAppDoesNotConformToSchema() {
+        //create valid app
+        Response response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt", null, """
+                  Test1
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt", null, """
+                  Test2
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", null, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file1.txt",
+                                "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_file2.txt"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        //share valid app
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail",
+                      "permissions": [ "READ" ]
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        //broke the app
+        ResourceDescriptor descriptor =
+                ResourceDescriptorFactory.fromAnyUrl("applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", this.dial.getEncryptionService());
+
+        this.dial.getResourceService().putResource(descriptor, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "applicationProperties": {},
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """, EtagHeader.ANY);
+
+        //making get request from other user and check invalid flag
+
+        response = send(HttpMethod.GET, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_to_fail", null, null, "Api-key", "proxyKey2");
+
+        verifyJsonNotExact(response, 200, """
+                {
+                    "user_roles" : [ "Admin" ],
+                    "display_name" : "test_app",
+                    "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                    "description" : "My application description",
+                    "forward_auth_token" : false,
+                    "defaults" : { },
+                    "interceptors" : [ ],
+                    "description_keywords" : [ ],
+                    "max_retry_attempts" : 1,
+                    "author" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore",
+                    "dependencies" : [ ],
+                    "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                    "invalid" : true,
+                    "routes" : { }
+                }
+                """);
     }
 }

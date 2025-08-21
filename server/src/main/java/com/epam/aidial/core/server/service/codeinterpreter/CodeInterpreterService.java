@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
@@ -29,6 +30,7 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -49,6 +51,7 @@ import static com.epam.aidial.core.server.util.ProxyUtil.convertToString;
 public class CodeInterpreterService {
 
     private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
@@ -61,20 +64,21 @@ public class CodeInterpreterService {
     private final long sessionTtl;
     private final int checkSize;
 
-    public CodeInterpreterService(Vertx vertx, HttpClient client, RedissonClient redisson,
+    public CodeInterpreterService(Vertx vertx, HttpClient client, AsyncTaskExecutor taskExecutor, RedissonClient redisson,
                                   ResourceService resourceService, AccessService accessService,
                                   EncryptionService encryptionService, ApplicationOperatorService operatorService,
                                   Supplier<String> idGenerator, JsonObject settings) {
         String activeSessionsKey = BlobStorageUtil.toStoragePath(resourceService.getPrefix(), "active-code-interpreter-sessions");
 
         this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.resourceService = resourceService;
         this.accessService = accessService;
         this.encryptionService = encryptionService;
         this.operatorService = operatorService;
         this.idGenerator = idGenerator;
         this.activeSessions = redisson.getScoredSortedSet(activeSessionsKey);
-        this.sessionProxyUrl = "https://dial-session-proxy.dial-apps.eks-apps.dev.epam-rail.com";
+        this.sessionProxyUrl = settings.getString("sessionProxyUrl");
         this.sessionImage = settings.getString("sessionImage");
         this.sessionTtl = settings.getLong("sessionTtl", 600000L);
         this.checkSize = settings.getInteger("checkSize", 256);
@@ -82,7 +86,7 @@ public class CodeInterpreterService {
 
         if (isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 10000L);
-            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> vertx.executeBlocking(this::checkSessions));
+            vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> taskExecutor.submit(this::checkSessions));
         }
     }
 
@@ -321,9 +325,9 @@ public class CodeInterpreterService {
         ResourceDescriptor resource = verifyFile(context, file.getTargetUrl(), false);
 
         return downloadFile(context, file.getSessionId(), file.getSourcePath(), (input, size) -> {
-            BlobWriteStream output = new BlobWriteStream(vertx, resourceService, resource, EtagHeader.ANY, null);
+            BlobWriteStream output = new BlobWriteStream(taskExecutor, resourceService, resource, EtagHeader.ANY, null);
 
-            return new InputStreamReader(vertx, input)
+            return new InputStreamReader(vertx, taskExecutor, input)
                     .pipe()
                     .endOnFailure(false)
                     .to(output)

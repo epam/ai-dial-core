@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -22,155 +23,96 @@ import java.util.regex.Pattern;
 public class ControllerSelector {
 
     private static final Object CONTROLLER_TEMPLATE_KEY = new Object();
-
     private static final List<ControllerRoute> ROUTES = new ArrayList<>();
-
     private static final ControllerTemplate DEFAULT_CONTROLLER_TEMPLATE = new ControllerTemplate(
-            "/{path}", RouteController::new);
-
-    private static final Pattern PATTERN_POST_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(?<id>.+?)/(completions|chat/completions|embeddings)$");
-    private static final Pattern PATTERN_DEPLOYMENT = Pattern.compile("^/+openai/deployments/(?<id>.+?)$");
-    private static final Pattern PATTERN_DEPLOYMENTS = Pattern.compile("^/+openai/deployments$");
-
-    private static final Pattern PATTERN_MODEL = Pattern.compile("^/+openai/models/(?<id>.+?)$");
-    private static final Pattern PATTERN_MODELS = Pattern.compile("^/+openai/models$");
-
-    private static final Pattern PATTERN_ADDON = Pattern.compile("^/+openai/addons/(?<id>.+?)$");
-    private static final Pattern PATTERN_ADDONS = Pattern.compile("^/+openai/addons$");
-
-    private static final Pattern PATTERN_ASSISTANT = Pattern.compile("^/+openai/assistants/(?<id>.+?)$");
-    private static final Pattern PATTERN_ASSISTANTS = Pattern.compile("^/+openai/assistants$");
-
-    private static final Pattern PATTERN_APPLICATION = Pattern.compile("^/+openai/applications/(?<id>.+?)$");
-    private static final Pattern PATTERN_APPLICATIONS = Pattern.compile("^/+openai/applications$");
-    private static final Pattern APPLICATIONS = Pattern.compile("^/v1/ops/application/(deploy|undeploy|logs|redeploy)$");
-
-    private static final Pattern PATTERN_BUCKET = Pattern.compile("^/v1/bucket$");
-
-    private static final Pattern PATTERN_FILES = Pattern.compile("^/v1/files/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
-    private static final Pattern PATTERN_FILES_METADATA = Pattern.compile("^/v1/metadata/files/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
-
-    private static final Pattern PATTERN_RESOURCE = Pattern.compile("^/v1/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
-    private static final Pattern PATTERN_RESOURCE_METADATA = Pattern.compile("^/v1/metadata/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)");
-
-    // deployment feature patterns
-    private static final Pattern PATTERN_RATE_RESPONSE = Pattern.compile("^/+v1/(?<id>.+?)/rate$");
-    private static final Pattern PATTERN_TOKENIZE = Pattern.compile("^/+v1/deployments/(?<id>.+?)/tokenize$");
-    private static final Pattern PATTERN_TRUNCATE_PROMPT = Pattern.compile("^/+v1/deployments/(?<id>.+?)/truncate_prompt$");
-    private static final Pattern PATTERN_CONFIGURATION = Pattern.compile("^/+v1/deployments/(?<id>.+?)/configuration$");
-
-    private static final Pattern SHARE_RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/share/(create|list|discard|revoke|copy)$");
-    private static final Pattern INVITATIONS = Pattern.compile("^/v1/invitations$");
-    private static final Pattern INVITATION = Pattern.compile("^/v1/invitations/(?<id>[a-zA-Z0-9]+)$");
-    private static final Pattern PUBLICATIONS = Pattern.compile("^/v1/ops/publication/(list|get|create|delete|approve|reject)$");
-    private static final Pattern PUBLISHED_RESOURCES = Pattern.compile("^/v1/ops/publication/resource/list$");
-    private static final Pattern PUBLICATION_RULES = Pattern.compile("^/v1/ops/publication/rule/list$");
-
-    private static final Pattern RESOURCE_OPERATIONS = Pattern.compile("^/v1/ops/resource/(move|subscribe)$");
-
-    private static final Pattern DEPLOYMENT_LIMITS = Pattern.compile("^/v1/deployments/(?<id>.+?)/limits$");
-
-    private static final Pattern NOTIFICATIONS = Pattern.compile("^/v1/ops/notification/(list|delete)$");
-
-    private static final Pattern USER_INFO = Pattern.compile("^/v1/user/info$");
-
-    private static final Pattern APP_SCHEMAS = Pattern.compile("^/v1/application_type_schemas/(schemas|schema|meta_schema)?");
-    private static final Pattern CODE_INTERPRETER = Pattern.compile("^/v1/ops/code_interpreter/"
-            + "(open_session|close_session|get_session|"
-            + "execute_code|"
-            + "upload_file|download_file|list_files|"
-            + "transfer_input_file|transfer_output_file)$");
-
-    private static final Pattern CONFIG = Pattern.compile("^/v1/ops/config/reload$");
-
-    private static final Pattern USER_CONSENT = Pattern.compile("^/v1/consent/(?<id>.+?)$");
+            "/{path}", GlobalRouteController::new);
 
     static {
         // GET routes
-        get(PATTERN_DEPLOYMENT, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {
             DeploymentController controller = new DeploymentController(context);
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             return () -> controller.getDeployment(deploymentId);
         });
-        get(PATTERN_DEPLOYMENTS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.DEPLOYMENTS, (proxy, context, pathMatcher) -> {
             DeploymentController controller = new DeploymentController(context);
             return controller::getDeployments;
         });
-        get(PATTERN_MODEL, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.MODEL, (proxy, context, pathMatcher) -> {
             ModelController controller = new ModelController(context);
             String modelId = UrlUtil.decodePath(pathMatcher.group(1));
             return () -> controller.getModel(modelId);
         });
-        get(PATTERN_MODELS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.MODELS, (proxy, context, pathMatcher) -> {
             ModelController controller = new ModelController(context);
             return controller::getModels;
         });
-        get(PATTERN_ADDON, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.ADDON, (proxy, context, pathMatcher) -> {
             AddonController controller = new AddonController(context);
             String addonId = UrlUtil.decodePath(pathMatcher.group(1));
             return () -> controller.getAddon(addonId);
         });
-        get(PATTERN_ADDONS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.ADDONS, (proxy, context, pathMatcher) -> {
             AddonController controller = new AddonController(context);
             return controller::getAddons;
         });
-        get(PATTERN_ASSISTANT, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.ASSISTANT, (proxy, context, pathMatcher) -> {
             AssistantController controller = new AssistantController(context);
             String assistantId = UrlUtil.decodePath(pathMatcher.group(1));
             return () -> controller.getAssistant(assistantId);
         });
-        get(PATTERN_ASSISTANTS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.ASSISTANTS, (proxy, context, pathMatcher) -> {
             AssistantController controller = new AssistantController(context);
             return controller::getAssistants;
         });
-        get(PATTERN_APPLICATION, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.APPLICATION, (proxy, context, pathMatcher) -> {
             ApplicationController controller = new ApplicationController(context);
             String application = UrlUtil.decodePath(pathMatcher.group(1));
             return () -> controller.getApplication(application);
         });
-        get(PATTERN_APPLICATIONS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.APPLICATIONS, (proxy, context, pathMatcher) -> {
             ApplicationController controller = new ApplicationController(context);
             return controller::getApplications;
         });
-        get(PATTERN_FILES_METADATA, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.FILES_METADATA, (proxy, context, pathMatcher) -> {
             FileMetadataController controller = new FileMetadataController(proxy, context);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        get(PATTERN_FILES, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             DownloadFileController controller = new DownloadFileController(proxy, context);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        get(PATTERN_RESOURCE, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.RESOURCE, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        get(PATTERN_RESOURCE_METADATA, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.RESOURCE_METADATA, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, true);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        get(PATTERN_BUCKET, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.BUCKET, (proxy, context, pathMatcher) -> {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;
         });
-        get(INVITATION, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.INVITATION, (proxy, context, pathMatcher) -> {
             String invitationId = UrlUtil.decodePath(pathMatcher.group(1));
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.getOrAcceptInvitation(invitationId);
         });
-        get(INVITATIONS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.INVITATIONS, (proxy, context, pathMatcher) -> {
             InvitationController controller = new InvitationController(proxy, context);
             return controller::getInvitations;
         });
-        get(DEPLOYMENT_LIMITS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.DEPLOYMENT_LIMITS, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             LimitController controller = new LimitController(proxy, context);
             return () -> controller.getLimits(deploymentId);
         });
-        get(PATTERN_CONFIGURATION, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.CONFIGURATION, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
                     .map(Deployment::getFeatures)
@@ -180,13 +122,13 @@ public class ControllerSelector {
             DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
             return () -> controller.handle(deploymentId, getter, false);
         });
-        get(USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
-        get(USER_CONSENT, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
+        get(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);
             return () -> controller.requestConsent(deploymentId);
         });
-        get(APP_SCHEMAS, (proxy, context, pathMatcher) -> {
+        get(RouteTemplate.APP_SCHEMAS, (proxy, context, pathMatcher) -> {
             ApplicationTypeSchemaController controller = new ApplicationTypeSchemaController(context);
             String operation = pathMatcher.group(1);
             return switch (operation) {
@@ -196,15 +138,24 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.TOOL_SET, (proxy, context, pathMatcher) -> {
+            ToolSetController controller = new ToolSetController(context);
+            String toolsetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return () -> controller.getToolSet(toolsetId);
+        });
+        get(RouteTemplate.TOOL_SETS, (proxy, context, pathMatcher) -> {
+            ToolSetController controller = new ToolSetController(context);
+            return controller::getToolSets;
+        });
 
         // POST routes
-        post(PATTERN_POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             String deploymentApi = UrlUtil.decodePath(pathMatcher.group(2));
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId, deploymentApi);
         });
-        post(PATTERN_RATE_RESPONSE, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.RATE_RESPONSE, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
 
             Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
@@ -215,7 +166,7 @@ public class ControllerSelector {
             DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
             return () -> controller.handle(deploymentId, getter, false);
         });
-        post(PATTERN_TOKENIZE, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.TOKENIZE, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
 
             Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
@@ -226,7 +177,7 @@ public class ControllerSelector {
             DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
             return () -> controller.handle(deploymentId, getter, true);
         });
-        post(PATTERN_TRUNCATE_PROMPT, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.TRUNCATE_PROMPT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
 
             Function<Deployment, String> getter = (model) -> Optional.ofNullable(model)
@@ -237,14 +188,14 @@ public class ControllerSelector {
             DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
             return () -> controller.handle(deploymentId, getter, true);
         });
-        post(SHARE_RESOURCE_OPERATIONS, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.SHARE_RESOURCE_OPERATIONS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             ShareController.Operation op = ShareController.Operation.valueOf(operation.toUpperCase());
 
             ShareController controller = new ShareController(proxy, context);
             return () -> controller.handle(op);
         });
-        post(PUBLICATIONS, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.PUBLICATIONS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             PublicationController controller = new PublicationController(proxy, context);
 
@@ -255,28 +206,30 @@ public class ControllerSelector {
                 case "delete" -> controller::deletePublication;
                 case "approve" -> controller::approvePublication;
                 case "reject" -> controller::rejectPublication;
+                case "update" -> controller::updatePublication;
                 default -> null;
             };
         });
-        post(PUBLICATION_RULES, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.PUBLICATION_RULES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
         });
-        post(RESOURCE_OPERATIONS, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.RESOURCE_OPERATIONS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             ResourceOperationController controller = new ResourceOperationController(proxy, context);
 
             return switch (operation) {
                 case "move" -> controller::move;
+                case "copy" -> controller::copy;
                 case "subscribe" -> controller::subscribe;
                 default -> null;
             };
         });
-        post(PUBLISHED_RESOURCES, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.PUBLISHED_RESOURCES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listPublishedResources;
         });
-        post(NOTIFICATIONS, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.NOTIFICATIONS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             NotificationController controller = new NotificationController(proxy, context);
 
@@ -286,7 +239,7 @@ public class ControllerSelector {
                 default -> null;
             };
         });
-        post(APPLICATIONS, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.APPLICATION_OPERATIONS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             ApplicationController controller = new ApplicationController(context);
 
@@ -298,7 +251,7 @@ public class ControllerSelector {
                 default -> null;
             };
         });
-        post(CODE_INTERPRETER, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.CODE_INTERPRETER, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             CodeInterpreterController controller = new CodeInterpreterController(context);
 
@@ -315,39 +268,52 @@ public class ControllerSelector {
                 default -> null;
             };
         });
-        post(CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
-        post(USER_CONSENT, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
+        post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);
             return () -> controller.acceptConsent(deploymentId);
         });
+        post(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
+            String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ToolSetProxyController(proxy, context, toolSetId);
+        }));
         // DELETE routes
-        delete(PATTERN_FILES, (proxy, context, pathMatcher) -> {
+        delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        delete(PATTERN_RESOURCE, (proxy, context, pathMatcher) -> {
+        delete(RouteTemplate.RESOURCE, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        delete(INVITATION, (proxy, context, pathMatcher) -> {
+        delete(RouteTemplate.INVITATION, (proxy, context, pathMatcher) -> {
             String invitationId = UrlUtil.decodePath(pathMatcher.group(1));
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.deleteInvitation(invitationId);
         });
         // PUT routes
-        put(PATTERN_FILES, (proxy, context, pathMatcher) -> {
+        put(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             UploadFileController controller = new UploadFileController(proxy, context);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        put(PATTERN_RESOURCE, (proxy, context, pathMatcher) -> {
+        put(RouteTemplate.RESOURCE, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        // add deployment routes
+        ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            String routePath = pathMatcher.group(2);
+            return new ApplicationRouteController(proxy, context, deploymentId, routePath);
+        });
+        for (HttpMethod method : Proxy.ALLOWED_HTTP_METHODS) {
+            ROUTES.add(new ControllerRoute(method, RouteTemplate.DEPLOYMENT_ROUTES.getPattern(), applicationRouteTemplate));
+        }
     }
 
     public ControllerTemplate select(HttpServerRequest request) {
@@ -372,21 +338,22 @@ public class ControllerSelector {
                 .orElse(DEFAULT_CONTROLLER_TEMPLATE);
     }
 
-    private void get(Pattern pathPattern, ControllerRoute.Initializer initializer) {
-        ROUTES.add(new ControllerRoute(HttpMethod.GET, pathPattern, initializer));
+    private static void get(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.GET, template.getPattern(), controllerTemplate));
     }
 
-    private void post(Pattern pathPattern, ControllerRoute.Initializer initializer) {
-        ROUTES.add(new ControllerRoute(HttpMethod.POST, pathPattern, initializer));
+    private static void post(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.POST, template.getPattern(), controllerTemplate));
     }
 
-    private void put(Pattern pathPattern, ControllerRoute.Initializer initializer) {
-        ROUTES.add(new ControllerRoute(HttpMethod.PUT, pathPattern, initializer));
+    private static void put(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.PUT, template.getPattern(), controllerTemplate));
     }
 
-    private void delete(Pattern pathPattern, ControllerRoute.Initializer initializer) {
-        ROUTES.add(new ControllerRoute(HttpMethod.DELETE, pathPattern, initializer));
+    private static void delete(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.DELETE, template.getPattern(), controllerTemplate));
     }
+
 
     private String resourcePath(String url) {
         String prefix = "/v1/";

@@ -1,11 +1,14 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
-import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.server.validation.DialFileKeyword;
@@ -16,16 +19,17 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
-import lombok.experimental.UtilityClass;
+import lombok.AllArgsConstructor;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 
+import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,17 +37,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_COMPLETION_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_CONFIGURATION_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_RATE_ENDPOINT;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_ROUTES;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TOKENIZE_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.getMetaschemaBuilder;
 
-
-@UtilityClass
-public class ApplicationTypeSchemaUtils {
+@Slf4j
+@AllArgsConstructor
+public class ApplicationSchemaService {
 
     private static final JsonMetaSchema DIAL_META_SCHEMA = getMetaschemaBuilder()
             .keyword(new DialMetaKeyword())
@@ -55,12 +61,24 @@ public class ApplicationTypeSchemaUtils {
             .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
             .build();
 
-    static String getCustomApplicationSchemaOrThrow(Config config, Application application) {
+    private static final TypeReference<Map<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
+        @Override
+        public Type getType() {
+            return super.getType();
+        }
+    };
+
+    private final ResourceService resourceService;
+    private final ConfigStore configStore;
+
+    private final EncryptionService encryptionService;
+
+    String getCustomApplicationSchemaOrThrow(Application application) {
         URI schemaId = application.getApplicationTypeSchemaId();
         if (schemaId == null) {
             return null;
         }
-        String customApplicationSchema = config.getCustomApplicationSchema(schemaId);
+        String customApplicationSchema = configStore.get().getCustomApplicationSchema(schemaId);
         if (customApplicationSchema == null) {
             throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
         }
@@ -99,8 +117,8 @@ public class ApplicationTypeSchemaUtils {
         void accept(Map<String, Object> properties, boolean appendApplicationPropertiesHeader) throws JsonProcessingException;
     }
 
-    public static void consumeServerProperties(Config config, Application application, ServerPropertiesConsumer consumer) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(config, application);
+    public void consumeServerProperties(Application application, ServerPropertiesConsumer consumer) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
         if (customApplicationSchema == null) {
             return;
         }
@@ -125,9 +143,9 @@ public class ApplicationTypeSchemaUtils {
         void accept(String completion, String configuration, String rate, String tokenize, String truncatePrompt);
     }
 
-    private static void consumeCustomApplicationEndpoints(Config config, Application application, EndpointConsumer consumer) {
+    private void consumeCustomApplicationEndpoints(Application application, EndpointConsumer consumer) {
         try {
-            String schema = getCustomApplicationSchemaOrThrow(config, application);
+            String schema = getCustomApplicationSchemaOrThrow(application);
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
 
             String completionEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, true);
@@ -154,14 +172,14 @@ public class ApplicationTypeSchemaUtils {
         return endpointNode.asText();
     }
 
-    public static Application modifyEndpointsForCustomApplication(Config config, Application application) {
+    public Application modifyEndpointsForCustomApplication(Application application) {
         if (application.getApplicationTypeSchemaId() == null) {
             return application;
         }
 
         Application copy = new Application(application);
 
-        consumeCustomApplicationEndpoints(config, application, (completionEndpoint, configurationEndpoint, rateEndpoint, tokenizeEndpoint, truncatePromptEndpoint) -> {
+        consumeCustomApplicationEndpoints(application, (completionEndpoint, configurationEndpoint, rateEndpoint, tokenizeEndpoint, truncatePromptEndpoint) -> {
             copy.setEndpoint(completionEndpoint);
 
             Features features = copy.getFeatures();
@@ -188,8 +206,8 @@ public class ApplicationTypeSchemaUtils {
         return copy;
     }
 
-    public static Application filterCustomClientProperties(Config config, Application application) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(config, application);
+    public Application filterCustomClientProperties(Application application) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
         if (customApplicationSchema == null) {
             return application;
         }
@@ -202,40 +220,18 @@ public class ApplicationTypeSchemaUtils {
         return copy;
     }
 
-    public static Application filterCustomClientPropertiesWhenNoWriteAccess(ProxyContext ctx, ResourceDescriptor resource, Application application) {
-        if (!ctx.getProxy().getAccessService().hasWriteAccess(resource, ctx)) {
-            application = filterCustomClientProperties(ctx.getConfig(), application);
-        }
-        return application;
+    public List<ResourceDescriptor> getServerFiles(Application application) {
+        return getFiles(application, ListCollector.FileCollectorType.ONLY_SERVER_FILES);
     }
 
-    public static void replaceCustomAppFiles(Application application, Map<String, String> replacementLinks) {
-        if (application.getApplicationTypeSchemaId() == null) {
-            return;
-        }
-        JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
-        replaceLinksInJsonNode(customProperties, replacementLinks, null, null);
-        Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
-        });
-
-        application.setApplicationProperties(customPropertiesMap);
-    }
-
-    public static List<ResourceDescriptor> getServerFiles(Config config, Application application, EncryptionService encryptionService,
-                                                          ResourceService resourceService) {
-        return getFiles(config, application, encryptionService, resourceService, ListCollector.FileCollectorType.ONLY_SERVER_FILES);
-    }
-
-    public static List<ResourceDescriptor> getFiles(Config config, Application application, EncryptionService encryptionService,
-                                                    ResourceService resourceService) {
-        return getFiles(config, application, encryptionService, resourceService, ListCollector.FileCollectorType.ALL_FILES);
+    public List<ResourceDescriptor> getFiles(Application application) {
+        return getFiles(application, ListCollector.FileCollectorType.ALL_FILES);
     }
 
     @SuppressWarnings("unchecked")
-    private static List<ResourceDescriptor> getFiles(Config config, Application application, EncryptionService encryptionService,
-                                                     ResourceService resourceService, ListCollector.FileCollectorType collectorName) {
+    private List<ResourceDescriptor> getFiles(Application application, ListCollector.FileCollectorType collectorName) {
         try {
-            String customApplicationSchema = getCustomApplicationSchemaOrThrow(config, application);
+            String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
             if (customApplicationSchema == null) {
                 return Collections.emptyList();
             }
@@ -271,26 +267,32 @@ public class ApplicationTypeSchemaUtils {
         }
     }
 
-    public static void replaceLinksInJsonNode(JsonNode node, Map<String, String> replacementLinks, JsonNode parent, String fieldName) {
-        if (node.isObject()) {
-            node.fields().forEachRemaining(entry -> replaceLinksInJsonNode(entry.getValue(), replacementLinks, node, entry.getKey()));
-        } else if (node.isArray()) {
-            for (int i = 0; i < node.size(); i++) {
-                JsonNode childNode = node.get(i);
-                if (childNode.isTextual()) {
-                    String replacement = replacementLinks.get(childNode.textValue());
-                    if (replacement != null) {
-                        ((ArrayNode) node).set(i, replacement);
-                    }
-                } else {
-                    replaceLinksInJsonNode(childNode, replacementLinks, node, String.valueOf(i));
-                }
+    public Application modifySchemaRichApplication(Application application, boolean propertyFilteringRequired) {
+        try {
+            if (propertyFilteringRequired) {
+                application = filterCustomClientProperties(application);
             }
-        } else if (node.isTextual()) {
-            String replacement = replacementLinks.get(node.textValue());
-            if (replacement != null && parent.isObject()) {
-                ((ObjectNode) parent).put(fieldName, replacement);
-            }
+            application = modifyEndpointsForCustomApplication(application);
+        } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+            log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+            application.setApplicationProperties(null);
+            application.setInvalid(true);
         }
+        return application;
+    }
+
+    @Nullable
+    @SneakyThrows
+    public Map<String, Route> getRoutes(Application application) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
+        if (customApplicationSchema == null) {
+            return null;
+        }
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode appRoutes = schemaNode.get(APPLICATION_TYPE_ROUTES);
+        if (appRoutes == null) {
+            return null;
+        }
+        return ProxyUtil.MAPPER.treeToValue(appRoutes, APP_ROUTE_TYPE_REF);
     }
 }
