@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.toolset.registration.ClientRegistrationR
 import com.epam.aidial.core.server.data.toolset.registration.ToolsetRegistration;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
@@ -59,15 +60,17 @@ public class ToolsetRegistrationService {
         String toolSetAuthServerEndpoint = getToolSetAuthorizationServerEndpoint(baseToolSetEndpoint);
         String toolSetAuthorizationEndpoint;
         String tokenEndpoint;
-
+        String codeChallengeMethodSupported;
         try {
             ToolsetAuthorizationServerMetadata authorizationServerMetadata = getToolsetAuthorizationServerMetadata(toolSetAuthServerEndpoint);
             toolSetAuthorizationEndpoint = authorizationServerMetadata.getAuthorizationEndpoint();
             tokenEndpoint = authorizationServerMetadata.getTokenEndpoint();
+            codeChallengeMethodSupported = getCodeChallengeMethod(authorizationServerMetadata);
         } catch (HttpException e) {
             log.error(e.getMessage(), e);
             toolSetAuthorizationEndpoint = String.format(AUTHORIZE_ENDPOINT, baseToolSetEndpoint);
             tokenEndpoint = String.format(TOKEN_ENDPOINT, baseToolSetEndpoint);
+            codeChallengeMethodSupported = CodeChallengeMethod.S256.getValue();
         }
 
         return ToolsetRegistration.builder()
@@ -77,6 +80,7 @@ public class ToolsetRegistrationService {
             .redirectUri(toolSetAuthSettings.getRedirectUri())
             .authorizationEndpoint(toolSetAuthorizationEndpoint)
             .tokenEndpoint(tokenEndpoint)
+            .codeChallengeMethod(codeChallengeMethodSupported)
             .build();
     }
 
@@ -102,10 +106,19 @@ public class ToolsetRegistrationService {
             .toolSetName(clientRegistrationResponse.getClientName())
             .clientId(clientRegistrationResponse.getClientId())
             .clientSecret(clientRegistrationResponse.getClientSecret())
-            .redirectUri(clientRegistrationResponse.getRedirectUris().get(0))
+            .redirectUri(clientRegistrationResponse.getRedirectUris().getFirst())
             .authorizationEndpoint(toolsetAuthorizationServerMetadata.getAuthorizationEndpoint())
             .tokenEndpoint(toolsetAuthorizationServerMetadata.getTokenEndpoint())
+            .codeChallengeMethod(getCodeChallengeMethod(toolsetAuthorizationServerMetadata))
             .build();
+    }
+
+    //TODO: change default method to S256
+    private String getCodeChallengeMethod(ToolsetAuthorizationServerMetadata toolsetAuthorizationServerMetadata) {
+        List<String> codeChallengeMethodsSupported = toolsetAuthorizationServerMetadata.getCodeChallengeMethodsSupported();
+        return codeChallengeMethodsSupported.contains(CodeChallengeMethod.PLAIN.getValue())
+                                     ? CodeChallengeMethod.PLAIN.getValue()
+                                     : codeChallengeMethodsSupported.getFirst();
     }
 
     private String getToolSetAuthorizationServerEndpoint(String baseToolSetEndpoint) {

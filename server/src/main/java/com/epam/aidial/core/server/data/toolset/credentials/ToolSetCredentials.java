@@ -23,12 +23,13 @@ public class ToolSetCredentials {
     private String accessToken;
     private String refreshToken;
     private long createdAt;
+    private long updatedAt;
     private long expiresIn;
     private String userSub;
 
     public boolean isTokenExpired() {
         if (authenticationType.equals(AuthenticationType.OAUTH)) {
-            return createdAt + expiresIn * 1000 <= System.currentTimeMillis();
+            return updatedAt + expiresIn * 1000 <= System.currentTimeMillis();
         }
         return true;
     }

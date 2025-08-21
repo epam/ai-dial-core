@@ -39,6 +39,15 @@ public class ToolSetAuthSettings {
     @JsonAlias({"redirectUri", "redirect_uri"})
     private String redirectUri;
 
+    @JsonAlias({"codeChallenge", "code_challenge"})
+    private String codeChallenge;
+
+    @JsonAlias({"codeChallengeMethod", "code_challenge_method"})
+    private String codeChallengeMethod;
+
+    @JsonAlias({"codeVerifier", "code_verifier"})
+    private String codeVerifier;
+
     @JsonAlias({"apiKeyHeader", "api_key_header"})
     private String apiKeyHeader;
 

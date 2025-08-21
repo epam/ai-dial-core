@@ -133,13 +133,15 @@ public class ToolSetCredentialsManager {
             throw new IllegalArgumentException("Code is not required when auth type is API_KEY");
         }
 
+        long currentTime = System.currentTimeMillis();
         return ToolSetCredentials.builder()
             .toolSetName(toolSetName)
             .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
             .authenticationType(toolSetSignInRequest.getAuthenticationType())
             .apiKeyHeader(apiKeyHeader)
             .apiKey(toolSetSignInRequest.getApiKey())
-            .createdAt(System.currentTimeMillis())
+            .createdAt(currentTime)
+            .updatedAt(currentTime)
             .status(ToolsetAuthStatus.SIGNED_IN)
             .build();
     }
@@ -153,6 +155,7 @@ public class ToolSetCredentialsManager {
 
         TokenResponse tokenResponse = getToken(toolSetName, toolsetAuthSettings, toolSetSignInRequest);
 
+        long currentTime = System.currentTimeMillis();
         return ToolSetCredentials.builder()
             .toolSetName(toolSetName)
             .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
@@ -160,7 +163,8 @@ public class ToolSetCredentialsManager {
             .accessToken(tokenResponse.getAccessToken())
             .refreshToken(tokenResponse.getRefreshToken())
             .expiresIn(tokenResponse.getExpiresIn())
-            .createdAt(System.currentTimeMillis())
+            .createdAt(currentTime)
+            .updatedAt(currentTime)
             .status(ToolsetAuthStatus.SIGNED_IN)
             .build();
     }
@@ -175,6 +179,7 @@ public class ToolSetCredentialsManager {
             .code(toolSetSignInRequest.getCode())
             // TODO: do we need to support different?
             .grantType("authorization_code")
+            .codeVerifier(toolsetAuthSettings.getCodeVerifier())
             .redirectUri(toolsetAuthSettings.getRedirectUri())
             .build();
 
@@ -193,11 +198,13 @@ public class ToolSetCredentialsManager {
             throw new IllegalArgumentException("Neither Api key nor Code is not required when auth type is None");
         }
 
+        long currentTime = System.currentTimeMillis();
         return ToolSetCredentials.builder()
             .toolSetName(toolSetName)
             .credentialsLevel(toolSetSignInRequest.getCredentialsLevel())
             .authenticationType(toolSetSignInRequest.getAuthenticationType())
-            .createdAt(System.currentTimeMillis())
+            .createdAt(currentTime)
+            .updatedAt(currentTime)
             .status(ToolsetAuthStatus.SIGNED_IN)
             .build();
     }
@@ -223,13 +230,15 @@ public class ToolSetCredentialsManager {
     }
 
     private void updateExpiredToolSetCredentials(ToolSetCredentials toolSetCredentials,
-                                                               ToolSet toolSet) {
+                                                 ToolSet toolSet) {
+        log.debug("Start updating expired token for Toolset: {}", toolSet.getName());
         TokenResponse refreshedToken = getToken(toolSet.getName(),
             toolSetCredentials.getRefreshToken(), toolSet.getAuthSettings());
 
         toolSetCredentials.setExpiresIn(refreshedToken.getExpiresIn());
-        toolSetCredentials.setCreatedAt(System.currentTimeMillis());
+        toolSetCredentials.setUpdatedAt(System.currentTimeMillis());
         toolSetCredentials.setAccessToken(refreshedToken.getAccessToken());
         toolSetCredentials.setRefreshToken(refreshedToken.getRefreshToken());
+        log.debug("Finished updating expired token for Toolset: {}", toolSet.getName());
     }
 }

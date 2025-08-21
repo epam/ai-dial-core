@@ -13,4 +13,5 @@ public class ToolsetRegistration {
     private String authorizationEndpoint;
     private String tokenEndpoint;
     private String redirectUri;
+    private String codeChallengeMethod;
 }

@@ -20,6 +20,8 @@ public class ToolsetAuthSettingsData {
     private AuthenticationType authenticationType;
     private String clientId;
     private String redirectUri;
+    private String codeChallenge;
+    private String codeChallengeMethod;
     private String authorizationEndpoint;
     private String apiKeyHeader;
     private ToolsetAuthStatus globalAuthStatus;
@@ -33,6 +35,8 @@ public class ToolsetAuthSettingsData {
             .clientId(toolsetAuthSettings.getClientId())
             .authorizationEndpoint(toolsetAuthSettings.getAuthorizationEndpoint())
             .redirectUri(toolsetAuthSettings.getRedirectUri())
+            .codeChallenge(toolsetAuthSettings.getCodeChallenge())
+            .codeChallengeMethod(toolsetAuthSettings.getCodeChallengeMethod())
             .apiKeyHeader(toolsetAuthSettings.getApiKeyHeader())
             .globalAuthStatus(toolsetAuthSettings.getGlobalAuthStatus())
             .appLevelAuthStatus(toolsetAuthSettings.getAppLevelAuthStatus())

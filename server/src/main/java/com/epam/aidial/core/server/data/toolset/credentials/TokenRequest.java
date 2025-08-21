@@ -3,32 +3,19 @@ package com.epam.aidial.core.server.data.toolset.credentials;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
 @Data
 @Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TokenRequest {
 
-    @JsonProperty("client_id")
     private String clientId;
-
-    @JsonProperty("client_secret")
     private String clientSecret;
-
-    @JsonProperty("code")
     private String code;
-
-    @JsonProperty("scope")
     private String scope;
-
-    @JsonProperty("grant_type")
     private String grantType;
-
-    @JsonProperty("redirect_uri")
+    private String codeVerifier;
     private String redirectUri;
 
     public String buildFormData() {
@@ -40,6 +27,7 @@ public class TokenRequest {
         appendIfNotNull(formData, "scope", scope);
         appendIfNotNull(formData, "grant_type", grantType);
         appendIfNotNull(formData, "redirect_uri", redirectUri);
+        appendIfNotNull(formData, "code_verifier", codeVerifier);
 
         return formData.toString();
     }

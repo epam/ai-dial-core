@@ -215,6 +215,7 @@ public class ResourceController extends AccessControlBaseController {
             if (toolsetAuthSettings != null && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
                 toolsetAuthSettings.setClientSecret(null);
                 toolsetAuthSettings.setTokenEndpoint(null);
+                toolsetAuthSettings.setCodeVerifier(null);
             }
             String body = ProxyUtil.convertToString(toolSet);
 

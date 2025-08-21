@@ -141,21 +141,25 @@ The **Get ToolSet** API retrieves the details of a ToolSet. The new addition to 
         "client_id": "new-client-id",
         "authorization_endpoint": "https://my-mcp.com/authorize",
         "redirect_uri": "{chat-host}/toolset/sign-in",
+        "code_challenge": "generated-code-challenge",
+        "code_challenge_method": "code-challenge-method",
         "global_auth_status": "SIGNED_OUT",
         "user_level_auth_status": "SIGNED_IN"
     }
 }
 ```
 
-| **Field**                     | **Type**     | **Description**                                                                |
-|-------------------------------|--------------|--------------------------------------------------------------------------------|
-| `auth_settings`               | `object`     | Authentication settings configured for this ToolSet.                           |
-| `authentication_type`         | `string`     | Type of authentication: **OAUTH**, **API_KEY**, or **NONE**.                   |
-| `client_id`                   | `string`     | (OAUTH only) Pre-defined client ID used during signin flows.                   |
-| `authorization_endpoint`      | `string`     | (OAUTH only) URL for performing authorization.                                 |
-| `redirect_uri`                | `string`     | (OAUTH only) Redirect URI used during signin flows.                            |
-| `global_auth_status`          | `string`     | Dynamic status for global credentials: SIGNED_IN, SIGNED_OUT, or FAILED.       |
-| `user_level_auth_status`      | `string`     | Dynamic status for user-level credentials: SIGNED_IN, SIGNED_OUT, or FAILED.   |
+| **Field**                     | **Type**     | **Description**                                                                             |
+|-------------------------------|--------------|---------------------------------------------------------------------------------------------|
+| `auth_settings`               | `object`     | Authentication settings configured for this ToolSet.                                        |
+| `authentication_type`         | `string`     | Type of authentication: **OAUTH**, **API_KEY**, or **NONE**.                                |
+| `client_id`                   | `string`     | (OAUTH only) Pre-defined client ID used during signin flows.                                |
+| `authorization_endpoint`      | `string`     | (OAUTH only) URL for performing authorization.                                              |
+| `redirect_uri`                | `string`     | (OAUTH only) Redirect URI used during signin flows.                                         |
+| `code_challenge`              | `string`     | (OAUTH only) Value derived from the code_verifier, used in the PKCE flow.                   |
+| `code_challenge_method`       | `string`     | (OAUTH only) Method used to derive code_challenge from code_verifier (e.g., plain or S256). |
+| `global_auth_status`          | `string`     | Dynamic status for global credentials: SIGNED_IN, SIGNED_OUT, or FAILED.                    |
+| `user_level_auth_status`      | `string`     | Dynamic status for user-level credentials: SIGNED_IN, SIGNED_OUT, or FAILED.                |
 
 ---
 
@@ -281,10 +285,12 @@ Include the following data in the `state` parameter:
 #### **Steps for frontend**
 
 1. **Construct the Authorization URL**:
-    - **Retrieve Toolset Settings**: Use the backend-provided `auth_settings` (e.g., `client_id`, `redirect_uri`) for the Toolset.
+    - **Retrieve Toolset Settings**: Use the backend-provided `auth_settings` (e.g., `client_id`, `redirect_uri`, `code_challenge`, `code_challenge_method`) 
+        for the Toolset.
     - **Add `state`**: Build the **/authorize URL** with a serialized `state` parameter, e.g.:
       ```plaintext
-      https://mcp-server.com/authorize?client_id=my-client-id&redirect_uri=https://toolset-redirect.com&state=toolset=my-toolset&scope=global
+      https://mcp-server.com/authorize?client_id=my-client-id&redirect_uri=https://toolset-redirect.com&code_challenge=generated-code-challenge
+      &code_challenge_method=code-challenge-method&state=toolset=my-toolset&scope=global
       ```
 
 2. **Sign-In Button**:
@@ -304,7 +310,8 @@ Include the following data in the `state` parameter:
 #### **Example Overview**
 1. **Auth URL Example**:
    ```plaintext
-   https://mcp-server.com/authorize?client_id=my-client-id&redirect_uri=https://toolset.redirect.uri&state=toolset=my-toolset&scope=app
+   https://mcp-server.com/authorize?client_id=my-client-id&redirect_uri=https://toolset.redirect.uri&code_challenge=generated-code-challenge
+      &code_challenge_method=code-challenge-method&state=toolset=my-toolset&scope=app
    ```
 
 2. **Redirect Example**:

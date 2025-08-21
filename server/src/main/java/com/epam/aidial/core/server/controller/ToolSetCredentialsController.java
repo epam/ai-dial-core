@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ToolSetSignInRequest;
 import com.epam.aidial.core.config.ToolSetSignOutRequest;
@@ -48,7 +49,7 @@ public class ToolSetCredentialsController {
                 ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
                     toolSetSignInRequest.getUrl(), encryptionService);
 
-                verifyAccess(resourceDescriptor);
+                verifyAccess(resourceDescriptor, toolSetSignInRequest.getCredentialsLevel());
 
                 return vertx.executeBlocking(() -> {
                     ToolSetCredentials toolSetCredentials = toolSetCredentialsManager.createToolsetCredentials(
@@ -70,7 +71,7 @@ public class ToolSetCredentialsController {
                 ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
                     toolSetSignOutRequest.getUrl(), encryptionService);
 
-                verifyAccess(resourceDescriptor);
+                verifyAccess(resourceDescriptor, toolSetSignOutRequest.getCredentialsLevel());
 
                 return toolSetCredentialsManager.deleteToolSetCredentials(toolSetSignOutRequest, context);
             }))
@@ -80,10 +81,15 @@ public class ToolSetCredentialsController {
         return Future.succeededFuture();
     }
 
-    //TODO: implement more granular checks (global for owners, etc.)
-    private void verifyAccess(ResourceDescriptor resourceDescriptor) {
+    private void verifyAccess(ResourceDescriptor resourceDescriptor,
+                              CredentialsLevel credentialsLevel) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
             accessService.lookupPermissions(Set.of(resourceDescriptor), context);
+
+        if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
+            && !permissions.get(resourceDescriptor).containsAll(ResourceAccessType.ALL)) {
+                throw new PermissionDeniedException("no read and write access to ToolSet resource");
+        }
 
         if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
             throw new PermissionDeniedException("no read access to ToolSet resource");
