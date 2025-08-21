@@ -16,16 +16,16 @@ A list of deployed DIAL Interceptors and their [parameters](#interceptorsinterce
 ```json
 {
   "interceptors": {
-      "interceptor1": {
-          "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
-      },
-      "interceptor2": {
-          "endpoint": "http://localhost:4089/api/v1/interceptor/handle"
-      },
-      "interceptor3": {
-          "endpoint": "http://localhost:4090/api/v1/interceptor/handle"
-      }
-  },
+    "interceptor1": {
+      "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
+    },
+    "interceptor2": {
+      "endpoint": "http://localhost:4089/api/v1/interceptor/handle"
+    },
+    "interceptor3": {
+      "endpoint": "http://localhost:4090/api/v1/interceptor/handle"
+    }
+  }
 }
 ```
 
@@ -41,6 +41,9 @@ An object containing parameters for each [interceptor](#interceptors).
 * `author`: The interceptor's developer. 
 * `createdAt`: The date of the interceptor creation. 
 * `updatedAt`: The date of the last interceptor update.
+* `features`: Features supported by the interceptors.
+*  `configurationEndpoint`: The URL that exposes the configuration of the interceptor.
+*  `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
 
 
 ## Configuration Example
@@ -48,20 +51,50 @@ An object containing parameters for each [interceptor](#interceptors).
 ```json
 {
   "interceptors": {
-      "interceptor1": {
-          "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
+    "interceptor1": {
+      "endpoint": "http://localhost:4088/api/v1/interceptor/handle",
+      "features": {
+        "configurationEndpoint": "http://localhost:4088/configuration"
       },
-      "interceptor2": {
-          "endpoint": "http://localhost:4089/api/v1/interceptor/handle"
-      },
-      "interceptor3": {
-          "endpoint": "http://localhost:4090/api/v1/interceptor/handle"
+      "defaults": {
+        "custom_fields": {
+          "interceptor_configuration": {
+            "foo1": "bar1"
+          }
+        }
       }
+    },
+    "interceptor2": {
+      "endpoint": "http://localhost:4089/api/v1/interceptor/handle",
+      "features": {
+        "configurationEndpoint": "http://localhost:4089/configuration"
+      },
+      "defaults": {
+        "custom_fields": {
+          "interceptor_configuration": {
+            "foo2": "bar2"
+          }
+        }
+      }
+    },
+    "interceptor3": {
+      "endpoint": "http://localhost:4090/api/v1/interceptor/handle",
+      "features": {
+        "configurationEndpoint": "http://localhost:4090/configuration"
+      },
+      "defaults": {
+        "custom_fields": {
+          "interceptor_configuration": {
+            "foo3": "bar3"
+          }
+        }
+      }
+    }
   },
   "applications": {
-      "app": {
-          "interceptors": ["interceptor1", "interceptor2", "interceptor3"],
-      }
+    "app": {
+      "interceptors": ["interceptor1", "interceptor2", "interceptor3"]
+    }
   }
 }
 ```

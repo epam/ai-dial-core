@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Configuration variables -->
+    <property name="LOG_LEVEL" value="${LOG_LEVEL:-INFO}"/>
+
+    <!-- Console JSON Appender -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="com.epam.aidial.core.server.log.layout.AutoEnrichedOtelJsonLayout">
+            </layout>
+        </encoder>
+    </appender>
+
+    <!-- OpenTelemetry Appender -->
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
+
+    <logger name="io.vertx" level="WARN"/>
+    <logger name="io.vertx.tracing" level="DEBUG"/>
+    <logger name="io.opentelemetry" level="DEBUG"/>
+    <logger name="org.redisson" level="WARN"/>
+
+    <!-- Root logger -->
+    <root level="${LOG_LEVEL}">
+        <appender-ref ref="CONSOLE_JSON"/>
+        <appender-ref ref="OTEL"/>
+    </root>
+</configuration>

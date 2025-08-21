@@ -163,7 +163,7 @@ Use `features` to specify optional capabilities of the application. Refer to [DI
 
 A list of registered routes in the application. A route is used to proxy requests through DIAL Core to an upstream server. DIAL Core provides capabilities such as rate limiting, role-based authorization, request balancing, and access to DIAL Core resources (LLMs, applications, file storage).
 
-* `applications.<application_name>.routes.<route_name>.userRoles`: Route is accessible by user roles from this list.
+* `applications.<application_name>.routes.<route_name>.userRoles`: Route is accessible by user roles from this list. If not defined, `userRoles` are inherited from the parent application. If defined, they override the `userRoles` of the parent application.
 * `applications.<application_name>.routes.<route_name>.response`: A pre-configured route's response. If the `response` is set, DIAL Core returns the response immediately. Available values:  
     - `status`: HTTP status code  
     - `body`: HTTP response body  

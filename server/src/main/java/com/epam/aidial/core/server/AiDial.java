@@ -59,6 +59,7 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -73,10 +74,13 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -88,6 +92,7 @@ import java.util.function.Supplier;
 @Getter
 public class AiDial {
 
+    private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
     private Vertx vertx;
     private HttpServer server;
@@ -110,6 +115,7 @@ public class AiDial {
         System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
             settings = (settings == null) ? settings() : settings;
+            printSettings(settings);
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
             setupTracing(vertxOptions);
@@ -247,6 +253,10 @@ public class AiDial {
             log.warn("Failed to load version", e);
         }
         return version;
+    }
+
+    public static String getVersion() {
+        return version();
     }
 
     private static JsonObject fileSettings() throws IOException {
@@ -389,5 +399,47 @@ public class AiDial {
             return val;
         }
         return System.getProperty(systemProperty);
+    }
+
+    private static void printSettings(Object settings) {
+        log.debug("AI DIAL Core settings");
+        log.debug("--------------- start --------------- ");
+        printSettings(settings, new StringBuilder());
+        log.debug("--------------- end --------------- ");
+    }
+
+    private static void printSettings(Object settings, StringBuilder path) {
+        if (settings instanceof JsonObject jsonObject) {
+            for (var entry : jsonObject.getMap().entrySet()) {
+                printSettings(entry.getKey(), entry.getValue(), path);
+            }
+        } else if (settings instanceof Map<?, ?> map) {
+            for (var entry : map.entrySet()) {
+                printSettings((String) entry.getKey(), entry.getValue(), path);
+            }
+        } else if (settings instanceof JsonArray array) {
+            for (int i = 0; i < array.size(); i++) {
+                printSettings("[" + i + "]", array.getValue(i), path);
+            }
+        } else if (settings instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                printSettings("[" + i + "]", list.get(i), path);
+            }
+        } else {
+            log.debug("Core setting: key -> {}, value -> {}", path, settings);
+        }
+    }
+
+    private static void printSettings(String key, Object value, StringBuilder path) {
+        if (NON_PRINTABLE_SETTINGS.contains(key)) {
+            return;
+        }
+        int len = path.length();
+        if (!path.isEmpty()) {
+            path.append('.');
+        }
+        path.append(key);
+        printSettings(value, path);
+        path.setLength(len);
     }
 }

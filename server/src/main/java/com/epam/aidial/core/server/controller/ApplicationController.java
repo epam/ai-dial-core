@@ -199,8 +199,8 @@ public class ApplicationController {
         } else if (error instanceof ResourceNotFoundException) {
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
-            log.error("Failed to handle application request", error);
             context.respond(error, "Internal error");
+            log.error("Failed to handle application request", error);
         }
     }
 

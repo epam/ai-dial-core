@@ -120,8 +120,8 @@ public class ResourceController extends AccessControlBaseController {
                 context.respond(HttpStatus.OK, getContentType(), result);
             }
         }).onFailure(error -> {
-            log.warn("Can't list resource: {}", descriptor.getUrl(), error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+            log.warn("Can't list resource: {}", descriptor.getUrl(), error);
         });
 
         return Future.succeededFuture();
@@ -313,8 +313,8 @@ public class ResourceController extends AccessControlBaseController {
         } else if (error instanceof PermissionDeniedException) {
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else {
-            log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+            log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
         }
     }
 
