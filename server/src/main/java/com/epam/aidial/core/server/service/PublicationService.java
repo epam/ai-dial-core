@@ -271,7 +271,7 @@ public class PublicationService {
                         reviewResourcesToAdd.add(resource);
                         ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
                         replacementLinks.put(from.getDecodedUrl(), to.getUrl());
-                    } else if (!resource.getTargetUrl().equals(existingResource.getTargetUrl())) {
+                    } else if (!resource.getReviewUrl().equals(existingResource.getReviewUrl())) {
                         reviewResourcesToMove.add(Pair.of(existingResource.getReviewUrl(), resource.getReviewUrl()));
                         ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(existingResource.getReviewUrl(), encryption);
 
