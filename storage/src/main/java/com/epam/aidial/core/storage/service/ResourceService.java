@@ -497,17 +497,13 @@ public class ResourceService implements AutoCloseable {
 
             String etag = resourceUpload.calculateEtag();
 
+            // try to update user metadata with the computed e-tag.
+            // Note. That doesn't work in AWS S3. Instead of that we take e-tag to be provided by AWS S3.
+            // AWS S3 computes e-tag based blob content.
             Map<String, String> userMetadata =  multipartUpload.blobMetadata().getUserMetadata();
             userMetadata.put(ETAG_ATTRIBUTE, etag);
 
             blobStore.completeMultipartUpload(multipartUpload, parts);
-
-            String blobKey = blobKey(descriptor);
-            // override user metadata with the generated etag
-//            long start = System.currentTimeMillis();
-//            blobStore.copy(blobKey, blobKey, userMetadata);
-//            log.info("Copy blob {} to itself takes: {}", descriptor.getUrl(), System.currentTimeMillis() - start);
-
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
@@ -913,6 +909,20 @@ public class ResourceService implements AutoCloseable {
         return new String(Base58.decode(decoded), StandardCharsets.UTF_8);
     }
 
+    /**
+     * Extracts e-tag from the blob metadata.
+     *
+     * <p>
+     *     There are two cases:
+     *     <ul>
+     *         <li>e-tag exists in user metadata. GCP and Azure support updating user metadata on completion of multipart upload request.</li>
+     *         <li>e-tag doesn't exists in user metadata. AWS S3 provides own etag instead because it doesn't support user metadata update</li>
+     *     </ul>
+     * </p>
+     *
+     * @param meta - blob metadata
+     * @return e-tag
+     */
     private static String extractEtag(BlobMetadata meta) {
         Map<String, String> attributes = meta.getUserMetadata();
         String etag = attributes.get(ETAG_ATTRIBUTE);
