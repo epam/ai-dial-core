@@ -1,13 +1,10 @@
 package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
-import org.junit.Ignore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-@Disabled
 public class CodeInterpreterApiTest extends ResourceBaseTest {
 
     private TestWebServer webServer;
@@ -53,7 +50,7 @@ public class CodeInterpreterApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {"files": []}""");
 
-        String content = "123456789abcгде".repeat(1024 * 1024);
+        String content = "1".repeat(16 * 1024 * 1024);
         webServer.map(HttpMethod.POST, "/upload_file", 200, """
                 {"path": "/mnt/data/file.txt","size": 16777216}""");
         response = upload(HttpMethod.POST, "/v1/ops/code_interpreter/upload_file", "session_id=0123", content);

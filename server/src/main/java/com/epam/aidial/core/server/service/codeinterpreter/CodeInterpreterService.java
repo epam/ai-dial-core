@@ -30,8 +30,6 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClient;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +38,7 @@ import org.redisson.api.RedissonClient;
 
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -64,7 +63,7 @@ public class CodeInterpreterService {
     private final long sessionTtl;
     private final int checkSize;
 
-    public CodeInterpreterService(Vertx vertx, HttpClient client, AsyncTaskExecutor taskExecutor, RedissonClient redisson,
+    public CodeInterpreterService(Vertx vertx, AsyncTaskExecutor taskExecutor, RedissonClient redisson,
                                   ResourceService resourceService, AccessService accessService,
                                   EncryptionService encryptionService, ApplicationOperatorService operatorService,
                                   Supplier<String> idGenerator, JsonObject settings) {
@@ -82,7 +81,7 @@ public class CodeInterpreterService {
         this.sessionImage = settings.getString("sessionImage");
         this.sessionTtl = settings.getLong("sessionTtl", 600000L);
         this.checkSize = settings.getInteger("checkSize", 256);
-        this.client = new CodeInterpreterClient(client, sessionProxyUrl, sessionTtl);
+        this.client = new CodeInterpreterClient(sessionProxyUrl, sessionTtl);
 
         if (isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 10000L);
@@ -359,7 +358,9 @@ public class CodeInterpreterService {
 
     private String deploy(CodeInterpreterSession session) {
         if (session.getDeploymentType() == DeploymentType.SESSION) {
-            return operatorService.createCodeInterpreterSession(session.getDeploymentId(), sessionImage);
+            // setting session id, so code interpreter will validate it on each request
+            Map<String, String> env = Map.of("SESSION_ID", session.getDeploymentId());
+            return operatorService.createCodeInterpreterSession(session.getDeploymentId(), sessionImage, env);
         } else {
             return operatorService.createCodeInterpreterDeployment(session.getDeploymentId(), sessionImage);
         }

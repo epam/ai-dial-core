@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.service.codeinterpreter;
 
-import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
@@ -9,11 +8,8 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.RequestOptions;
 import lombok.SneakyThrows;
+import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
@@ -32,31 +28,28 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.Nullable;
 
 public class CodeInterpreterClient {
 
     private static final String PROXY_TARGET = "X-DIAL-PROXY-TARGET";
+    private static final String SESSION_ID = "X-DIAL-SESSION-ID";
 
     // Vertx HttpClient does not support multipart upload, Vertx WebClient supports only Buffer as body for multipart upload
-    private final org.apache.hc.client5.http.classic.HttpClient fileClient;
     private final HttpClient client;
 
     private final String proxyUrl;
     private final long timeout;
 
-    public CodeInterpreterClient(HttpClient client, String proxyUrl, long timeout) {
+    public CodeInterpreterClient(String proxyUrl, long timeout) {
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectionRequestTimeout(timeout, TimeUnit.MILLISECONDS)
                 .setResponseTimeout(timeout, TimeUnit.MILLISECONDS)
                 .build();
 
-        this.client = client;
         this.proxyUrl = proxyUrl;
         this.timeout = timeout;
-        this.fileClient = HttpClients.custom()
+        this.client = HttpClients.custom()
                 .setDefaultRequestConfig(requestConfig)
                 .disableContentCompression()
                 .build();
@@ -81,7 +74,7 @@ public class CodeInterpreterClient {
                 .addBinaryBody("file", source, ContentType.APPLICATION_OCTET_STREAM, target)
                 .build());
 
-        return fileClient.execute(post, response -> {
+        return client.execute(post, response -> {
             int status = response.getCode();
             String body = EntityUtils.toString(response.getEntity());
 
@@ -99,7 +92,7 @@ public class CodeInterpreterClient {
         addSessionHeaders(session, post);
         post.setEntity(HttpEntities.create(ProxyUtil.convertToString(Map.of("path", path)), ContentType.APPLICATION_JSON));
 
-        return fileClient.execute(post, response -> {
+        return client.execute(post, response -> {
             int status = response.getCode();
             HttpEntity entity = response.getEntity();
 
@@ -127,50 +120,20 @@ public class CodeInterpreterClient {
 
     @SneakyThrows
     private <R> R execute(CodeInterpreterSession session, String path, Object requestPayload, Class<R> responseType) {
-        AtomicReference<HttpClientRequest> reference = new AtomicReference<>();
+        HttpPost post = new HttpPost(session.getDeploymentUrl() + path);
+        addSessionHeaders(session, post);
+        post.setEntity(HttpEntities.create(ProxyUtil.convertToString(requestPayload), ContentType.APPLICATION_JSON));
 
-        RequestOptions options = new RequestOptions()
-                .setMethod(HttpMethod.POST)
-                .setAbsoluteURI(createSessionUrl(session, path))
-                .setIdleTimeout(timeout);
+        return client.execute(post, response -> {
+            int status = response.getCode();
+            String body = EntityUtils.toString(response.getEntity());
 
-        Future<R> future = client.request(options)
-                .compose(request -> {
-                    reference.set(request);
-                    request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-
-                    if (session.getDeploymentType() == CodeInterpreterSession.DeploymentType.SESSION) {
-                        Objects.requireNonNull(proxyUrl, "No proxy url");
-                        request.putHeader(PROXY_TARGET, session.getDeploymentUrl());
-                    }
-
-                    String body = ProxyUtil.convertToString(requestPayload);
-                    return request.send(body)
-                            .compose(response -> {
-                                // must be inside to eliminate race condition for response.body()
-                                if (response.statusCode() != 200) {
-                                    throw new HttpException(response.statusCode(), body);
-                                }
-
-                                return response.body();
-                            });
-                })
-                .map(buffer -> ProxyUtil.convertToObject(buffer, responseType))
-                .timeout(timeout, TimeUnit.MILLISECONDS);
-
-        try {
-            return Future.await(future);
-        } catch (Throwable e) {
-            if (e instanceof TimeoutException) {
-                HttpClientRequest request = reference.get();
-
-                if (request != null) {
-                    request.reset();
-                }
+            if (status != 200) {
+                throw new HttpException(status, body);
             }
 
-            throw e;
-        }
+            return ProxyUtil.convertToObject(body, responseType);
+        });
     }
 
     private String createSessionUrl(CodeInterpreterSession session, String path) {
@@ -186,6 +149,7 @@ public class CodeInterpreterClient {
         if (session.getDeploymentType() == CodeInterpreterSession.DeploymentType.SESSION) {
             Objects.requireNonNull(proxyUrl, "No proxy url");
             request.setHeader(PROXY_TARGET, session.getDeploymentUrl());
+            request.setHeader(SESSION_ID, session.getDeploymentId());
         }
     }
 

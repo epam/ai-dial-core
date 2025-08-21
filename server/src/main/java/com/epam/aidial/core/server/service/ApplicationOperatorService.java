@@ -9,7 +9,6 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import io.vertx.core.Future;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
@@ -40,7 +39,7 @@ public class ApplicationOperatorService {
 
     public ApplicationOperatorService(HttpClient client, JsonObject settings) {
         this.client = client;
-        this.endpoint = "http://dial-app-controller-test.dial-development.svc.cluster.local";
+        this.endpoint = settings.getString("controllerEndpoint");
         this.timeout = settings.getLong("controllerTimeout", 240000L);
         this.connectTimeout = settings.getLong("controllerConnectTimeout", 10000L);
     }
@@ -115,11 +114,11 @@ public class ApplicationOperatorService {
                 body -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
-    public String createCodeInterpreterSession(String id, String image) {
+    public String createCodeInterpreterSession(String id, String image, Map<String, String> env) {
         CreateSessionResponse session = callController(HttpMethod.POST, "/v1/session/" + id,
                 request -> {
                     request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-                    CreateSessionRequest body = new CreateSessionRequest(image);
+                    CreateSessionRequest body = new CreateSessionRequest(image, env);
                     return ProxyUtil.convertToString(body);
                 },
                 body -> convertServerSentEvent(body, CreateSessionResponse.class));
@@ -139,17 +138,18 @@ public class ApplicationOperatorService {
                                  Function<String, R> responseMapper) {
         verifyActive();
 
-        AtomicReference<HttpClientRequest> reference = new AtomicReference<>();
+        CompletableFuture<R> resultFuture = new CompletableFuture<>();
+        AtomicReference<HttpClientRequest> requestReference = new AtomicReference<>();
 
-        RequestOptions options = new RequestOptions()
+        RequestOptions requestOptions = new RequestOptions()
                 .setMethod(method)
                 .setAbsoluteURI(endpoint + path)
                 .setConnectTimeout(connectTimeout)
                 .setIdleTimeout(timeout);
 
-        Future<R> future = client.request(options)
+        client.request(requestOptions)
                 .compose(request -> {
-                    reference.set(request);
+                    requestReference.set(request);
                     String body = requestMapper.apply(request);
                     return request.send((body == null) ? "" : body)
                             .compose(response -> { // must be inside to eliminate race condition for response.body()
@@ -164,17 +164,22 @@ public class ApplicationOperatorService {
                     String body = buffer.toString(StandardCharsets.UTF_8);
                     return responseMapper.apply(body);
                 })
-                .timeout(timeout, TimeUnit.MILLISECONDS);
+                .onSuccess(resultFuture::complete)
+                .onFailure(resultFuture::completeExceptionally);
 
         try {
-            return Future.await(future);
+            return resultFuture.get(timeout, TimeUnit.MILLISECONDS);
         } catch (Throwable e) {
             if (e instanceof TimeoutException) {
-                HttpClientRequest request = reference.get();
+                HttpClientRequest request = requestReference.get();
 
                 if (request != null) {
                     request.reset();
                 }
+            }
+
+            if (e instanceof ExecutionException) {
+                e = e.getCause();
             }
 
             throw e;
@@ -232,7 +237,7 @@ public class ApplicationOperatorService {
     private record CreateDeploymentResponse(String url) {
     }
 
-    private record CreateSessionRequest(String image) {
+    private record CreateSessionRequest(String image, Map<String, String> env) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
