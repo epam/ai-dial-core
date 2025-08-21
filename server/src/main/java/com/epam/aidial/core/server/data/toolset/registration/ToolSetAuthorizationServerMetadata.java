@@ -1,7 +1,5 @@
 package com.epam.aidial.core.server.data.toolset.registration;
 
-import java.util.List;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -9,12 +7,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ToolsetAuthorizationServerMetadata {
+public class ToolSetAuthorizationServerMetadata {
 
     @JsonProperty("authorization_endpoint")
     private String authorizationEndpoint;

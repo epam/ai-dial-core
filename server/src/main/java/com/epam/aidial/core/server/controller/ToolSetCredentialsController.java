@@ -11,14 +11,14 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsManager;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -28,14 +28,14 @@ import java.util.Set;
 public class ToolSetCredentialsController {
 
     private final ProxyContext context;
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ToolSetCredentialsManager toolSetCredentialsManager;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
 
     public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
-        this.vertx = proxy.getVertx();
+        this.taskExecutor = proxy.getTaskExecutor();
         this.toolSetCredentialsManager = proxy.getToolSetCredentialsManager();
         this.accessService = proxy.getAccessService();
         this.encryptionService = proxy.getEncryptionService();
@@ -43,52 +43,50 @@ public class ToolSetCredentialsController {
 
     public Future<?> signIn() {
         context.getRequest()
-            .body()
-            .compose(body -> {
-                ToolSetSignInRequest toolSetSignInRequest = ProxyUtil.convertToObject(body, ToolSetSignInRequest.class);
-                ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
-                    toolSetSignInRequest.getUrl(), encryptionService);
+                .body()
+                .compose(body -> {
+                    ToolSetSignInRequest toolSetSignInRequest = ProxyUtil.convertToObject(body, ToolSetSignInRequest.class);
+                    ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(toolSetSignInRequest.getUrl(), encryptionService);
 
-                verifyAccess(resourceDescriptor, toolSetSignInRequest.getCredentialsLevel());
+                    verifyAccess(resourceDescriptor, toolSetSignInRequest.getCredentialsLevel());
 
-                return vertx.executeBlocking(() -> {
-                    ToolSetCredentials toolSetCredentials = toolSetCredentialsManager.createToolsetCredentials(
-                        resourceDescriptor, toolSetSignInRequest, context);
-                    return clearToolsetCredentialsSecrets(toolSetCredentials);
-                });
-            })
-            .onSuccess(toolsetCredentials -> context.respond(HttpStatus.OK, toolsetCredentials))
-            .onFailure(error -> respondError("Can't signIn into Toolset", error));
+                    return taskExecutor.submit(() -> {
+                        ToolSetCredentials toolSetCredentials = toolSetCredentialsManager.createToolsetCredentials(resourceDescriptor, toolSetSignInRequest, context);
+                        return clearToolsetCredentialsSecrets(toolSetCredentials);
+                    });
+                })
+                .onSuccess(toolsetCredentials -> context.respond(HttpStatus.OK, toolsetCredentials))
+                .onFailure(error ->
+                    respondError("Can't signIn into Toolset", error));
 
         return Future.succeededFuture();
     }
 
     public Future<?> signOut() {
         context.getRequest()
-            .body()
-            .compose(body -> vertx.executeBlocking(() -> {
-                ToolSetSignOutRequest toolSetSignOutRequest = ProxyUtil.convertToObject(body, ToolSetSignOutRequest.class);
-                ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(
-                    toolSetSignOutRequest.getUrl(), encryptionService);
+                .body()
+                .compose(body -> taskExecutor.submit(() -> {
+                    ToolSetSignOutRequest toolSetSignOutRequest = ProxyUtil.convertToObject(body, ToolSetSignOutRequest.class);
+                    ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(toolSetSignOutRequest.getUrl(), encryptionService);
 
-                verifyAccess(resourceDescriptor, toolSetSignOutRequest.getCredentialsLevel());
+                    verifyAccess(resourceDescriptor, toolSetSignOutRequest.getCredentialsLevel());
 
-                return toolSetCredentialsManager.deleteToolSetCredentials(toolSetSignOutRequest, context);
-            }))
-            .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
-            .onFailure(error -> respondError("Can't signOut from Toolset", error));
+                    return toolSetCredentialsManager.deleteToolSetCredentials(toolSetSignOutRequest, context);
+                }))
+                .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
+                .onFailure(error ->
+                    respondError("Can't signOut from Toolset", error));
 
         return Future.succeededFuture();
     }
 
     private void verifyAccess(ResourceDescriptor resourceDescriptor,
                               CredentialsLevel credentialsLevel) {
-        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
-            accessService.lookupPermissions(Set.of(resourceDescriptor), context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
-            && !permissions.get(resourceDescriptor).containsAll(ResourceAccessType.ALL)) {
-                throw new PermissionDeniedException("no read and write access to ToolSet resource");
+                && !permissions.get(resourceDescriptor).containsAll(ResourceAccessType.ALL)) {
+            throw new PermissionDeniedException("no read and write access to ToolSet resource");
         }
 
         if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
@@ -102,7 +100,6 @@ public class ToolSetCredentialsController {
             .toolSetName(toolSetCredentials.getToolSetName())
             .authenticationType(toolSetCredentials.getAuthenticationType())
             .credentialsLevel(toolSetCredentials.getCredentialsLevel())
-            .status(toolSetCredentials.getStatus())
             .build();
     }
 

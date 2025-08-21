@@ -5,7 +5,7 @@ import lombok.Data;
 
 @Data
 @Builder
-public class ToolsetRegistration {
+public class ToolSetRegistration {
 
     private String toolSetName;
     private String clientId;

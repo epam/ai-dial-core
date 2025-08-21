@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service.toolset.credentials;
+package com.epam.aidial.core.server.service.credentials;
 
 import com.epam.aidial.core.server.data.toolset.credentials.ToolSetCredentials;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;

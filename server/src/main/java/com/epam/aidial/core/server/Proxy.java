@@ -26,12 +26,11 @@ import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.service.toolset.credentials.ToolSetAuthStatusService;
-import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsManager;
-import com.epam.aidial.core.server.service.toolset.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
-import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthSettingsService;
+import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -120,8 +119,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ApplicationSchemaService applicationSchemaService;
     private final ToolSetCredentialsManager toolSetCredentialsManager;
     private final ToolSetCredentialsService toolsetCredentialsService;
-    private final ToolsetAuthSettingsService toolsetAuthSettingsService;
-    private final ToolSetAuthStatusService toolSetAuthStatusService;
+    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
 

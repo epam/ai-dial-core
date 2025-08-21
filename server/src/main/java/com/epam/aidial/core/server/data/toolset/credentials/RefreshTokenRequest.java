@@ -1,12 +1,12 @@
 package com.epam.aidial.core.server.data.toolset.credentials;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Data
 @Builder
@@ -28,12 +28,10 @@ public class RefreshTokenRequest {
 
     public String buildFormData() {
         StringBuilder formData = new StringBuilder();
-
         appendIfNotNull(formData, "client_id", clientId);
         appendIfNotNull(formData, "client_secret", clientSecret);
         appendIfNotNull(formData, "grant_type", grantType);
         appendIfNotNull(formData, "refresh_token", refreshToken);
-
         return formData.toString();
     }
 
@@ -43,8 +41,9 @@ public class RefreshTokenRequest {
                 formData.append("&");
             }
             formData.append(key)
-                .append("=")
-                .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
+                    .append("=")
+                    .append(
+                        URLEncoder.encode(value, StandardCharsets.UTF_8));
         }
     }
 }

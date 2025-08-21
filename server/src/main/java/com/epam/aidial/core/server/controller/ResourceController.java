@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.ToolSetAuthSettings;
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -15,8 +15,7 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.service.toolset.credentials.ToolSetAuthStatusService;
-import com.epam.aidial.core.server.service.toolset.registration.ToolsetAuthSettingsService;
+import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -53,8 +52,7 @@ public class ResourceController extends AccessControlBaseController {
     private final ApplicationService applicationService;
     private final boolean metadata;
     private final AccessService accessService;
-    private final ToolsetAuthSettingsService toolsetAuthSettingsService;
-    private final ToolSetAuthStatusService toolSetAuthStatusService;
+    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
 
     private final ToolSetService toolSetService;
 
@@ -67,7 +65,6 @@ public class ResourceController extends AccessControlBaseController {
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
         this.toolsetAuthSettingsService = proxy.getToolsetAuthSettingsService();
-        this.toolSetAuthStatusService = proxy.getToolSetAuthStatusService();
         this.metadata = metadata;
     }
 
@@ -211,7 +208,7 @@ public class ResourceController extends AccessControlBaseController {
 
             ToolSet toolSet = result.getValue();
             ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
-            toolSetAuthStatusService.setToolSetAuthStatuses(toolSet);
+            toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
             if (toolsetAuthSettings != null && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
                 toolsetAuthSettings.setClientSecret(null);
                 toolsetAuthSettings.setTokenEndpoint(null);
@@ -302,7 +299,7 @@ public class ResourceController extends AccessControlBaseController {
                 //TODO: now it registers auth settings only on ToolSet create.
                 // should we apply registration on update as well?
                 if (resourceService.getResourceMetadata(descriptor) == null) {
-                    toolsetAuthSettingsService.updateToolsetAuthSettings(toolSet);
+                    toolsetAuthSettingsService.initToolsetAuthSettings(toolSet);
                 }
                 return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey());
             });

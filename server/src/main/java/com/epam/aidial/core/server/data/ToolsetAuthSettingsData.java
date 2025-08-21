@@ -1,9 +1,8 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.config.AuthenticationType;
-import com.epam.aidial.core.config.ToolsetAuthStatus;
-
+import com.epam.aidial.core.config.ToolSetAuthSettings;
+import com.epam.aidial.core.config.ToolSetAuthStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -24,9 +23,9 @@ public class ToolsetAuthSettingsData {
     private String codeChallengeMethod;
     private String authorizationEndpoint;
     private String apiKeyHeader;
-    private ToolsetAuthStatus globalAuthStatus;
-    private ToolsetAuthStatus appLevelAuthStatus;
-    private ToolsetAuthStatus userLevelAuthStatus;
+    private ToolSetAuthStatus globalAuthStatus;
+    private ToolSetAuthStatus appLevelAuthStatus;
+    private ToolSetAuthStatus userLevelAuthStatus;
 
     @JsonIgnore
     public static ToolsetAuthSettingsData toData(ToolSetAuthSettings toolsetAuthSettings) {

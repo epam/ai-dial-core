@@ -52,11 +52,11 @@ public class ToolSetAuthSettings {
     private String apiKeyHeader;
 
     @JsonAlias({"globalAuthStatus", "global_auth_status"})
-    private ToolsetAuthStatus globalAuthStatus;
+    private ToolSetAuthStatus globalAuthStatus;
 
     @JsonAlias({"userLevelAuthStatus", "user_level_auth_status"})
-    private ToolsetAuthStatus userLevelAuthStatus;
+    private ToolSetAuthStatus userLevelAuthStatus;
 
     @JsonAlias({"appLevelAuthStatus", "app_level_auth_status"})
-    private ToolsetAuthStatus appLevelAuthStatus;
+    private ToolSetAuthStatus appLevelAuthStatus;
 }

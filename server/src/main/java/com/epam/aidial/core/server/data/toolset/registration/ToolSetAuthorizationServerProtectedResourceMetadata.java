@@ -8,7 +8,7 @@ import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Data
-public class ToolsetAuthorizationServerProtectedResourceMetadata {
+public class ToolSetAuthorizationServerProtectedResourceMetadata {
 
     @JsonProperty("resource")
     private String resource;

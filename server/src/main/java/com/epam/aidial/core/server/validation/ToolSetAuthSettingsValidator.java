@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.validation;
 
-import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ToolSetAuthSettings;
 
 public class ToolSetAuthSettingsValidator {
 
@@ -30,7 +30,7 @@ public class ToolSetAuthSettingsValidator {
                 throw new IllegalArgumentException("ApiKeyHeader field is required for API key type Authentication.");
             }
         } else if (authenticationType.equals(AuthenticationType.NONE)
-            && (!noneOfOauthRequiredFieldsSet || toolSetAuthSettings.getApiKeyHeader() != null)
+                && (!noneOfOauthRequiredFieldsSet || toolSetAuthSettings.getApiKeyHeader() != null)
         ) {
             throw new IllegalArgumentException("Do not provide OAUTH/API key specific fields for NONE type Authentication.");
         }

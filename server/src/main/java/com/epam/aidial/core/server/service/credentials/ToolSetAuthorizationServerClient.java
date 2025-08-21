@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service.toolset.registration;
+package com.epam.aidial.core.server.service.credentials;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -15,17 +15,17 @@ import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @RequiredArgsConstructor
-public class ToolsetAuthorizationServerClient {
+public class ToolSetAuthorizationServerClient {
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public <R> R executeGet(String url, Class<R> responseType) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(createRequestConfig())
-                .GET()
-                .build();
+                    .uri(URI.create(url))
+                    .timeout(createRequestConfig())
+                    .GET()
+                    .build();
 
             return execute(request, responseType);
         } catch (IOException | InterruptedException e) {
@@ -45,11 +45,11 @@ public class ToolsetAuthorizationServerClient {
 
             assert stringPayload != null;
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(createRequestConfig())
-                .header("Content-Type", contentType)
-                .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
-                .build();
+                    .uri(URI.create(url))
+                    .timeout(createRequestConfig())
+                    .header("Content-Type", contentType)
+                    .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
+                    .build();
 
             return execute(request, responseType);
         } catch (IOException | InterruptedException e) {

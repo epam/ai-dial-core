@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.data.toolset.credentials;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-
 import lombok.Builder;
 import lombok.Data;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Data
 @Builder
@@ -20,7 +20,6 @@ public class TokenRequest {
 
     public String buildFormData() {
         StringBuilder formData = new StringBuilder();
-
         appendIfNotNull(formData, "client_id", clientId);
         appendIfNotNull(formData, "client_secret", clientSecret);
         appendIfNotNull(formData, "code", code);
@@ -28,7 +27,6 @@ public class TokenRequest {
         appendIfNotNull(formData, "grant_type", grantType);
         appendIfNotNull(formData, "redirect_uri", redirectUri);
         appendIfNotNull(formData, "code_verifier", codeVerifier);
-
         return formData.toString();
     }
 
@@ -38,8 +36,9 @@ public class TokenRequest {
                 formData.append("&");
             }
             formData.append(key)
-                .append("=")
-                .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
+                    .append("=")
+                    .append(
+                        URLEncoder.encode(value, StandardCharsets.UTF_8));
         }
     }
 }
