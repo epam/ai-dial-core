@@ -172,8 +172,9 @@ public class AccessService {
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (hasAdminAccess(context)) {
             return resources.stream()
-                    .filter(resource -> ApplicationService.isPublic(resource)
-                            || PublicationService.isReviewBucket(resource))
+                    .filter(resource -> resource.isPublic()
+                            || PublicationService.isReviewBucket(resource)
+                            || ApplicationService.isPublicApplicationSourceDirectory(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 

@@ -782,7 +782,7 @@ public class ApplicationService {
         return fileName;
     }
 
-    public static boolean isPublic(ResourceDescriptor resource) {
-        return resource.isPublic() || resource.getBucketLocation().startsWith(PUBLIC_DEPLOYMENTS_PREFIX);
+    public static boolean isPublicApplicationSourceDirectory(ResourceDescriptor resource) {
+        return resource.getBucketLocation().startsWith(PUBLIC_DEPLOYMENTS_PREFIX);
     }
 }
