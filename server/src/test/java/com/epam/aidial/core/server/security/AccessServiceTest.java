@@ -376,4 +376,27 @@ public class AccessServiceTest {
 
         assertTrue(result.isEmpty());
     }
+
+    @Test
+    public void testGetAdminAccess_WhenSourceFolderOfCodeApp() {
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "app.py", List.of(), "bucket", "public/deployments/123/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
+        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "createCodeAppRoles": ["admin"]
+                }
+                """));
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getAdminAccess(Set.of(resource), context);
+
+        assertFalse(result.isEmpty());
+        assertEquals(Map.of(resource, ResourceAccessType.ALL), result);
+    }
 }

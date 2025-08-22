@@ -171,7 +171,10 @@ public class AccessService {
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (hasAdminAccess(context)) {
             return resources.stream()
-                    .filter(resource -> resource.isPublic() || PublicationService.isReviewBucket(resource))
+                    .filter(resource -> resource.isPublic()
+                            || PublicationService.isReviewBucket(resource)
+                            // access to source folder of code-apps
+                            || resource.getBucketLocation().startsWith(ResourceDescriptor.PUBLIC_BUCKET))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 
