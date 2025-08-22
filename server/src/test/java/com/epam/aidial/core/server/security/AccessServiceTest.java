@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
-import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
