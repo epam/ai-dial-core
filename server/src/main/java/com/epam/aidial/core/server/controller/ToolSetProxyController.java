@@ -229,10 +229,6 @@ public class ToolSetProxyController implements Controller {
         rateLimitError.getError().setMessage(result.errorMessage());
         rateLimitError.getError().setDisplayMessage(result.displayErrorMessage());
 
-        log.warn("Rate limit error {}. Project: {}. User sub: {}. Route: {}. Trace: {}. Span: {}", result.errorMessage(),
-                context.getProject(), context.getUserSub(), context.getRoute().getName(), context.getTraceId(),
-                context.getSpanId());
-
         String errorMessage = ProxyUtil.convertToString(rateLimitError);
         HttpException httpException;
         if (result.replyAfterSeconds() >= 0) {
@@ -243,6 +239,7 @@ public class ToolSetProxyController implements Controller {
         }
 
         respond(httpException);
+        log.warn("Rate limit error {}", result.errorMessage());
     }
 
     private void handleError(Throwable error) {
@@ -250,8 +247,8 @@ public class ToolSetProxyController implements Controller {
             respond(httpException);
         } else {
             String errorMsg = "Error occurred on processing MCP request by toolset: %s".formatted(toolSetId);
-            log.error(errorMsg, error);
             respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
+            log.error(errorMsg, error);
         }
     }
 
@@ -259,8 +256,8 @@ public class ToolSetProxyController implements Controller {
      * Called when proxy failed to receive request body from the client.
      */
     private void handleRequestBodyError(Throwable error) {
-        log.warn("Failed to receive client body: {}", error.getMessage());
         respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        log.warn("Failed to receive client body: {}", error.getMessage());
     }
 
     /**

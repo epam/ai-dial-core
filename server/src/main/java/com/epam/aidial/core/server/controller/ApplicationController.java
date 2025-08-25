@@ -4,6 +4,8 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApplicationData;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -66,7 +68,7 @@ public class ApplicationController {
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
-                .map(ApplicationUtil::mapApplication)
+                .map(ApplicationController::mapApplication)
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(this::respondError);
 
@@ -91,7 +93,7 @@ public class ApplicationController {
             if (applicationService.isIncludeCustomApps()) {
                 list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
             }
-            return list.stream().map(ApplicationUtil::mapApplication).toList();
+            return list.stream().map(ApplicationController::mapApplication).toList();
         }).onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
                 .onFailure(this::respondError);
     }
@@ -197,9 +199,46 @@ public class ApplicationController {
         } else if (error instanceof ResourceNotFoundException) {
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
-            log.error("Failed to handle application request", error);
             context.respond(error, "Internal error");
+            log.error("Failed to handle application request", error);
         }
+    }
+
+    private static ApplicationData mapApplication(Application application) {
+        ApplicationData data = new ApplicationData();
+        data.setInvalid(application.getInvalid());
+        data.setId(application.getName());
+        data.setApplication(application.getName());
+        data.setDisplayName(application.getDisplayName());
+        data.setDisplayVersion(application.getDisplayVersion());
+        data.setIconUrl(application.getIconUrl());
+        data.setDescription(application.getDescription());
+        data.setFeatures(FeaturesData.createFeatures(application.getFeatures()));
+        data.setInputAttachmentTypes(application.getInputAttachmentTypes());
+        data.setMaxInputAttachments(application.getMaxInputAttachments());
+        data.setDefaults(application.getDefaults());
+        data.setDescriptionKeywords(application.getDescriptionKeywords());
+
+        data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());
+        data.setApplicationProperties(application.getApplicationProperties());
+        String reference = application.getReference();
+        data.setReference(reference == null ? application.getName() : reference);
+        data.setFunction(application.getFunction());
+        data.setMaxRetryAttempts(application.getMaxRetryAttempts());
+
+        if (application.getAuthor() != null) {
+            data.setOwner(application.getAuthor());
+        }
+        if (application.getCreatedAt() != null) {
+            data.setCreatedAt(application.getCreatedAt());
+        }
+        if (application.getUpdatedAt() != null) {
+            data.setUpdatedAt(application.getUpdatedAt());
+        }
+
+        data.setRoutes(application.getRoutes());
+
+        return data;
     }
 
     private class ApplicationDeploymentExtractor implements DeploymentService.DeploymentExtractor {

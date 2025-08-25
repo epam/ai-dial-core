@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.TokenLimits;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.data.PricingData;
@@ -63,7 +64,7 @@ public class ModelController {
         data.setDisplayVersion(model.getDisplayVersion());
         data.setIconUrl(model.getIconUrl());
         data.setDescription(model.getDescription());
-        data.setFeatures(DeploymentController.createFeatures(model.getFeatures()));
+        data.setFeatures(FeaturesData.createFeatures(model.getFeatures()));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         data.setReference(model.getName());

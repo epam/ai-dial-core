@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.controller.HealthCheckController;
+import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -27,6 +28,7 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
+import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
 import com.epam.aidial.core.server.service.credentials.ToolSetAuthorizationServerClient;
@@ -64,6 +66,7 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -78,10 +81,12 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -93,6 +98,7 @@ import java.util.function.Supplier;
 @Getter
 public class AiDial {
 
+    private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
     private Vertx vertx;
     private HttpServer server;
@@ -115,6 +121,7 @@ public class AiDial {
         System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
             settings = (settings == null) ? settings() : settings;
+            printSettings(settings);
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
             setupTracing(vertxOptions);
@@ -188,13 +195,17 @@ public class AiDial {
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
+            WellKnownResourceMetadataService resourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
+            WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(resourceMetadataService);
+
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
-                rateLimiter, upstreamRouteProvider, accessTokenValidator,
-                storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                consentService, deploymentService, healthCheckController, toolSetService, applicationSchemaService,
-                toolSetCredentialsManager, toolSetCredentialsService, toolSetAuthSettingsService, taskExecutor, version());
+                    rateLimiter, upstreamRouteProvider, accessTokenValidator,
+                    storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
+                    shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
+                    notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
+                    consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
+                    toolSetService, applicationSchemaService, toolSetCredentialsManager, toolSetCredentialsService,
+                    toolSetAuthSettingsService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -258,6 +269,10 @@ public class AiDial {
             log.warn("Failed to load version", e);
         }
         return version;
+    }
+
+    public static String getVersion() {
+        return version();
     }
 
     private static JsonObject fileSettings() throws IOException {
@@ -400,5 +415,47 @@ public class AiDial {
             return val;
         }
         return System.getProperty(systemProperty);
+    }
+
+    private static void printSettings(Object settings) {
+        log.debug("AI DIAL Core settings");
+        log.debug("--------------- start --------------- ");
+        printSettings(settings, new StringBuilder());
+        log.debug("--------------- end --------------- ");
+    }
+
+    private static void printSettings(Object settings, StringBuilder path) {
+        if (settings instanceof JsonObject jsonObject) {
+            for (var entry : jsonObject.getMap().entrySet()) {
+                printSettings(entry.getKey(), entry.getValue(), path);
+            }
+        } else if (settings instanceof Map<?, ?> map) {
+            for (var entry : map.entrySet()) {
+                printSettings((String) entry.getKey(), entry.getValue(), path);
+            }
+        } else if (settings instanceof JsonArray array) {
+            for (int i = 0; i < array.size(); i++) {
+                printSettings("[" + i + "]", array.getValue(i), path);
+            }
+        } else if (settings instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                printSettings("[" + i + "]", list.get(i), path);
+            }
+        } else {
+            log.debug("Core setting: key -> {}, value -> {}", path, settings);
+        }
+    }
+
+    private static void printSettings(String key, Object value, StringBuilder path) {
+        if (NON_PRINTABLE_SETTINGS.contains(key)) {
+            return;
+        }
+        int len = path.length();
+        if (!path.isEmpty()) {
+            path.append('.');
+        }
+        path.append(key);
+        printSettings(value, path);
+        path.setLength(len);
     }
 }
