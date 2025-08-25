@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopySharedAccessRequest;
@@ -14,7 +15,6 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -84,13 +84,13 @@ public class ShareController {
                     String bucket = encryptionService.encrypt(bucketLocation);
                     String with = request.getWith();
 
-                    return proxy.getVertx().executeBlocking(() -> {
+                    return proxy.getTaskExecutor().submit(() -> {
                         if (LIST_SHARED_BY_ME_RESOURCES.equals(with)) {
                             return shareService.listSharedByMe(bucket, bucketLocation, request);
                         } else {
                             return shareService.listSharedWithMe(bucket, bucketLocation, request);
                         }
-                    }, false);
+                    });
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(this::handleServiceError);
@@ -109,7 +109,7 @@ public class ShareController {
                         throw new IllegalArgumentException("Can't initiate share request. Incorrect body");
                     }
 
-                    return proxy.getVertx().executeBlocking(() -> shareService.initializeShare(context, request), false);
+                    return proxy.getTaskExecutor().submit(() -> shareService.initializeShare(context, request));
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(this::handleServiceError);
@@ -122,11 +122,11 @@ public class ShareController {
                     ResourceLinkCollection request = getResourceLinkCollection(buffer, Operation.DISCARD);
                     String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
                     String bucket = encryptionService.encrypt(bucketLocation);
-                    return proxy.getVertx()
-                            .executeBlocking(() -> {
+                    return proxy.getTaskExecutor()
+                            .submit(() -> {
                                 shareService.discardSharedAccess(bucket, bucketLocation, request);
                                 return null;
-                            }, false);
+                            });
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
@@ -143,12 +143,12 @@ public class ShareController {
                             .collect(Collectors.toUnmodifiableMap(
                                     resource -> ShareService.resourceFromUrl(resource.getUrl(), encryptionService),
                                     SharedResource::getPermissions));
-                    return proxy.getVertx()
-                            .executeBlocking(() -> lockService.underBucketLock(bucketLocation, () -> {
+                    return proxy.getTaskExecutor()
+                            .submit(() -> lockService.underBucketLock(bucketLocation, () -> {
                                 invitationService.cleanUpPermissions(bucket, bucketLocation, permissionsToRevoke);
                                 shareService.revokeSharedAccess(bucket, bucketLocation, permissionsToRevoke);
                                 return null;
-                            }), false);
+                            }));
                 })
                 .onSuccess(response -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);
@@ -191,11 +191,11 @@ public class ShareController {
                         throw new IllegalArgumentException("source and destination cannot be the same");
                     }
 
-                    return proxy.getVertx().executeBlocking(() ->
+                    return proxy.getTaskExecutor().submit(() ->
                             lockService.underBucketLock(bucketLocation, () -> {
                                 shareService.copySharedAccess(bucket, bucketLocation, source, destination);
                                 return null;
-                            }), false);
+                            }));
                 })
                 .onSuccess(ignore -> context.respond(HttpStatus.OK))
                 .onFailure(this::handleServiceError);

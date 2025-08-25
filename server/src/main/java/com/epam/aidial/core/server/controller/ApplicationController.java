@@ -4,60 +4,71 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApplicationData;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
+import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import static com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils.modifySchemaRichApplication;
 
 @Slf4j
 public class ApplicationController {
 
     private final ProxyContext context;
-    private final Vertx vertx;
     private final EncryptionService encryptionService;
     private final AccessService accessService;
     private final ApplicationService applicationService;
 
     private final DeploymentService deploymentService;
+    private final ApplicationSchemaService applicationSchemaService;
+
+    private final DeploymentService.DeploymentExtractor deploymentExtractor;
+
+    private final AsyncTaskExecutor taskExecutor;
 
     public ApplicationController(ProxyContext context) {
         this.context = context;
-        this.vertx = context.getProxy().getVertx();
         this.encryptionService = context.getProxy().getEncryptionService();
         this.accessService = context.getProxy().getAccessService();
         this.applicationService = context.getProxy().getApplicationService();
         this.deploymentService = context.getProxy().getDeploymentService();
+        this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
+        this.deploymentExtractor = new ApplicationDeploymentExtractor();
+        this.taskExecutor = context.getProxy().getTaskExecutor();
     }
 
     public Future<?> getApplication(String applicationId) {
-        vertx.executeBlocking(() -> deploymentService.findDeployment(context, applicationId), false)
+        taskExecutor.submit(() -> deploymentService.findDeployment(context, applicationId))
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
-                        return modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf, context);
+                        return applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
-                .map(ApplicationUtil::mapApplication)
+                .map(ApplicationController::mapApplication)
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(this::respondError);
 
@@ -70,19 +81,19 @@ public class ApplicationController {
         Config config = context.getConfig();
         Proxy proxy = context.getProxy();
 
-        return proxy.getVertx().executeBlocking(() -> {
+        return proxy.getTaskExecutor().submit(() -> {
             List<Application> list = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
                 if (application.hasAccess(context.getUserRoles())) {
                     boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), application.getName());
-                    application = modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf, context);
+                    application = applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     list.add(application);
                 }
             }
             if (applicationService.isIncludeCustomApps()) {
-                list.addAll(applicationService.getAllApplications(context));
+                list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
             }
-            return list.stream().map(ApplicationUtil::mapApplication).toList();
+            return list.stream().map(ApplicationController::mapApplication).toList();
         }).onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
                 .onFailure(this::respondError);
     }
@@ -94,7 +105,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.deployApplication(context, resource), false);
+                    return taskExecutor.submit(() -> applicationService.deployApplication(context, resource));
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
@@ -109,7 +120,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.undeployApplication(resource), false);
+                    return taskExecutor.submit(() -> applicationService.undeployApplication(resource));
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
@@ -124,7 +135,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.redeployApplication(context, resource), false);
+                    return taskExecutor.submit(() -> applicationService.redeployApplication(context, resource));
                 })
                 .onSuccess(application -> context.respond(HttpStatus.OK, application))
                 .onFailure(this::respondError);
@@ -139,7 +150,7 @@ public class ApplicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodeUrl(url);
                     checkAccess(resource);
-                    return vertx.executeBlocking(() -> applicationService.getApplicationLogs(resource), false);
+                    return taskExecutor.submit(() -> applicationService.getApplicationLogs(resource));
                 })
                 .onSuccess(logs -> context.respond(HttpStatus.OK, logs))
                 .onFailure(this::respondError);
@@ -188,8 +199,70 @@ public class ApplicationController {
         } else if (error instanceof ResourceNotFoundException) {
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
-            log.error("Failed to handle application request", error);
             context.respond(error, "Internal error");
+            log.error("Failed to handle application request", error);
+        }
+    }
+
+    private static ApplicationData mapApplication(Application application) {
+        ApplicationData data = new ApplicationData();
+        data.setInvalid(application.getInvalid());
+        data.setId(application.getName());
+        data.setApplication(application.getName());
+        data.setDisplayName(application.getDisplayName());
+        data.setDisplayVersion(application.getDisplayVersion());
+        data.setIconUrl(application.getIconUrl());
+        data.setDescription(application.getDescription());
+        data.setFeatures(FeaturesData.createFeatures(application.getFeatures()));
+        data.setInputAttachmentTypes(application.getInputAttachmentTypes());
+        data.setMaxInputAttachments(application.getMaxInputAttachments());
+        data.setDefaults(application.getDefaults());
+        data.setDescriptionKeywords(application.getDescriptionKeywords());
+
+        data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());
+        data.setApplicationProperties(application.getApplicationProperties());
+        String reference = application.getReference();
+        data.setReference(reference == null ? application.getName() : reference);
+        data.setFunction(application.getFunction());
+        data.setMaxRetryAttempts(application.getMaxRetryAttempts());
+
+        if (application.getAuthor() != null) {
+            data.setOwner(application.getAuthor());
+        }
+        if (application.getCreatedAt() != null) {
+            data.setCreatedAt(application.getCreatedAt());
+        }
+        if (application.getUpdatedAt() != null) {
+            data.setUpdatedAt(application.getUpdatedAt());
+        }
+
+        data.setRoutes(application.getRoutes());
+
+        return data;
+    }
+
+    private class ApplicationDeploymentExtractor implements DeploymentService.DeploymentExtractor {
+        @SuppressWarnings("unchecked")
+        @Override
+        public Application extract(ResourceDescriptor resource, ProxyContext context) {
+            Application application = applicationService.getApplication(resource).getValue();
+            return modifySchemaRichApplication(resource, context, application);
+        }
+
+        private Application modifySchemaRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application) {
+            try {
+                boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
+                        resource.getDecodedUrl());
+                if (applicationRequestInfoAboutItSelf && !accessService.hasWriteAccess(resource, ctx)) {
+                    application = applicationSchemaService.filterCustomClientProperties(application);
+                }
+                application = applicationSchemaService.modifyEndpointsForCustomApplication(application);
+            } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
+                log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
+                application.setApplicationProperties(null);
+                application.setInvalid(true);
+            }
+            return application;
         }
     }
 }

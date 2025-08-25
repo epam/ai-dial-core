@@ -1,0 +1,229 @@
+# Dynamic Setting for Applications
+
+In dynamic settings you can include applications and their parameters you wish to enable in DIAL.
+
+> Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-applications) to learn how to manage apps in DIAL Admin UI.
+
+## applications
+
+A list of deployed applications and their [parameters](#applicationsapplication_name).
+
+* `<application_name>`: A unique application name.
+
+**Example**
+
+```json
+"applications": {
+        "app1": {},
+        "app2": {}
+}
+```
+
+### applications.<application_name> 
+
+An object containing parameters for each [application](#applications).
+
+* `endpoint`: DIAL Application API for chat completions. **Note**. It should be unset if `applicationTypeSchemaId` is set.
+* `iconUrl`: A string with the URL with the icon location to display for the app on UI.
+* `description`: A string with a brief app description.
+* `displayName`: A string with the app's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the app.
+* `inputAttachmentTypes`: A list of allowed [MIME types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types) for the input attachments.
+* `maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity).
+* `forwardAuthToken`: A boolean parameter to determine whether the Auth Token should be forwarded from the caller's session to the upstream API call. This enables multi-tenant scenarios or pass-through authentication for downstream services. If flag is set to `true` forward Http header with authorization token to chat completion endpoint of the application.
+* `userRoles`: A specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
+* `descriptionKeywords`: A list of keywords describes the application, e.g. `code-gen`, `text2image`.
+* `maxRetryAttempts`: The number of times DIAL Core will [retry](https://docs.dialx.ai/platform/core/load-balancer#fallbacks) a connection in case of upstream errors.
+* `author`: The application's developer.
+* `createdAt`: The date of the application creation.
+* `updatedAt`: The date of the last application update. 
+* `dependencies`: A list of dependent deployments which the application may use.
+* `viewerUrl`: An optional field with a URL of the application's custom UI. A custom UI, if enabled, will override the standard DIAL Chat UI. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
+* `editoUrl`: An optional field with a URL of the application's custom builder UI. Application builder allows end-users to create instances of apps using a [UI wizard](https://docs.dialx.ai/tutorials/user-guide#application-builder). Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps. 
+* `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.         
+* `interceptors`: A list of interceptors to be triggered for the given application. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
+* `applications.<application_name>.applicationTypeSchemaId`: A schema ID of a schema-rich app.  The ID must exist in the config property `applicationTypeSchemas`.
+* `applications.<application_name>.applicationProperties`: Schema properties of a schema-rich app. The properties must conform to the application rich schema referenced by `applicationTypeSchemaId`.
+* `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
+* `routes`: A list of registered routes in the application. Refer to [applications.<application_name>.routes](#applicationsapplication_nameroutes) for more details.
+
+**Example**:
+
+```json
+    "applications": {
+        "app": {
+            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+            "displayName": "Forecast",
+            "iconUrl": "https://host/app.svg",
+            "description": "Addon that provides forecast",
+            "descriptionKeywords": ["code-gen"],
+            "userRoles": [
+                "Forecast"
+            ],
+            "forwardAuthToken": true,
+            "features": {
+                "rateEndpoint": "http://host/rate",
+                "tokenizeEndpoint": "http://host/tokinize",
+                "truncatePromptEndpoint": "http://host/truncate",
+                "configurationEndpoint": "http://host/configure",
+                "systemPromptSupported": false,
+                "toolsSupported": false,
+                "seedSupported":false,
+                "urlAttachmentsSupported": false,
+                "folderAttachmentsSupported": false,
+                "accessibleByPerRequestKey": true,
+                "contentPartsSupported": false
+            },
+            "maxInputAttachments": 10,
+            "inputAttachmentTypes": ["type1", "type2"],
+            "defaults": {
+                "paramStr": "value",
+                "paramBool": true,
+                "paramInt": 123,
+                "paramFloat": 0.25
+            },
+            "interceptors": ["interceptor1", "interceptor2", "interceptor3"],
+            "routes": {
+                "vector_store_query": {
+                    "paths": ["/v1/vector_store(/[^/]+)*$"],
+                    "rewritePath": true,
+                    "methods": ["GET", "HEAD"],
+                    "userRoles": ["role1"],
+                    "upstreams": [
+                        {
+                            "endpoint": "http://localhost:9876"
+                        },
+                        {
+                            "endpoint": "http://localhost:9877"
+                        }
+                    ],
+                    "order": 1,
+                    "permissions": [
+                        "WRITE"
+                    ],
+                    "attachmentPaths": {
+                        "requestBody": [
+                            "@.attachments[*].url"
+                        ],
+                        "responseBody": [
+                            "@.result.attachedFiles"
+                        ]
+                    }
+                },
+                "rate": {
+                    "paths": ["/v1/rate"],
+                    "rewritePath": true,
+                    "methods": ["GET", "HEAD"],
+                    "response": {
+                        "status": 200,
+                        "body": "OK"
+                    },
+                    "order": 2
+                }
+            }
+        }
+    },
+```
+
+#### applications.<application_name>.features
+
+Use `features` to specify optional capabilities of the application. Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-applications#features) to learn more about features and the difference between model and app features. The following features are supported:
+
+* `rateEndpoint`: A URL to call a custom rate-estimation API. Use this to compute cost or quota usage based on your own logic (e.g. grouping by tenant, complex billing rules). Exposed by DIAL Core as `<deployment name>/rate`.
+* `tokenizeEndpoint`: A URL to call a custom tokenization service. When you need precise, app-wide token counting (for mixed-model or multi-step prompts) that the model adapter can’t provide. Exposed by DIAL Core as `<deployment name>/tokenize`.
+* `truncatePromptEndpoint`: A URL to call your own prompt-truncation API. Handy if you implement advanced context-window management (e.g. dynamic summarization) before the actual app call. Exposed by DIAL Core as `<deployment name>/truncate_prompt`.
+* `configurationEndpoint`: A URL to fetch dynamic app-specific settings (e.g. per-tenant max tokens, allowed parameters). Use this to drive runtime overrides from a remote config store. Use to request application configuration parameters as JSON schema. Exposed by DIAL Core as `<deployment name>/configuration`.
+* `systemPromptSupported`: A boolean parameter that enables/disables an initial "system" message injection. Useful for orchestrating multi-step agents where you need to enforce a global policy at the application level. Default is `true`.
+* `toolsSupported`: A boolean parameter that enables/disables tools/functions payloads in API calls. Switch on if your application makes external function calls (e.g. calendar lookup, database fetch). Default is `false`.
+* `seedSupported`: A boolean parameter that enables/disables the `seed` parameter for reproducible results. Great for testing or deterministic pipelines. Disable to ensure randomized creativity. Default is `false`.
+* `urlAttachmentsSupported`: A boolean parameter that enables/disables URL references (images, docs) as attachments in API requests. Must be enabled if your workflow downloads or processes remote assets via URLs. Default is `false`.
+* `folderAttachmentsSupported`: A boolean parameter that enables/disables attachments of folders (batching multiple files). Default is `false`.
+* `accessibleByPerRequestKey`: A boolean parameter that indicates whether the deployment is accessible using a per-request API key. Default is `true`.
+* `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not.Default is `false`.
+* `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.     
+
+**Example**:
+
+```json
+"features": {
+    "rateEndpoint": "http://host/rate",
+    "tokenizeEndpoint": "http://host/tokinize",
+    "truncatePromptEndpoint": "http://host/truncate",
+    "configurationEndpoint": "http://host/configure",
+    "systemPromptSupported": false,
+    "toolsSupported": false,
+    "seedSupported":false,
+    "urlAttachmentsSupported": false,
+    "folderAttachmentsSupported": false,
+    "accessibleByPerRequestKey": true,
+    "contentPartsSupported": false
+    },
+```
+
+#### applications.<application_name>.routes
+
+A list of registered routes in the application. A route is used to proxy requests through DIAL Core to an upstream server. DIAL Core provides capabilities such as rate limiting, role-based authorization, request balancing, and access to DIAL Core resources (LLMs, applications, file storage).
+
+* `applications.<application_name>.routes.<route_name>.userRoles`: Route is accessible by user roles from this list. If not defined, `userRoles` are inherited from the parent application. If defined, they override the `userRoles` of the parent application.
+* `applications.<application_name>.routes.<route_name>.response`: A pre-configured route's response. If the `response` is set, DIAL Core returns the response immediately. Available values:  
+    - `status`: HTTP status code  
+    - `body`: HTTP response body  
+* `applications.<application_name>.routes.<route_name>.rewritePath`: A flag indicating that the path to the upstream server will be replaced with the path of the original request if this flag is set to `true`.
+* `applications.<application_name>.routes.<route_name>.paths`: A list of paths to match the request's path. If any path is matched, the request will be processed by this route. **Note:** A path can be a plain string or a regular expression.
+* `applications.<application_name>.routes.<route_name>.methods`:  A list of HTTP methods supported by this route.
+* `applications.<application_name>.routes.<route_name>.upstreams`: A list of upstream servers with parameters:
+    * `endpoint`: A route's endpoint.
+    * `key`: Your API key.
+    * `weight`: Weight for upstream endpoint; positive number represents endpoint capacity, zero or negative disables this endpoint from routing. Default: 1.
+    * `tier`: Specifies a tier group for the endpoint. Only positive numbers are allowed. All requests will be routed to endpoints with the highest tier (lowest tier value); other endpoints may be used only if the highest tier endpoints are unavailable. Default: 0 (highest tier). Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
+    * `extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. Can be JSON or String.
+* `applications.<application_name>.routes.<route_name>.maxRetryAttempts`: Use this parameter to set the **maximum** number of retry attempts if the upstream server returns an unsuccessful response code. The load balancer will try to find another upstream from the list of available upstreams.
+* `applications.<application_name>.routes.<route_name>.order`: This parameter determines the order within the application routes. Lower value means higher priority. Cannot be a negative integer. Default: 2^31-1.
+* `applications.<application_name>.routes.<route_name>.permissions`: A list of permissions (`READ`, `WRITE`) required for access to the route. Default is an empty list.
+* `applications.<application_name>.routes.<route_name>.attachmentPaths`: Use this parameter to specify a list of attachment paths where DIAL Core should look for attachment links.
+* `applications.<application_name>.routes.<route_name>.attachmentPaths.requestBody`: This property contains a list of JSON Path strings. DIAL Core will look for attachments in the request body.
+* `applications.<application_name>.routes.<route_name>.attachmentPaths.responseBody`: This property contains a list of JSON Path strings. DIAL Core will look for attachments in the response body.
+
+**Example**:
+
+```json
+"routes": {
+    "vector_store_query": {
+        "paths": ["/v1/vector_store(/[^/]+)*$"],
+        "rewritePath": true,
+        "methods": ["GET", "HEAD"],
+        "userRoles": ["role1"],
+        "upstreams": [
+            {
+                "endpoint": "http://localhost:9876"
+            },
+            {
+                "endpoint": "http://localhost:9877"
+            }
+        ],
+        "order": 1,
+        "permissions": [
+            "WRITE"
+        ],
+        "attachmentPaths": {
+            "requestBody": [
+                "@.attachments[*].url"
+            ],
+            "responseBody": [
+                "@.result.attachedFiles"
+            ]
+        }
+    },
+    "rate": {
+        "paths": ["/v1/rate"],
+        "rewritePath": true,
+        "methods": ["GET", "HEAD"],
+        "response": {
+            "status": 200,
+            "body": "OK"
+        },
+        "order": 2
+    }
+}
+```
+
+

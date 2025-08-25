@@ -1,21 +1,23 @@
 package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -27,7 +29,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -44,6 +45,8 @@ public class AccessService {
 
     private final List<String> createCodeAppRoles;
 
+    private final ApplicationSchemaService applicationSchemaService;
+
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
@@ -58,10 +61,12 @@ public class AccessService {
     public AccessService(EncryptionService encryptionService,
                          ShareService shareService,
                          RuleService ruleService,
+                         ApplicationSchemaService applicationSchemaService,
                          JsonObject settings) {
         this.encryptionService = encryptionService;
         this.shareService = shareService;
         this.ruleService = ruleService;
+        this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
@@ -162,10 +167,14 @@ public class AccessService {
         return result;
     }
 
-    private Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
+    @VisibleForTesting
+    Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (hasAdminAccess(context)) {
             return resources.stream()
+                    .filter(resource -> resource.isPublic()
+                            || PublicationService.isReviewBucket(resource)
+                            || ApplicationService.isPublicApplicationSourceDirectory(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 
@@ -181,27 +190,10 @@ public class AccessService {
      */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> getPublicAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (!isApplicationContext(context)) {
-            resources = resources.stream()
-                    .filter(resource -> !resource.isHidden())
-                    .collect(Collectors.toUnmodifiableSet());
-        }
-
         return ruleService.getAllowedPublicResources(context, resources).stream()
                 .collect(Collectors.toUnmodifiableMap(
                         Function.identity(),
                         resource -> ResourceAccessType.READ_ONLY));
-    }
-
-    /**
-     * Checks if the context represents an application rather than a user.
-     * Applications should have access to their own published system resources.
-     *
-     * @param context The proxy context
-     * @return true if this appears to be an application context, false for user contexts
-     */
-    public static boolean isApplicationContext(ProxyContext context) {
-        return context.getApiKeyData().getPerRequestKey() != null;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
@@ -244,8 +236,7 @@ public class AccessService {
     public Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
-            List<ResourceDescriptor> applicationFiles = ApplicationTypeSchemaUtils.getFiles(context.getConfig(), application, context.getProxy().getEncryptionService(),
-                    context.getProxy().getResourceService());
+            List<ResourceDescriptor> applicationFiles = applicationSchemaService.getFiles(application);
             String location = BucketBuilder.buildInitiatorBucket(context);
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
             for (ResourceDescriptor resource : resources) {
@@ -339,32 +330,8 @@ public class AccessService {
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
-            if (!isApplicationContext(context)) {
-                if (folder.getItems() != null) {
-                    folder.setItems(folder.getItems().stream()
-                            .map(this::recursiveFilterHiddenResource)
-                            .filter(Objects::nonNull)
-                            .toList());
-                }
-            }
             ruleService.filterForbidden(context, descriptor, folder);
         }
-    }
-
-    public MetadataBase recursiveFilterHiddenResource(MetadataBase metadata) {
-        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(metadata.getUrl(), encryptionService);
-        if (resource.isHidden()) {
-            return null;
-        }
-        if (metadata instanceof ResourceFolderMetadata folderMetadata && folderMetadata.getItems() != null) {
-            List<MetadataBase> items = folderMetadata.getItems().stream()
-                    .map(this::recursiveFilterHiddenResource)
-                    .filter(Objects::nonNull)
-                    .toList();
-
-            folderMetadata.setItems(items);
-        }
-        return metadata;
     }
 
     public void populatePermissions(ProxyContext context, Collection<MetadataBase> metadata) {

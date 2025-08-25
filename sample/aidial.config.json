@@ -139,7 +139,45 @@
                 "paramInt": 123,
                 "paramFloat": 0.25
             },
-            "interceptors": ["interceptor1", "interceptor2", "interceptor3"]
+            "interceptors": ["interceptor1", "interceptor2", "interceptor3"],
+            "routes": {
+                "vector_store_query": {
+                    "paths": ["/v1/vector_store(/[^/]+)*$"],
+                    "rewritePath": true,
+                    "methods": ["GET", "HEAD"],
+                    "userRoles": ["role1"],
+                    "upstreams": [
+                        {
+                            "endpoint": "http://localhost:9876"
+                        },
+                        {
+                            "endpoint": "http://localhost:9877"
+                        }
+                    ],
+                    "order": 1,
+                    "permissions": [
+                        "WRITE"
+                    ],
+                    "attachmentPaths": {
+                        "requestBody": [
+                            "@.attachments[*].url"
+                        ],
+                        "responseBody": [
+                            "@.result.attachedFiles"
+                        ]
+                    }
+                },
+                "rate": {
+                    "paths": ["/v1/rate"],
+                    "rewritePath": true,
+                    "methods": ["GET", "HEAD"],
+                    "response": {
+                        "status": 200,
+                        "body": "OK"
+                    },
+                    "order": 2
+                }
+            }
         }
     },
     "models": {
@@ -211,6 +249,14 @@
             "userRoles": ["role3"]
         }
     },
+    "toolsets": {
+        "git": {
+            "transport": "http",
+            "endpoint": "http://git-mcp-server/call",
+            "allowed_tools": ["branch", "remote"],
+            "description": "Git remote tool set"
+        }
+    },
     "keys": {
         "proxyKey1": {
             "project": "TestProject1",
@@ -257,5 +303,69 @@
             }
         }
     },
-    "retriableErrorCodes": [401, 403]
+    "retriableErrorCodes": [401, 403],
+    "applicationTypeSchemas": [
+        {
+            "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+            "$id": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+            "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
+            "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
+            "dial:applicationTypeDisplayName": "Specific Application Type",
+            "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
+            "dial:applicationTypeRoutes": {
+                "data_sync": {
+                    "dial:paths": [
+                        "/v1/index/search"
+                    ],
+                    "dial:rewritePath": true,
+                    "dial:methods": [
+                        "POST"
+                    ],
+                    "dial:upstreams": [
+                        {
+                            "dial:endpoint": "http://localhost:4848"
+                        }
+                    ],
+                    "dial:order": 5,
+                    "dial:permissions": [
+                        "WRITE"
+                    ]
+                }
+            },
+            "properties": {
+                "property1": {
+                    "title": "Property 1",
+                    "type": "string",
+                    "dial:meta": {
+                        "dial:propertyKind": "client",
+                        "dial:propertyOrder": 1
+                    }
+                },
+                "property2": {
+                    "title": "Property 2",
+                    "type": "string",
+                    "dial:meta": {
+                        "dial:propertyKind": "server",
+                        "dial:propertyOrder": 2
+                    }
+                },
+                "property3": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "dial-file-encoded",
+                        "dial:file": true
+                    },
+                    "dial:meta": {
+                        "dial:propertyKind": "server",
+                        "dial:propertyOrder": 3
+                    }
+                }
+            },
+            "required": [
+                "property1",
+                "property2"
+            ]
+        }
+    ]
 }

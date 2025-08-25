@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.ShareResourceLimit;
 import com.epam.aidial.core.server.ProxyContext;
@@ -18,12 +19,10 @@ import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.data.SharedResources;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaUtils;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.ResourceAccessType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -61,7 +60,7 @@ public class ShareService {
     private final EncryptionService encryptionService;
     private final ApplicationService applicationService;
     private final LockService lockService;
-    private final ConfigStore configStore;
+    private final ApplicationSchemaService applicationSchemaService;
 
     private static final Map<ResourceType, ShareResourceLimit> DEFAULT_LIMITS = Map.of(
             ResourceTypes.APPLICATION, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)),
@@ -139,13 +138,12 @@ public class ShareService {
     private void addCustomApplicationRelatedFiles(String bucket, ShareResourcesRequest request) {
         List<String> filesFromRequest = request.getResources().stream()
                 .map(SharedResource::getUrl).toList();
-        Config config = configStore.get();
         Set<SharedResource> newSharedResources = new HashSet<>(request.getResources());
         for (SharedResource sharedResource : request.getResources()) {
             ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
             if (resource.getType() == ResourceTypes.APPLICATION) {
                 Application application = applicationService.getApplication(resource).getValue();
-                List<ResourceDescriptor> files = ApplicationTypeSchemaUtils.getFiles(config, application, encryptionService, resourceService);
+                List<ResourceDescriptor> files = applicationSchemaService.getFiles(application);
                 for (ResourceDescriptor file : files) {
                     if (file.isPublic() || !file.getBucketName().equals(bucket)) {
                         throw new IllegalArgumentException("All files in the application %s should belong to a requester".formatted(resource.getUrl()));

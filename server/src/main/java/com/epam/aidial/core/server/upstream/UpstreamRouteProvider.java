@@ -5,10 +5,12 @@ import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
@@ -44,11 +46,14 @@ public class UpstreamRouteProvider {
 
     private final Vertx vertx;
 
-    public UpstreamRouteProvider(Vertx vertx, Supplier<Random> generatorFactory, UpstreamCacheService upstreamCacheService) {
+    private final AsyncTaskExecutor taskExecutor;
+
+    public UpstreamRouteProvider(Vertx vertx, AsyncTaskExecutor taskExecutor, Supplier<Random> generatorFactory, UpstreamCacheService upstreamCacheService) {
         this.generatorFactory = generatorFactory;
         this.upstreamCacheService = upstreamCacheService;
         vertx.setPeriodic(0, TimeUnit.MINUTES.toMillis(1), event -> evictExpiredBalancers());
         this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
     }
 
     public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext) {
@@ -102,7 +107,7 @@ public class UpstreamRouteProvider {
                 log.warn("cached upstream doesn't exist any longer in config: {}", endpoint);
             }
         }
-        return new UpstreamRoute(vertx, upstreamCacheService, wrapper.balancer, result, context);
+        return new UpstreamRoute(taskExecutor, upstreamCacheService, wrapper.balancer, result, context);
     }
 
     private List<Upstream> getUpstreams(Deployment deployment) {
@@ -130,6 +135,8 @@ public class UpstreamRouteProvider {
             prefix = "application";
         } else if (deployment instanceof Assistant) {
             prefix = "assistant";
+        } else if (deployment instanceof ToolSet) {
+            prefix = "toolset";
         } else {
             throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getClass().getName());
         }

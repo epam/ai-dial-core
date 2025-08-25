@@ -13,12 +13,14 @@ import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -65,6 +67,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -95,7 +98,10 @@ public class DeploymentPostControllerTest {
     private TokenStatsTracker tokenStatsTracker;
 
     @Mock
-    private Vertx vertx;
+    private AsyncTaskExecutor taskExecutor;
+
+    @Mock
+    private ApplicationSchemaService applicationSchemaService;
 
     @InjectMocks
     private DeploymentPostController controller;
@@ -119,9 +125,9 @@ public class DeploymentPostControllerTest {
         config.setApplications(new HashMap<>());
         Application app = new Application();
         config.getApplications().put("app1", app);
-        when(proxy.getVertx()).thenReturn(vertx);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(vertx.executeBlocking(any(Callable.class), eq(false)))
+        when(taskExecutor.submit(any(Callable.class)))
                 .thenReturn(Future.failedFuture(new ResourceNotFoundException("Not found")));
 
         controller.handle("unknown-app", "chat/completions");
@@ -144,9 +150,9 @@ public class DeploymentPostControllerTest {
         apiKeyData.setPerRequestKey("perRequestKey");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         config.getApplications().put("app1", app);
-        when(proxy.getVertx()).thenReturn(vertx);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(vertx.executeBlocking(any(Callable.class), eq(false)))
+        when(taskExecutor.submit(any(Callable.class)))
                 .thenReturn(Future.succeededFuture(app));
 
         controller.handle("unknown-app", "chat/completions");
@@ -293,7 +299,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleRequestBody_NotOverrideModelName() {
+    public void testHandleRequestBody_NotOverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(upstreamRoute.next()).thenReturn(new Upstream());
@@ -325,7 +331,12 @@ public class DeploymentPostControllerTest {
 
         controller.handleRequestBody(requestBody);
 
-        assertEquals(requestBody, context.getRequestBody());
+        Buffer updatedBody = context.getRequestBody();
+        assertNotNull(updatedBody);
+
+        byte[] content = updatedBody.getBytes();
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
+        assertEquals("name", tree.get("model").asText());
 
     }
 
@@ -401,7 +412,6 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
-        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(tokenStatsTracker.getTokenStats(eq(context))).thenReturn(Future.succeededFuture(new TokenUsage()));
@@ -423,19 +433,19 @@ public class DeploymentPostControllerTest {
         request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
-        Config config = new Config();
-        config.setApplications(new HashMap<>());
-        when(context.getConfig()).thenReturn(config);
         Application application = new Application();
         application.setName("applications/bucket/app1");
         application.setEndpoint("http://fake.com");
-        when(proxy.getVertx()).thenReturn(vertx);
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenReturn(Future.succeededFuture(application));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
+        when(taskExecutor.submit(any(Callable.class))).thenReturn(Future.succeededFuture(application));
         MultiMap headers = mock(MultiMap.class);
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(applicationSchemaService.modifyEndpointsForCustomApplication(eq(application))).thenReturn(application);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(tokenStatsTracker.startSpan(any())).thenReturn(Future.succeededFuture());
 
         controller.handle("applications/bucket/app1", "chat/completions");
 
@@ -453,41 +463,7 @@ public class DeploymentPostControllerTest {
         customProps.put("clientFile", "files/public/some-path/client-file.ext");
         application.setApplicationProperties(customProps);
 
-        String schema = """
-                {
-                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
-                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
-                  "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",
-                  "dial:applicationTypeDisplayName": "Specific Application Type",
-                  "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/opeani/v1/completion",
-                  "properties": {
-                    "clientFile": {
-                      "type": "string",
-                      "format": "dial-file-encoded",
-                      "dial:meta": {
-                        "dial:propertyKind": "client",
-                        "dial:propertyOrder": 1
-                      },
-                      "dial:file": true
-                    },
-                    "serverFile": {
-                      "type": "string",
-                      "format": "dial-file-encoded",
-                      "dial:meta": {
-                        "dial:propertyKind": "server",
-                        "dial:propertyOrder": 2
-                      },
-                      "dial:file": true
-                    }
-                  },
-                  "required": [
-                    "clientFile"
-                  ]
-                }""";
-
         when(context.getDeployment()).thenReturn(application);
-        when(context.getConfig()).thenReturn(mock(Config.class));
-        when(context.getConfig().getCustomApplicationSchema(any(URI.class))).thenReturn(schema);
 
         HttpServerRequest request = mock(HttpServerRequest.class);
         when(context.getRequest()).thenReturn(request);
@@ -504,6 +480,13 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
         when(context.getRequestHeaders()).thenReturn(Map.of());
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        doAnswer(ans -> {
+            ApplicationSchemaService.ServerPropertiesConsumer consumer = ans.getArgument(1);
+            Map<String, Object> props = Map.of("serverFile", "files/public/some-path/server-file.ext");
+            consumer.accept(props, true);
+            return null;
+        }).when(applicationSchemaService).consumeServerProperties(eq(application), any(ApplicationSchemaService.ServerPropertiesConsumer.class));
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -551,36 +534,7 @@ public class DeploymentPostControllerTest {
         customProps.put("clientFile", "files/public/some-path/client-file.ext");
         application.setApplicationProperties(customProps);
 
-        String schema = """
-                {
-                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
-                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
-                  "properties": {
-                    "clientFile": {
-                      "type": "string",
-                      "format": "dial-file-encoded",
-                      "dial:meta": {
-                        "dial:propertyKind": "client",
-                        "dial:propertyOrder": 1
-                      },
-                      "dial:file": true
-                    },
-                    "serverFile": {
-                      "type": "string",
-                      "format": "dial-file-encoded",
-                      "dial:meta": {
-                        "dial:propertyKind": "server",
-                        "dial:propertyOrder": 2
-                      },
-                      "dial:file": true
-                    }
-                  },
-                  "required": ["clientFile"]
-                }""";
-
         when(context.getDeployment()).thenReturn(application);
-        when(context.getConfig()).thenReturn(mock(Config.class));
-        when(context.getConfig().getCustomApplicationSchema(any(URI.class))).thenReturn(schema);
 
         HttpServerRequest request = mock(HttpServerRequest.class);
         when(context.getRequest()).thenReturn(request);
@@ -597,6 +551,13 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer("{\"custom_fields\":{\"foo\":\"bar\"}}");
         when(context.getRequestBody()).thenReturn(requestBody);
         when(context.getRequestHeaders()).thenReturn(Map.of());
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        doAnswer(ans -> {
+            ApplicationSchemaService.ServerPropertiesConsumer consumer = ans.getArgument(1);
+            Map<String, Object> props = Map.of("serverFile", "files/public/some-path/server-file.ext");
+            consumer.accept(props, true);
+            return null;
+        }).when(applicationSchemaService).consumeServerProperties(eq(application), any(ApplicationSchemaService.ServerPropertiesConsumer.class));
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -618,37 +579,7 @@ public class DeploymentPostControllerTest {
         customProps.put("clientFile", "files/public/some-path/client-file.ext");
         application.setApplicationProperties(customProps);
 
-        String schema = """
-                {
-                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
-                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
-                  "dial:appendApplicationPropertiesHeader": false,
-                  "properties": {
-                    "clientFile": {
-                      "type": "string",
-                      "format": "dial-file-encoded",
-                      "dial:meta": {
-                        "dial:propertyKind": "client",
-                        "dial:propertyOrder": 1
-                      },
-                      "dial:file": true
-                    },
-                    "serverFile": {
-                      "type": "string",
-                      "format": "dial-file-encoded",
-                      "dial:meta": {
-                        "dial:propertyKind": "server",
-                        "dial:propertyOrder": 2
-                      },
-                      "dial:file": true
-                    }
-                  },
-                  "required": ["clientFile"]
-                }""";
-
         when(context.getDeployment()).thenReturn(application);
-        when(context.getConfig()).thenReturn(mock(Config.class));
-        when(context.getConfig().getCustomApplicationSchema(any(URI.class))).thenReturn(schema);
 
         HttpServerRequest request = mock(HttpServerRequest.class);
         when(context.getRequest()).thenReturn(request);

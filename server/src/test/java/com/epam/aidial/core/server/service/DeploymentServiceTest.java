@@ -81,9 +81,9 @@ public class DeploymentServiceTest {
     }
 
     @Test
-    public void testFindDeployment_WhenTypeIsNotApplication() {
+    public void testFindDeployment_WhenAccessDenied() {
 
-        assertThrows(ResourceNotFoundException.class, () -> service.findDeployment(context, "files/public/my-app"));
+        assertThrows(PermissionDeniedException.class, () -> service.findDeployment(context, "files/public/my-app"));
     }
 
     @Test

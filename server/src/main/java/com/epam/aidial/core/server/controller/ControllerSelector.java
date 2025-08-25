@@ -25,7 +25,7 @@ public class ControllerSelector {
     private static final Object CONTROLLER_TEMPLATE_KEY = new Object();
     private static final List<ControllerRoute> ROUTES = new ArrayList<>();
     private static final ControllerTemplate DEFAULT_CONTROLLER_TEMPLATE = new ControllerTemplate(
-            "/{path}", RouteController::new);
+            "/{path}", GlobalRouteController::new);
 
     static {
         // GET routes
@@ -137,6 +137,15 @@ public class ControllerSelector {
                 case "schema" -> controller::handleGetSchema;
                 default -> null;
             };
+        });
+        get(RouteTemplate.TOOL_SET, (proxy, context, pathMatcher) -> {
+            ToolSetController controller = new ToolSetController(context);
+            String toolsetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return () -> controller.getToolSet(toolsetId);
+        });
+        get(RouteTemplate.TOOL_SETS, (proxy, context, pathMatcher) -> {
+            ToolSetController controller = new ToolSetController(context);
+            return controller::getToolSets;
         });
 
         // POST routes
@@ -265,6 +274,10 @@ public class ControllerSelector {
             ConsentController controller = new ConsentController(context, proxy);
             return () -> controller.acceptConsent(deploymentId);
         });
+        post(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
+            String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ToolSetProxyController(proxy, context, toolSetId);
+        }));
         // DELETE routes
         delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
@@ -292,6 +305,15 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        // add deployment routes
+        ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            String routePath = pathMatcher.group(2);
+            return new ApplicationRouteController(proxy, context, deploymentId, routePath);
+        });
+        for (HttpMethod method : Proxy.ALLOWED_HTTP_METHODS) {
+            ROUTES.add(new ControllerRoute(method, RouteTemplate.DEPLOYMENT_ROUTES.getPattern(), applicationRouteTemplate));
+        }
     }
 
     public ControllerTemplate select(HttpServerRequest request) {

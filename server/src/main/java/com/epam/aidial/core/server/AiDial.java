@@ -4,6 +4,8 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
+import com.epam.aidial.core.server.controller.HealthCheckController;
+import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -12,6 +14,7 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -22,13 +25,16 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
+import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
@@ -53,6 +59,7 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -67,10 +74,13 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -82,6 +92,7 @@ import java.util.function.Supplier;
 @Getter
 public class AiDial {
 
+    private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
     private Vertx vertx;
     private HttpServer server;
@@ -104,6 +115,7 @@ public class AiDial {
         System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
             settings = (settings == null) ? settings() : settings;
+            printSettings(settings);
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
             setupMetrics(vertxOptions);
             setupTracing(vertxOptions);
@@ -112,10 +124,12 @@ public class AiDial {
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             client = vertx.createHttpClient(clientOptions);
 
-            LogStore logStore = new GfLogStore(vertx);
+            AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
+
+            LogStore logStore = new GfLogStore();
 
             if (accessTokenValidator == null) {
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, client, clientOptions);
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions);
             }
 
             if (storage == null) {
@@ -127,45 +141,55 @@ public class AiDial {
             redis = CacheClientFactory.create(toJsonNode(settings("redis")));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
-            TimerService timerService = new VertxTimerService(vertx);
+            TimerService timerService = new VertxTimerService(vertx, taskExecutor);
             ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
-            ApiKeyStore apiKeyStore = new ApiKeyStore(vertx, redis, storage.getPrefix());
+            ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
-            ApplicationService applicationService = new ApplicationService(vertx, redis, apiKeyStore, encryptionService,
-                    resourceService, lockService, operatorService, generator, settings("applications"), configStore);
-            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService, lockService, configStore);
+            ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService);
+            ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
+                    resourceService, lockService, operatorService, applicationSchemaService, generator, settings("applications"));
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService, lockService, applicationSchemaService);
             RuleService ruleService = new RuleService(resourceService);
-            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, settings("access"));
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
                     resourceService, invitationService, shareService, lockService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock, configStore);
-            RateLimiter rateLimiter = new RateLimiter(vertx, resourceService);
-            CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, redis, resourceService,
+                    ruleService, notificationService, applicationService, resourceOperationService, generator, clock);
+            RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService);
+            CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(vertx, resourceService);
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
-                    vertx, settings("resources").getLong("heartbeatPeriod"));
+                    vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
 
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
-            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, Random::new, upstreamCacheService);
+            UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService);
+            ToolSetService toolSetService = new ToolSetService(resourceService);
+
+            DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
+                    toolSetService, resourceService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
+
+            HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
+
+            WellKnownResourceMetadataService resourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
+            WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(resourceMetadataService);
 
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, version());
+                    consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
+                    toolSetService, applicationSchemaService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -229,6 +253,10 @@ public class AiDial {
             log.warn("Failed to load version", e);
         }
         return version;
+    }
+
+    public static String getVersion() {
+        return version();
     }
 
     private static JsonObject fileSettings() throws IOException {
@@ -371,5 +399,47 @@ public class AiDial {
             return val;
         }
         return System.getProperty(systemProperty);
+    }
+
+    private static void printSettings(Object settings) {
+        log.debug("AI DIAL Core settings");
+        log.debug("--------------- start --------------- ");
+        printSettings(settings, new StringBuilder());
+        log.debug("--------------- end --------------- ");
+    }
+
+    private static void printSettings(Object settings, StringBuilder path) {
+        if (settings instanceof JsonObject jsonObject) {
+            for (var entry : jsonObject.getMap().entrySet()) {
+                printSettings(entry.getKey(), entry.getValue(), path);
+            }
+        } else if (settings instanceof Map<?, ?> map) {
+            for (var entry : map.entrySet()) {
+                printSettings((String) entry.getKey(), entry.getValue(), path);
+            }
+        } else if (settings instanceof JsonArray array) {
+            for (int i = 0; i < array.size(); i++) {
+                printSettings("[" + i + "]", array.getValue(i), path);
+            }
+        } else if (settings instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                printSettings("[" + i + "]", list.get(i), path);
+            }
+        } else {
+            log.debug("Core setting: key -> {}, value -> {}", path, settings);
+        }
+    }
+
+    private static void printSettings(String key, Object value, StringBuilder path) {
+        if (NON_PRINTABLE_SETTINGS.contains(key)) {
+            return;
+        }
+        int len = path.length();
+        if (!path.isEmpty()) {
+            path.append('.');
+        }
+        path.append(key);
+        printSettings(value, path);
+        path.setLength(len);
     }
 }

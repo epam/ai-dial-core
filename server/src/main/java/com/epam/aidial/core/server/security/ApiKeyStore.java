@@ -6,12 +6,13 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
@@ -40,16 +41,17 @@ public class ApiKeyStore {
     public static final String API_KEY_DATA_BUCKET = "api_key_data";
     public static final String API_KEY_DATA_LOCATION = API_KEY_DATA_BUCKET + PATH_SEPARATOR;
 
-    public static final Duration EXPIRE = Duration.ofMinutes(30);
-
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final RedissonClient redis;
     private final String prefix;
 
-    public ApiKeyStore(Vertx vertx, RedissonClient redis, String prefix) {
-        this.vertx = vertx;
+    private final Duration ttl;
+
+    public ApiKeyStore(AsyncTaskExecutor taskExecutor, RedissonClient redis, String prefix, JsonObject settings) {
+        this.taskExecutor = taskExecutor;
         this.redis = redis;
         this.prefix = prefix;
+        this.ttl = Duration.ofSeconds(settings.getInteger("ttl", 1800));
     }
 
     /**
@@ -72,7 +74,7 @@ public class ApiKeyStore {
         if (!bucket.setIfAbsent(json)) {
             throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
         }
-        bucket.expire(EXPIRE);
+        bucket.expire(ttl);
     }
 
     public Future<Void> updatePerRequestApiKey(String key, Function<String, String> fn) {
@@ -82,7 +84,7 @@ public class ApiKeyStore {
             return Future.failedFuture(error);
         }
         String redisKey = toRedisKey(key);
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             // lock free
             while (true) {
@@ -98,7 +100,7 @@ public class ApiKeyStore {
                 }
             }
             return null;
-        }, false);
+        });
     }
 
     /**
@@ -113,11 +115,11 @@ public class ApiKeyStore {
             return Future.succeededFuture(apiKeyData);
         }
         String redisKey = toRedisKey(key);
-        return vertx.executeBlocking(() -> {
+        return taskExecutor.submit(() -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
             return ProxyUtil.convertToObject(json, ApiKeyData.class);
-        }, false).compose(result -> {
+        }).compose(result -> {
             if (result == null) {
                 return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Unknown api key"));
             }
@@ -136,10 +138,10 @@ public class ApiKeyStore {
         String apiKey = apiKeyData.getPerRequestKey();
         if (apiKey != null) {
             String redisKey = toRedisKey(apiKey);
-            return vertx.executeBlocking(() -> {
+            return taskExecutor.submit(() -> {
                 RBucket<String> bucket = redis.getBucket(redisKey);
                 return bucket.delete();
-            }, false);
+            });
         }
         return Future.succeededFuture(true);
     }

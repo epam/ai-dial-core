@@ -82,6 +82,29 @@
         "systemPromptSupported": false
       }
     },
+    "app-route": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "10k",
+      "iconUrl": "http://localhost:7001/logo10k.png",
+      "description": "Some description of the application for testing",
+      "features": {
+        "rateEndpoint": "http://localhost:7001/openai/deployments/10k/rate_response",
+        "configurationEndpoint": "http://localhost:7001/openai/deployments/10k/config",
+        "systemPromptSupported": false
+      },
+      "routes": {
+        "index-search": {
+          "paths": ["/v1/index(/[^/]+)*$"],
+          "rewritePath": true,
+          "methods": ["POST", "PUT", "DELETE"],
+          "upstreams": [{"endpoint": "http://localhost:4848"}],
+          "attachmentPaths": {
+            "requestBody": ["@.attachments[*].url"],
+            "responseBody": ["@.result.attachedFiles"]
+          }
+        }
+      }
+    },
     "secured-app": {
       "endpoint": "http://localhost:9876/chat/completions",
       "displayName": "A",
@@ -143,6 +166,14 @@
       ]
     }
   },
+  "toolsets": {
+    "git": {
+      "transport": "http",
+      "endpoint": "http://localhost:9876",
+      "allowed_tools": ["branch", "remote"],
+      "description": "Git remote tool set"
+    }
+  },
   "keys": {
     "proxyKey1": {
       "project": "EPM-RTC-GPT",
@@ -198,6 +229,26 @@
       "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
       "dial:applicationTypeDisplayName": "Specific Application Type",
       "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
+      "dial:applicationTypeRoutes": {
+        "data_sync": {
+          "dial:paths": [
+            "/v1/index/search"
+          ],
+          "dial:rewritePath": true,
+          "dial:methods": [
+            "POST"
+          ],
+          "dial:upstreams": [
+            {
+              "dial:endpoint": "http://localhost:4848"
+            }
+          ],
+          "dial:order": 5,
+          "dial:permissions": [
+            "WRITE"
+          ]
+        }
+      },
       "properties": {
         "property1": {
           "title": "Property 1",

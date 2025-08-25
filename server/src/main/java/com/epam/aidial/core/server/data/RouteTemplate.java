@@ -68,11 +68,11 @@ public enum RouteTemplate {
     ),
 
     RESOURCE(
-            "^/v1/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "^/v1/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
     RESOURCE_METADATA(
-            "^/v1/metadata/(conversations|prompts|applications)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
@@ -101,6 +101,11 @@ public enum RouteTemplate {
     DEPLOYMENT_LIMITS(
             "^/v1/deployments/(?<id>.+?)/limits$",
             "/v1/deployments/{id}/limits"
+    ),
+
+    DEPLOYMENT_ROUTES(
+            "^/+v1/deployments/(?<id>.+)/route(?<routePath>/.+?)$",
+            "/v1/deployments/{id}/route/{routePath}"
     ),
 
     // Operations
@@ -165,6 +170,22 @@ public enum RouteTemplate {
     APP_SCHEMAS(
             "^/v1/application_type_schemas/(schemas|schema|meta_schema)$",
             "/v1/application_type_schemas/{operation}"
+    ),
+    TOOL_SET(
+            "^/+openai/toolsets/(?<id>.+?)$",
+            "/openai/toolsets/{id}"
+    ),
+    TOOL_SETS(
+            "^/+openai/toolsets$",
+            "/openai/toolsets"
+    ),
+    TOOL_SET_PROXY(
+            "^/v1/toolset/(?<id>.+?)/mcp$",
+            "/v1/toolset/{id}/mcp"
+    ),
+    TOOL_SET_PROXY_METADATA(
+            "^/\\.well-known/oauth-protected-resource/v1/toolset/(?<id>.+?)/mcp$",
+            "/.well-known/oauth-protected-resource/v1/toolset/{id}/mcp"
     );
 
     private final Pattern pattern;

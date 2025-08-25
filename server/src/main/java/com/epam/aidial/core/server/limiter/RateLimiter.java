@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -35,7 +36,7 @@ public class RateLimiter {
     private static final CostLimit DEFAULT_COST_LIMIT = new CostLimit();
     private static final String DEFAULT_USER_ROLE = "default";
 
-    private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
 
     private final ResourceService resourceService;
 
@@ -55,7 +56,7 @@ public class RateLimiter {
             // Update token limits
             String tokensPath = getPathToTokens(roleBasedEntity.getName());
             ResourceDescriptor tokenResourceDescription = getResourceDescription(context, tokensPath);
-            Future<Void> tokenFuture = vertx.executeBlocking(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()), false);
+            Future<Void> tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()), false);
 
             // Calculate and update cost limits
             BigDecimal cost = ModelCostCalculator.calculate(context);
@@ -66,7 +67,7 @@ public class RateLimiter {
                 // Update cost limits
                 String costsPath = getPathToCosts();
                 ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
-                Future<Void> costFuture = vertx.executeBlocking(() -> updateCostLimit(costResourceDescription, cost), false);
+                Future<Void> costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost), false);
 
                 // Wait for both updates to complete
                 return Future.all(tokenFuture, costFuture).mapEmpty();
@@ -96,7 +97,7 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return vertx.executeBlocking(() -> checkLimit(context, limit, roleBasedEntity), false);
+            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -109,7 +110,7 @@ public class RateLimiter {
                 return Future.succeededFuture();
             }
             Limit limit = getLimitByUser(context, roleBasedEntity);
-            return vertx.executeBlocking(() -> getLimitStats(context, limit, roleBasedEntity.getName()), false);
+            return taskExecutor.submit(() -> getLimitStats(context, limit, roleBasedEntity.getName()));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }

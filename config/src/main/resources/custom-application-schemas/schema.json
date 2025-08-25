@@ -52,9 +52,122 @@
           "type": "string",
           "description": "Display name of the custom application of given type"
         },
+        "dial:applicationTypeIconUrl": {
+          "type": "string",
+          "description": "URL to the icon of the custom application of given type"
+        },
         "dial:appendApplicationPropertiesHeader": {
           "type": "boolean",
           "description": "If this flag is set to true, the header with properties will augment the request while proxying"
+        },
+        "dial:applicationTypePlaybackSupport": {
+          "type": "boolean",
+          "description": "The flag is an indicator that the viewer supports playback."
+        },
+        "dial:applicationTypeRoutes": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-zA-Z0-9_]+$": {
+              "type": "object",
+              "properties": {
+                "dial:paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "dial:rewritePath": {
+                  "type": "boolean"
+                },
+                "dial:methods": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+                  }
+                },
+                "dial:userRoles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "dial:upstreams": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "dial:endpoint": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "dial:key": {
+                        "type": "string"
+                      },
+                      "dial:extraData": {
+                        "type": "string"
+                      },
+                      "dial:weight": {
+                        "type": "integer"
+                      },
+                      "dial:tier": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["dial:endpoint"],
+                    "additionalProperties": false
+                  }
+                },
+                "dial:order": {
+                  "type": "integer"
+                },
+                "dial:maxRetryAttempts" : {
+                  "type": "integer"
+                },
+                "dial:permissions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["READ", "WRITE"]
+                  }
+                },
+                "dial:attachmentPaths": {
+                  "type": "object",
+                  "properties": {
+                    "dial:requestBody": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dial:responseBody": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "dial:response": {
+                  "type": "object",
+                  "properties": {
+                    "dial:status": {
+                      "type": "integer"
+                    },
+                    "dial:body": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["dial:status", "dial:body"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["dial:paths", "dial:methods", "dial:upstreams"],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

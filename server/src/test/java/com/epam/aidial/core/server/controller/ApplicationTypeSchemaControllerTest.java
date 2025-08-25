@@ -5,12 +5,12 @@ import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,20 +31,20 @@ import static org.mockito.Mockito.when;
 class ApplicationTypeSchemaControllerTest {
 
     private ProxyContext context;
-    private Vertx vertx;
+    private AsyncTaskExecutor taskExecutor;
     private ApplicationTypeSchemaController controller;
     private Config config;
 
     @BeforeEach
     void setUp() {
         context = mock(ProxyContext.class);
-        vertx = mock(Vertx.class);
+        taskExecutor = mock(AsyncTaskExecutor.class);
         config = mock(Config.class);
         when(context.getProxy()).thenReturn(mock(Proxy.class));
-        when(context.getProxy().getVertx()).thenReturn(vertx);
+        when(context.getProxy().getTaskExecutor()).thenReturn(taskExecutor);
         when(context.getConfig()).thenReturn(config);
         //noinspection unchecked
-        when(vertx.executeBlocking(any(Callable.class)))
+        when(taskExecutor.submit(any(Callable.class)))
                 .thenAnswer(invocation -> {
                     Callable<?> callable = invocation.getArgument(0);
                     try {
@@ -124,7 +124,7 @@ class ApplicationTypeSchemaControllerTest {
     @Test
     void handleListSchemas_failure() {
         //noinspection unchecked
-        when(vertx.executeBlocking(any(Callable.class))).thenReturn(Future.failedFuture(new RuntimeException("error")));
+        when(taskExecutor.submit(any(Callable.class))).thenReturn(Future.failedFuture(new RuntimeException("error")));
         controller.handleListSchemas();
         verify(context).respond(any(Throwable.class), eq("Failed to read schema from resources"));
     }
