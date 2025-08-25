@@ -120,7 +120,7 @@ public class CodeInterpreterClient {
 
     @SneakyThrows
     private <R> R execute(CodeInterpreterSession session, String path, Object requestPayload, Class<R> responseType) {
-        HttpPost post = new HttpPost(session.getDeploymentUrl() + path);
+        HttpPost post = new HttpPost(createSessionUrl(session, path));
         addSessionHeaders(session, post);
         post.setEntity(HttpEntities.create(ProxyUtil.convertToString(requestPayload), ContentType.APPLICATION_JSON));
 
