@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -171,7 +172,9 @@ public class AccessService {
             Set<ResourceDescriptor> resources, ProxyContext context) {
         if (hasAdminAccess(context)) {
             return resources.stream()
-                    .filter(resource -> resource.isPublic() || PublicationService.isReviewBucket(resource))
+                    .filter(resource -> resource.isPublic()
+                            || PublicationService.isReviewBucket(resource)
+                            || ApplicationService.isPublicApplicationSourceDirectory(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 

@@ -799,6 +799,49 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                 null, null, "authorization", "user");
         verify(response, 200);
 
+        webServer.map(HttpMethod.DELETE, "/v1/image/0127", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0127", 200,
+                """
+                event: result
+                data: {"deleted":true}
+                """);
+
+        webServer.map(HttpMethod.POST, "/v1/image/0127", 200, """
+                :heartbeat
+                
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.POST, "/v1/deployment/0127", 200, """
+                event: result
+                data: {"url":"http://localhost:17321"}
+                """);
+
+        response = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
+                {
+                  "url": "applications/public/my-app"
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        response = awaitApplicationStatus("/v1/applications/public/my-app", "DEPLOYED");
+        verify(response, 200);
+
+        response = send(HttpMethod.POST, "/v1/ops/application/undeploy", null, """
+                {
+                  "url": "applications/public/my-app"
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        response = awaitApplicationStatus("/v1/applications/public/my-app", "UNDEPLOYED");
+        verify(response, 200);
+
+
         response = operationRequest("/v1/ops/publication/create", """
                 {
                   "targetFolder": "public/",
