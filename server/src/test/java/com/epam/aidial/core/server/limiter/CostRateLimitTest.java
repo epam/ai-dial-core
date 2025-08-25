@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -20,7 +21,6 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.Json;
 import org.junit.jupiter.api.AfterAll;
@@ -60,7 +60,7 @@ public class CostRateLimitTest {
     private static RedissonClient redissonClient;
 
     @Mock
-    private Vertx vertx;
+    private AsyncTaskExecutor taskExecutor;
 
     @Mock
     private HttpServerRequest request;
@@ -112,7 +112,7 @@ public class CostRateLimitTest {
         LockService lockService = new LockService(redissonClient, null);
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage, lockService, settings, null);
-        rateLimiter = new RateLimiter(vertx, resourceService);
+        rateLimiter = new RateLimiter(taskExecutor, resourceService);
     }
 
     @Test
@@ -151,7 +151,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null));
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
         Model model = new Model();
@@ -167,7 +167,7 @@ public class CostRateLimitTest {
         proxyContext.setDeployment(model);
 
         // Mock vertx.executeBlocking
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -241,7 +241,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role"), "user-hash", Map.of(), null, null));
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id");
+        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
         Model model = new Model();
@@ -257,7 +257,7 @@ public class CostRateLimitTest {
         proxyContext.setDeployment(model);
 
         // Mock vertx.executeBlocking
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -334,7 +334,7 @@ public class CostRateLimitTest {
         model.setPricing(pricing);
 
         // Mock vertx.executeBlocking
-        when(vertx.executeBlocking(any(Callable.class), eq(false))).thenAnswer(invocation -> {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
         });
@@ -343,14 +343,14 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setPerRequestKey("per-request-key-1");
         apiKeyData1.setExtractedClaims(new ExtractedClaims("user1", List.of("role"), "user-hash-1", Map.of(), null, null));
-        ProxyContext proxyContext1 = new ProxyContext(null, config, request, apiKeyData1, null, "trace-id-1", "span-id-1");
+        ProxyContext proxyContext1 = new ProxyContext(null, config, request, apiKeyData1, null, "trace-id-1", "span-id-1", "01");
         proxyContext1.setDeployment(model);
 
         // Create second user context
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setPerRequestKey("per-request-key-2");
         apiKeyData2.setExtractedClaims(new ExtractedClaims("user2", List.of("role"), "user-hash-2", Map.of(), null, null));
-        ProxyContext proxyContext2 = new ProxyContext(null, config, request, apiKeyData2, null, "trace-id-2", "span-id-2");
+        ProxyContext proxyContext2 = new ProxyContext(null, config, request, apiKeyData2, null, "trace-id-2", "span-id-2", "01");
         proxyContext2.setDeployment(model);
 
         // Set up token usage for both users

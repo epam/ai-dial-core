@@ -19,7 +19,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -56,7 +55,7 @@ public class RateLimiter {
             // Update token limits
             String tokensPath = getPathToTokens(roleBasedEntity.getName());
             ResourceDescriptor tokenResourceDescription = getResourceDescription(context, tokensPath);
-            Future<Void> tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()), false);
+            Future<Void> tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
 
             // Calculate and update cost limits
             BigDecimal cost = ModelCostCalculator.calculate(context);
@@ -67,7 +66,7 @@ public class RateLimiter {
                 // Update cost limits
                 String costsPath = getPathToCosts();
                 ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
-                Future<Void> costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost), false);
+                Future<Void> costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
 
                 // Wait for both updates to complete
                 return Future.all(tokenFuture, costFuture).mapEmpty();
