@@ -103,10 +103,15 @@ public class ToolSetProxyController implements Controller {
                 .setTraceOperation(context.getTraceOperation())
                 .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
                 .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
+        taskExecutor.submit(() -> {
+            ToolSet toolSet = (ToolSet) context.getDeployment();
+            return toolSetCredentialsManager.getToolSetCredentials(toolSetId, toolSet.getAuthSettings(), context);
+        }).onSuccess(credentials -> {
+            httpClient.request(options)
+                    .onSuccess(proxyRequest -> handleProxyRequest(proxyRequest, credentials))
+                    .onFailure(this::handleProxyConnectionError);
+        }).onFailure(this::handleError);
 
-        httpClient.request(options)
-                .onSuccess(this::handleProxyRequest)
-                .onFailure(this::handleProxyConnectionError);
     }
 
     private void handleRequestBody(Buffer requestBody) {
@@ -117,7 +122,7 @@ public class ToolSetProxyController implements Controller {
     /**
      * Called when proxy connected to the origin.
      */
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(HttpClientRequest proxyRequest, ToolSetCredentials toolSetCredentials) {
         HttpConnection connection = proxyRequest.connection();
         log.info("Connected to origin: {}", connection.remoteAddress());
 
@@ -126,7 +131,7 @@ public class ToolSetProxyController implements Controller {
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
         try {
-            addToolsetCredentials(proxyRequest);
+            addToolsetCredentials(proxyRequest, toolSetCredentials);
         } catch (ResourceNotFoundException e) {
             log.error(e.getMessage(), e);
         }
@@ -139,15 +144,14 @@ public class ToolSetProxyController implements Controller {
                 .onFailure(this::handleProxyRequestError);
     }
 
-    private void addToolsetCredentials(HttpClientRequest proxyRequest) {
-        Deployment deployment = context.getDeployment();
-        if (deployment instanceof ToolSet toolSet) {
-            ToolSetCredentials toolSetCredentials = toolSetCredentialsManager.getToolSetCredentials(toolSet, context);
-            if (AuthenticationType.OAUTH.equals(toolSetCredentials.getAuthenticationType())) {
-                proxyRequest.putHeader("Authorization", "Bearer " + toolSetCredentials.getAccessToken());
-            } else if (AuthenticationType.API_KEY.equals(toolSetCredentials.getAuthenticationType())) {
-                proxyRequest.putHeader(toolSetCredentials.getApiKeyHeader(), toolSetCredentials.getApiKey());
-            }
+    private void addToolsetCredentials(HttpClientRequest proxyRequest, ToolSetCredentials toolSetCredentials) {
+        if (toolSetCredentials == null) {
+            return;
+        }
+        if (AuthenticationType.OAUTH.equals(toolSetCredentials.getAuthenticationType())) {
+            proxyRequest.putHeader("Authorization", "Bearer " + toolSetCredentials.getAccessToken());
+        } else if (AuthenticationType.API_KEY.equals(toolSetCredentials.getAuthenticationType())) {
+            proxyRequest.putHeader(toolSetCredentials.getApiKeyHeader(), toolSetCredentials.getApiKey());
         }
     }
 

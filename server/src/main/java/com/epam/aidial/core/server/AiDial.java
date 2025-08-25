@@ -31,7 +31,7 @@ import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthorizationServerClient;
+import com.epam.aidial.core.server.service.credentials.ToolSetAuthorizationClient;
 import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
 import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.service.credentials.ToolSetRegistrationService;
@@ -177,21 +177,21 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            ToolSetService toolSetService = new ToolSetService(resourceService);
+            ToolSetAuthorizationClient toolSetAuthorizationClient = new ToolSetAuthorizationClient();
+            ToolSetTokenService toolSetTokenService = new ToolSetTokenService(toolSetAuthorizationClient);
+            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService();
+            ToolSetCredentialsManager toolSetCredentialsManager = new ToolSetCredentialsManager(toolSetCredentialsService, toolSetTokenService);
+            ToolSetRegistrationService toolSetRegistrationService = new ToolSetRegistrationService(toolSetAuthorizationClient);
+            ToolSetAuthSettingsValidator toolSetAuthSettingsValidator = new ToolSetAuthSettingsValidator();
+            ToolSetAuthSettingsService toolSetAuthSettingsService = new ToolSetAuthSettingsService(toolSetRegistrationService, toolSetAuthSettingsValidator,
+                    toolSetCredentialsManager);
+
+            ToolSetService toolSetService = new ToolSetService(resourceService, toolSetAuthSettingsService);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
-
-            ToolSetAuthorizationServerClient toolSetAuthorizationServerClient = new ToolSetAuthorizationServerClient();
-            ToolSetTokenService toolSetTokenService = new ToolSetTokenService(toolSetAuthorizationServerClient);
-            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService();
-            ToolSetCredentialsManager toolSetCredentialsManager = new ToolSetCredentialsManager(toolSetService, toolSetCredentialsService, toolSetTokenService);
-            ToolSetRegistrationService toolSetRegistrationService = new ToolSetRegistrationService(toolSetAuthorizationServerClient);
-            ToolSetAuthSettingsValidator toolSetAuthSettingsValidator = new ToolSetAuthSettingsValidator();
-            ToolSetAuthSettingsService toolSetAuthSettingsService = new ToolSetAuthSettingsService(toolSetRegistrationService, toolSetAuthSettingsValidator,
-                    toolSetCredentialsManager);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 

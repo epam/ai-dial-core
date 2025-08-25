@@ -12,7 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ToolSetTokenService {
 
-    private final ToolSetAuthorizationServerClient toolSetAuthorizationServerClient;
+    private final ToolSetAuthorizationClient toolSetAuthorizationClient;
 
     public TokenResponse getToken(String toolSetName,
                                   ToolSetAuthSettings toolSetAuthSettings,
@@ -28,7 +28,7 @@ public class ToolSetTokenService {
                 .redirectUri(toolSetAuthSettings.getRedirectUri())
                 .build();
 
-        TokenResponse tokenResponse = toolSetAuthorizationServerClient.executePost(
+        TokenResponse tokenResponse = toolSetAuthorizationClient.executePost(
                 toolSetAuthSettings.getTokenEndpoint(),
                 tokenRequest.buildFormData(),
                 "application/x-www-form-urlencoded",
@@ -48,7 +48,7 @@ public class ToolSetTokenService {
                 .refreshToken(refreshToken)
                 .build();
 
-        TokenResponse tokenResponse = toolSetAuthorizationServerClient.executePost(
+        TokenResponse tokenResponse = toolSetAuthorizationClient.executePost(
                 toolSetAuthSettings.getTokenEndpoint(),
                 tokenRequest.buildFormData(),
                 "application/x-www-form-urlencoded",

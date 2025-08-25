@@ -24,7 +24,7 @@ public class ToolSetRegistrationService {
     private static final String AUTHORIZE_ENDPOINT = "%s/authorize";
     private static final String TOKEN_ENDPOINT = "%s/token";
 
-    private final ToolSetAuthorizationServerClient toolSetAuthorizationServerClient;
+    private final ToolSetAuthorizationClient toolSetAuthorizationClient;
 
     public ToolSetRegistration createDynamicToolSetRegistration(ToolSet toolSet) {
         String toolSetName = toolSet.getName();
@@ -40,7 +40,7 @@ public class ToolSetRegistrationService {
                 .redirectUris(List.of(toolSetRedirectUri))
                 .build();
 
-        ClientRegistrationResponse clientRegistrationResponse = toolSetAuthorizationServerClient.executePost(
+        ClientRegistrationResponse clientRegistrationResponse = toolSetAuthorizationClient.executePost(
                 toolsetAuthorizationServerMetadata.getRegistrationEndpoint(),
                 clientRegistrationRequest,
                 ContentType.APPLICATION_JSON.toString(),
@@ -147,7 +147,7 @@ public class ToolSetRegistrationService {
     }
 
     private ToolSetAuthorizationServerMetadata getToolsetAuthorizationServerMetadata(String toolSetAuthServerEndpoint) {
-        ToolSetAuthorizationServerMetadata toolSetAuthorizationServerMetadata = toolSetAuthorizationServerClient.executeGet(toolSetAuthServerEndpoint,
+        ToolSetAuthorizationServerMetadata toolSetAuthorizationServerMetadata = toolSetAuthorizationClient.executeGet(toolSetAuthServerEndpoint,
                 ToolSetAuthorizationServerMetadata.class);
         log.debug("ToolSetAuthorizationServerMetadata: {}", toolSetAuthorizationServerMetadata);
         return toolSetAuthorizationServerMetadata;
@@ -156,7 +156,7 @@ public class ToolSetRegistrationService {
     private ToolSetAuthorizationServerProtectedResourceMetadata getToolsetAuthorizationServerProtectedResourceMetadata(String baseToolSetEndpoint) {
         String toolSetProtectedResourceEndpoint = String.format(PROTECTED_RESOURCE_ENDPOINT, baseToolSetEndpoint);
         ToolSetAuthorizationServerProtectedResourceMetadata toolsetAuthorizationServerProtectedResourceMetadata =
-                toolSetAuthorizationServerClient.executeGet(toolSetProtectedResourceEndpoint, ToolSetAuthorizationServerProtectedResourceMetadata.class);
+                toolSetAuthorizationClient.executeGet(toolSetProtectedResourceEndpoint, ToolSetAuthorizationServerProtectedResourceMetadata.class);
         log.debug("ToolSetAuthorizationServerProtectedResourceMetadata: {}", toolsetAuthorizationServerProtectedResourceMetadata);
         return toolsetAuthorizationServerProtectedResourceMetadata;
     }

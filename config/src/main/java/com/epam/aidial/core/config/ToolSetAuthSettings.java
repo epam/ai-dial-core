@@ -22,7 +22,7 @@ public class ToolSetAuthSettings {
 
     @NotNull(message = "ToolsetAuthenticationType must be defined")
     @JsonAlias({"authenticationType", "authentication_type"})
-    private AuthenticationType authenticationType;
+    private AuthenticationType authenticationType = AuthenticationType.NONE;
 
     @JsonAlias({"clientId", "client_id"})
     private String clientId;

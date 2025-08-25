@@ -205,19 +205,9 @@ public class ResourceController extends AccessControlBaseController {
         return taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
-
             ToolSet toolSet = result.getValue();
-            ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
-            toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
-            if (toolsetAuthSettings != null && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
-                toolsetAuthSettings.setClientSecret(null);
-                toolsetAuthSettings.setTokenEndpoint(null);
-                toolsetAuthSettings.setCodeVerifier(null);
-            }
             String body = ProxyUtil.convertToString(toolSet);
-
             return Pair.of(meta, body);
-
         });
     }
 
@@ -294,12 +284,6 @@ public class ResourceController extends AccessControlBaseController {
                 ToolSet toolSet = ProxyUtil.convertToObject(pair.getValue(), ToolSet.class);
                 if (toolSet == null) {
                     throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
-                }
-                toolSet.setName(descriptor.getUrl());
-                //TODO: now it registers auth settings only on ToolSet create.
-                // should we apply registration on update as well?
-                if (resourceService.getResourceMetadata(descriptor) == null) {
-                    toolsetAuthSettingsService.initToolsetAuthSettings(toolSet);
                 }
                 return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey());
             });

@@ -32,6 +32,11 @@ public class ToolSetAuthSettingsService {
                 throw new IllegalArgumentException("ToolSetAuthSettings is not defined for ToolSet: " + toolSet.getName());
             }
 
+            if (toolSetAuthSettings.getAuthenticationType() == AuthenticationType.NONE) {
+                // do nothing
+                return;
+            }
+
             toolSetAuthSettingsValidator.validate(toolSetAuthSettings);
 
             ToolSetRegistration toolSetRegistration = shouldRegisterToolsetDynamically(toolSetAuthSettings)

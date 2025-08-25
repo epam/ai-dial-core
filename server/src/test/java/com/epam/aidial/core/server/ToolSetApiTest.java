@@ -20,7 +20,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 "icon_url": "http://toolset/icon.svg",
                 "description": "My toolset Description",
                 "transport": "HTTP",
-                "allowedTools": ["tool1", "tool2"]
+                "allowedTools": ["tool1", "tool2"],
+                "authSettings": {
+                   "authenticationType": "NONE"
+                }
                 }
                 """);
         verifyJsonNotExact(response, 200, """
@@ -53,9 +56,18 @@ public class ToolSetApiTest extends ResourceBaseTest {
                    "interceptors" : [ ],
                    "description_keywords" : [ ],
                    "max_retry_attempts" : 1,
+                   "author" : "EPM-RTC-GPT",
+                   "created_at" : "@ignore",
+                   "updated_at" : "@ignore",
                    "dependencies" : [ ],
                    "transport" : "HTTP",
-                   "allowed_tools" : [ "tool1", "tool2" ]
+                   "allowed_tools" : [ "tool1", "tool2" ],
+                   "auth_settings" : {
+                    "authentication_type" : "NONE",
+                    "global_auth_status" : "SIGNED_OUT",
+                    "user_level_auth_status" : "SIGNED_OUT"
+                  }
+                }
                  }
                 """);
     }
@@ -97,7 +109,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
                      "transport" : "HTTP",
-                     "allowed_tools" : [ "branch", "remote" ]
+                     "allowed_tools" : [ "branch", "remote" ],
+                     "auth_settings" : {
+                        "authentication_type" : "NONE"
+                     }
                    } ],
                    "object" : "list"
                  }
@@ -111,7 +126,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 "icon_url": "http://toolset/icon.svg",
                 "description": "My toolset Description",
                 "transport": "HTTP",
-                "allowedTools": ["tool1", "tool2"]
+                "allowedTools": ["tool1", "tool2"],
+                "auth_settings" : {
+                        "authentication_type" : "NONE"
+                     }
                 }
                 """);
         verify(response, 200);
@@ -156,7 +174,12 @@ public class ToolSetApiTest extends ResourceBaseTest {
                   "allowed_tools": [
                     "tool1",
                     "tool2"
-                  ]
+                  ],
+                  "auth_settings" : {
+                        "authentication_type" : "NONE",
+                        "global_auth_status" : "SIGNED_OUT",
+                         "user_level_auth_status" : "SIGNED_OUT"
+                     }
                 }
                 """);
 
@@ -194,7 +217,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
                       "transport" : "HTTP",
-                      "allowed_tools" : [ "branch", "remote" ]
+                      "allowed_tools" : [ "branch", "remote" ],
+                      "auth_settings" : {
+                        "authentication_type" : "NONE"
+                     }
                     }, {
                       "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
                       "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
@@ -230,7 +256,12 @@ public class ToolSetApiTest extends ResourceBaseTest {
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
                       "transport" : "HTTP",
-                      "allowed_tools" : [ "tool1", "tool2" ]
+                      "allowed_tools" : [ "tool1", "tool2" ],
+                      "auth_settings" : {
+                        "authentication_type" : "NONE",
+                        "global_auth_status" : "SIGNED_OUT",
+                        "user_level_auth_status" : "SIGNED_OUT"
+                     }
                     } ],
                     "object" : "list"
                   }
