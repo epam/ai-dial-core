@@ -25,6 +25,10 @@ public class ToolSet extends Deployment {
     @JsonAlias({"allowedTools", "allowed_tools"})
     private List<String> allowedTools = List.of();
 
+    // TODO: might be moved closer to other credentails code
+    @JsonAlias({"authSettings", "auth_settings"})
+    private ToolSetAuthSettings authSettings = new ToolSetAuthSettings();
+
     public enum Transport {
         HTTP, SSE;
     }

@@ -31,6 +31,9 @@ import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
+import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -124,6 +127,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final WellKnownResourceMetadataController resourceMetadataController;
     private final ToolSetService toolSetService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final ToolSetCredentialsManager toolSetCredentialsManager;
+    private final ToolSetCredentialsService toolsetCredentialsService;
+    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
 

@@ -1,16 +1,19 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.toolset.credentials.ToolSetCredentials;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -23,6 +26,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -51,6 +55,8 @@ public class ToolSetProxyController implements Controller {
 
     private final LogStore logStore;
 
+    private final ToolSetCredentialsManager toolSetCredentialsManager;
+
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         this.taskExecutor = proxy.getTaskExecutor();
         this.deploymentService = proxy.getDeploymentService();
@@ -60,6 +66,7 @@ public class ToolSetProxyController implements Controller {
         this.logStore = proxy.getLogStore();
         this.context = context;
         this.toolSetId = toolSetId;
+        this.toolSetCredentialsManager = proxy.getToolSetCredentialsManager();
     }
 
     @Override
@@ -96,10 +103,15 @@ public class ToolSetProxyController implements Controller {
                 .setTraceOperation(context.getTraceOperation())
                 .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
                 .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
+        taskExecutor.submit(() -> {
+            ToolSet toolSet = (ToolSet) context.getDeployment();
+            return toolSetCredentialsManager.getToolSetCredentials(toolSetId, toolSet.getAuthSettings(), context);
+        }).onSuccess(credentials -> {
+            httpClient.request(options)
+                    .onSuccess(proxyRequest -> handleProxyRequest(proxyRequest, credentials))
+                    .onFailure(this::handleProxyConnectionError);
+        }).onFailure(this::handleError);
 
-        httpClient.request(options)
-                .onSuccess(this::handleProxyRequest)
-                .onFailure(this::handleProxyConnectionError);
     }
 
     private void handleRequestBody(Buffer requestBody) {
@@ -110,13 +122,19 @@ public class ToolSetProxyController implements Controller {
     /**
      * Called when proxy connected to the origin.
      */
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin: {}", proxyRequest.connection().remoteAddress());
+    private void handleProxyRequest(HttpClientRequest proxyRequest, ToolSetCredentials toolSetCredentials) {
+        HttpConnection connection = proxyRequest.connection();
+        log.info("Connected to origin: {}", connection.remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        try {
+            addToolsetCredentials(proxyRequest, toolSetCredentials);
+        } catch (ResourceNotFoundException e) {
+            log.error(e.getMessage(), e);
+        }
 
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
@@ -124,6 +142,17 @@ public class ToolSetProxyController implements Controller {
         proxyRequest.send(proxyRequestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
+    }
+
+    private void addToolsetCredentials(HttpClientRequest proxyRequest, ToolSetCredentials toolSetCredentials) {
+        if (toolSetCredentials == null) {
+            return;
+        }
+        if (AuthenticationType.OAUTH.equals(toolSetCredentials.getAuthenticationType())) {
+            proxyRequest.putHeader("Authorization", "Bearer " + toolSetCredentials.getAccessToken());
+        } else if (AuthenticationType.API_KEY.equals(toolSetCredentials.getAuthenticationType())) {
+            proxyRequest.putHeader(toolSetCredentials.getApiKeyHeader(), toolSetCredentials.getApiKey());
+        }
     }
 
     /**

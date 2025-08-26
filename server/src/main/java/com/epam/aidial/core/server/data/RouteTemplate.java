@@ -154,6 +154,11 @@ public enum RouteTemplate {
             "/v1/ops/code_interpreter/{operation}"
     ),
 
+    TOOL_SET_CREDENTIALS(
+        "^/v1/ops/toolset/(signin|signout)",
+        "/v1/ops/toolset/{operation}"
+    ),
+
     // Other routes
     CONFIG(
             "^/v1/ops/config/reload$",

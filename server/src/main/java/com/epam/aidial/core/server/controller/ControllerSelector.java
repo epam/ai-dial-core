@@ -225,6 +225,17 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+
+        post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            String operation = pathMatcher.group(1);
+            ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
+
+            return switch (operation) {
+                case "signin" -> controller::signIn;
+                case "signout" -> controller::signOut;
+                default -> null;
+            };
+        });
         post(RouteTemplate.PUBLISHED_RESOURCES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listPublishedResources;
@@ -305,6 +316,7 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
