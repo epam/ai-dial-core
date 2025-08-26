@@ -50,6 +50,9 @@ public class ApplicationService {
 
     private static final String DEPLOYMENTS_NAME = "deployments";
 
+    private static final String PUBLIC_DEPLOYMENTS_PREFIX = ResourceDescriptor.PUBLIC_BUCKET
+            + ResourceDescriptor.PATH_SEPARATOR + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR;
+
     private final Vertx vertx;
     private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
@@ -777,5 +780,9 @@ public class ApplicationService {
             }
         }
         return fileName;
+    }
+
+    public static boolean isPublicApplicationSourceDirectory(ResourceDescriptor resource) {
+        return resource.getBucketLocation().startsWith(PUBLIC_DEPLOYMENTS_PREFIX);
     }
 }
