@@ -179,7 +179,7 @@ public class AiDial {
 
             ToolSetAuthorizationClient toolSetAuthorizationClient = new ToolSetAuthorizationClient();
             ToolSetTokenService toolSetTokenService = new ToolSetTokenService(toolSetAuthorizationClient);
-            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService();
+            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService(resourceService, encryptionService);
             ToolSetCredentialsManager toolSetCredentialsManager = new ToolSetCredentialsManager(toolSetCredentialsService, toolSetTokenService);
             ToolSetRegistrationService toolSetRegistrationService = new ToolSetRegistrationService(toolSetAuthorizationClient);
             ToolSetAuthSettingsValidator toolSetAuthSettingsValidator = new ToolSetAuthSettingsValidator();
