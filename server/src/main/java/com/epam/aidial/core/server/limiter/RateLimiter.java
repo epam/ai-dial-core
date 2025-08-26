@@ -48,37 +48,37 @@ public class RateLimiter {
 
             TokenUsage usage = context.getTokenUsage();
 
-            // Calculate and update cost limits first, before token check
+            // Calculate and update cost limits
             BigDecimal cost = ModelCostCalculator.calculate(context);
-            Future<Void> costFuture = null;
+            Future<Void> costFuture;
             if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
-                // Store the cost in the token usage for reference (if usage exists)
+                // Store the cost in the token usage for reference
                 if (usage != null) {
                     usage.setCost(cost);
+                    usage.setAggCost(cost);
                 }
 
                 // Update cost limits
                 String costsPath = getPathToCosts();
                 ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
                 costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
+            } else {
+                costFuture = Future.succeededFuture();
             }
 
             // Check if we should update token limits
+            Future<Void> tokenFuture;
             if (usage == null || usage.getTotalTokens() <= 0) {
-                return costFuture != null ? costFuture : Future.succeededFuture();
+                tokenFuture = Future.succeededFuture();
+            } else {
+                // Update token limits
+                String tokensPath = getPathToTokens(roleBasedEntity.getName());
+                ResourceDescriptor tokenResourceDescription = getResourceDescription(context, tokensPath);
+                tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
             }
-
-            // Update token limits
-            String tokensPath = getPathToTokens(roleBasedEntity.getName());
-            ResourceDescriptor tokenResourceDescription = getResourceDescription(context, tokensPath);
-            Future<Void> tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
 
             // Wait for both updates to complete if both exist
-            if (costFuture != null) {
-                return Future.all(tokenFuture, costFuture).mapEmpty();
-            }
-
-            return tokenFuture;
+            return Future.all(tokenFuture, costFuture).mapEmpty();
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
