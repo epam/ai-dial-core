@@ -114,6 +114,24 @@ public class ApplicationOperatorService {
                 body -> convertServerSentEvent(body, EmptyResponse.class));
     }
 
+    public String createCodeInterpreterSession(String id, String image, Map<String, String> env) {
+        CreateSessionResponse session = callController(HttpMethod.POST, "/v1/session/" + id,
+                request -> {
+                    request.putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+                    CreateSessionRequest body = new CreateSessionRequest(image, env);
+                    return ProxyUtil.convertToString(body);
+                },
+                body -> convertServerSentEvent(body, CreateSessionResponse.class));
+
+        return session.url();
+    }
+
+    public void deleteCodeInterpreterSession(String id) {
+        callController(HttpMethod.DELETE, "/v1/session/" + id,
+                request -> null,
+                body -> convertServerSentEvent(body, EmptyResponse.class));
+    }
+
     @SneakyThrows
     private <R> R callController(HttpMethod method, String path,
                                  Function<HttpClientRequest, String> requestMapper,
@@ -217,6 +235,13 @@ public class ApplicationOperatorService {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record CreateDeploymentResponse(String url) {
+    }
+
+    private record CreateSessionRequest(String image, Map<String, String> env) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record CreateSessionResponse(String url) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

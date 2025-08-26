@@ -9,5 +9,10 @@ public class CodeInterpreterSession {
     String sessionId;
     String deploymentId;
     String deploymentUrl;
+    DeploymentType deploymentType = DeploymentType.DEPLOYMENT;
     Long usedAt;
+
+    public enum DeploymentType {
+        SESSION, DEPLOYMENT;
+    }
 }
