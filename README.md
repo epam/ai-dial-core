@@ -128,6 +128,7 @@ Priority order:
 | applications.controllerEndpoint               |         -          |    No    |The endpoint to Application Controller Web Service that manages deployments for applications with functions 
 | applications.controllerTimeout                |       240000       |    No    |The timeout of operations to Application Controller Web Service
 | codeInterpreter.sessionImage                  |         -          |    No    |The code interpreter session image to use
+| codeInterpreter.sessionProxyUrl               |         -          |    No    |The code interpreter will be deployed as a pod instead of knative deployment and all requests will be proxied through nginx proxy
 | codeInterpreter.sessionTtl                    |       600000       |    No    |The session time to leave after the last API call
 | codeInterpreter.checkPeriod                   |       10000        |    No    |The interval at which to check active sessions for expiration
 | codeInterpreter.checkSize                     |        256         |    No    |The maximum number of active sessions to check in single check
