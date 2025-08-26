@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterOutputFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession.DeploymentType;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
@@ -37,6 +38,7 @@ import org.redisson.api.RedissonClient;
 
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -56,6 +58,7 @@ public class CodeInterpreterService {
     private final RScoredSortedSet<String> activeSessions;
     private final CodeInterpreterClient client;
     private final Supplier<String> idGenerator;
+    private final String sessionProxyUrl;
     private final String sessionImage;
     private final long sessionTtl;
     private final int checkSize;
@@ -74,10 +77,11 @@ public class CodeInterpreterService {
         this.operatorService = operatorService;
         this.idGenerator = idGenerator;
         this.activeSessions = redisson.getScoredSortedSet(activeSessionsKey);
+        this.sessionProxyUrl = settings.getString("sessionProxyUrl");
         this.sessionImage = settings.getString("sessionImage");
         this.sessionTtl = settings.getLong("sessionTtl", 600000L);
         this.checkSize = settings.getInteger("checkSize", 256);
-        this.client = new CodeInterpreterClient(sessionTtl);
+        this.client = new CodeInterpreterClient(sessionProxyUrl, sessionTtl);
 
         if (isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 10000L);
@@ -113,7 +117,7 @@ public class CodeInterpreterService {
             CodeInterpreterSession session = convertToObject(json, CodeInterpreterSession.class);
 
             if (session != null && predicate.test(session)) {
-                operatorService.deleteCodeInterpreterDeployment(session.getDeploymentId());
+                undeploy(session);
                 resourceService.deleteResource(resource, EtagHeader.ANY, false);
                 session = null;
             }
@@ -176,6 +180,7 @@ public class CodeInterpreterService {
         CodeInterpreterSession session = new CodeInterpreterSession();
         session.setSessionId(sessionId);
         session.setDeploymentId(idGenerator.get());
+        session.setDeploymentType(sessionProxyUrl == null ? DeploymentType.DEPLOYMENT : DeploymentType.SESSION);
         boolean cleanup = false;
 
         try (LockService.Lock lock = resourceService.lockResource(resource)) {
@@ -190,7 +195,7 @@ public class CodeInterpreterService {
             activeSessions.add(session.getUsedAt() + sessionTtl, resource.getUrl());
             resourceService.putResource(resource, convertToString(session), EtagHeader.ANY, null, false);
 
-            String deploymentUrl = operatorService.createCodeInterpreterDeployment(session.getDeploymentId(), sessionImage);
+            String deploymentUrl = deploy(session);
             session.setDeploymentUrl(deploymentUrl);
             session.setUsedAt(System.currentTimeMillis());
 
@@ -221,7 +226,7 @@ public class CodeInterpreterService {
                 throw new ResourceNotFoundException("Session is not found: " + sessionId);
             }
 
-            operatorService.deleteCodeInterpreterDeployment(session.getDeploymentId());
+            undeploy(session);
             resourceService.deleteResource(resource, EtagHeader.ANY, false);
             activeSessions.remove(resource.getUrl());
             return session;
@@ -348,6 +353,24 @@ public class CodeInterpreterService {
             return resource;
         } catch (Throwable e) {
             throw new IllegalArgumentException("Invalid sessionId: " + sessionId);
+        }
+    }
+
+    private String deploy(CodeInterpreterSession session) {
+        if (session.getDeploymentType() == DeploymentType.SESSION) {
+            // setting session id, so code interpreter will validate it on each request
+            Map<String, String> env = Map.of("SESSION_ID", session.getDeploymentId());
+            return operatorService.createCodeInterpreterSession(session.getDeploymentId(), sessionImage, env);
+        } else {
+            return operatorService.createCodeInterpreterDeployment(session.getDeploymentId(), sessionImage);
+        }
+    }
+
+    private void undeploy(CodeInterpreterSession session) {
+        if (session.getDeploymentType() == DeploymentType.SESSION) {
+            operatorService.deleteCodeInterpreterSession(session.getDeploymentId());
+        } else {
+            operatorService.deleteCodeInterpreterDeployment(session.getDeploymentId());
         }
     }
 

@@ -30,10 +30,17 @@ import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
+import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
+import com.epam.aidial.core.server.service.credentials.ToolSetAuthorizationClient;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
+import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService;
+import com.epam.aidial.core.server.service.credentials.ToolSetRegistrationService;
+import com.epam.aidial.core.server.service.credentials.ToolSetTokenService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.validation.ToolSetAuthSettingsValidator;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
@@ -74,7 +81,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -171,7 +177,16 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            ToolSetService toolSetService = new ToolSetService(resourceService);
+            ToolSetAuthorizationClient toolSetAuthorizationClient = new ToolSetAuthorizationClient();
+            ToolSetTokenService toolSetTokenService = new ToolSetTokenService(toolSetAuthorizationClient);
+            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService();
+            ToolSetCredentialsManager toolSetCredentialsManager = new ToolSetCredentialsManager(toolSetCredentialsService, toolSetTokenService);
+            ToolSetRegistrationService toolSetRegistrationService = new ToolSetRegistrationService(toolSetAuthorizationClient);
+            ToolSetAuthSettingsValidator toolSetAuthSettingsValidator = new ToolSetAuthSettingsValidator();
+            ToolSetAuthSettingsService toolSetAuthSettingsService = new ToolSetAuthSettingsService(toolSetRegistrationService, toolSetAuthSettingsValidator,
+                    toolSetCredentialsManager);
+
+            ToolSetService toolSetService = new ToolSetService(resourceService, toolSetAuthSettingsService);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService);
@@ -189,7 +204,8 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
-                    toolSetService, applicationSchemaService, taskExecutor, version());
+                    toolSetService, applicationSchemaService, toolSetCredentialsManager, toolSetCredentialsService,
+                    toolSetAuthSettingsService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
