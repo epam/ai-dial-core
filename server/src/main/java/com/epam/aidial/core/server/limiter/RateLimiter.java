@@ -48,8 +48,24 @@ public class RateLimiter {
 
             TokenUsage usage = context.getTokenUsage();
 
+            // Calculate and update cost limits first, before token check
+            BigDecimal cost = ModelCostCalculator.calculate(context);
+            Future<Void> costFuture = null;
+            if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
+                // Store the cost in the token usage for reference (if usage exists)
+                if (usage != null) {
+                    usage.setCost(cost);
+                }
+
+                // Update cost limits
+                String costsPath = getPathToCosts();
+                ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
+                costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
+            }
+
+            // Check if we should update token limits
             if (usage == null || usage.getTotalTokens() <= 0) {
-                return Future.succeededFuture();
+                return costFuture != null ? costFuture : Future.succeededFuture();
             }
 
             // Update token limits
@@ -57,18 +73,8 @@ public class RateLimiter {
             ResourceDescriptor tokenResourceDescription = getResourceDescription(context, tokensPath);
             Future<Void> tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
 
-            // Calculate and update cost limits
-            BigDecimal cost = ModelCostCalculator.calculate(context);
-            if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
-                // Store the cost in the token usage for reference
-                usage.setCost(cost);
-
-                // Update cost limits
-                String costsPath = getPathToCosts();
-                ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
-                Future<Void> costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
-
-                // Wait for both updates to complete
+            // Wait for both updates to complete if both exist
+            if (costFuture != null) {
                 return Future.all(tokenFuture, costFuture).mapEmpty();
             }
 
