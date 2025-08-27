@@ -452,15 +452,13 @@ public class DeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                proxy.getRateLimiter().increase(context, context.getDeployment()).onFailure(error -> log.warn("Failed to increase limit", error));
-                try {
-                    BigDecimal cost = ModelCostCalculator.calculate(context);
-                    tokenUsage.setCost(cost);
-                    tokenUsage.setAggCost(cost);
-                } catch (Throwable e) {
-                    log.warn("Failed to calculate cost for model={}", context.getDeployment().getName(), e);
-                }
-                tokenUsageFuture = proxy.getTokenStatsTracker().updateModelStats(context);
+                tokenUsageFuture = proxy.getRateLimiter().increase(context, context.getDeployment())
+                    .transform(result -> {
+                        if (result.failed()) {
+                            log.warn("Failed to increase limit", result.cause());
+                        }
+                        return proxy.getTokenStatsTracker().updateModelStats(context);
+                    });
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));

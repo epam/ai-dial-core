@@ -1,14 +1,17 @@
 package com.epam.aidial.core.server.limiter;
 
+import com.epam.aidial.core.config.CostLimit;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.CostItemLimitStats;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -19,6 +22,7 @@ import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +32,7 @@ import java.util.Optional;
 public class RateLimiter {
 
     private static final Limit DEFAULT_LIMIT = new Limit();
+    private static final CostLimit DEFAULT_COST_LIMIT = new CostLimit();
     private static final String DEFAULT_USER_ROLE = "default";
 
     private final AsyncTaskExecutor taskExecutor;
@@ -43,13 +48,37 @@ public class RateLimiter {
 
             TokenUsage usage = context.getTokenUsage();
 
-            if (usage == null || usage.getTotalTokens() <= 0) {
-                return Future.succeededFuture();
+            // Calculate and update cost limits
+            BigDecimal cost = ModelCostCalculator.calculate(context);
+            Future<Void> costFuture;
+            if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
+                // Store the cost in the token usage for reference
+                if (usage != null) {
+                    usage.setCost(cost);
+                    usage.setAggCost(cost);
+                }
+
+                // Update cost limits
+                String costsPath = getPathToCosts();
+                ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
+                costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
+            } else {
+                costFuture = Future.succeededFuture();
             }
 
-            String tokensPath = getPathToTokens(roleBasedEntity.getName());
-            ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
-            return taskExecutor.submit(() -> updateTokenLimit(resourceDescription, usage.getTotalTokens()));
+            // Check if we should update token limits
+            Future<Void> tokenFuture;
+            if (usage == null || usage.getTotalTokens() <= 0) {
+                tokenFuture = Future.succeededFuture();
+            } else {
+                // Update token limits
+                String tokensPath = getPathToTokens(roleBasedEntity.getName());
+                ResourceDescriptor tokenResourceDescription = getResourceDescription(context, tokensPath);
+                tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
+            }
+
+            // Wait for both updates to complete if both exist
+            return Future.all(tokenFuture, costFuture).mapEmpty();
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -93,10 +122,12 @@ public class RateLimiter {
     }
 
     private LimitStats getLimitStats(ProxyContext context, Limit limit, String name) {
-        LimitStats limitStats = create(limit);
+        CostLimit costLimit = getCostLimitByUser(context);
+        LimitStats limitStats = create(limit, costLimit);
         long timestamp = System.currentTimeMillis();
         collectTokenLimitStats(context, limitStats, timestamp, name);
         collectRequestLimitStats(context, limitStats, timestamp, name);
+        collectCostLimitStats(context, limitStats, timestamp);
         return limitStats;
     }
 
@@ -122,9 +153,25 @@ public class RateLimiter {
         rateLimit.update(timestamp, limitStats);
     }
 
+    private void collectCostLimitStats(ProxyContext context, LimitStats limitStats, long timestamp) {
+        String costsPath = getPathToCosts();
+        ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
+        String json = resourceService.getResource(resourceDescription);
+        CostRateLimit rateLimit = ProxyUtil.convertToObject(json, CostRateLimit.class);
+        if (rateLimit == null) {
+            return;
+        }
+        rateLimit.update(timestamp, limitStats);
+    }
+
     private LimitStats create(Limit limit) {
+        return create(limit, null);
+    }
+
+    private LimitStats create(Limit limit, CostLimit costLimit) {
         LimitStats limitStats = new LimitStats();
 
+        // Token limits
         ItemLimitStats dayTokenStats = new ItemLimitStats();
         dayTokenStats.setTotal(limit.getDay());
         limitStats.setDayTokenStats(dayTokenStats);
@@ -132,6 +179,14 @@ public class RateLimiter {
         ItemLimitStats minuteTokenStats = new ItemLimitStats();
         minuteTokenStats.setTotal(limit.getMinute());
         limitStats.setMinuteTokenStats(minuteTokenStats);
+
+        ItemLimitStats weekTokenStats = new ItemLimitStats();
+        weekTokenStats.setTotal(limit.getWeek());
+        limitStats.setWeekTokenStats(weekTokenStats);
+
+        ItemLimitStats monthTokenStats = new ItemLimitStats();
+        monthTokenStats.setTotal(limit.getMonth());
+        limitStats.setMonthTokenStats(monthTokenStats);
 
         ItemLimitStats hourRequestStats = new ItemLimitStats();
         hourRequestStats.setTotal(limit.getRequestHour());
@@ -141,13 +196,23 @@ public class RateLimiter {
         dayRequestStats.setTotal(limit.getRequestDay());
         limitStats.setDayRequestStats(dayRequestStats);
 
-        ItemLimitStats weekTokenStats = new ItemLimitStats();
-        weekTokenStats.setTotal(limit.getWeek());
-        limitStats.setWeekTokenStats(weekTokenStats);
+        if (costLimit != null) {
+            CostItemLimitStats minuteCostStats = new CostItemLimitStats();
+            minuteCostStats.setTotal(costLimit.getMinute());
+            limitStats.setMinuteCostStats(minuteCostStats);
 
-        ItemLimitStats monthTokenStats = new ItemLimitStats();
-        monthTokenStats.setTotal(limit.getMonth());
-        limitStats.setMonthTokenStats(monthTokenStats);
+            CostItemLimitStats dayCostStats = new CostItemLimitStats();
+            dayCostStats.setTotal(costLimit.getDay());
+            limitStats.setDayCostStats(dayCostStats);
+
+            CostItemLimitStats weekCostStats = new CostItemLimitStats();
+            weekCostStats.setTotal(costLimit.getWeek());
+            limitStats.setWeekCostStats(weekCostStats);
+
+            CostItemLimitStats monthCostStats = new CostItemLimitStats();
+            monthCostStats.setTotal(costLimit.getMonth());
+            limitStats.setMonthCostStats(monthCostStats);
+        }
 
         return limitStats;
     }
@@ -162,11 +227,33 @@ public class RateLimiter {
 
     private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {
         long timestamp = System.currentTimeMillis();
+
+        // Check token limits
         RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, roleBasedEntity);
         if (tokenResult.status() != HttpStatus.OK) {
             return tokenResult;
         }
-        return checkRequestLimit(context, limit, timestamp, roleBasedEntity);
+
+        // Check request limits
+        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, roleBasedEntity);
+        if (requestResult.status() != HttpStatus.OK) {
+            return requestResult;
+        }
+
+        // Check cost limits
+        CostLimit costLimit = getCostLimitByUser(context);
+        return checkCostLimit(context, costLimit, timestamp);
+    }
+
+    private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp) {
+        String costsPath = getPathToCosts();
+        ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
+        String prevValue = resourceService.getResource(resourceDescription);
+        CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
+        if (rateLimit == null) {
+            return RateLimitResult.SUCCESS;
+        }
+        return rateLimit.check(timestamp, costLimit);
     }
 
     private RateLimitResult checkTokenLimit(ProxyContext context, Limit limit, long timestamp, RoleBasedEntity roleBasedEntity) {
@@ -213,6 +300,21 @@ public class RateLimiter {
         return ProxyUtil.convertToString(rateLimit);
     }
 
+    private Void updateCostLimit(ResourceDescriptor resourceDescription, BigDecimal cost) {
+        resourceService.computeResource(resourceDescription, json -> updateCostLimit(json, cost));
+        return null;
+    }
+
+    private String updateCostLimit(String json, BigDecimal cost) {
+        CostRateLimit rateLimit = ProxyUtil.convertToObject(json, CostRateLimit.class);
+        if (rateLimit == null) {
+            rateLimit = new CostRateLimit();
+        }
+        long timestamp = System.currentTimeMillis();
+        rateLimit.add(timestamp, cost);
+        return ProxyUtil.convertToString(rateLimit);
+    }
+
     private Limit getLimitByUser(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         String name = roleBasedEntity.getName();
         List<String> userRoles;
@@ -253,6 +355,35 @@ public class RateLimiter {
         return limit == null ? defaultUserLimit : limit;
     }
 
+    private CostLimit getCostLimitByUser(ProxyContext context) {
+        List<String> userRoles = context.getUserRoles();
+        Map<String, Role> roles = context.getConfig().getRoles();
+        CostLimit defaultUserCostLimit = getCostLimit(roles, DEFAULT_USER_ROLE, DEFAULT_COST_LIMIT);
+        if (userRoles.isEmpty()) {
+            return defaultUserCostLimit;
+        }
+        CostLimit costLimit = null;
+        for (String userRole : userRoles) {
+            CostLimit candidate = getCostLimit(roles, userRole, null);
+            if (candidate != null) {
+                if (costLimit == null) {
+                    costLimit = new CostLimit();
+                    costLimit.setMinute(candidate.getMinute());
+                    costLimit.setDay(candidate.getDay());
+                    costLimit.setWeek(candidate.getWeek());
+                    costLimit.setMonth(candidate.getMonth());
+                } else {
+                    // Use the maximum limit for each time period
+                    costLimit.setMinute(costLimit.getMinute().max(candidate.getMinute()));
+                    costLimit.setDay(costLimit.getDay().max(candidate.getDay()));
+                    costLimit.setWeek(costLimit.getWeek().max(candidate.getWeek()));
+                    costLimit.setMonth(costLimit.getMonth().max(candidate.getMonth()));
+                }
+            }
+        }
+        return costLimit == null ? defaultUserCostLimit : costLimit;
+    }
+
     private static String getPathToTokens(String name) {
         return String.format("%s/tokens", name);
     }
@@ -261,10 +392,19 @@ public class RateLimiter {
         return String.format("%s/requests", name);
     }
 
+    private static String getPathToCosts() {
+        return "costs";
+    }
+
     private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {
         return Optional.ofNullable(roles.get(userRole))
                 .map(role -> role.getLimits().get(name))
                 .orElse(defaultLimit);
     }
 
+    private static CostLimit getCostLimit(Map<String, Role> roles, String userRole, CostLimit defaultCostLimit) {
+        return Optional.ofNullable(roles.get(userRole))
+                .map(Role::getCostLimit)
+                .orElse(defaultCostLimit);
+    }
 }

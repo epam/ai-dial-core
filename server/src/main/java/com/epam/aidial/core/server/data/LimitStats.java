@@ -10,4 +10,8 @@ public class LimitStats {
     private ItemLimitStats monthTokenStats;
     private ItemLimitStats hourRequestStats;
     private ItemLimitStats dayRequestStats;
+    private CostItemLimitStats minuteCostStats;
+    private CostItemLimitStats dayCostStats;
+    private CostItemLimitStats weekCostStats;
+    private CostItemLimitStats monthCostStats;
 }

@@ -30,7 +30,7 @@ public class RequestRateLimit {
                 limits.add("daily");
             }
             if (hourTotal >= limit.getRequestHour()) {
-                limits.add("minutely");
+                limits.add("hourly");
             }
             for (int i = 0; i < limits.size(); i++) {
                 if (i > 0) {
