@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
+import java.util.Map;
 import java.util.Set;
 
 @AllArgsConstructor
@@ -25,4 +26,8 @@ public abstract class MetadataBase {
     private ResourceType resourceType;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Set<ResourceAccessType> permissions;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String sharedBy;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Map<String, Set<ResourceAccessType>> sharedWith;
 }

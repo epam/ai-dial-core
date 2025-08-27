@@ -106,7 +106,8 @@ public class ResourceOperationController {
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
-                        resourceOperationService.moveResource(source, destination, request.isOverwrite());
+                        resourceOperationService.moveResource(
+                                source, destination, request.isOverwrite(), context.getUserDisplayName());
                         return null;
                     }));
                 })

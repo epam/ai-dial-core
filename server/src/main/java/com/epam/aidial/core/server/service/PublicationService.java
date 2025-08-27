@@ -294,7 +294,7 @@ public class PublicationService {
             for (Pair<String, String> pair : reviewResourcesToMove) {
                 ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(pair.getLeft(), encryption);
                 ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(pair.getRight(), encryption);
-                resourceOperationService.moveResource(from, to, false);
+                resourceOperationService.moveResource(from, to, false, context.getUserDisplayName());
             }
 
             // delete removed resources from the review bucket

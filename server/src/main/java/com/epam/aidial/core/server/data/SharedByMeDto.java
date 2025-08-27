@@ -25,6 +25,7 @@ public class SharedByMeDto {
     Map<String, Set<String>> readableResourceToUsers;
     Map<String, Set<String>> writableResourcesToUsers;
     Map<String, Set<String>> shareableResourcesToUsers;
+    Map<String, String> usersToDisplayName;
 
     @JsonCreator
     public SharedByMeDto(
@@ -35,10 +36,13 @@ public class SharedByMeDto {
             @JsonProperty("limits")
             Map<String, ShareResourceLimit> limits,
             @JsonProperty("shareableResourcesToUsers")
-            Map<String, Set<String>> shareableResourcesToUsers) {
+            Map<String, Set<String>> shareableResourcesToUsers,
+            @JsonProperty("usersToDisplayName")
+            Map<String, String> usersToDisplayName) {
         this.readableResourceToUsers = readableResourceToUsers;
         this.writableResourcesToUsers = Objects.requireNonNullElseGet(writableResourcesToUsers, HashMap::new);
         this.shareableResourcesToUsers = Objects.requireNonNullElseGet(shareableResourcesToUsers, HashMap::new);
+        this.usersToDisplayName = Objects.requireNonNullElseGet(usersToDisplayName, HashMap::new);
         this.limits = limits;
     }
 
@@ -48,7 +52,7 @@ public class SharedByMeDto {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    public void addUserToResource(SharedResource resource, String userLocation) {
+    public void addUserToResource(SharedResource resource, String userLocation, String userDisplayName) {
         Set<ResourceAccessType> permissions = resource.getPermissions();
         String url = resource.getUrl();
         for (ResourceAccessType permission : permissions) {
@@ -56,15 +60,20 @@ public class SharedByMeDto {
                     .computeIfAbsent(url, k -> new HashSet<>());
             users.add(userLocation);
         }
+        usersToDisplayName.put(userLocation, userDisplayName);
     }
 
-    public void addUserPermissionsToResource(String url, Map<String, Set<ResourceAccessType>> userPermissions) {
+    public void addUserPermissionsToResource(
+            String url,
+            Map<String, Set<ResourceAccessType>> userPermissions,
+            Map<String, String> userDisplayNames) {
         userPermissions.forEach((user, permissions) -> {
             for (ResourceAccessType permission : permissions) {
                 Set<String> users = getUserMapForPermission(permission)
                         .computeIfAbsent(url, k -> new HashSet<>());
                 users.add(user);
             }
+            usersToDisplayName.put(user, userDisplayNames.get(user));
         });
     }
 
@@ -79,6 +88,7 @@ public class SharedByMeDto {
                 }
             }
         }
+        refreshDisplayNames();
     }
 
     public void removePermissionsFromResource(String url, Set<ResourceAccessType> permissionsToRemove) {
@@ -86,6 +96,15 @@ public class SharedByMeDto {
             Map<String, Set<String>> usersMap = getUserMapForPermission(permission);
             usersMap.remove(url);
         }
+        refreshDisplayNames();
+    }
+
+    private void refreshDisplayNames() {
+        Set<String> allUsers = new HashSet<>();
+        allUsers.addAll(readableResourceToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
+        allUsers.addAll(writableResourcesToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
+        allUsers.addAll(shareableResourcesToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
+        usersToDisplayName.keySet().retainAll(allUsers);
     }
 
     @JsonIgnore
@@ -97,6 +116,28 @@ public class SharedByMeDto {
                 Set<ResourceAccessType> permissions = result.computeIfAbsent(
                         resource, k -> EnumSet.noneOf(ResourceAccessType.class));
                 permissions.add(permission);
+            });
+        }
+
+        return result;
+    }
+
+    @JsonIgnore
+    public Map<String, Map<String, Set<ResourceAccessType>>> getPerUserPermissions() {
+        Map<String, Map<String, Set<ResourceAccessType>>> result = new HashMap<>();
+        for (ResourceAccessType permission : ResourceAccessType.ALL) {
+            Map<String, Set<String>> usersMap = getUserMapForPermission(permission);
+            usersMap.forEach((resource, users) -> {
+                Map<String, Set<ResourceAccessType>> userPermissions = result.computeIfAbsent(
+                        resource, k -> new HashMap<>());
+                for (String user : users) {
+                    String displayName = usersToDisplayName.get(user);
+                    if (displayName != null) {
+                        Set<ResourceAccessType> permissions = userPermissions.computeIfAbsent(
+                                displayName, k -> new HashSet<>());
+                        permissions.add(permission);
+                    }
+                }
             });
         }
 

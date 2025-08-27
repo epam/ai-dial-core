@@ -11,33 +11,39 @@ import java.util.Set;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SharedResource {
     String url;
+    String sharedBy;
     Set<ResourceAccessType> permissions;
 
     public SharedResource() {
     }
 
-    public SharedResource(String url, Set<ResourceAccessType> permissions) {
+    public SharedResource(String url, String sharedBy, Set<ResourceAccessType> permissions) {
         this.url = url;
+        this.sharedBy = sharedBy;
         this.permissions = permissions;
     }
 
     public SharedResource withUrl(String url) {
-        return new SharedResource(url, permissions);
+        return new SharedResource(url, sharedBy, permissions);
     }
 
-    public SharedResource withPermissions(Set<ResourceAccessType> permissions) {
-        return new SharedResource(url, permissions);
+    public SharedResource withSharedBy(String author) {
+        return new SharedResource(url, author, permissions);
+    }
+
+    private SharedResource withPermissions(String author, Set<ResourceAccessType> permissions) {
+        return new SharedResource(url, author, permissions);
     }
 
     public SharedResource withReadIfNoPermissions() {
         return permissions == null || permissions.isEmpty()
-                ? withPermissions(EnumSet.copyOf(ResourceAccessType.READ_ONLY))
+                ? withPermissions(sharedBy, EnumSet.copyOf(ResourceAccessType.READ_ONLY))
                 : this;
     }
 
     public SharedResource withAllIfNoPermissions() {
         return permissions == null || permissions.isEmpty()
-                ? withPermissions(EnumSet.copyOf(ResourceAccessType.ALL))
+                ? withPermissions(sharedBy, EnumSet.copyOf(ResourceAccessType.ALL))
                 : this;
     }
 }

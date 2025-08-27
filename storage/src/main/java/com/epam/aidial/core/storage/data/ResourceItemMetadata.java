@@ -27,7 +27,7 @@ public class ResourceItemMetadata extends MetadataBase {
     private String author;
 
     public ResourceItemMetadata(ResourceType type, String bucket, String name, String path, String url) {
-        super(name, path, bucket, url, NodeType.ITEM, type, null);
+        super(name, path, bucket, url, NodeType.ITEM, type, null, null, null);
     }
 
     public ResourceItemMetadata(ResourceDescriptor resource) {

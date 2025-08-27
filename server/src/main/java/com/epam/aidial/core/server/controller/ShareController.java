@@ -193,7 +193,8 @@ public class ShareController {
 
                     return proxy.getTaskExecutor().submit(() ->
                             lockService.underBucketLock(bucketLocation, () -> {
-                                shareService.copySharedAccess(bucket, bucketLocation, source, destination);
+                                shareService.copySharedAccess(
+                                        bucket, bucketLocation, source, destination, context.getUserDisplayName());
                                 return null;
                             }));
                 })

@@ -26,12 +26,13 @@ public class SharedResources {
                 .collect(Collectors.toList());
     }
 
-    public void addSharedResources(List<SharedResource> sharedResources) {
-        Map<String, SharedResource> resourcesMap = resources.stream().collect(Collectors.toMap(SharedResource::getUrl, r -> r));
+    public void addSharedResources(List<SharedResource> sharedResources, String sharedBy) {
+        Map<String, SharedResource> resourcesMap = resources.stream()
+                .collect(Collectors.toMap(SharedResource::getUrl, r -> r.withSharedBy(sharedBy)));
         for (SharedResource sharedResource : sharedResources) {
             SharedResource existingResource = resourcesMap.get(sharedResource.getUrl());
             if (existingResource == null) {
-                this.resources.add(sharedResource);
+                this.resources.add(sharedResource.withSharedBy(sharedBy));
             } else {
                 existingResource.getPermissions().addAll(sharedResource.getPermissions());
             }

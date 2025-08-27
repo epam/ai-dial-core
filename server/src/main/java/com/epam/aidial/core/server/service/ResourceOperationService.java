@@ -41,7 +41,8 @@ public class ResourceOperationService {
         return resourceService.subscribeResources(resources, subscriber);
     }
 
-    public void moveResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
+    public void moveResource(
+            ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists, String userDisplayName) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -78,7 +79,7 @@ public class ResourceOperationService {
 
             if (isSameBucket) {
                 invitationService.moveResource(bucketName, bucketLocation, source, destination);
-                shareService.moveSharedAccess(bucketName, bucketLocation, source, destination);
+                shareService.moveSharedAccess(bucketName, bucketLocation, source, destination, userDisplayName);
             } else {
                 Map<ResourceDescriptor, Set<ResourceAccessType>> resources = Map.of(source, ResourceAccessType.ALL);
                 invitationService.cleanUpPermissions(bucketName, bucketLocation, resources);
