@@ -46,6 +46,7 @@ public class ToolSetController {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
                 toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
+                toolSet.clearAuthSettings();
                 return toolSet;
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
@@ -77,6 +78,7 @@ public class ToolSetController {
             @Override
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
                 ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
+                toolSet.clearAuthSettings();
                 toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
                 return toolSet;
             }

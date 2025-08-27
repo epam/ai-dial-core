@@ -1,10 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -15,7 +13,6 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -52,7 +49,6 @@ public class ResourceController extends AccessControlBaseController {
     private final ApplicationService applicationService;
     private final boolean metadata;
     private final AccessService accessService;
-    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
 
     private final ToolSetService toolSetService;
 
@@ -64,7 +60,6 @@ public class ResourceController extends AccessControlBaseController {
         this.applicationService = proxy.getApplicationService();
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
-        this.toolsetAuthSettingsService = proxy.getToolsetAuthSettingsService();
         this.metadata = metadata;
     }
 
@@ -206,6 +201,7 @@ public class ResourceController extends AccessControlBaseController {
             Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
             ToolSet toolSet = result.getValue();
+            toolSet.clearAuthSettings();
             String body = ProxyUtil.convertToString(toolSet);
             return Pair.of(meta, body);
         });
