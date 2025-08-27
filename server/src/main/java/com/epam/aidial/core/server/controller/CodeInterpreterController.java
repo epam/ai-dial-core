@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
@@ -145,7 +144,12 @@ class CodeInterpreterController {
         HttpServerResponse response = context.getResponse();
 
         return service.downloadFile(context, data.getSessionId(), data.getPath(), (stream, size) -> {
-            response.putHeader(HttpHeaders.CONTENT_LENGTH, Long.toString(size));
+            if (size == null) {
+                response.setChunked(true);
+            } else {
+                response.putHeader(HttpHeaders.CONTENT_LENGTH, Long.toString(size));
+            }
+
             return new InputStreamReader(vertx, taskExecutor, stream)
                     .pipe()
                     .endOnFailure(false)
@@ -196,6 +200,7 @@ class CodeInterpreterController {
         if (data instanceof CodeInterpreterSession session) {
             session.setDeploymentId(null);
             session.setDeploymentUrl(null);
+            session.setDeploymentType(null);
             session.setUsedAt(null);
         }
 

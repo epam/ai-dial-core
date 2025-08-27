@@ -33,9 +33,28 @@ public class LimitApiTest extends ResourceBaseTest {
                   "dayRequestStats": {
                     "total": %d,
                     "used": %d
+                  },
+                  "minuteCostStats": {
+                    "total": %d,
+                    "used": %d
+                  },
+                  "dayCostStats": {
+                    "total": %d,
+                    "used": %d
+                  },
+                  "weekCostStats": {
+                    "total": %d,
+                    "used": %d
+                  },
+                  "monthCostStats": {
+                    "total": %d,
+                    "used": %d
                   }
                 }
-                """.formatted(Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
+                """.formatted(
+                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0,
+                        Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0, Long.MAX_VALUE, 0));
     }
 
     @Test
