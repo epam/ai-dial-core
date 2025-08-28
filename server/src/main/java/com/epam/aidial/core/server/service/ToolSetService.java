@@ -52,12 +52,12 @@ public class ToolSetService {
         }
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
-            //TODO: now it registers auth settings only on ToolSet create.
-            // should we apply registration on update as well?
             if (existing == null || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())) {
                 toolsetAuthSettingsService.initToolsetAuthSettings(toolSet);
+            } else {
+                //TODO we don't support auth settings update yet
+                toolSet.setAuthSettings(existing.getAuthSettings());
             }
-            //TODO we don't support auth settings update yet
             return ProxyUtil.convertToString(toolSet);
         });
 
