@@ -545,7 +545,7 @@ public class ShareService {
 
             // add shared access to the destination resource
             dto.addUserPermissionsToResource(
-                    destinationResourceLink, userPermissions, sharedByMeDto.getUsersToDisplayName());
+                    destinationResourceLink, userPermissions, sharedByMeDto.getUserIdToDisplayName());
 
             return ProxyUtil.convertToString(dto);
         });

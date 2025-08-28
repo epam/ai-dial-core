@@ -25,7 +25,7 @@ public class SharedByMeDto {
     Map<String, Set<String>> readableResourceToUsers;
     Map<String, Set<String>> writableResourcesToUsers;
     Map<String, Set<String>> shareableResourcesToUsers;
-    Map<String, String> usersToDisplayName;
+    Map<String, String> userIdToDisplayName;
 
     @JsonCreator
     public SharedByMeDto(
@@ -37,12 +37,12 @@ public class SharedByMeDto {
             Map<String, ShareResourceLimit> limits,
             @JsonProperty("shareableResourcesToUsers")
             Map<String, Set<String>> shareableResourcesToUsers,
-            @JsonProperty("usersToDisplayName")
-            Map<String, String> usersToDisplayName) {
+            @JsonProperty("userIdToDisplayName")
+            Map<String, String> userIdToDisplayName) {
         this.readableResourceToUsers = readableResourceToUsers;
         this.writableResourcesToUsers = Objects.requireNonNullElseGet(writableResourcesToUsers, HashMap::new);
         this.shareableResourcesToUsers = Objects.requireNonNullElseGet(shareableResourcesToUsers, HashMap::new);
-        this.usersToDisplayName = Objects.requireNonNullElseGet(usersToDisplayName, HashMap::new);
+        this.userIdToDisplayName = Objects.requireNonNullElseGet(userIdToDisplayName, HashMap::new);
         this.limits = limits;
     }
 
@@ -60,7 +60,7 @@ public class SharedByMeDto {
                     .computeIfAbsent(url, k -> new HashSet<>());
             users.add(userLocation);
         }
-        usersToDisplayName.put(userLocation, userDisplayName);
+        userIdToDisplayName.put(userLocation, userDisplayName);
     }
 
     public void addUserPermissionsToResource(
@@ -73,7 +73,7 @@ public class SharedByMeDto {
                         .computeIfAbsent(url, k -> new HashSet<>());
                 users.add(user);
             }
-            usersToDisplayName.put(user, userDisplayNames.get(user));
+            userIdToDisplayName.put(user, userDisplayNames.get(user));
         });
     }
 
@@ -104,7 +104,7 @@ public class SharedByMeDto {
         allUsers.addAll(readableResourceToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
         allUsers.addAll(writableResourcesToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
         allUsers.addAll(shareableResourcesToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
-        usersToDisplayName.keySet().retainAll(allUsers);
+        userIdToDisplayName.keySet().retainAll(allUsers);
     }
 
     @JsonIgnore
@@ -131,7 +131,7 @@ public class SharedByMeDto {
                 Map<String, Set<ResourceAccessType>> userPermissions = result.computeIfAbsent(
                         resource, k -> new HashMap<>());
                 for (String user : users) {
-                    String displayName = usersToDisplayName.get(user);
+                    String displayName = userIdToDisplayName.get(user);
                     if (displayName != null) {
                         Set<ResourceAccessType> permissions = userPermissions.computeIfAbsent(
                                 displayName, k -> new HashSet<>());
