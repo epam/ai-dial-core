@@ -27,23 +27,23 @@ public class SharedResource {
         return new SharedResource(url, sharedBy, permissions);
     }
 
-    public SharedResource withSharedBy(String author) {
-        return new SharedResource(url, author, permissions);
+    public SharedResource withSharedBy(String sharedBy) {
+        return new SharedResource(url, sharedBy, permissions);
     }
 
-    private SharedResource withPermissions(String author, Set<ResourceAccessType> permissions) {
-        return new SharedResource(url, author, permissions);
+    private SharedResource withPermissions(Set<ResourceAccessType> permissions) {
+        return new SharedResource(url, sharedBy, permissions);
     }
 
     public SharedResource withReadIfNoPermissions() {
         return permissions == null || permissions.isEmpty()
-                ? withPermissions(sharedBy, EnumSet.copyOf(ResourceAccessType.READ_ONLY))
+                ? withPermissions(EnumSet.copyOf(ResourceAccessType.READ_ONLY))
                 : this;
     }
 
     public SharedResource withAllIfNoPermissions() {
         return permissions == null || permissions.isEmpty()
-                ? withPermissions(sharedBy, EnumSet.copyOf(ResourceAccessType.ALL))
+                ? withPermissions(EnumSet.copyOf(ResourceAccessType.ALL))
                 : this;
     }
 }
