@@ -123,28 +123,6 @@ public class SharedByMeDto {
     }
 
     @JsonIgnore
-    public Map<String, Map<String, Set<ResourceAccessType>>> getPerUserPermissions() {
-        Map<String, Map<String, Set<ResourceAccessType>>> result = new HashMap<>();
-        for (ResourceAccessType permission : ResourceAccessType.ALL) {
-            Map<String, Set<String>> usersMap = getUserMapForPermission(permission);
-            usersMap.forEach((resource, users) -> {
-                Map<String, Set<ResourceAccessType>> userPermissions = result.computeIfAbsent(
-                        resource, k -> new HashMap<>());
-                for (String user : users) {
-                    String displayName = userIdToDisplayName.get(user);
-                    if (displayName != null) {
-                        Set<ResourceAccessType> permissions = userPermissions.computeIfAbsent(
-                                displayName, k -> new HashSet<>());
-                        permissions.add(permission);
-                    }
-                }
-            });
-        }
-
-        return result;
-    }
-
-    @JsonIgnore
     public Map<String, Set<ResourceAccessType>> getUserPermissions(String url) {
         Map<String, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceAccessType permission : ResourceAccessType.ALL) {

@@ -11,28 +11,28 @@ import java.util.Set;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SharedResource {
     String url;
-    String sharedBy;
+    String sharedByDisplayName;
     Set<ResourceAccessType> permissions;
 
     public SharedResource() {
     }
 
-    public SharedResource(String url, String sharedBy, Set<ResourceAccessType> permissions) {
+    public SharedResource(String url, String sharedByDisplayName, Set<ResourceAccessType> permissions) {
         this.url = url;
-        this.sharedBy = sharedBy;
+        this.sharedByDisplayName = sharedByDisplayName;
         this.permissions = permissions;
     }
 
     public SharedResource withUrl(String url) {
-        return new SharedResource(url, sharedBy, permissions);
+        return new SharedResource(url, sharedByDisplayName, permissions);
     }
 
-    public SharedResource withSharedBy(String sharedBy) {
-        return new SharedResource(url, sharedBy, permissions);
+    public SharedResource withSharedByDisplayName(String name) {
+        return new SharedResource(url, name, permissions);
     }
 
     private SharedResource withPermissions(Set<ResourceAccessType> permissions) {
-        return new SharedResource(url, sharedBy, permissions);
+        return new SharedResource(url, sharedByDisplayName, permissions);
     }
 
     public SharedResource withReadIfNoPermissions() {
