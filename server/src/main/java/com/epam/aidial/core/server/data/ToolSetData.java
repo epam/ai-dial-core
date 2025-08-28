@@ -14,10 +14,10 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class ToolSetData extends DeploymentData {
+public class ToolSetData extends SecuredResourceData {
+
     private String transport;
     private List<String> allowedTools;
-    private ToolsetAuthSettingsData authSettings;
 
     {
         setObject("toolset");
@@ -53,7 +53,7 @@ public class ToolSetData extends DeploymentData {
 
         data.setAllowedTools(toolSet.getAllowedTools());
         data.setTransport(toolSet.getTransport().toString());
-        data.setAuthSettings(ToolsetAuthSettingsData.toData(toolSet.getAuthSettings()));
+        data.setAuthSettings(ResourceAuthSettingsData.toData(toolSet.getAuthSettings()));
 
         return data;
     }

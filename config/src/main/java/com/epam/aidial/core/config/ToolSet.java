@@ -19,16 +19,12 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class ToolSet extends Deployment {
+public class ToolSet extends SecuredResource {
 
     private Transport transport;
 
     @JsonAlias({"allowedTools", "allowed_tools"})
     private List<String> allowedTools = List.of();
-
-    // TODO: might be moved closer to other credentails code
-    @JsonAlias({"authSettings", "auth_settings"})
-    private ToolSetAuthSettings authSettings = new ToolSetAuthSettings();
 
     public enum Transport {
         HTTP, SSE;

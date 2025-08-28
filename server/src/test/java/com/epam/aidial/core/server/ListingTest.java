@@ -20,7 +20,7 @@ public class ListingTest extends ResourceBaseTest {
         Consumer<String> checker = (str) -> {
             JsonObject json = new JsonObject(str);
             JsonObject foundElem = null;
-            for (Object item : json.getJsonArray("data")) {
+            for (Object item : json.getJsonArray("com/epam/aidial/core/credentials/data")) {
                 JsonObject elem = (JsonObject) item;
                 if (elem.getString("id").equals(id)) {
                     if (foundElem != null) {

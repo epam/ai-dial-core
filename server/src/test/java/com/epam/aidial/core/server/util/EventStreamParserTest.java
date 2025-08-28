@@ -32,7 +32,7 @@ public class EventStreamParserTest {
     @Test
     public void testHandleChunk_00() {
         EventStreamParser parser = new EventStreamParser(20, fn);
-        parser.parse(Buffer.buffer("data"));
+        parser.parse(Buffer.buffer("com/epam/aidial/core/credentials/data"));
         parser.parse(Buffer.buffer(": {\"name\": \"assds"));
         parser.parse(Buffer.buffer("dsdsa 你好。답답해 123 "));
         parser.parse(Buffer.buffer("\"}\r"));
@@ -46,7 +46,7 @@ public class EventStreamParserTest {
     @Test
     public void testHandleChunk_01() {
         EventStreamParser parser = new EventStreamParser(100, fn);
-        parser.parse(Buffer.buffer("data"));
+        parser.parse(Buffer.buffer("com/epam/aidial/core/credentials/data"));
         parser.parse(Buffer.buffer(": {\"name\": \"assds"));
         parser.parse(Buffer.buffer("dsdsa 你好。답답해 123 "));
         parser.parse(Buffer.buffer("\"}\r"));
@@ -61,7 +61,7 @@ public class EventStreamParserTest {
     @Test
     public void testHandleChunkWithBom() {
         EventStreamParser parser = new EventStreamParser(100, fn);
-        parser.parse(Buffer.buffer(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF}).appendBuffer(Buffer.buffer("data")));
+        parser.parse(Buffer.buffer(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF}).appendBuffer(Buffer.buffer("com/epam/aidial/core/credentials/data")));
         parser.parse(Buffer.buffer(": {\"name\": \"assds"));
         parser.parse(Buffer.buffer("dsdsa 你好。답답해 123 "));
         parser.parse(Buffer.buffer("\"}\r"));

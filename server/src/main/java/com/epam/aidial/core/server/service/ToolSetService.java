@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -10,12 +9,13 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
 import org.apache.commons.lang3.tuple.Pair;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 
 @AllArgsConstructor
 public class ToolSetService {
 
     private final ResourceService resourceService;
-    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource) {
         return getToolSet(resource, EtagHeader.ANY);
@@ -36,8 +36,7 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
-
+        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings());
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());
@@ -53,7 +52,7 @@ public class ToolSetService {
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
             if (existing == null || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())) {
-                toolsetAuthSettingsService.initToolsetAuthSettings(toolSet);
+                resourceAuthSettingsService.enrichResourceAuthSettings(toolSet.getName(), toolSet.getEndpoint(), toolSet.getAuthSettings());
             } else {
                 //TODO we don't support auth settings update yet
                 toolSet.setAuthSettings(existing.getAuthSettings());

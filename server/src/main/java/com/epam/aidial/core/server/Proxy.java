@@ -31,9 +31,6 @@ import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
-import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
-import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -59,6 +56,8 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -127,9 +126,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final WellKnownResourceMetadataController resourceMetadataController;
     private final ToolSetService toolSetService;
     private final ApplicationSchemaService applicationSchemaService;
-    private final ToolSetCredentialsManager toolSetCredentialsManager;
-    private final ToolSetCredentialsService toolsetCredentialsService;
-    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
+    private final ResourceCredentialsManager resourceCredentialsManager;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
 
