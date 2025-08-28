@@ -552,7 +552,7 @@ public class ShareService {
         userPermissions.forEach((userLocation, permissions) -> {
             String userBucket = encryptionService.encrypt(userLocation);
             copySharedResource(
-                    userBucket, userLocation, source.getUrl() , destinationResourceLink, destinationResourceType);
+                    userBucket, userLocation, source.getUrl(), destinationResourceLink, destinationResourceType);
         });
     }
 
