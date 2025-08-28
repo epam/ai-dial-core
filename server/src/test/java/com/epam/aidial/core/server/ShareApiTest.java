@@ -225,8 +225,6 @@ public class ShareApiTest extends ResourceBaseTest {
                     } ]
                 }
                 """);
-
-
     }
 
     @Test
