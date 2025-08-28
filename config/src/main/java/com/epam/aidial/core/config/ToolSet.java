@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -31,5 +32,14 @@ public class ToolSet extends Deployment {
 
     public enum Transport {
         HTTP, SSE;
+    }
+
+    @JsonIgnore
+    public void clearAuthSettings() {
+        if (authSettings != null && authSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
+            authSettings.setClientSecret(null);
+            authSettings.setTokenEndpoint(null);
+            authSettings.setCodeVerifier(null);
+        }
     }
 }

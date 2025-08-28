@@ -1,8 +1,6 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.config.ToolSetAuthSettings;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -38,13 +36,7 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
         toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
-        if (toolsetAuthSettings != null && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
-            toolsetAuthSettings.setClientSecret(null);
-            toolsetAuthSettings.setTokenEndpoint(null);
-            toolsetAuthSettings.setCodeVerifier(null);
-        }
 
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());
@@ -62,13 +54,10 @@ public class ToolSetService {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
             //TODO: now it registers auth settings only on ToolSet create.
             // should we apply registration on update as well?
-            if (existing == null) {
+            if (existing == null || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())) {
                 toolsetAuthSettingsService.initToolsetAuthSettings(toolSet);
             }
             //TODO we don't support auth settings update yet
-            if (existing != null && existing.getAuthSettings() != null) {
-                toolSet.setAuthSettings(existing.getAuthSettings());
-            }
             return ProxyUtil.convertToString(toolSet);
         });
 
