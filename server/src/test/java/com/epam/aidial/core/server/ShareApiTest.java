@@ -163,11 +163,9 @@ public class ShareApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/resource/share/create", """
                 {
                   "invitationType": "link",
-                  "resources": [
-                    {
-                      "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
-                    }
-                  ]
+                  "resources": [ {
+                    "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
+                  } ]
                 }
                 """);
         verify(response, 200);
@@ -181,7 +179,7 @@ public class ShareApiTest extends ResourceBaseTest {
         // verify user2 has shared_with_me resource
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
-                  "resourceTypes": ["CONVERSATION"],
+                  "resourceTypes": [ "CONVERSATION" ],
                   "with": "me",
                   "includeUserInfo": true
                 }
@@ -197,14 +195,14 @@ public class ShareApiTest extends ResourceBaseTest {
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ],
                     "sharedBy" : "EPM-RTC-GPT"
-                    } ]
+                  } ]
                 }
                 """);
 
         // verify user1 has shared_by_me resource
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
-                  "resourceTypes": ["CONVERSATION"],
+                  "resourceTypes": [ "CONVERSATION" ],
                   "with": "others",
                   "includeUserInfo": true
                 }
@@ -222,7 +220,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "sharedWith" : {
                       "EPM-RTC-RAIL" : [ "READ" ]
                     }
-                    } ]
+                  } ]
                 }
                 """);
     }

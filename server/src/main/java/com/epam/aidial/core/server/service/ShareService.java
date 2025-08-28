@@ -552,7 +552,7 @@ public class ShareService {
         userPermissions.forEach((userLocation, permissions) -> {
             String userBucket = encryptionService.encrypt(userLocation);
             copySharedResource(
-                    userBucket, userLocation, source.getUrl(), destinationResourceLink, destinationResourceType);
+                    userBucket, userLocation, source.getUrl(), source.getType(), destinationResourceLink, destinationResourceType);
         });
     }
 
@@ -594,23 +594,39 @@ public class ShareService {
     private void copySharedResource(
             String bucket,
             String location,
-            String sourceLink,
-            String destLink,
-            ResourceType resourceType) {
-        ResourceDescriptor sharedByMeResource = getShareResource(ResourceTypes.SHARED_WITH_ME, resourceType, bucket, location);
-        resourceService.computeResource(sharedByMeResource, state -> {
+            String source,
+            ResourceType sourceType,
+            String destination,
+            ResourceType destinationType) {
+        SharedResources toCopy = sourceType != destinationType
+                ? getSharedResources(bucket, location, source, sourceType)
+                : null;
+        ResourceDescriptor destinationResource = getShareResource(ResourceTypes.SHARED_WITH_ME, destinationType, bucket, location);
+        resourceService.computeResource(destinationResource, state -> {
             SharedResources sharedWithMe = ProxyUtil.convertToObject(state, SharedResources.class);
             if (sharedWithMe == null) {
                 sharedWithMe = new SharedResources(new ArrayList<>());
             }
-            List<SharedResource> resources = sharedWithMe.getResources().stream()
-                    .filter(resource -> sourceLink.equals(resource.getUrl()))
-                    .map(resource -> resource.withUrl(destLink))
+
+            List<SharedResource> resources = (toCopy == null ? sharedWithMe : toCopy).getResources().stream()
+                    .filter(resource -> source.equals(resource.getUrl()))
+                    .map(resource -> resource.withUrl(destination))
                     .toList();
             sharedWithMe.getResources().addAll(resources);
 
             return ProxyUtil.convertToString(sharedWithMe);
         });
+    }
+
+    private SharedResources getSharedResources(String bucket, String location, String link, ResourceType type) {
+        ResourceDescriptor descriptor = getShareResource(ResourceTypes.SHARED_WITH_ME, type, bucket, location);
+        SharedResources sharedResources = ProxyUtil.convertToObject(
+                resourceService.getResource(descriptor), SharedResources.class);
+        if (sharedResources == null) {
+            throw new IllegalArgumentException("No shared access found for the resource: " + link);
+        }
+
+        return sharedResources;
     }
 
     private List<MetadataBase> toMetadata(SharedByMeDto dto, boolean includeUserInfo) {
