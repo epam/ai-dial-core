@@ -26,8 +26,16 @@ public abstract class MetadataBase {
     private ResourceType resourceType;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Set<ResourceAccessType> permissions;
+    /**
+     * The display name (API key project name, or extracted from JWT) of the user who shared the resource.
+     * This is populated when listing shares with "with": "me".
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String sharedBy;
+    /**
+     * A map from user display names to the set of access types each user has for this resource.
+     * This is populated when listing shares with "with": "others".
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Map<String, Set<ResourceAccessType>> sharedWith;
 }
