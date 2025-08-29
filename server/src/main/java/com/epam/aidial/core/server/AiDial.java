@@ -36,6 +36,11 @@ import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager
 import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService;
 import com.epam.aidial.core.server.service.credentials.ToolSetRegistrationService;
 import com.epam.aidial.core.server.service.credentials.ToolSetTokenService;
+import com.epam.aidial.core.server.service.credentials.encryption.ContentEncryptionKeyGenerator;
+import com.epam.aidial.core.server.service.credentials.encryption.ContentEncryptionKeyService;
+import com.epam.aidial.core.server.service.credentials.encryption.ToolsetCredentialsEncryptionService;
+import com.epam.aidial.core.server.service.credentials.encryption.keymanagement.KeyManagementService;
+import com.epam.aidial.core.server.service.credentials.encryption.keymanagement.KeyManagementServiceFactory;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -177,9 +182,16 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
+            ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator();
+            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(null); //todo: fix
+            ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(resourceService, encryptionService,
+                    contentEncryptionKeyGenerator, keyManagementService);
+
             ToolSetAuthorizationClient toolSetAuthorizationClient = new ToolSetAuthorizationClient();
             ToolSetTokenService toolSetTokenService = new ToolSetTokenService(toolSetAuthorizationClient);
-            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService(resourceService, encryptionService);
+            ToolsetCredentialsEncryptionService toolsetCredentialsEncryptionService = new ToolsetCredentialsEncryptionService();
+            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService(resourceService, encryptionService,
+                    contentEncryptionKeyService, toolsetCredentialsEncryptionService);
             ToolSetCredentialsManager toolSetCredentialsManager = new ToolSetCredentialsManager(toolSetCredentialsService, toolSetTokenService);
             ToolSetRegistrationService toolSetRegistrationService = new ToolSetRegistrationService(toolSetAuthorizationClient);
             ToolSetAuthSettingsValidator toolSetAuthSettingsValidator = new ToolSetAuthSettingsValidator();

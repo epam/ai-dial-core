@@ -4,7 +4,6 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -42,6 +41,7 @@ import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.codec.CompositeCodec;
 
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -56,7 +56,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
@@ -319,6 +318,32 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     private Pair<ResourceItemMetadata, String> getResourceWithMetadata(ResourceDescriptor descriptor, EtagHeader etagHeader, boolean lock) {
+        Pair<ResourceItemMetadata, byte[]> result = getResourceBytesWithMetadata(descriptor, etagHeader, lock);
+        if (result == null) {
+            return null;
+        }
+        return Pair.of(result.getLeft(), new String(result.getRight(), StandardCharsets.UTF_8));
+    }
+
+    @Nullable
+    public String getResource(ResourceDescriptor descriptor) {
+        return getResource(descriptor, EtagHeader.ANY, true);
+    }
+
+    @Nullable
+    public String getResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
+        Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, etag, lock);
+        return (result == null) ? null : result.getRight();
+    }
+
+    @Nullable
+    public byte[] getResourceBytes(ResourceDescriptor descriptor) {
+        Pair<ResourceItemMetadata, byte[]> result = getResourceBytesWithMetadata(descriptor, EtagHeader.ANY, true);
+        return (result == null) ? null : result.getRight();
+    }
+
+    @Nullable
+    private Pair<ResourceItemMetadata, byte[]> getResourceBytesWithMetadata(ResourceDescriptor descriptor, EtagHeader etagHeader, boolean lock) {
         String redisKey = redisKey(descriptor);
         Result result = redisGet(redisKey, true);
 
@@ -336,23 +361,10 @@ public class ResourceService implements AutoCloseable {
 
         if (result.exists()) {
             etagHeader.validate(result.etag);
-            return Pair.of(
-                    toResourceItemMetadata(descriptor, result),
-                    new String(result.body, StandardCharsets.UTF_8));
+            return Pair.of(toResourceItemMetadata(descriptor, result), result.body);
         }
 
         return null;
-    }
-
-    @Nullable
-    public String getResource(ResourceDescriptor descriptor) {
-        return getResource(descriptor, EtagHeader.ANY, true);
-    }
-
-    @Nullable
-    public String getResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
-        Pair<ResourceItemMetadata, String> result = getResourceWithMetadata(descriptor, etag, lock);
-        return (result == null) ? null : result.getRight();
     }
 
     public ResourceStream getResourceStream(ResourceDescriptor resource, EtagHeader etagHeader) throws IOException {
@@ -453,6 +465,11 @@ public class ResourceService implements AutoCloseable {
                     ? toResourceItemMetadata(descriptor, result)
                     : toFileMetadata(descriptor, result);
         }
+    }
+
+    public ResourceItemMetadata putResourceBytes(
+            ResourceDescriptor descriptor, byte[] body, EtagHeader etag) {
+        return putResource(descriptor, body, etag, "application/json", null, true);
     }
 
     public FileMetadata putFile(ResourceDescriptor descriptor, byte[] body, EtagHeader etag, String contentType, String author) {

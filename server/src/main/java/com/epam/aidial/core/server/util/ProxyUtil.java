@@ -21,13 +21,14 @@ import io.vertx.core.http.HttpServerRequest;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
+import javax.annotation.Nullable;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 
 @UtilityClass
 @Slf4j
@@ -285,6 +286,18 @@ public class ProxyUtil {
                 throw new IllegalArgumentException("Missing required property '%s'".formatted(missingField));
             }
             throw new IllegalArgumentException("Provided payload do not match required schema");
+        }
+    }
+
+    @Nullable
+    public static <T> T convertToObject(byte[] payload, Class<T> clazz) {
+        if (payload == null) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(payload, clazz);
+        } catch (IOException e) {
+            throw new IllegalArgumentException(e);
         }
     }
 
