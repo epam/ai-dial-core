@@ -60,7 +60,7 @@ public class DeploymentService {
         ResourceTypes resourceType = (ResourceTypes) deploymentDescriptor.getType();
         return switch (resourceType) {
             case APPLICATION -> applicationService.getApplication(deploymentDescriptor).getValue();
-            case TOOL_SET -> toolSetService.getToolSet(deploymentDescriptor).getValue();
+            case TOOL_SET -> toolSetService.getToolSet(context, deploymentDescriptor).getValue();
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
     }
