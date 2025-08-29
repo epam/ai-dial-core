@@ -194,7 +194,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ],
-                    "sharedBy" : "EPM-RTC-GPT"
+                    "sharedBy" : "EPM-RTC-GPT",
+                    "author" : "EPM-RTC-GPT"
                   } ]
                 }
                 """);
@@ -1429,7 +1430,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "nodeType" : "ITEM",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
-                      "sharedBy" : "EPM-RTC-GPT"
+                      "sharedBy" : "EPM-RTC-GPT",
+                      "author" : "EPM-RTC-GPT"
                     },
                     {
                       "name" : "conversation",
@@ -1439,7 +1441,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "nodeType" : "ITEM",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
-                      "sharedBy" : "EPM-RTC-GPT"
+                      "sharedBy" : "EPM-RTC-GPT",
+                      "author" : "EPM-RTC-GPT"
                     }
                   ]
                 }
@@ -2032,7 +2035,8 @@ public class ShareApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
                   "resourceTypes": ["CONVERSATION"],
-                  "with": "me"
+                  "with": "me",
+                  "includeUserInfo": true
                 }
                 """, "Api-key", "proxyKey2");
         verifyJsonNotExact(response, 200, """
@@ -2044,7 +2048,9 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ", "SHARE" ]
+                    "permissions" : [ "READ", "SHARE" ],
+                    "sharedBy" : "EPM-RTC-GPT",
+                    "author" : "EPM-RTC-GPT"
                     } ]
                 }
                 """);
@@ -2082,6 +2088,30 @@ public class ShareApiTest extends ResourceBaseTest {
         // accept invitation by user 3
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
         verify(response, 200);
+
+        // verify user 3 has shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me",
+                  "includeUserInfo": true
+                }
+                """, "Api-key", "proxyKey3");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "resources" : [ {
+                    "name" : "conversation 1@",
+                    "parentPath" : "folder",
+                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
+                    "nodeType" : "ITEM",
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ],
+                    "sharedBy" : "EPM-RTC-RAIL",
+                    "author" : "EPM-RTC-GPT"
+                    } ]
+                }
+                """);
 
         // verify user 3 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey3");

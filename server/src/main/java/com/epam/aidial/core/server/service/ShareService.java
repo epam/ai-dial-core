@@ -94,6 +94,9 @@ public class ShareService {
                             : new ResourceItemMetadata(sharedResourceDescriptor);
                     metadata.setPermissions(sharedResource.getPermissions());
                     if (request.isIncludeUserInfo()) {
+                        if (metadata instanceof ResourceItemMetadata itemMetadata) {
+                            itemMetadata.setAuthor(sharedResource.getAuthorDisplayName());
+                        }
                         metadata.setSharedBy(sharedResource.getSharedByDisplayName());
                     }
                     resultMetadata.add(metadata);
@@ -134,7 +137,7 @@ public class ShareService {
     }
 
 
-    private void addCustomApplicationRelatedFiles(String bucket, ShareResourcesRequest request, String sharedBy) {
+    private void addCustomApplicationRelatedFiles(String bucket, ShareResourcesRequest request) {
         List<String> filesFromRequest = request.getResources().stream()
                 .map(SharedResource::getUrl).toList();
         Set<SharedResource> newSharedResources = new HashSet<>(request.getResources());
@@ -148,7 +151,7 @@ public class ShareService {
                         throw new IllegalArgumentException("All files in the application %s should belong to a requester".formatted(resource.getUrl()));
                     }
                     if (!filesFromRequest.contains(file.getUrl())) {
-                        newSharedResources.add(new SharedResource(file.getUrl(), sharedBy, sharedResource.getPermissions()));
+                        newSharedResources.add(new SharedResource(file.getUrl(), null, null, sharedResource.getPermissions()));
                     }
                 }
             }
@@ -167,7 +170,7 @@ public class ShareService {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         String bucket = encryptionService.encrypt(bucketLocation);
         // validate resources - owner must be current user
-        addCustomApplicationRelatedFiles(bucket, request, context.getUserDisplayName());
+        addCustomApplicationRelatedFiles(bucket, request);
         Set<SharedResource> sharedResources = request.getResources();
         Set<String> uniqueLinks = new HashSet<>();
         List<SharedResource> normalizedResourceLinks = new ArrayList<>(sharedResources.size());
@@ -186,23 +189,26 @@ public class ShareService {
             if (existingSharedResources == null) {
                 existingSharedResources = new SharedResources(new ArrayList<>());
             }
-            Set<String> resharedResourceUrls = new HashSet<>();
+            Map<String, SharedResource> reshareableResourceUrls = new HashMap<>();
             for (SharedResource sharedResource : existingSharedResources.getResources()) {
                 if (sharedResource.getPermissions().contains(ResourceAccessType.SHARE)) {
-                    resharedResourceUrls.add(sharedResource.getUrl());
+                    reshareableResourceUrls.put(sharedResource.getUrl(), sharedResource);
                 }
             }
             List<SharedResource> ownerResources = new ArrayList<>();
             for (SharedResource sharedResource : links) {
                 ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
-                canShare(sharedResource, bucket, resource, resharedResourceUrls);
+                canShare(sharedResource, bucket, resource, reshareableResourceUrls.keySet());
                 if (!uniqueLinks.add(resource.getUrl())) {
                     throw new IllegalArgumentException("Duplicated resource: %s".formatted(resource.getUrl()));
                 }
                 if (resource.getBucketName().equals(bucket)) {
                     ownerResources.add(sharedResource);
                 }
-                normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()));
+                String author = reshareableResourceUrls.containsKey(resource.getUrl())
+                        ? reshareableResourceUrls.get(resource.getUrl()).getAuthorDisplayName()
+                        : context.getUserDisplayName();
+                normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()).withAuthorDisplayName(author));
                 updateLimits(context, resourceType, limit, ownerResources);
             }
         }
