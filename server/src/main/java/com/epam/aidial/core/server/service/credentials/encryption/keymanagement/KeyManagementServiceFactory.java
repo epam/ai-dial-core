@@ -4,21 +4,33 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
-import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.json.JsonObject;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass
 public class KeyManagementServiceFactory {
 
-    public KeyManagementService create(JsonNode conf) {
-        AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
-        AWSKMS kms = AWSKMSClientBuilder.standard()
-                .withCredentials(awsCredentialsProvider)
-                .withRegion("us-east-1") // todo: region validation
-                .build();
-        String keyId = ""; // todo: configurable
+    public KeyManagementService create(JsonObject toolsetSettings) {
+        JsonObject security = toolsetSettings != null ? toolsetSettings.getJsonObject("security") : null;
+        JsonObject kmsSettings = security != null ? security.getJsonObject("kms") : null;
 
-        return new AwsKeyManagementService(kms, keyId);
+        String keyId = kmsSettings != null ? kmsSettings.getString("keyId") : null;
+        String region = kmsSettings != null ? kmsSettings.getString("region") : null;
+
+        if (keyId != null && region != null) {
+            AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
+            AWSKMS kms = AWSKMSClientBuilder.standard()
+                    .withCredentials(awsCredentialsProvider)
+                    .withRegion(region)
+                    .build();
+            return new AwsKeyManagementService(kms, keyId);
+        }
+
+        if (keyId == null && region == null) {
+            return new SimpleKeyManagementService();
+        }
+
+        throw new IllegalArgumentException("Both keyId and region must be specified");
     }
 
 }

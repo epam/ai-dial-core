@@ -183,7 +183,7 @@ public class AiDial {
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
             ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator();
-            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(null); //todo: fix
+            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(settings("toolsets"));
             ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(resourceService, encryptionService,
                     contentEncryptionKeyGenerator, keyManagementService);
 
