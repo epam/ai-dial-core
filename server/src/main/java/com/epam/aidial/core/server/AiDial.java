@@ -1,5 +1,12 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.credentials.service.ResourceRegistrationService;
+import com.epam.aidial.core.credentials.service.TokenService;
+import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -47,7 +54,6 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.validation.ToolSetAuthSettingsValidator;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
@@ -202,7 +208,7 @@ public class AiDial {
             ToolSetAuthSettingsService toolSetAuthSettingsService = new ToolSetAuthSettingsService(toolSetRegistrationService, toolSetAuthSettingsValidator,
                     toolSetCredentialsManager);
 
-            ToolSetService toolSetService = new ToolSetService(resourceService, toolSetAuthSettingsService);
+            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService);
@@ -220,8 +226,7 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
-                    toolSetService, applicationSchemaService, toolSetCredentialsManager, toolSetCredentialsService,
-                    toolSetAuthSettingsService, taskExecutor, version());
+                    toolSetService, applicationSchemaService, resourceCredentialsManager, resourceAuthSettingsService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -18,18 +19,23 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class ToolSet extends Deployment {
+public class ToolSet extends SecuredResource {
 
     private Transport transport;
 
     @JsonAlias({"allowedTools", "allowed_tools"})
     private List<String> allowedTools = List.of();
 
-    // TODO: might be moved closer to other credentails code
-    @JsonAlias({"authSettings", "auth_settings"})
-    private ToolSetAuthSettings authSettings = new ToolSetAuthSettings();
-
     public enum Transport {
         HTTP, SSE;
+    }
+
+    @JsonIgnore
+    public void clearAuthSettings() {
+        if (authSettings != null && authSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
+            authSettings.setClientSecret(null);
+            authSettings.setTokenEndpoint(null);
+            authSettings.setCodeVerifier(null);
+        }
     }
 }

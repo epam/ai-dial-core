@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.storage.data.ResourceEvent;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;

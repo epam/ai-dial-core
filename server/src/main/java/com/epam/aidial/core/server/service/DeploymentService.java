@@ -13,6 +13,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -59,7 +60,7 @@ public class DeploymentService {
         ResourceTypes resourceType = (ResourceTypes) deploymentDescriptor.getType();
         return switch (resourceType) {
             case APPLICATION -> applicationService.getApplication(deploymentDescriptor).getValue();
-            case TOOL_SET -> toolSetService.getToolSet(deploymentDescriptor).getValue();
+            case TOOL_SET -> toolSetService.getToolSet(context, deploymentDescriptor).getValue();
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
     }
