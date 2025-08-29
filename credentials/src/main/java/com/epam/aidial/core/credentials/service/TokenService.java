@@ -1,8 +1,8 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.config.ResourceAuthSettings;
-import com.epam.aidial.core.config.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.RefreshTokenRequest;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import lombok.AllArgsConstructor;

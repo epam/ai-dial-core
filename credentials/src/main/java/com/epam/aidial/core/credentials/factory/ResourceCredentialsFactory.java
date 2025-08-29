@@ -1,8 +1,8 @@
-package com.epam.aidial.core.credentials.service.factory;
+package com.epam.aidial.core.credentials.factory;
 
 import com.epam.aidial.core.config.ResourceAuthSettings;
-import com.epam.aidial.core.config.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 
 public interface ResourceCredentialsFactory {
 

@@ -1,4 +1,4 @@
-package com.epam.aidial.core.credentials.service.factory;
+package com.epam.aidial.core.credentials.factory;
 
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.credentials.service.TokenService;

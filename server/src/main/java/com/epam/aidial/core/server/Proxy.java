@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.controller.ControllerSelector;
@@ -56,8 +58,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;

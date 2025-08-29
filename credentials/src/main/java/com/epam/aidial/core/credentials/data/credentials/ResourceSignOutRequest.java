@@ -1,5 +1,7 @@
-package com.epam.aidial.core.config;
+package com.epam.aidial.core.credentials.data.credentials;
 
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.CredentialsLevel;
 import lombok.Data;
 
 @Data

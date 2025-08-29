@@ -4,26 +4,26 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.config.ResourceSignInRequest;
-import com.epam.aidial.core.config.ResourceSignOutRequest;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 
 import java.util.Map;
 import java.util.Set;
@@ -58,9 +58,9 @@ public class ToolSetCredentialsController {
                         if (deployment instanceof ToolSet toolSet) {
                             verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
                             ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
-                                toolSet.getAuthSettings(),
-                                resourceSignInRequest,
-                                context.getUserSub());
+                                    toolSet.getAuthSettings(),
+                                    resourceSignInRequest,
+                                    context.getUserSub());
                             return clearResourceCredentialsSecrets(resourceCredentials);
                         }
                         throw new ResourceNotFoundException("Toolset is not found: " + toolsetId);
@@ -68,7 +68,7 @@ public class ToolSetCredentialsController {
                 })
                 .onSuccess(toolsetCredentials -> context.respond(HttpStatus.OK, toolsetCredentials))
                 .onFailure(error ->
-                    respondError("Can't signIn into Toolset", error));
+                        respondError("Can't signIn into Toolset", error));
 
         return Future.succeededFuture();
     }

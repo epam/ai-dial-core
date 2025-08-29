@@ -22,6 +22,7 @@ public class ResourceAuthSettings {
 
     @NotNull(message = "AuthenticationType must be defined")
     @JsonAlias({"authenticationType", "authentication_type"})
+    @Builder.Default
     private AuthenticationType authenticationType = AuthenticationType.NONE;
 
     @JsonAlias({"clientId", "client_id"})

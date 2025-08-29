@@ -1,7 +1,7 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

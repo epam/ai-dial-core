@@ -1,5 +1,12 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.credentials.service.ResourceRegistrationService;
+import com.epam.aidial.core.credentials.service.TokenService;
+import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -69,13 +76,6 @@ import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
-import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
-import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
-import com.epam.aidial.core.credentials.service.ResourceRegistrationService;
-import com.epam.aidial.core.credentials.service.TokenService;
-import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -184,7 +184,7 @@ public class AiDial {
             ResourceCredentialsService resourceCredentialsService = new ResourceCredentialsService();
             ResourceCredentialsManager resourceCredentialsManager = new ResourceCredentialsManager(resourceCredentialsService, tokenService);
             ResourceAuthSettingsService resourceAuthSettingsService = new ResourceAuthSettingsService(resourceRegistrationService,
-                resourceAuthSettingsValidator, resourceCredentialsManager);
+                    resourceAuthSettingsValidator, resourceCredentialsManager);
 
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService);
 

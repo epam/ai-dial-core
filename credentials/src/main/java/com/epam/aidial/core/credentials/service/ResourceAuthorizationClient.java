@@ -1,8 +1,8 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.credentials.exception.CredentialsInternalException;
-import com.epam.aidial.core.credentials.exception.HttpException;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
+import com.epam.aidial.core.storage.http.HttpException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;

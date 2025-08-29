@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.storage.exception;
 
 public class ResourceNotFoundException extends RuntimeException {
 
