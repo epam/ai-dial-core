@@ -1,6 +1,13 @@
 #!/bin/sh
 set -Ee
 
+# If the environment variable `USE_SYSTEM_CA_CERTS` is set, the Docker container will automatically import 
+# mounted private or self-signed certificates during startup. 
+# The value of this variable can be any character or word. For example: 1, yes, true, YES, TRUE.
+if [ -x /__cacert_entrypoint.sh ]; then
+  (/__cacert_entrypoint.sh)
+fi
+
 # If no args passed to `docker run`,
 # then we assume the user is calling core
 if [ $# -lt 1 ]; then
