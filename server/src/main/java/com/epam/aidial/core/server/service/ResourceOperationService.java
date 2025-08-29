@@ -41,8 +41,7 @@ public class ResourceOperationService {
         return resourceService.subscribeResources(resources, subscriber);
     }
 
-    public void moveResource(
-            ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
+    public void moveResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
