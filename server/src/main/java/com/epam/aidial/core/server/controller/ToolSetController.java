@@ -45,7 +45,7 @@ public class ToolSetController {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                resourceAuthSettingsService.setResourceAuthStatuses(toolSetId, toolSet.getAuthSettings());
+                resourceAuthSettingsService.setResourceAuthStatuses(toolSetId, toolSet.getAuthSettings(), context.getUserSub());
                 toolSet.clearAuthSettings();
                 return toolSet;
             }
@@ -77,9 +77,9 @@ public class ToolSetController {
             @SuppressWarnings("unchecked")
             @Override
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
-                ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
+                ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
                 toolSet.clearAuthSettings();
-                resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings());
+                resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), context.getUserSub());
                 return toolSet;
             }
         });

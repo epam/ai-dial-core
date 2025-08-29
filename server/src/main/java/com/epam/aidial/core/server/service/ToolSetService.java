@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -18,11 +19,11 @@ public class ToolSetService {
     private final ResourceService resourceService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
 
-    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource) {
-        return getToolSet(resource, EtagHeader.ANY);
+    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource) {
+        return getToolSet(context, resource, EtagHeader.ANY);
     }
 
-    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource, EtagHeader etagHeader) {
+    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource, EtagHeader etagHeader) {
         verifyToolSet(resource);
         Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource, etagHeader);
 
@@ -37,7 +38,7 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings());
+        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), context.getUserSub());
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());
