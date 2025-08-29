@@ -1,12 +1,11 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.config.ToolSetAuthSettings;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.data.ResourceTypes;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -17,7 +16,7 @@ import org.apache.commons.lang3.tuple.Pair;
 public class ToolSetService {
 
     private final ResourceService resourceService;
-    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource) {
         return getToolSet(resource, EtagHeader.ANY);
@@ -38,14 +37,7 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        ToolSetAuthSettings toolsetAuthSettings = toolSet.getAuthSettings();
-        toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
-        if (toolsetAuthSettings != null && toolsetAuthSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
-            toolsetAuthSettings.setClientSecret(null);
-            toolsetAuthSettings.setTokenEndpoint(null);
-            toolsetAuthSettings.setCodeVerifier(null);
-        }
-
+        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings());
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());
@@ -60,13 +52,10 @@ public class ToolSetService {
         }
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
-            //TODO: now it registers auth settings only on ToolSet create.
-            // should we apply registration on update as well?
-            if (existing == null) {
-                toolsetAuthSettingsService.initToolsetAuthSettings(toolSet);
-            }
-            //TODO we don't support auth settings update yet
-            if (existing != null && existing.getAuthSettings() != null) {
+            if (existing == null || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())) {
+                resourceAuthSettingsService.enrichResourceAuthSettings(toolSet.getName(), toolSet.getEndpoint(), toolSet.getAuthSettings());
+            } else {
+                //TODO we don't support auth settings update yet
                 toolSet.setAuthSettings(existing.getAuthSettings());
             }
             return ProxyUtil.convertToString(toolSet);

@@ -1,5 +1,12 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.credentials.service.ResourceRegistrationService;
+import com.epam.aidial.core.credentials.service.TokenService;
+import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -30,17 +37,10 @@ import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthorizationClient;
-import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
-import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService;
-import com.epam.aidial.core.server.service.credentials.ToolSetRegistrationService;
-import com.epam.aidial.core.server.service.credentials.ToolSetTokenService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.validation.ToolSetAuthSettingsValidator;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
@@ -177,16 +177,16 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            ToolSetAuthorizationClient toolSetAuthorizationClient = new ToolSetAuthorizationClient();
-            ToolSetTokenService toolSetTokenService = new ToolSetTokenService(toolSetAuthorizationClient);
-            ToolSetCredentialsService toolSetCredentialsService = new ToolSetCredentialsService();
-            ToolSetCredentialsManager toolSetCredentialsManager = new ToolSetCredentialsManager(toolSetCredentialsService, toolSetTokenService);
-            ToolSetRegistrationService toolSetRegistrationService = new ToolSetRegistrationService(toolSetAuthorizationClient);
-            ToolSetAuthSettingsValidator toolSetAuthSettingsValidator = new ToolSetAuthSettingsValidator();
-            ToolSetAuthSettingsService toolSetAuthSettingsService = new ToolSetAuthSettingsService(toolSetRegistrationService, toolSetAuthSettingsValidator,
-                    toolSetCredentialsManager);
+            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
+            TokenService tokenService = new TokenService(resourceAuthorizationClient);
+            ResourceRegistrationService resourceRegistrationService = new ResourceRegistrationService(resourceAuthorizationClient);
+            ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
+            ResourceCredentialsService resourceCredentialsService = new ResourceCredentialsService();
+            ResourceCredentialsManager resourceCredentialsManager = new ResourceCredentialsManager(resourceCredentialsService, tokenService);
+            ResourceAuthSettingsService resourceAuthSettingsService = new ResourceAuthSettingsService(resourceRegistrationService,
+                    resourceAuthSettingsValidator, resourceCredentialsManager);
 
-            ToolSetService toolSetService = new ToolSetService(resourceService, toolSetAuthSettingsService);
+            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService);
@@ -204,8 +204,7 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
-                    toolSetService, applicationSchemaService, toolSetCredentialsManager, toolSetCredentialsService,
-                    toolSetAuthSettingsService, taskExecutor, version());
+                    toolSetService, applicationSchemaService, resourceCredentialsManager, resourceAuthSettingsService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
