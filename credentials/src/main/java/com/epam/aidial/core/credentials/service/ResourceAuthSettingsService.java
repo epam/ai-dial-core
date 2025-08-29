@@ -84,8 +84,7 @@ public class ResourceAuthSettingsService {
         Optional<ResourceCredentials> userResourceCredentials = resourceCredentialsList.stream()
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
                     && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
-                    && resourceCredentials.getUserSub() != null
-                    && resourceCredentials.getUserSub().equals(userSub)
+                    && userSub.equals(resourceCredentials.getUserSub())
                     && !resourceCredentials.isTokenExpired())
                 .findFirst();
         // TODO: implement logic for API_KEY auth type
