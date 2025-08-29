@@ -5,6 +5,8 @@ import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.toolset.credentials.ToolSetCredentials;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ResourceNotFoundException;
+import com.epam.aidial.core.server.service.credentials.encryption.ContentEncryptionKeyService;
+import com.epam.aidial.core.server.service.credentials.encryption.ToolsetCredentialsEncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -17,6 +19,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.Function;
 
@@ -35,11 +38,18 @@ import static org.mockito.Mockito.when;
 class ToolSetCredentialsServiceTest {
 
     private static final String TOOL_SET_NAME = "toolsets/bucket-name/folder1/my-toolset";
+    private static final byte[] CEK = "test_cek".getBytes();
+    private static final byte[] OLD_ENCRYPTED_BODY = "old_encrypted_body".getBytes();
+    private static final byte[] ENCRYPTED_BODY = "encrypted_body".getBytes();
 
     @Mock
     private ResourceService resourceService;
     @Mock
     private EncryptionService encryptionService;
+    @Mock
+    private ContentEncryptionKeyService contentEncryptionKeyService;
+    @Mock
+    private ToolsetCredentialsEncryptionService toolsetCredentialsEncryptionService;
 
     @InjectMocks
     private ToolSetCredentialsService service;
@@ -63,37 +73,39 @@ class ToolSetCredentialsServiceTest {
     public void testAddToolSetCredentials_global_putsResource() {
         ToolSetCredentials creds = makeCredentials(CredentialsLevel.GLOBAL);
         when(encryptionService.decrypt(any())).thenReturn("bucket-location/");
+        when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
+        when(toolsetCredentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
         service.addToolSetCredentials(creds);
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        ArgumentCaptor<String> bodyCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<byte[]> bodyCaptor = ArgumentCaptor.forClass(byte[].class);
         ArgumentCaptor<EtagHeader> etagCaptor = ArgumentCaptor.forClass(EtagHeader.class);
 
-        verify(resourceService).putResource(descriptorCaptor.capture(), bodyCaptor.capture(), etagCaptor.capture());
+        verify(resourceService).putResourceBytes(descriptorCaptor.capture(), bodyCaptor.capture(), etagCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
-
         assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
         assertEquals(EtagHeader.ANY, etagCaptor.getValue());
 
-        ToolSetCredentials restored = ProxyUtil.convertToObject(bodyCaptor.getValue(), ToolSetCredentials.class);
-        assertEquals(CredentialsLevel.GLOBAL, restored.getCredentialsLevel());
-        assertEquals(TOOL_SET_NAME, restored.getToolSetName());
+        byte[] actualBody = bodyCaptor.getValue();
+        assertEquals(ENCRYPTED_BODY, actualBody);
     }
 
     @Test
     public void testGetAllToolSetCredentials_returnsOne() {
         ToolSetCredentials creds = makeCredentials(CredentialsLevel.GLOBAL);
-        String body = ProxyUtil.convertToString(creds);
+        byte[] body = ProxyUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
 
-        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(body);
+        when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
         when(encryptionService.decrypt(any())).thenReturn("bucket-location/");
+        when(contentEncryptionKeyService.getKey(any())).thenReturn(CEK);
+        when(toolsetCredentialsEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
 
         List<ToolSetCredentials> list = service.getAllToolSetCredentials(TOOL_SET_NAME);
 
@@ -104,12 +116,12 @@ class ToolSetCredentialsServiceTest {
         assertEquals(TOOL_SET_NAME, c.getToolSetName());
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        verify(resourceService).getResource(descriptorCaptor.capture());
+        verify(resourceService).getResourceBytes(descriptorCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
         assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
     }
@@ -117,7 +129,7 @@ class ToolSetCredentialsServiceTest {
     @Test
     public void testGetAllToolSetCredentials_returnsEmptyWhenNull() {
         when(encryptionService.decrypt(any())).thenReturn("bucket-location/");
-        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(null);
+        when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(null);
 
         List<ToolSetCredentials> list = service.getAllToolSetCredentials(TOOL_SET_NAME);
 
@@ -151,16 +163,16 @@ class ToolSetCredentialsServiceTest {
             Function<String, String> mapper = inv.getArgument(1);
             mapper.apply(null); // should cause ResourceNotFoundException in service logic
             return null;
-        }).when(resourceService).computeResource(any(ResourceDescriptor.class), any());
+        }).when(resourceService).computeResourceBytes(any(ResourceDescriptor.class), any());
 
         assertThrows(ResourceNotFoundException.class, () -> service.updateToolSetCredentials(TOOL_SET_NAME, List.of(c1)));
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        verify(resourceService).computeResource(descriptorCaptor.capture(), any());
+        verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), any());
         ResourceDescriptor passed = descriptorCaptor.getValue();
         assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
     }
@@ -172,17 +184,17 @@ class ToolSetCredentialsServiceTest {
         service.updateToolSetCredentials(TOOL_SET_NAME, List.of());
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        ArgumentCaptor<Function<String, String>> fnCaptor = ArgumentCaptor.forClass(Function.class);
-        verify(resourceService).computeResource(descriptorCaptor.capture(), fnCaptor.capture());
+        ArgumentCaptor<Function<byte[], byte[]>> fnCaptor = ArgumentCaptor.forClass(Function.class);
+        verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), fnCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
         assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
-        String result = fnCaptor.getValue().apply("existing-body");
+        byte[] result = fnCaptor.getValue().apply(OLD_ENCRYPTED_BODY);
         assertNull(result);
     }
 
@@ -190,26 +202,25 @@ class ToolSetCredentialsServiceTest {
     public void testUpdateToolSetCredentials_updatesBody() {
         ToolSetCredentials c1 = makeCredentials(CredentialsLevel.GLOBAL);
         when(encryptionService.decrypt(any())).thenReturn("bucket-location/");
+        when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
+        when(toolsetCredentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
         service.updateToolSetCredentials(TOOL_SET_NAME, List.of(c1));
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        ArgumentCaptor<Function<String, String>> fnCaptor = ArgumentCaptor.forClass(Function.class);
-        verify(resourceService).computeResource(descriptorCaptor.capture(), fnCaptor.capture());
+        ArgumentCaptor<Function<byte[], byte[]>> fnCaptor = ArgumentCaptor.forClass(Function.class);
+        verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), fnCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
         assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
-        Function<String, String> fn = fnCaptor.getValue();
-        String updatedBody = fn.apply("existing-body");
-
-        ToolSetCredentials restored = ProxyUtil.convertToObject(updatedBody, ToolSetCredentials.class);
-        assertEquals(CredentialsLevel.GLOBAL, restored.getCredentialsLevel());
-        assertEquals(TOOL_SET_NAME, restored.getToolSetName());
+        Function<byte[], byte[]> fn = fnCaptor.getValue();
+        byte[] updatedBody = fn.apply(OLD_ENCRYPTED_BODY);
+        assertEquals(ENCRYPTED_BODY, updatedBody);
     }
 
 }

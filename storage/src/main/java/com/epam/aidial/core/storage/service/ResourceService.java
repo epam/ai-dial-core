@@ -48,6 +48,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -171,7 +172,7 @@ public class ResourceService implements AutoCloseable {
 
                 if (!copyResource(sourceFile, targetFile, null, overwrite)) {
                     throw new IllegalArgumentException("Can't copy source file: " + sourceFileUrl
-                                                       + " to target file: " + targetFileUrl);
+                            + " to target file: " + targetFileUrl);
                 }
             }
 
@@ -472,6 +473,11 @@ public class ResourceService implements AutoCloseable {
         return putResource(descriptor, body, etag, "application/json", null, true);
     }
 
+    public ResourceItemMetadata putResourceBytes(
+            ResourceDescriptor descriptor, byte[] body, EtagHeader etag, String author, boolean lock) {
+        return putResource(descriptor, body, etag, "application/json", author, lock);
+    }
+
     public FileMetadata putFile(ResourceDescriptor descriptor, byte[] body, EtagHeader etag, String contentType, String author) {
         if (descriptor.getType().requireCompression()) {
             throw new IllegalArgumentException("Resource must be uncompressed, got %s".formatted(descriptor.getType()));
@@ -558,6 +564,36 @@ public class ResourceService implements AutoCloseable {
             }
 
             return putResource(descriptor, newBody, etag, author, false);
+        }
+    }
+
+    public ResourceItemMetadata computeResourceBytes(ResourceDescriptor descriptor, Function<byte[], byte[]> fn) {
+        return computeResourceBytes(descriptor, EtagHeader.ANY, null, fn);
+    }
+
+    public ResourceItemMetadata computeResourceBytes(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<byte[], byte[]> fn) {
+        String redisKey = redisKey(descriptor);
+
+        try (var ignore = lockService.lock(redisKey)) {
+            Pair<ResourceItemMetadata, byte[]> oldResult = getResourceBytesWithMetadata(descriptor, etag, false);
+
+            byte[] oldBody = oldResult == null ? null : oldResult.getValue();
+            byte[] newBody = fn.apply(oldBody);
+
+            if (oldBody == null && newBody == null) {
+                return null;
+            }
+
+            if (oldBody != null && newBody == null) {
+                deleteResource(descriptor, etag, false);
+                return oldResult.getKey();
+            }
+
+            if (Arrays.equals(oldBody, newBody)) {
+                return oldResult.getKey();
+            }
+
+            return putResourceBytes(descriptor, newBody, etag, author, false);
         }
     }
 

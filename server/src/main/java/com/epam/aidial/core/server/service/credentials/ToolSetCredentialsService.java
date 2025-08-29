@@ -68,7 +68,7 @@ public class ToolSetCredentialsService {
 
         ResourceDescriptor descriptor = getCredentialsDescriptor(toolSetName);
 
-        resourceService.computeResource(descriptor, existing -> {
+        resourceService.computeResourceBytes(descriptor, existing -> {
             if (existing == null) {
                 throw new ResourceNotFoundException("Credentials for ToolSet %s not found".formatted(toolSetName));
             }
@@ -77,8 +77,7 @@ public class ToolSetCredentialsService {
             }
 
             byte[] body = ProxyUtil.convertToString(credentials).getBytes(StandardCharsets.UTF_8);
-            byte[] encryptedBody = encrypt(toolSetName, body);
-            return new String(encryptedBody, StandardCharsets.UTF_8);
+            return encrypt(toolSetName, body);
         });
     }
 
