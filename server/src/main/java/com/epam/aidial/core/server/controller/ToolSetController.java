@@ -3,16 +3,16 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.service.credentials.ToolSetAuthSettingsService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
@@ -29,7 +29,7 @@ public class ToolSetController {
 
     private final ToolSetService toolSetService;
 
-    private final ToolSetAuthSettingsService toolsetAuthSettingsService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
 
     private final AsyncTaskExecutor taskExecutor;
 
@@ -38,14 +38,14 @@ public class ToolSetController {
         this.taskExecutor = context.getProxy().getTaskExecutor();
         this.deploymentService = context.getProxy().getDeploymentService();
         this.toolSetService = context.getProxy().getToolSetService();
-        this.toolsetAuthSettingsService = context.getProxy().getToolsetAuthSettingsService();
+        this.resourceAuthSettingsService = context.getProxy().getResourceAuthSettingsService();
     }
 
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
+                resourceAuthSettingsService.setResourceAuthStatuses(toolSetId, toolSet.getAuthSettings());
                 toolSet.clearAuthSettings();
                 return toolSet;
             }
@@ -79,7 +79,7 @@ public class ToolSetController {
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
                 ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
                 toolSet.clearAuthSettings();
-                toolsetAuthSettingsService.setToolSetAuthStatuses(toolSet);
+                resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings());
                 return toolSet;
             }
         });

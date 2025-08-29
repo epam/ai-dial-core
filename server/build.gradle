@@ -2,6 +2,7 @@
 dependencies {
     implementation project(':config')
     implementation project(':storage')
+    implementation project(':credentials')
 
     implementation 'com.google.protobuf:protobuf-java:3.25.5'
     implementation 'org.slf4j:slf4j-api:2.0.9'

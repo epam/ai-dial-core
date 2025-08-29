@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.BeforeEach;

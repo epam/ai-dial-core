@@ -4,21 +4,20 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.config.ToolSetSignInRequest;
-import com.epam.aidial.core.config.ToolSetSignOutRequest;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.toolset.credentials.ToolSetCredentials;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.ResourceNotFoundException;
-import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsManager;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -34,7 +33,7 @@ public class ToolSetCredentialsController {
 
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
-    private final ToolSetCredentialsManager toolSetCredentialsManager;
+    private final ResourceCredentialsManager resourceCredentialsManager;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final DeploymentService deploymentService;
@@ -42,7 +41,7 @@ public class ToolSetCredentialsController {
     public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
         this.taskExecutor = proxy.getTaskExecutor();
-        this.toolSetCredentialsManager = proxy.getToolSetCredentialsManager();
+        this.resourceCredentialsManager = proxy.getResourceCredentialsManager();
         this.accessService = proxy.getAccessService();
         this.encryptionService = proxy.getEncryptionService();
         this.deploymentService = proxy.getDeploymentService();
@@ -52,21 +51,24 @@ public class ToolSetCredentialsController {
         context.getRequest()
                 .body()
                 .compose(body -> {
-                    ToolSetSignInRequest toolSetSignInRequest = ProxyUtil.convertToObject(body, ToolSetSignInRequest.class);
-                    String toolsetId = toolSetSignInRequest.getUrl();
+                    ResourceSignInRequest resourceSignInRequest = ProxyUtil.convertToObject(body, ResourceSignInRequest.class);
+                    String toolsetId = resourceSignInRequest.getUrl();
                     return taskExecutor.submit(() -> {
                         Deployment deployment = deploymentService.findDeployment(context, toolsetId);
                         if (deployment instanceof ToolSet toolSet) {
-                            verifyAccess(toolsetId, toolSetSignInRequest.getCredentialsLevel());
-                            ToolSetCredentials toolSetCredentials = toolSetCredentialsManager.createToolsetCredentials(toolSet.getAuthSettings(), toolSetSignInRequest, context);
-                            return clearToolsetCredentialsSecrets(toolSetCredentials);
+                            verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
+                            ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
+                                    toolSet.getAuthSettings(),
+                                    resourceSignInRequest,
+                                    context.getUserSub());
+                            return clearResourceCredentialsSecrets(resourceCredentials);
                         }
                         throw new ResourceNotFoundException("Toolset is not found: " + toolsetId);
                     });
                 })
                 .onSuccess(toolsetCredentials -> context.respond(HttpStatus.OK, toolsetCredentials))
                 .onFailure(error ->
-                    respondError("Can't signIn into Toolset", error));
+                        respondError("Can't signIn into Toolset", error));
 
         return Future.succeededFuture();
     }
@@ -75,10 +77,10 @@ public class ToolSetCredentialsController {
         context.getRequest()
                 .body()
                 .compose(body -> taskExecutor.submit(() -> {
-                    ToolSetSignOutRequest toolSetSignOutRequest = ProxyUtil.convertToObject(body, ToolSetSignOutRequest.class);
-                    verifyAccess(toolSetSignOutRequest.getUrl(), toolSetSignOutRequest.getCredentialsLevel());
+                    ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
+                    verifyAccess(resourceSignOutRequest.getUrl(), resourceSignOutRequest.getCredentialsLevel());
 
-                    return toolSetCredentialsManager.deleteToolSetCredentials(toolSetSignOutRequest, context);
+                    return resourceCredentialsManager.deleteResourceCredentials(resourceSignOutRequest, context.getUserSub());
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->
@@ -111,11 +113,11 @@ public class ToolSetCredentialsController {
     }
 
     // TODO: Create dto for 'public' credentials information?
-    private ToolSetCredentials clearToolsetCredentialsSecrets(ToolSetCredentials toolSetCredentials) {
-        return ToolSetCredentials.builder()
-            .toolSetName(toolSetCredentials.getToolSetName())
-            .authenticationType(toolSetCredentials.getAuthenticationType())
-            .credentialsLevel(toolSetCredentials.getCredentialsLevel())
+    private ResourceCredentials clearResourceCredentialsSecrets(ResourceCredentials resourceCredentials) {
+        return ResourceCredentials.builder()
+            .resourceId(resourceCredentials.getResourceId())
+            .authenticationType(resourceCredentials.getAuthenticationType())
+            .credentialsLevel(resourceCredentials.getCredentialsLevel())
             .build();
     }
 
@@ -123,20 +125,24 @@ public class ToolSetCredentialsController {
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
         String body = null;
 
-        if (error instanceof HttpException e) {
-            status = e.getStatus();
-            body = e.getMessage();
-        } else if (error instanceof ResourceNotFoundException) {
-            status = HttpStatus.NOT_FOUND;
-            body = error.getMessage();
-        } else if (error instanceof IllegalArgumentException e) {
-            status = HttpStatus.BAD_REQUEST;
-            body = e.getMessage();
-        } else if (error instanceof PermissionDeniedException e) {
-            status = HttpStatus.FORBIDDEN;
-            body = e.getMessage();
-        } else {
-            log.warn(message, error);
+        switch (error) {
+            case HttpException e -> {
+                status = e.getStatus();
+                body = e.getMessage();
+            }
+            case ResourceNotFoundException resourceNotFoundException -> {
+                status = HttpStatus.NOT_FOUND;
+                body = resourceNotFoundException.getMessage();
+            }
+            case IllegalArgumentException illegalArgumentException -> {
+                status = HttpStatus.BAD_REQUEST;
+                body = illegalArgumentException.getMessage();
+            }
+            case PermissionDeniedException permissionDeniedException -> {
+                status = HttpStatus.FORBIDDEN;
+                body = permissionDeniedException.getMessage();
+            }
+            case null, default -> log.warn(message, error);
         }
 
         context.respond(status, body);

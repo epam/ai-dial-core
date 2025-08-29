@@ -11,7 +11,6 @@ import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.ResourceNotFoundException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -21,6 +20,7 @@ import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationExc
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;

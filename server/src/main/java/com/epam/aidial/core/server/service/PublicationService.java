@@ -18,6 +18,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.UserMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.service.ResourceService;
