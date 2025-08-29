@@ -71,18 +71,25 @@ public class ResourceAuthSettingsService {
     }
 
     public void setResourceAuthStatuses(String resourceId,
-                                        ResourceAuthSettings resourceAuthSettings) {
+                                        ResourceAuthSettings resourceAuthSettings,
+                                        String userSub) {
         List<ResourceCredentials> allResourceCredentials = resourceCredentialsManager.getAllResourceCredentials(resourceId);
-        setUserAuthStatus(resourceAuthSettings, allResourceCredentials);
+        setUserAuthStatus(resourceAuthSettings, allResourceCredentials, userSub);
         setGlobalAuthStatus(resourceAuthSettings, allResourceCredentials);
     }
 
     private void setUserAuthStatus(ResourceAuthSettings resourceAuthSettings,
-                                   List<ResourceCredentials> resourceCredentialsList) {
+                                   List<ResourceCredentials> resourceCredentialsList,
+                                   String userSub) {
         Optional<ResourceCredentials> userResourceCredentials = resourceCredentialsList.stream()
-                .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.USER))
+                .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
+                    && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
+                    && resourceCredentials.getUserSub() != null
+                    && resourceCredentials.getUserSub().equals(userSub)
+                    && !resourceCredentials.isTokenExpired())
                 .findFirst();
-        if (userResourceCredentials.isPresent() && !userResourceCredentials.get().isTokenExpired()) {
+        // TODO: implement logic for API_KEY auth type
+        if (userResourceCredentials.isPresent()) {
             resourceAuthSettings.setUserLevelAuthStatus(ResourceAuthStatus.SIGNED_IN);
         } else {
             resourceAuthSettings.setUserLevelAuthStatus(ResourceAuthStatus.SIGNED_OUT);
@@ -92,9 +99,13 @@ public class ResourceAuthSettingsService {
     private void setGlobalAuthStatus(ResourceAuthSettings resourceAuthSettings,
                                      List<ResourceCredentials> resourceCredentialsList) {
         Optional<ResourceCredentials> globalResourceCredentials = resourceCredentialsList.stream()
-                .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL))
+                .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)
+                    && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
+                    && !resourceCredentials.isTokenExpired()
+                )
                 .findFirst();
-        if (globalResourceCredentials.isPresent() && !globalResourceCredentials.get().isTokenExpired()) {
+        // TODO: implement logic for API_KEY auth type
+        if (globalResourceCredentials.isPresent()) {
             resourceAuthSettings.setGlobalAuthStatus(ResourceAuthStatus.SIGNED_IN);
         } else {
             resourceAuthSettings.setGlobalAuthStatus(ResourceAuthStatus.SIGNED_OUT);

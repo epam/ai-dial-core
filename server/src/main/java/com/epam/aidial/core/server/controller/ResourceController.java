@@ -198,7 +198,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private Future<Pair<ResourceItemMetadata, String>> getToolsetData(ResourceDescriptor descriptor, EtagHeader etagHeader) {
         return taskExecutor.submit(() -> {
-            Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
+            Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(context, descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
             ToolSet toolSet = result.getValue();
             toolSet.clearAuthSettings();
