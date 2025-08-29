@@ -83,13 +83,13 @@ public class ToolSetCredentialsService {
     }
 
     private byte[] encrypt(String toolSetName, byte[] data) {
-        byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateContentEncryptionKey(toolSetName);
+        byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(toolSetName);
         byte[] aad = toolSetName.getBytes(StandardCharsets.UTF_8);
         return toolsetCredentialsEncryptionService.encrypt(data, contentEncryptionKey, aad);
     }
 
     private byte[] decrypt(String toolSetName, byte[] data) {
-        byte[] contentEncryptionKey = contentEncryptionKeyService.getContentEncryptionKey(toolSetName);
+        byte[] contentEncryptionKey = contentEncryptionKeyService.getKey(toolSetName);
         if (contentEncryptionKey == null) {
             throw new ResourceNotFoundException("Content encryption key for ToolSet %s not found".formatted(toolSetName));
         }

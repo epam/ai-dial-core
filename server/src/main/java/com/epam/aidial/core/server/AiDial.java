@@ -37,6 +37,8 @@ import com.epam.aidial.core.server.service.credentials.ToolSetCredentialsService
 import com.epam.aidial.core.server.service.credentials.ToolSetRegistrationService;
 import com.epam.aidial.core.server.service.credentials.ToolSetTokenService;
 import com.epam.aidial.core.server.service.credentials.encryption.ContentEncryptionKeyGenerator;
+import com.epam.aidial.core.server.service.credentials.encryption.ContentEncryptionKeyManager;
+import com.epam.aidial.core.server.service.credentials.encryption.ContentEncryptionKeyManagerFactory;
 import com.epam.aidial.core.server.service.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.server.service.credentials.encryption.ToolsetCredentialsEncryptionService;
 import com.epam.aidial.core.server.service.credentials.encryption.keymanagement.KeyManagementService;
@@ -184,8 +186,10 @@ public class AiDial {
 
             ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator();
             KeyManagementService keyManagementService = KeyManagementServiceFactory.create(settings("toolsets"));
-            ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(resourceService, encryptionService,
-                    contentEncryptionKeyGenerator, keyManagementService);
+            ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
+                    resourceService, contentEncryptionKeyGenerator, keyManagementService, settings("toolsets"));
+            ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(
+                    contentEncryptionKeyManager, encryptionService);
 
             ToolSetAuthorizationClient toolSetAuthorizationClient = new ToolSetAuthorizationClient();
             ToolSetTokenService toolSetTokenService = new ToolSetTokenService(toolSetAuthorizationClient);
