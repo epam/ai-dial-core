@@ -8,6 +8,7 @@ import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.exception.CredentialsInternalException;
 import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
@@ -70,10 +71,10 @@ public class ResourceAuthSettingsService {
             && resourceAuthSettings.getClientSecret() == null;
     }
 
-    public void setResourceAuthStatuses(String resourceId,
+    public void setResourceAuthStatuses(ResourceDescriptor resourceDescriptor,
                                         ResourceAuthSettings resourceAuthSettings,
                                         String userSub) {
-        List<ResourceCredentials> allResourceCredentials = resourceCredentialsManager.getAllResourceCredentials(resourceId);
+        List<ResourceCredentials> allResourceCredentials = resourceCredentialsManager.getAllResourceCredentials(resourceDescriptor);
         setUserAuthStatus(resourceAuthSettings, allResourceCredentials, userSub);
         setGlobalAuthStatus(resourceAuthSettings, allResourceCredentials);
     }

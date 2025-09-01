@@ -38,7 +38,7 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), context.getUserSub());
+        resourceAuthSettingsService.setResourceAuthStatuses(resource, toolSet.getAuthSettings(), context.getUserSub());
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());

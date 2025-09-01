@@ -11,6 +11,7 @@ import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactory;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -23,7 +24,8 @@ public class ResourceCredentialsManager {
     private final ResourceCredentialsService resourceCredentialsService;
     private final TokenService tokenService;
 
-    public ResourceCredentials createResourceCredentials(ResourceAuthSettings resourceAuthSettings,
+    public ResourceCredentials createResourceCredentials(ResourceDescriptor resourceDescriptor,
+                                                         ResourceAuthSettings resourceAuthSettings,
                                                          ResourceSignInRequest resourceSignInRequest,
                                                          String userSub) {
         ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
@@ -35,18 +37,20 @@ public class ResourceCredentialsManager {
             resourceCredentials.setUserSub(userSub);
         }
 
-        resourceCredentialsService.addResourceCredentials(resourceCredentials);
+        resourceCredentialsService.addResourceCredentials(resourceDescriptor, resourceCredentials);
         log.info("Resource signIn done. {}", resourceSignInRequest.getUrl());
         return resourceCredentials;
     }
 
-    public ResourceCredentials getResourceCredentials(String resourceId, ResourceAuthSettings authSettings, String userSub) {
+    public ResourceCredentials getResourceCredentials(ResourceDescriptor resourceDescriptor, ResourceAuthSettings authSettings, String userSub) {
         if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
             return null;
         }
-        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(resourceId);
+        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(resourceDescriptor);
 
         ResourceCredentials globalCredentials = null;
+
+        String resourceId = resourceDescriptor.getDecodedUrl();
 
         for (ResourceCredentials credentials : resourceCredentialsList) {
             if (credentials.getCredentialsLevel() == CredentialsLevel.USER
@@ -54,7 +58,7 @@ public class ResourceCredentialsManager {
                     && userSub.equals(credentials.getUserSub())) {
                 if (credentials.isTokenExpired()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
-                    resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
+                    resourceCredentialsService.updateResourceCredentials(resourceDescriptor, resourceCredentialsList);
                 }
                 return credentials;
             }
@@ -68,7 +72,7 @@ public class ResourceCredentialsManager {
         }
 
         if (globalCredentials != null) {
-            resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
+            resourceCredentialsService.updateResourceCredentials(resourceDescriptor, resourceCredentialsList);
             return globalCredentials;
         }
 
@@ -77,14 +81,14 @@ public class ResourceCredentialsManager {
         throw new ResourceNotFoundException("Credentials (Global or Personal) for Resource %s not found".formatted(resourceId));
     }
 
-    public List<ResourceCredentials> getAllResourceCredentials(String resourceId) {
-        return resourceCredentialsService.getAllResourceCredentials(resourceId);
+    public List<ResourceCredentials> getAllResourceCredentials(ResourceDescriptor resourceDescriptor) {
+        return resourceCredentialsService.getAllResourceCredentials(resourceDescriptor);
     }
 
     public boolean deleteResourceCredentials(ResourceSignOutRequest resourceSignOutRequest,
                                              String userSub) {
-        String resourceId = resourceSignOutRequest.getUrl();
-        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(resourceId);
+        ResourceDescriptor resourceDescriptor = resourceSignOutRequest.getResourceDescriptor();
+        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(resourceDescriptor);
 
         if (resourceCredentialsList == null || resourceCredentialsList.isEmpty()) {
             return false;
@@ -94,16 +98,16 @@ public class ResourceCredentialsManager {
 
         if (resourceSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
             removed = resourceCredentialsList.removeIf(
-                resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel()));
+                    resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel()));
         } else if (resourceSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
             removed = resourceCredentialsList.removeIf(
-                resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel())
-                    && resourceCredentials.getUserSub().equals(userSub));
+                    resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel())
+                            && resourceCredentials.getUserSub().equals(userSub));
         }
 
-        resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
+        resourceCredentialsService.updateResourceCredentials(resourceDescriptor, resourceCredentialsList);
 
-        log.info("Resource signOut done. {}", resourceId);
+        log.info("Resource signOut done. {}", resourceDescriptor.getDecodedUrl());
         return removed;
     }
 
@@ -120,25 +124,25 @@ public class ResourceCredentialsManager {
         log.debug("Finished updating expired token for Resource: {}", resourceId);
     }
 
-    public AuthorizationHeader createAuthorizationHeader(String resourceId,
+    public AuthorizationHeader createAuthorizationHeader(ResourceDescriptor resourceDescriptor,
                                                          ResourceAuthSettings resourceAuthSettings,
                                                          String userSub) {
-        ResourceCredentials resourceCredentials = getResourceCredentials(resourceId, resourceAuthSettings, userSub);
+        ResourceCredentials resourceCredentials = getResourceCredentials(resourceDescriptor, resourceAuthSettings, userSub);
         if (resourceCredentials == null) {
             return null;
         }
         if (AuthenticationType.OAUTH.equals(resourceCredentials.getAuthenticationType())) {
             return AuthorizationHeader
-                .builder()
-                .headerName("Authorization")
-                .headerValue("Bearer " + resourceCredentials.getAccessToken())
-                .build();
+                    .builder()
+                    .headerName("Authorization")
+                    .headerValue("Bearer " + resourceCredentials.getAccessToken())
+                    .build();
         } else if (AuthenticationType.API_KEY.equals(resourceCredentials.getAuthenticationType())) {
             return AuthorizationHeader
-                .builder()
-                .headerName(resourceCredentials.getApiKeyHeader())
-                .headerValue(resourceCredentials.getApiKey())
-                .build();
+                    .builder()
+                    .headerName(resourceCredentials.getApiKeyHeader())
+                    .headerValue(resourceCredentials.getApiKey())
+                    .build();
         }
         return null;
     }

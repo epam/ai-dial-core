@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service.credentials.encryption.keymanagement;
+package com.epam.aidial.core.credentials.service.encryption.keymanagement;
 
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.DecryptRequest;

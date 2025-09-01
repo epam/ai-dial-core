@@ -53,11 +53,13 @@ public class ToolSetCredentialsController {
                 .compose(body -> {
                     ResourceSignInRequest resourceSignInRequest = ProxyUtil.convertToObject(body, ResourceSignInRequest.class);
                     String toolsetId = resourceSignInRequest.getUrl();
+                    ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(toolsetId, encryptionService);
                     return taskExecutor.submit(() -> {
                         Deployment deployment = deploymentService.findDeployment(context, toolsetId);
                         if (deployment instanceof ToolSet toolSet) {
-                            verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
+                            verifyAccess(resourceDescriptor, resourceSignInRequest.getCredentialsLevel());
                             ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
+                                    resourceDescriptor,
                                     toolSet.getAuthSettings(),
                                     resourceSignInRequest,
                                     context.getUserSub());
@@ -78,7 +80,7 @@ public class ToolSetCredentialsController {
                 .body()
                 .compose(body -> taskExecutor.submit(() -> {
                     ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
-                    verifyAccess(resourceSignOutRequest.getUrl(), resourceSignOutRequest.getCredentialsLevel());
+                    verifyAccess(resourceSignOutRequest.getResourceDescriptor(), resourceSignOutRequest.getCredentialsLevel());
 
                     return resourceCredentialsManager.deleteResourceCredentials(resourceSignOutRequest, context.getUserSub());
                 }))
@@ -89,17 +91,15 @@ public class ToolSetCredentialsController {
         return Future.succeededFuture();
     }
 
-    private void verifyAccess(String toolSetId,
-                              CredentialsLevel credentialsLevel) {
-
-        ResourceDescriptor resourceDescriptor;
-        try {
-            String url = UrlUtil.encodePath(toolSetId);
-            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(url, encryptionService);
-        } catch (Throwable ignore) {
-            // toolset is from config
-            return;
-        }
+    private void verifyAccess(ResourceDescriptor resourceDescriptor, CredentialsLevel credentialsLevel) {
+        // TODO: Why do we need this?
+//        try {
+//            String url = UrlUtil.encodePath(toolSetId);
+//            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(url, encryptionService);
+//        } catch (Throwable ignore) {
+//            // toolset is from config
+//            return;
+//        }
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)

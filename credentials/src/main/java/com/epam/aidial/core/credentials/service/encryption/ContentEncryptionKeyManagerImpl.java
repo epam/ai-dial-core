@@ -1,6 +1,6 @@
-package com.epam.aidial.core.server.service.credentials.encryption;
+package com.epam.aidial.core.credentials.service.encryption;
 
-import com.epam.aidial.core.server.service.credentials.encryption.keymanagement.KeyManagementService;
+import com.epam.aidial.core.credentials.service.encryption.keymanagement.KeyManagementService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;

@@ -33,7 +33,6 @@ dependencies {
     implementation 'com.networknt:json-schema-validator:1.5.2'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
     implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
-    implementation group: 'com.amazonaws', name: 'aws-java-sdk-kms', version: '1.12.663'
     implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
     implementation group: 'com.azure', name: 'azure-identity', version: '1.13.2'
     implementation 'org.hibernate.validator:hibernate-validator:8.0.0.Final'
@@ -41,7 +40,6 @@ dependencies {
     implementation 'jakarta.validation:jakarta.validation-api:3.0.2' // Ensure you have Jakarta Validation API dependency
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.4.3'
     implementation 'com.jayway.jsonpath:json-path:2.9.0'
-    implementation 'com.github.ben-manes.caffeine:caffeine:3.2.2'
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
     testImplementation 'commons-io:commons-io:2.14.0'

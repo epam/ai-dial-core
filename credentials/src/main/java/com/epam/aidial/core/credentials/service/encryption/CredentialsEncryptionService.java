@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service.credentials.encryption;
+package com.epam.aidial.core.credentials.service.encryption;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +12,7 @@ import java.security.SecureRandom;
 
 @Slf4j
 @RequiredArgsConstructor
-public class ToolsetCredentialsEncryptionService {
+public class CredentialsEncryptionService {
 
     private static final String CIPHER_TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int IV_LENGTH_BYTES = 12; // 96-bit nonce as recommended for GCM

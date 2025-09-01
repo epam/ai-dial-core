@@ -15,11 +15,13 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -39,6 +41,8 @@ import java.util.Objects;
 public class ToolSetProxyController implements Controller {
 
     private final String toolSetId;
+
+    private final ResourceDescriptor toolSetDescriptor;
 
     private final ProxyContext context;
 
@@ -64,8 +68,9 @@ public class ToolSetProxyController implements Controller {
         this.upstreamRouteProvider = proxy.getUpstreamRouteProvider();
         this.logStore = proxy.getLogStore();
         this.context = context;
-        this.toolSetId = toolSetId;
         this.resourceCredentialsManager = proxy.getResourceCredentialsManager();
+        this.toolSetId = toolSetId;
+        this.toolSetDescriptor = ResourceDescriptorFactory.fromAnyUrl(toolSetId, proxy.getEncryptionService());
     }
 
     @Override
@@ -136,7 +141,7 @@ public class ToolSetProxyController implements Controller {
         try {
             ToolSet toolSet = (ToolSet) context.getDeployment();
             AuthorizationHeader authorizationHeader = resourceCredentialsManager.createAuthorizationHeader(
-                    toolSetId, toolSet.getAuthSettings(), context.getUserSub());
+                    toolSetDescriptor, toolSet.getAuthSettings(), context.getUserSub());
             if (authorizationHeader != null) {
                 proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
             }

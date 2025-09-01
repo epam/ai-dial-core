@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -45,7 +46,10 @@ public class ToolSetController {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                resourceAuthSettingsService.setResourceAuthStatuses(toolSetId, toolSet.getAuthSettings(), context.getUserSub());
+                ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory
+                        .fromAnyUrl(toolSetId, context.getProxy().getEncryptionService());
+                resourceAuthSettingsService.setResourceAuthStatuses(resourceDescriptor,
+                        toolSet.getAuthSettings(), context.getUserSub());
                 toolSet.clearAuthSettings();
                 return toolSet;
             }
@@ -79,7 +83,7 @@ public class ToolSetController {
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
                 ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
                 toolSet.clearAuthSettings();
-                resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), context.getUserSub());
+                resourceAuthSettingsService.setResourceAuthStatuses(resource, toolSet.getAuthSettings(), context.getUserSub());
                 return toolSet;
             }
         });
