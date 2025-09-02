@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ContentEncryptionKeyService {
 
-    private final static String CEK_FILENAME = "cek";
+    private static final String CEK_FILENAME = "cek";
 
     private final ContentEncryptionKeyManager contentEncryptionKeyManager;
 

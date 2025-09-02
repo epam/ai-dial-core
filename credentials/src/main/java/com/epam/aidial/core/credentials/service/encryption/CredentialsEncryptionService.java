@@ -3,12 +3,12 @@ package com.epam.aidial.core.credentials.service.encryption;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
 import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.GeneralSecurityException;
-import java.security.SecureRandom;
 
 @Slf4j
 @RequiredArgsConstructor

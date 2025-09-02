@@ -92,14 +92,6 @@ public class ToolSetCredentialsController {
     }
 
     private void verifyAccess(ResourceDescriptor resourceDescriptor, CredentialsLevel credentialsLevel) {
-        // TODO: Why do we need this?
-//        try {
-//            String url = UrlUtil.encodePath(toolSetId);
-//            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(url, encryptionService);
-//        } catch (Throwable ignore) {
-//            // toolset is from config
-//            return;
-//        }
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)

@@ -24,7 +24,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ResourceCredentialsService {
 
-    private final static String CREDENTIALS_PATH = "credentials";
+    private static final String CREDENTIALS_PATH = "credentials";
 
     private final ResourceService resourceService;
 
