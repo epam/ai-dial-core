@@ -31,7 +31,7 @@ public class AwsKeyManagementService implements KeyManagementService {
     }
 
     @Override
-    public byte[] encode(byte[] plain) {
+    public byte[] encrypt(byte[] plain) {
         Objects.requireNonNull(plain, "plain");
         if (plain.length > KMS_DIRECT_ENCRYPT_LIMIT_BYTES) {
             throw new IllegalArgumentException("Plaintext too large for direct KMS Encrypt (max 4096 bytes).");
@@ -49,7 +49,7 @@ public class AwsKeyManagementService implements KeyManagementService {
     }
 
     @Override
-    public byte[] decode(byte[] encrypted) {
+    public byte[] decrypt(byte[] encrypted) {
         Objects.requireNonNull(encrypted, "encrypted");
 
         DecryptRequest req = new DecryptRequest()

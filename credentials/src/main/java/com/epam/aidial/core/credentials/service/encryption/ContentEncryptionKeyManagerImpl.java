@@ -16,7 +16,7 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
     @Override
     public byte[] createKey(ResourceDescriptor cekDescriptor) {
         byte[] cek = contentEncryptionKeyGenerator.generate();
-        byte[] encryptedCek = keyManagementService.encode(cek);
+        byte[] encryptedCek = keyManagementService.encrypt(cek);
         resourceService.putResourceBytes(cekDescriptor, encryptedCek, EtagHeader.ANY);
         return cek;
     }
@@ -36,7 +36,7 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
         if (encryptedCek == null) {
             return null;
         }
-        return keyManagementService.decode(encryptedCek);
+        return keyManagementService.decrypt(encryptedCek);
     }
 
 }

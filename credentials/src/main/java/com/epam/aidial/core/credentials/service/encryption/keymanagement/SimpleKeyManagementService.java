@@ -3,12 +3,12 @@ package com.epam.aidial.core.credentials.service.encryption.keymanagement;
 public class SimpleKeyManagementService implements KeyManagementService {
 
     @Override
-    public byte[] encode(byte[] plain) {
+    public byte[] encrypt(byte[] plain) {
         return plain;
     }
 
     @Override
-    public byte[] decode(byte[] encrypted) {
+    public byte[] decrypt(byte[] encrypted) {
         return encrypted;
     }
 
