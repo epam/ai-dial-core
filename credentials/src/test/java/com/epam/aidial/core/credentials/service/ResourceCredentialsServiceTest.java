@@ -8,7 +8,6 @@ import com.epam.aidial.core.credentials.service.encryption.CredentialsEncryption
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import org.apache.commons.lang3.NotImplementedException;
@@ -53,28 +52,10 @@ class ResourceCredentialsServiceTest {
     @InjectMocks
     private ResourceCredentialsService service;
 
-    private ResourceDescriptor makeResourceDescriptor() {
-        return new ResourceDescriptor(
-                new DummyResourceType(),
-                "my-toolset",
-                List.of("folder1"),
-                "bucket-name",
-                "bucket-location/",
-                false
-        );
-    }
-
-    private ResourceCredentials makeCredentials(CredentialsLevel credentialsLevel) {
-        return ResourceCredentials.builder()
-                .credentialsLevel(credentialsLevel)
-                .resourceId(TOOL_SET_NAME)
-                .build();
-    }
-
     @Test
     public void testAddResourceCredentials_nonGlobal_throws() {
-        ResourceCredentials creds = makeCredentials(CredentialsLevel.USER);
-        ResourceDescriptor descriptor = makeResourceDescriptor();
+        ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
+        ResourceDescriptor descriptor = createResourceDescriptor();
 
         assertThrows(NotImplementedException.class, () -> service.addResourceCredentials(descriptor, creds));
         verifyNoInteractions(resourceService);
@@ -82,8 +63,8 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testAddResourceCredentials_global_putsResource() {
-        ResourceCredentials creds = makeCredentials(CredentialsLevel.GLOBAL);
-        ResourceDescriptor descriptor = makeResourceDescriptor();
+        ResourceCredentials creds = createCredentials(CredentialsLevel.GLOBAL);
+        ResourceDescriptor descriptor = createResourceDescriptor();
         when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
@@ -110,9 +91,9 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testGetAllResourceCredentials_returnsOne() {
-        ResourceCredentials creds = makeCredentials(CredentialsLevel.GLOBAL);
+        ResourceCredentials creds = createCredentials(CredentialsLevel.GLOBAL);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
-        ResourceDescriptor descriptor = makeResourceDescriptor();
+        ResourceDescriptor descriptor = createResourceDescriptor();
 
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
         when(contentEncryptionKeyService.getKey(any())).thenReturn(CEK);
@@ -139,7 +120,7 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testGetAllResourceCredentials_returnsEmptyWhenNull() {
-        ResourceDescriptor descriptor = makeResourceDescriptor();
+        ResourceDescriptor descriptor = createResourceDescriptor();
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(null);
 
         List<ResourceCredentials> list = service.getAllResourceCredentials(descriptor);
@@ -150,9 +131,9 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testUpdateResourceCredentials_multipleEntries_throws() {
-        ResourceDescriptor descriptor = makeResourceDescriptor();
-        ResourceCredentials c1 = makeCredentials(CredentialsLevel.GLOBAL);
-        ResourceCredentials c2 = makeCredentials(CredentialsLevel.GLOBAL);
+        ResourceDescriptor descriptor = createResourceDescriptor();
+        ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
+        ResourceCredentials c2 = createCredentials(CredentialsLevel.GLOBAL);
 
         assertThrows(UnsupportedOperationException.class, () -> service.updateResourceCredentials(descriptor, List.of(c1, c2)));
         verifyNoInteractions(resourceService);
@@ -160,8 +141,8 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testUpdateResourceCredentials_nonGlobal_throws() {
-        ResourceDescriptor descriptor = makeResourceDescriptor();
-        ResourceCredentials c1 = makeCredentials(CredentialsLevel.USER);
+        ResourceDescriptor descriptor = createResourceDescriptor();
+        ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
 
         assertThrows(UnsupportedOperationException.class, () -> service.updateResourceCredentials(descriptor, List.of(c1)));
         verifyNoInteractions(resourceService);
@@ -169,8 +150,8 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testUpdateResourceCredentials_notFound_throws() {
-        ResourceDescriptor descriptor = makeResourceDescriptor();
-        ResourceCredentials c1 = makeCredentials(CredentialsLevel.GLOBAL);
+        ResourceDescriptor descriptor = createResourceDescriptor();
+        ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
 
         doAnswer(inv -> {
             Function<String, String> mapper = inv.getArgument(1);
@@ -192,7 +173,7 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testUpdateResourceCredentials_deleteWhenEmptyList() {
-        ResourceDescriptor descriptor = makeResourceDescriptor();
+        ResourceDescriptor descriptor = createResourceDescriptor();
 
         service.updateResourceCredentials(descriptor, List.of());
 
@@ -213,8 +194,8 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testUpdateResourceCredentials_updatesBody() {
-        ResourceDescriptor descriptor = makeResourceDescriptor();
-        ResourceCredentials c1 = makeCredentials(CredentialsLevel.GLOBAL);
+        ResourceDescriptor descriptor = createResourceDescriptor();
+        ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
         when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
@@ -236,23 +217,22 @@ class ResourceCredentialsServiceTest {
         assertEquals(ENCRYPTED_BODY, updatedBody);
     }
 
-    private static class DummyResourceType implements ResourceType {
+    private ResourceDescriptor createResourceDescriptor() {
+        return new ResourceDescriptor(
+                ResourceTypes.TOOL_SET_CREDENTIALS,
+                "my-toolset",
+                List.of("folder1"),
+                "bucket-name",
+                "bucket-location/",
+                false
+        );
+    }
 
-        @Override
-        public String name() {
-            return "test_name";
-        }
-
-        @Override
-        public String group() {
-            return "test_group";
-        }
-
-        @Override
-        public boolean requireCompression() {
-            return false;
-        }
-
+    private ResourceCredentials createCredentials(CredentialsLevel credentialsLevel) {
+        return ResourceCredentials.builder()
+                .credentialsLevel(credentialsLevel)
+                .resourceId(TOOL_SET_NAME)
+                .build();
     }
 
 }
