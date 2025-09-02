@@ -102,7 +102,7 @@ public class ResourceCredentialsService {
         parentFolders.addAll(resourceDescriptor.getParentFolders());
 
         return new ResourceDescriptor(
-                ResourceTypes.TOOL_SET_CREDENTIALS,
+                ResourceTypes.CREDENTIALS,
                 resourceDescriptor.getName(),
                 parentFolders,
                 resourceDescriptor.getBucketName(),

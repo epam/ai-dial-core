@@ -3,7 +3,7 @@ package com.epam.aidial.core.credentials.data.credentials;
 import com.epam.aidial.core.storage.resource.ResourceType;
 
 public enum ResourceTypes implements ResourceType {
-    TOOL_SET_CREDENTIALS("toolset_credentials", true);
+    CREDENTIALS("credentials", true);
 
     private final String group;
     private final boolean requireCompression;

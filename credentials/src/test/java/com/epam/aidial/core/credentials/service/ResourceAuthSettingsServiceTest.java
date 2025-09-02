@@ -150,7 +150,7 @@ class ResourceAuthSettingsServiceTest {
 
     private ResourceDescriptor createResourceDescriptor() {
         return new ResourceDescriptor(
-                ResourceTypes.TOOL_SET_CREDENTIALS,
+                ResourceTypes.CREDENTIALS,
                 "my-toolset",
                 List.of("folder1"),
                 "bucket-name",

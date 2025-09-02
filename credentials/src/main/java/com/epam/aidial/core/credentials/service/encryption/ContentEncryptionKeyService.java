@@ -23,7 +23,7 @@ public class ContentEncryptionKeyService {
 
     private ResourceDescriptor getContentEncryptionKeyDescriptor(ResourceDescriptor resourceDescriptor) {
         return new ResourceDescriptor(
-                ResourceTypes.TOOL_SET_CREDENTIALS,
+                ResourceTypes.CREDENTIALS,
                 CEK_FILENAME,
                 resourceDescriptor.getParentFolders(),
                 resourceDescriptor.getBucketName(),

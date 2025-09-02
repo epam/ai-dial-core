@@ -77,7 +77,7 @@ class ResourceCredentialsServiceTest {
         verify(resourceService).putResourceBytes(descriptorCaptor.capture(), bodyCaptor.capture(), etagCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
         assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
@@ -111,7 +111,7 @@ class ResourceCredentialsServiceTest {
         verify(resourceService).getResourceBytes(descriptorCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
         assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
@@ -164,7 +164,7 @@ class ResourceCredentialsServiceTest {
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), any());
         ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
         assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
@@ -182,7 +182,7 @@ class ResourceCredentialsServiceTest {
         verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), fnCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
         assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
@@ -206,7 +206,7 @@ class ResourceCredentialsServiceTest {
         verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), fnCaptor.capture());
 
         ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.TOOL_SET_CREDENTIALS, passed.getType());
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
         assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
@@ -219,7 +219,7 @@ class ResourceCredentialsServiceTest {
 
     private ResourceDescriptor createResourceDescriptor() {
         return new ResourceDescriptor(
-                ResourceTypes.TOOL_SET_CREDENTIALS,
+                ResourceTypes.CREDENTIALS,
                 "my-toolset",
                 List.of("folder1"),
                 "bucket-name",
