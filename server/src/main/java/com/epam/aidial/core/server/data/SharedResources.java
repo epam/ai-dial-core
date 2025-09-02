@@ -26,22 +26,16 @@ public class SharedResources {
                 .collect(Collectors.toList());
     }
 
-    public void addSharedResources(List<SharedResource> sharedResources) {
+    public void addSharedResources(List<SharedResource> sharedResources, String sharedByDisplayName) {
         Map<String, SharedResource> resourcesMap = resources.stream().collect(Collectors.toMap(SharedResource::getUrl, r -> r));
         for (SharedResource sharedResource : sharedResources) {
             SharedResource existingResource = resourcesMap.get(sharedResource.getUrl());
             if (existingResource == null) {
-                this.resources.add(sharedResource);
+                this.resources.add(sharedResource.withSharedBy(sharedByDisplayName));
             } else {
                 existingResource.getPermissions().addAll(sharedResource.getPermissions());
+                existingResource.setSharedBy(sharedByDisplayName);
             }
         }
-    }
-
-    public Set<ResourceAccessType> findPermissions(String url) {
-        return resources.stream()
-                .filter(resource -> url.equals(resource.getUrl()))
-                .map(SharedResource::getPermissions)
-                .reduce(Set.of(), Sets::union);
     }
 }
