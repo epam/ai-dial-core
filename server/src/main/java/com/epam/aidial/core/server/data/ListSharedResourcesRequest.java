@@ -18,4 +18,8 @@ public class ListSharedResourcesRequest {
      * Shared resource direction. Can be either with - me or others.
      */
     String with;
+    /**
+     * Include user display name in the response
+     */
+    boolean includeUserInfo;
 }

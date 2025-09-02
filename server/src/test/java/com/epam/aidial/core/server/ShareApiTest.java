@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -149,6 +148,79 @@ public class ShareApiTest extends ResourceBaseTest {
         verifyJson(response, 200, """
                 {
                   "resources": []
+                }
+                """);
+    }
+
+    @Test
+    public void testShareWorkflowWithUserInfo() {
+        // create conversation
+        Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation%201%40", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":\"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@\"");
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [ {
+                    "url": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201%40"
+                  } ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 has shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": [ "CONVERSATION" ],
+                  "with": "me",
+                  "includeUserInfo": true
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources" : [ {
+                    "name" : "conversation 1@",
+                    "parentPath" : "folder",
+                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
+                    "nodeType" : "ITEM",
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ],
+                    "sharedBy" : "EPM-RTC-GPT",
+                    "author" : "EPM-RTC-GPT"
+                  } ]
+                }
+                """);
+
+        // verify user1 has shared_by_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": [ "CONVERSATION" ],
+                  "with": "others",
+                  "includeUserInfo": true
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources" : [ {
+                    "name" : "conversation 1@",
+                    "parentPath" : "folder",
+                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
+                    "nodeType" : "ITEM",
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ],
+                    "sharedWith" : {
+                      "EPM-RTC-RAIL" : [ "READ" ]
+                    }
+                  } ]
                 }
                 """);
     }
@@ -1342,29 +1414,34 @@ public class ShareApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
                   "resourceTypes": ["CONVERSATION"],
-                  "with": "me"
+                  "with": "me",
+                  "includeUserInfo": true
                 }
                 """, "Api-key", "proxyKey2");
 
         verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
-                    "name" : "conversation2",
-                    "parentPath" : "folder",
-                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ]
+                      "name" : "conversation2",
+                      "parentPath" : "folder",
+                      "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
+                      "nodeType" : "ITEM",
+                      "resourceType" : "CONVERSATION",
+                      "permissions" : [ "READ" ],
+                      "sharedBy" : "EPM-RTC-GPT",
+                      "author" : "EPM-RTC-GPT"
                     },
                     {
-                    "name" : "conversation",
-                    "parentPath" : "folder",
-                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ]
+                      "name" : "conversation",
+                      "parentPath" : "folder",
+                      "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                      "nodeType" : "ITEM",
+                      "resourceType" : "CONVERSATION",
+                      "permissions" : [ "READ" ],
+                      "sharedBy" : "EPM-RTC-GPT",
+                      "author" : "EPM-RTC-GPT"
                     }
                   ]
                 }
@@ -1374,28 +1451,35 @@ public class ShareApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
                   "resourceTypes": ["CONVERSATION"],
-                  "with": "others"
+                  "with": "others",
+                  "includeUserInfo": true
                 }
                 """);
         verifyJsonNotExact(response, 200, """
                 {
                   "resources" : [ {
-                    "name" : "conversation2",
-                    "parentPath" : "folder",
-                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ]
+                      "name" : "conversation2",
+                      "parentPath" : "folder",
+                      "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation2",
+                      "nodeType" : "ITEM",
+                      "resourceType" : "CONVERSATION",
+                      "permissions" : [ "READ" ],
+                      "sharedWith" : {
+                        "EPM-RTC-RAIL" : [ "READ" ]
+                      }
                     },
                     {
-                    "name" : "conversation",
-                    "parentPath" : "folder",
-                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
-                    "nodeType" : "ITEM",
-                    "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ" ]
+                      "name" : "conversation",
+                      "parentPath" : "folder",
+                      "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                      "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
+                      "nodeType" : "ITEM",
+                      "resourceType" : "CONVERSATION",
+                      "permissions" : [ "READ" ],
+                      "sharedWith" : {
+                        "EPM-RTC-RAIL" : [ "READ" ]
+                      }
                     }
                   ]
                 }
@@ -1950,7 +2034,8 @@ public class ShareApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/resource/share/list", """
                 {
                   "resourceTypes": ["CONVERSATION"],
-                  "with": "me"
+                  "with": "me",
+                  "includeUserInfo": true
                 }
                 """, "Api-key", "proxyKey2");
         verifyJsonNotExact(response, 200, """
@@ -1962,7 +2047,9 @@ public class ShareApiTest extends ResourceBaseTest {
                     "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ", "SHARE" ]
+                    "permissions" : [ "READ", "SHARE" ],
+                    "sharedBy" : "EPM-RTC-GPT",
+                    "author" : "EPM-RTC-GPT"
                     } ]
                 }
                 """);
@@ -2000,6 +2087,30 @@ public class ShareApiTest extends ResourceBaseTest {
         // accept invitation by user 3
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
         verify(response, 200);
+
+        // verify user 3 has shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["CONVERSATION"],
+                  "with": "me",
+                  "includeUserInfo": true
+                }
+                """, "Api-key", "proxyKey3");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "resources" : [ {
+                    "name" : "conversation 1@",
+                    "parentPath" : "folder",
+                    "bucket" : "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
+                    "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation%201@",
+                    "nodeType" : "ITEM",
+                    "resourceType" : "CONVERSATION",
+                    "permissions" : [ "READ" ],
+                    "sharedBy" : "EPM-RTC-RAIL",
+                    "author" : "EPM-RTC-GPT"
+                    } ]
+                }
+                """);
 
         // verify user 3 has access to the conversation
         response = resourceRequest(HttpMethod.GET, "/folder/conversation%201%40", null, "Api-key", "proxyKey3");

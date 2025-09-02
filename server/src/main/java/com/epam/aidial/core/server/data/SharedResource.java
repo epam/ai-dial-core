@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.util.EnumSet;
@@ -9,24 +10,41 @@ import java.util.Set;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SharedResource {
     String url;
+    String author;
+    /**
+     * Display name of the user who shared the resource with the current user.
+     */
+    String sharedBy;
     Set<ResourceAccessType> permissions;
 
     public SharedResource() {
     }
 
-    public SharedResource(String url, Set<ResourceAccessType> permissions) {
+    public SharedResource(
+            String url, String author, String sharedBy, Set<ResourceAccessType> permissions) {
         this.url = url;
+        this.author = author;
+        this.sharedBy = sharedBy;
         this.permissions = permissions;
     }
 
     public SharedResource withUrl(String url) {
-        return new SharedResource(url, permissions);
+        return new SharedResource(url, author, sharedBy, permissions);
     }
 
-    public SharedResource withPermissions(Set<ResourceAccessType> permissions) {
-        return new SharedResource(url, permissions);
+    public SharedResource withSharedBy(String displayName) {
+        return new SharedResource(url, author, displayName, permissions);
+    }
+
+    public SharedResource withAuthor(String name) {
+        return new SharedResource(url, name, sharedBy, permissions);
+    }
+
+    private SharedResource withPermissions(Set<ResourceAccessType> permissions) {
+        return new SharedResource(url, author, sharedBy, permissions);
     }
 
     public SharedResource withReadIfNoPermissions() {
