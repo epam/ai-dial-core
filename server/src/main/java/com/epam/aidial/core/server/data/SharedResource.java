@@ -10,14 +10,13 @@ import java.util.Set;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SharedResource {
     String url;
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     String author;
     /**
      * Display name of the user who shared the resource with the current user.
      */
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     String sharedBy;
     Set<ResourceAccessType> permissions;
 
