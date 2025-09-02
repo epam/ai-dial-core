@@ -95,9 +95,9 @@ public class ShareService {
                     metadata.setPermissions(sharedResource.getPermissions());
                     if (request.isIncludeUserInfo()) {
                         if (metadata instanceof ResourceItemMetadata itemMetadata) {
-                            itemMetadata.setAuthor(sharedResource.getAuthorDisplayName());
+                            itemMetadata.setAuthor(sharedResource.getAuthor());
                         }
-                        metadata.setSharedBy(sharedResource.getSharedByDisplayName());
+                        metadata.setSharedBy(sharedResource.getSharedBy());
                     }
                     resultMetadata.add(metadata);
                 }
@@ -206,9 +206,9 @@ public class ShareService {
                     ownerResources.add(sharedResource);
                 }
                 String author = reshareableResourceUrls.containsKey(resource.getUrl())
-                        ? reshareableResourceUrls.get(resource.getUrl()).getAuthorDisplayName()
+                        ? reshareableResourceUrls.get(resource.getUrl()).getAuthor()
                         : context.getUserDisplayName();
-                normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()).withAuthorDisplayName(author));
+                normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()).withAuthor(author));
                 updateLimits(context, resourceType, limit, ownerResources);
             }
         }

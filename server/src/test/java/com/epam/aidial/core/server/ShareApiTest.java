@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;

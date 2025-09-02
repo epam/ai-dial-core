@@ -31,18 +31,11 @@ public class SharedResources {
         for (SharedResource sharedResource : sharedResources) {
             SharedResource existingResource = resourcesMap.get(sharedResource.getUrl());
             if (existingResource == null) {
-                this.resources.add(sharedResource.withSharedByDisplayName(sharedByDisplayName));
+                this.resources.add(sharedResource.withSharedBy(sharedByDisplayName));
             } else {
                 existingResource.getPermissions().addAll(sharedResource.getPermissions());
-                existingResource.setSharedByDisplayName(sharedByDisplayName);
+                existingResource.setSharedBy(sharedByDisplayName);
             }
         }
-    }
-
-    public Set<ResourceAccessType> findPermissions(String url) {
-        return resources.stream()
-                .filter(resource -> url.equals(resource.getUrl()))
-                .map(SharedResource::getPermissions)
-                .reduce(Set.of(), Sets::union);
     }
 }
