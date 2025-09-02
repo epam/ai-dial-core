@@ -84,7 +84,7 @@ public class AccessTokenValidator {
             // access token is not JWT. let's try to extract claims from user info
             return extractClaimsFromUserInfo(accessToken);
         } catch (Throwable e) {
-            log.error("Can't extract claims from authorization header", e);
+            log.error("Error occurred on processing access token from authorization header", e);
             return Future.failedFuture(e);
         }
     }
