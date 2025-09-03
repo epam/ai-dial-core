@@ -23,7 +23,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
-import com.epam.aidial.core.storage.data.SharedWithMetadata;
+import com.epam.aidial.core.storage.data.ShareMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.service.LockService;
@@ -582,6 +582,12 @@ public class ShareService {
                     SharedResource sharedResource = iterator.next();
                     if (sharedResource.getUrl().equals(link)) {
                         wasReshared.setValue(sharedResource.getPermissions().contains(ResourceAccessType.SHARE));
+                        if (sharedResource.getSharedBy() != null) {
+                            sharedResource.getSharedBy().forEach(
+                                    shareMetadata -> shareMetadata.getPermissions().removeAll(permissionsToRemove));
+                            sharedResource.getSharedBy().removeIf(
+                                    shareMetadata -> shareMetadata.getPermissions().isEmpty());
+                        }
                         sharedResource.getPermissions().removeAll(permissionsToRemove);
                         if (sharedResource.getPermissions().isEmpty()) {
                             iterator.remove();
@@ -648,14 +654,14 @@ public class ShareService {
                             : new ResourceItemMetadata(resource);
                     metadata.setPermissions(permissions);
                     if (includeUserInfo) {
-                        List<SharedWithMetadata> perUserPermissions = new ArrayList<>();
+                        List<ShareMetadata> perUserPermissions = new ArrayList<>();
                         dto.getUserPermissions(link).forEach((user, access) -> {
                             String userDisplayName = dto.getUserIdToDisplayName().get(user);
                             if (userDisplayName != null) {
-                                perUserPermissions.add(SharedWithMetadata.builder()
-                                        .user(userDisplayName)
-                                        .permissions(permissions)
-                                        .build());
+                                ShareMetadata shareMetadata = new ShareMetadata();
+                                shareMetadata.setUser(userDisplayName);
+                                shareMetadata.setPermissions(access);
+                                perUserPermissions.add(shareMetadata);
                             }
                         });
 

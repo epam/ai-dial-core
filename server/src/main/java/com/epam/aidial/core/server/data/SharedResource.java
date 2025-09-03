@@ -1,11 +1,14 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.storage.data.ShareMetadata;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 
 @Data
@@ -15,16 +18,16 @@ public class SharedResource {
     String url;
     String author;
     /**
-     * Display name of the user who shared the resource with the current user.
+     * The list of users or projects who shared this resource with the current user.
      */
-    String sharedBy;
+    List<ShareMetadata> sharedBy;
     Set<ResourceAccessType> permissions;
 
     public SharedResource() {
     }
 
     public SharedResource(
-            String url, String author, String sharedBy, Set<ResourceAccessType> permissions) {
+            String url, String author, List<ShareMetadata> sharedBy, Set<ResourceAccessType> permissions) {
         this.url = url;
         this.author = author;
         this.sharedBy = sharedBy;
@@ -33,10 +36,6 @@ public class SharedResource {
 
     public SharedResource withUrl(String url) {
         return new SharedResource(url, author, sharedBy, permissions);
-    }
-
-    public SharedResource withSharedBy(String displayName) {
-        return new SharedResource(url, author, displayName, permissions);
     }
 
     public SharedResource withAuthor(String name) {
