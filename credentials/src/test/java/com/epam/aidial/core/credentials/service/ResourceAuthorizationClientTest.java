@@ -144,7 +144,7 @@ class ResourceAuthorizationClientTest {
 
         // When & Then
         assertThrows(CredentialsInternalException.class, () -> resourceAuthorizationClient.executePost(
-            url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class));
+                url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class));
     }
 
     @Data

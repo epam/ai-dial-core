@@ -75,7 +75,7 @@ class ResourceRegistrationServiceTest {
             any(ClientRegistrationRequest.class),
             eq(ContentType.APPLICATION_JSON.toString()),
             eq(ClientRegistrationResponse.class)))
-            .thenReturn(clientRegistrationResponse);
+                .thenReturn(clientRegistrationResponse);
 
         // When
         ClientRegistration result = resourceRegistrationService.createDynamicResourceRegistration(resourceId, resourceEndpoint, resourceRedirectUri);
@@ -177,7 +177,7 @@ class ResourceRegistrationServiceTest {
             any(ClientRegistrationRequest.class),
             eq(ContentType.APPLICATION_JSON.toString()),
             eq(ClientRegistrationResponse.class)))
-            .thenReturn(clientRegistrationResponse);
+                .thenReturn(clientRegistrationResponse);
 
         // When
         ClientRegistration result = resourceRegistrationService.createDynamicResourceRegistration(resourceId, resourceEndpoint, resourceRedirectUri);
