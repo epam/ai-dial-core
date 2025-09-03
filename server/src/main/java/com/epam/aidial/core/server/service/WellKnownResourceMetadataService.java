@@ -7,7 +7,6 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.HostAndPort;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,32 +30,42 @@ public class WellKnownResourceMetadataService {
 
     private static final String RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource";
 
-    private final List<String> authorizationServers;
+    private final String resourceSchema;
     private final String resourceHost;
+    private final List<String> authorizationServers;
+    private final List<String> scopesSupported;
 
     public WellKnownResourceMetadataService(JsonObject toolsetSettings) {
         JsonObject security = toolsetSettings != null ? toolsetSettings.getJsonObject("security") : null;
 
-        this.authorizationServers = (security != null && security.containsKey("authorizationServers"))
-                ? parseAuthorizationServers(security.getValue("authorizationServers"))
-                : Collections.emptyList();
+        this.resourceSchema = getStr(security, "resourceSchema", "https");
+        this.resourceHost = getStr(security, "resourceHost", null);
 
-        this.resourceHost = (security != null) ? security.getString("resourceHost") : null;
+        this.authorizationServers = getStrOrList(security, "authorizationServers", null);
+        this.scopesSupported = getStrOrList(security, "scopesSupported", null);
     }
 
-    private static List<String> parseAuthorizationServers(Object authServerValue) {
-        if (authServerValue instanceof String str) {
-            return List.of(str);
+    private static String getStr(JsonObject object, String key, String defaultValue) {
+        if (object == null) {
+            return defaultValue;
         }
-        if (authServerValue instanceof JsonArray array) {
-            return array.stream()
+        return object.containsKey(key) ? object.getString(key) : defaultValue;
+    }
+
+    private static List<String> getStrOrList(JsonObject object, String key, List<String> defaultValue) {
+        if (object == null) {
+            return defaultValue;
+        }
+
+        Object strOrList = object.getValue(key);
+        return switch (strOrList) {
+            case null -> defaultValue;
+            case String str -> List.of(str);
+            case JsonArray array -> array.stream()
                     .map(Object::toString)
                     .toList();
-        }
-        if (authServerValue == null) {
-            return Collections.emptyList();
-        }
-        throw new IllegalArgumentException("'authorizationServers' must be either a String or an Array");
+            default -> throw new IllegalArgumentException("'%s' must be either a String or an Array".formatted(key));
+        };
     }
 
     /**
@@ -64,8 +73,8 @@ public class WellKnownResourceMetadataService {
      *
      * <p>The URI is constructed by:
      * <ol>
-     *   <li>Using the scheme <code>https</code> and the configured {@code resourceHost}
-     *       (or the request authority if not configured).</li>
+     *   <li>Using the configured {@code resourceScheme} (defaults to {@code https})
+     *       and {@code resourceHost} (defaults to the request authority).</li>
      *   <li>Appending the well-known metadata path:
      *       <code>/.well-known/oauth-protected-resource</code>.</li>
      *   <li>Appending the original request path.</li>
@@ -90,7 +99,7 @@ public class WellKnownResourceMetadataService {
         HostAndPort authority = request.authority();
         String host = resourceHost != null ? resourceHost : authority.toString();
 
-        return Optional.of("https://" + host + RESOURCE_METADATA_PATH + path);
+        return Optional.of(resourceSchema + "://" + host + RESOURCE_METADATA_PATH + path);
     }
 
     /**
@@ -111,8 +120,9 @@ public class WellKnownResourceMetadataService {
         }
 
         ResourceMetadata metadata = new ResourceMetadata();
-        metadata.setAuthorizationServers(authorizationServers);
         metadata.setResource(resolveResource(request));
+        metadata.setAuthorizationServers(authorizationServers);
+        metadata.setScopesSupported(scopesSupported);
         return Optional.of(metadata);
     }
 
@@ -153,11 +163,11 @@ public class WellKnownResourceMetadataService {
         HostAndPort authority = request.authority();
         String host = resourceHost != null ? resourceHost : authority.toString();
 
-        return "https://" + host + resourceSegment;
+        return resourceSchema + "://" + host + resourceSegment;
     }
 
     private boolean isDisabled() {
-        return authorizationServers.isEmpty();
+        return authorizationServers == null;
     }
 
 }
