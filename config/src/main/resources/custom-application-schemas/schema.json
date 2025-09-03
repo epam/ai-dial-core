@@ -231,10 +231,38 @@
         }
       ]
     },
+    "dialToolSetTypeSchema": {
+      "$comment": "Sub-schema defining the type format and dial:toolset properties",
+      "properties": {
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/simpleTypes"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/simpleTypes"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
+        },
+        "dial:toolset": {
+          "description": "Required to check toolset existence in DIAL instance",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
     "topLevelSchema": {
       "allOf": [
         {
           "$ref": "#/definitions/dialFileFormatAndTypeSchema"
+        },
+        {
+          "$ref": "#/definitions/dialToolSetTypeSchema"
         },
         {
           "type": [
@@ -424,6 +452,9 @@
       "allOf": [
         {
           "$ref": "#/definitions/dialFileFormatAndTypeSchema"
+        },
+        {
+          "$ref": "#/definitions/dialToolSetTypeSchema"
         },
         {
           "type": [
