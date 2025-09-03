@@ -24,8 +24,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -69,7 +71,44 @@ public class ApplicationSchemaServiceTest {
                     "dial:propertyOrder" : 2
                   },
                   "dial:file" : true
-                }
+                },
+                "toolset": {
+                          "properties": {
+                            "name": {
+                              "description": "The name of the tool set.",
+                              "title": "Name",
+                              "type": "string"
+                            },
+                            "dial_id": {
+                              "description": "The Dial ID associated with this MCP toolset.",
+                              "title": "Dial Id",
+                              "type": "string",
+                              "dial:toolset": true
+                            },
+                            "allowed_tools": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "description": "Allowed MCP tool names from the server",
+                              "title": "Allowed Tools"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "dial_id"
+                          ],
+                          "title": "DialMCPToolSet",
+                          "type": "object"
+                        }
               },
               "required" : [ "clientFile", "serverFile" ]
             }""";
@@ -460,5 +499,29 @@ public class ApplicationSchemaServiceTest {
     public void testGetRoutes_WhenSchemaNotExist() {
         Map<String, Route> routes = service.getRoutes(application);
         Assertions.assertNull(routes);
+    }
+
+    @Test
+    public void testGetToolsets_ToolsetExistsAndHasDialResourceFormat() {
+        customProperties.put("toolset", Map.of("name", "my-toolset", "dial_id", "toolsets/bucket/my-toolset"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(resourceService.hasResource(any())).thenReturn(true);
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+        List<ResourceDescriptor> result = service.getToolSets(application);
+        Assertions.assertFalse(result.isEmpty());
+    }
+
+    @Test
+    public void testGetToolsets_ToolsetExistsNotDialResourceFormat() {
+        customProperties.put("toolset", Map.of("name", "my-toolset", "dial_id", "mytoolset"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        List<ResourceDescriptor> result = service.getToolSets(application);
+        Assertions.assertTrue(result.isEmpty());
     }
 }

@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -13,6 +14,7 @@ import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.server.validation.DialFileKeyword;
 import com.epam.aidial.core.server.validation.DialMetaKeyword;
+import com.epam.aidial.core.server.validation.DialToolSetKeyKeyword;
 import com.epam.aidial.core.server.validation.ListCollector;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -54,6 +56,7 @@ public class ApplicationSchemaService {
     private static final JsonMetaSchema DIAL_META_SCHEMA = getMetaschemaBuilder()
             .keyword(new DialMetaKeyword())
             .keyword(new DialFileKeyword())
+            .keyword(new DialToolSetKeyKeyword())
             .build();
 
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.builder()
@@ -257,6 +260,45 @@ public class ApplicationSchemaService {
                     result.add(descriptor);
                 } catch (IllegalArgumentException e) {
                     throw new ApplicationTypeResourceException("Failed to get resource descriptor for url", item, e);
+                }
+            }
+            return result;
+        } catch (ApplicationTypeSchemaValidationException | ApplicationTypeResourceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of files attached to the custom app", e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<ResourceDescriptor> getToolSets(Application application) {
+        try {
+            String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
+            if (customApplicationSchema == null) {
+                return Collections.emptyList();
+            }
+            JsonSchema appSchema = SCHEMA_FACTORY.getSchema(customApplicationSchema);
+            CollectorContext collectorContext = new CollectorContext();
+            String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
+            Set<ValidationMessage> validationResult = appSchema.validate(customPropsJson, InputFormat.JSON,
+                    e -> e.setCollectorContext(collectorContext));
+            if (!validationResult.isEmpty()) {
+                throw new ApplicationTypeSchemaValidationException("Failed to validate custom app against the schema", validationResult);
+            }
+            ListCollector<String> propsCollector = (ListCollector<String>) collectorContext.getCollectorMap().get(DialToolSetKeyKeyword.COLLECTOR_NAME);
+            if (propsCollector == null) {
+                return Collections.emptyList();
+            }
+            List<ResourceDescriptor> result = new ArrayList<>();
+            for (String item : propsCollector.collect()) {
+                try {
+                    ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
+                    if (descriptor.isFolder() || !resourceService.hasResource(descriptor) || descriptor.getType() != ResourceTypes.TOOL_SET) {
+                        throw new ApplicationTypeResourceException("Toolset listed as dependent to the application not found or inaccessible", item);
+                    }
+                    result.add(descriptor);
+                } catch (IllegalArgumentException e) {
+                    // ignored
                 }
             }
             return result;
