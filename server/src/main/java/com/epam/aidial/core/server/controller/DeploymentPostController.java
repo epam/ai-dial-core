@@ -6,12 +6,10 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
-import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
@@ -20,11 +18,11 @@ import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachme
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectToolSetsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
-import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
@@ -34,7 +32,6 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
@@ -81,7 +78,8 @@ public class DeploymentPostController {
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context));
+                new BuildUpstreamCacheFn(proxy, context),
+                new CollectToolSetsFn(proxy, context));
     }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
@@ -237,11 +235,6 @@ public class DeploymentPostController {
         log.warn("Rate limit error {}. Deployment: {}", result.errorMessage(), deploymentId);
     }
 
-    private void handleError(Throwable error) {
-        respond(HttpStatus.INTERNAL_SERVER_ERROR);
-        log.error("Can't handle request. Error: {}", error.getMessage());
-    }
-
     @SneakyThrows
     private void sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
@@ -277,6 +270,7 @@ public class DeploymentPostController {
             if (ProxyUtil.processChain(tree, enhancementFunctions)) {
                 context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
             }
+            proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
                 respond(httpException.getStatus(), httpException.getMessage());
@@ -286,8 +280,6 @@ public class DeploymentPostController {
             log.warn("Can't process JSON request body. Error:", e);
             return;
         }
-        shareToolSets();
-        proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
 
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext());
         if (!canRetry(upstreamRoute)) {
@@ -296,27 +288,6 @@ public class DeploymentPostController {
         context.setUpstreamRoute(upstreamRoute);
 
         sendRequest();
-    }
-
-    private void shareToolSets() {
-        if (context.getDeployment() instanceof Application application) {
-            List<ResourceDescriptor> toolsets = proxy.getApplicationSchemaService().getToolSets(application);
-            ApiKeyData sourceApiKeyData = context.getApiKeyData();
-            ApiKeyData destApiKeyData = context.getProxyApiKeyData();
-            AccessService accessService = proxy.getAccessService();
-            for (var toolset : toolsets) {
-                if (toolset.isPublic()) {
-                    continue;
-                }
-                String resourceUrl = toolset.getUrl();
-                if (sourceApiKeyData.getAttachedToolSets().containsKey(resourceUrl) || accessService.hasReadAccess(toolset, context)) {
-                    destApiKeyData.getAttachedToolSets().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
-                } else {
-                    throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the toolset %s".formatted(resourceUrl));
-                }
-            }
-        }
-
     }
 
     /**

@@ -234,19 +234,7 @@ public class ApplicationSchemaService {
     @SuppressWarnings("unchecked")
     private List<ResourceDescriptor> getFiles(Application application, ListCollector.FileCollectorType collectorName) {
         try {
-            String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
-            if (customApplicationSchema == null) {
-                return Collections.emptyList();
-            }
-            JsonSchema appSchema = SCHEMA_FACTORY.getSchema(customApplicationSchema);
-            CollectorContext collectorContext = new CollectorContext();
-            String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
-            Set<ValidationMessage> validationResult = appSchema.validate(customPropsJson, InputFormat.JSON,
-                    e -> e.setCollectorContext(collectorContext));
-            if (!validationResult.isEmpty()) {
-                throw new ApplicationTypeSchemaValidationException("Failed to validate custom app against the schema", validationResult);
-            }
-            ListCollector<String> propsCollector = (ListCollector<String>) collectorContext.getCollectorMap().get(collectorName.getValue());
+            ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application, collectorName.getValue());
             if (propsCollector == null) {
                 return Collections.emptyList();
             }
@@ -273,19 +261,7 @@ public class ApplicationSchemaService {
     @SuppressWarnings("unchecked")
     public List<ResourceDescriptor> getToolSets(Application application) {
         try {
-            String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
-            if (customApplicationSchema == null) {
-                return Collections.emptyList();
-            }
-            JsonSchema appSchema = SCHEMA_FACTORY.getSchema(customApplicationSchema);
-            CollectorContext collectorContext = new CollectorContext();
-            String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
-            Set<ValidationMessage> validationResult = appSchema.validate(customPropsJson, InputFormat.JSON,
-                    e -> e.setCollectorContext(collectorContext));
-            if (!validationResult.isEmpty()) {
-                throw new ApplicationTypeSchemaValidationException("Failed to validate custom app against the schema", validationResult);
-            }
-            ListCollector<String> propsCollector = (ListCollector<String>) collectorContext.getCollectorMap().get(DialToolSetKeyKeyword.COLLECTOR_NAME);
+            ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application, DialToolSetKeyKeyword.COLLECTOR_NAME);
             if (propsCollector == null) {
                 return Collections.emptyList();
             }
@@ -305,8 +281,25 @@ public class ApplicationSchemaService {
         } catch (ApplicationTypeSchemaValidationException | ApplicationTypeResourceException e) {
             throw e;
         } catch (Exception e) {
-            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of files attached to the custom app", e);
+            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of toolsets attached to the custom app", e);
         }
+    }
+
+    @Nullable
+    private Object getCollector(Application application, String collectorName) throws JsonProcessingException {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
+        if (customApplicationSchema == null) {
+            return null;
+        }
+        JsonSchema appSchema = SCHEMA_FACTORY.getSchema(customApplicationSchema);
+        CollectorContext collectorContext = new CollectorContext();
+        String customPropsJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
+        Set<ValidationMessage> validationResult = appSchema.validate(customPropsJson, InputFormat.JSON,
+                e -> e.setCollectorContext(collectorContext));
+        if (!validationResult.isEmpty()) {
+            throw new ApplicationTypeSchemaValidationException("Failed to validate custom app against the schema", validationResult);
+        }
+        return collectorContext.getCollectorMap().get(collectorName);
     }
 
     public Application modifySchemaRichApplication(Application application, boolean propertyFilteringRequired) {
