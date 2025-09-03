@@ -17,9 +17,13 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ResourceAuthorizationClientTest {
 
@@ -71,11 +75,11 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
-    void testExecuteGet_IOException() throws Exception {
+    void testExecuteGet_IoException() throws Exception {
         // Given
         String url = "https://example.com/resource";
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenThrow(new IOException("IO exception"));
+                .thenThrow(new IOException("IO exception"));
 
         // When & Then
         assertThrows(CredentialsInternalException.class, () -> {
@@ -88,7 +92,7 @@ class ResourceAuthorizationClientTest {
         // Given
         String url = "https://example.com/resource";
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenThrow(new InterruptedException("Interrupted Exception"));
+                .thenThrow(new InterruptedException("Interrupted Exception"));
 
         // When & Then
         assertThrows(CredentialsInternalException.class, () -> {
@@ -110,7 +114,7 @@ class ResourceAuthorizationClientTest {
 
         // When
         TestResponse actualResponse = resourceAuthorizationClient.executePost(
-            url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class);
+                url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class);
 
         // Then
         assertNotNull(actualResponse);
@@ -118,16 +122,16 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
-    void testExecutePost_IOError() throws Exception {
+    void testExecutePost_IoError() throws Exception {
         // Given
         String url = "https://example.com/resource";
         TestRequest requestPayload = new TestRequest("testValue");
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenThrow(new IOException("IO exception"));
+                .thenThrow(new IOException("IO exception"));
 
         // When & Then
         assertThrows(CredentialsInternalException.class, () -> resourceAuthorizationClient.executePost(
-            url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class));
+                url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class));
     }
 
     @Test
@@ -136,7 +140,7 @@ class ResourceAuthorizationClientTest {
         String url = "https://example.com/resource";
         TestRequest requestPayload = new TestRequest("testValue");
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenThrow(new RuntimeException("Runtime Exception"));
+                .thenThrow(new RuntimeException("Runtime Exception"));
 
         // When & Then
         assertThrows(CredentialsInternalException.class, () -> resourceAuthorizationClient.executePost(

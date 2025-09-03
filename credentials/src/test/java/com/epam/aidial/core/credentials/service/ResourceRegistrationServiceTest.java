@@ -17,8 +17,18 @@ import org.mockito.MockitoAnnotations;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 class ResourceRegistrationServiceTest {
 
@@ -44,14 +54,14 @@ class ResourceRegistrationServiceTest {
         when(protectedResourceMetadata.getAuthorizationServers()).thenReturn(List.of("https://auth.server"));
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class)))
-            .thenReturn(protectedResourceMetadata);
+                .thenReturn(protectedResourceMetadata);
 
         AuthorizationServerMetadata authorizationServerMetadata = mock(AuthorizationServerMetadata.class);
         when(authorizationServerMetadata.getRegistrationEndpoint()).thenReturn("https://auth.server/registration");
         when(authorizationServerMetadata.getCodeChallengeMethodsSupported()).thenReturn(List.of("S256"));
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerMetadata.class)))
-            .thenReturn(authorizationServerMetadata);
+                .thenReturn(authorizationServerMetadata);
 
         ClientRegistrationResponse clientRegistrationResponse = mock(ClientRegistrationResponse.class);
         when(clientRegistrationResponse.getClientName()).thenReturn("testClientName");
@@ -94,7 +104,7 @@ class ResourceRegistrationServiceTest {
         when(protectedResourceMetadata.getAuthorizationServers()).thenReturn(List.of("https://auth.server"));
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class)))
-            .thenReturn(protectedResourceMetadata);
+                .thenReturn(protectedResourceMetadata);
 
         AuthorizationServerMetadata authorizationServerMetadata = mock(AuthorizationServerMetadata.class);
         when(authorizationServerMetadata.getAuthorizationEndpoint()).thenReturn("https://static.auth.endpoint");
@@ -102,7 +112,7 @@ class ResourceRegistrationServiceTest {
         when(authorizationServerMetadata.getCodeChallengeMethodsSupported()).thenReturn(List.of("S256", "plain"));
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerMetadata.class)))
-            .thenReturn(authorizationServerMetadata);
+                .thenReturn(authorizationServerMetadata);
 
         // When
         ClientRegistration result = resourceRegistrationService.createStaticResourceRegistration(resourceId, resourceEndpoint, resourceAuthSettings);
@@ -124,14 +134,14 @@ class ResourceRegistrationServiceTest {
         String resourceEndpoint = "https://test.endpoint.com";
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class)))
-            .thenThrow(new HttpException(HttpStatus.NOT_FOUND, "Server not found"));
+                .thenThrow(new HttpException(HttpStatus.NOT_FOUND, "Server not found"));
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerMetadata.class)))
-            .thenThrow(new HttpException(HttpStatus.NOT_FOUND, "Server not found"));
+                .thenThrow(new HttpException(HttpStatus.NOT_FOUND, "Server not found"));
 
         // When & Then
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
-            resourceRegistrationService.createDynamicResourceRegistration(resourceId, resourceEndpoint, "https://redirect.uri"));
+                resourceRegistrationService.createDynamicResourceRegistration(resourceId, resourceEndpoint, "https://redirect.uri"));
 
         assertTrue(exception.getMessage().contains("does not support OAuth authentication"));
         verify(resourceAuthorizationClient, times(1)).executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class));
@@ -146,14 +156,14 @@ class ResourceRegistrationServiceTest {
         String resourceRedirectUri = "https://redirect.uri";
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class)))
-            .thenThrow(new HttpException(HttpStatus.NOT_FOUND, "Server not found"));
+                .thenThrow(new HttpException(HttpStatus.NOT_FOUND, "Server not found"));
 
         AuthorizationServerMetadata authorizationServerMetadata = mock(AuthorizationServerMetadata.class);
         when(authorizationServerMetadata.getRegistrationEndpoint()).thenReturn("https://auth.server/registration");
         when(authorizationServerMetadata.getCodeChallengeMethodsSupported()).thenReturn(List.of("S256"));
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerMetadata.class)))
-            .thenReturn(authorizationServerMetadata);
+                .thenReturn(authorizationServerMetadata);
 
         ClientRegistrationResponse clientRegistrationResponse = mock(ClientRegistrationResponse.class);
         when(clientRegistrationResponse.getClientName()).thenReturn("testClientName");
@@ -190,14 +200,14 @@ class ResourceRegistrationServiceTest {
         ResourceAuthSettings resourceAuthSettings = new ResourceAuthSettings();
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class)))
-            .thenThrow(new HttpException(HttpStatus.UNAUTHORIZED, "Unauthorized"));
+                .thenThrow(new HttpException(HttpStatus.UNAUTHORIZED, "Unauthorized"));
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerMetadata.class)))
-            .thenThrow(new HttpException(HttpStatus.UNAUTHORIZED, "Unauthorized"));
+                .thenThrow(new HttpException(HttpStatus.UNAUTHORIZED, "Unauthorized"));
 
         // When & Then
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
-            resourceRegistrationService.createStaticResourceRegistration(resourceId, resourceEndpoint, resourceAuthSettings));
+                resourceRegistrationService.createStaticResourceRegistration(resourceId, resourceEndpoint, resourceAuthSettings));
 
         assertTrue(exception.getMessage().contains("does not support OAuth authentication"));
         verify(resourceAuthorizationClient, times(1)).executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class));
@@ -211,11 +221,11 @@ class ResourceRegistrationServiceTest {
         String resourceEndpoint = "https://test.endpoint.com";
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class)))
-            .thenThrow(new CredentialsInternalException("Unexpected error occurred while making GET request"));
+                .thenThrow(new CredentialsInternalException("Unexpected error occurred while making GET request"));
 
         // When & Then
         Exception exception = assertThrows(CredentialsInternalException.class, () ->
-            resourceRegistrationService.createDynamicResourceRegistration(resourceId, resourceEndpoint, "https://redirect.uri"));
+                resourceRegistrationService.createDynamicResourceRegistration(resourceId, resourceEndpoint, "https://redirect.uri"));
 
         assertTrue(exception.getMessage().contains("Unexpected error occurred while making GET request"));
         verify(resourceAuthorizationClient, times(1)).executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class));
