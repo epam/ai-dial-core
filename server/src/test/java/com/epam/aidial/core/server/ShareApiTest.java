@@ -217,9 +217,10 @@ public class ShareApiTest extends ResourceBaseTest {
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
                     "permissions" : [ "READ" ],
-                    "sharedWith" : {
-                      "EPM-RTC-RAIL" : [ "READ" ]
-                    }
+                    "sharedWith" : [ {
+                      "user" : "EPM-RTC-RAIL",
+                      "permissions" : [ "READ" ]
+                    } ]
                   } ]
                 }
                 """);
@@ -1465,9 +1466,10 @@ public class ShareApiTest extends ResourceBaseTest {
                       "nodeType" : "ITEM",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
-                      "sharedWith" : {
-                        "EPM-RTC-RAIL" : [ "READ" ]
-                      }
+                      "sharedWith" : [ {
+                        "user" : "EPM-RTC-RAIL",
+                        "permissions" : [ "READ" ]
+                      } ]
                     },
                     {
                       "name" : "conversation",
@@ -1477,9 +1479,10 @@ public class ShareApiTest extends ResourceBaseTest {
                       "nodeType" : "ITEM",
                       "resourceType" : "CONVERSATION",
                       "permissions" : [ "READ" ],
-                      "sharedWith" : {
-                        "EPM-RTC-RAIL" : [ "READ" ]
-                      }
+                      "sharedWith" : [ {
+                        "user": "EPM-RTC-RAIL",
+                        "permissions" : [ "READ" ]
+                      } ]
                     }
                   ]
                 }

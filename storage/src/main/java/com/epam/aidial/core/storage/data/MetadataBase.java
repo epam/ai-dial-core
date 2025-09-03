@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,5 +38,5 @@ public abstract class MetadataBase {
      * This is populated when listing shares with "with": "others".
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private Map<String, Set<ResourceAccessType>> sharedWith;
+    private List<SharedWithMetadata> sharedWith;
 }
