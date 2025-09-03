@@ -58,6 +58,8 @@ public class ResourceAuthSettingsService {
             resourceAuthSettings.setCodeChallenge(codeChallenge.getValue());
             resourceAuthSettings.setCodeVerifier(codeVerifier.getValue());
             resourceAuthSettings.setCodeChallengeMethod(codeChallengeMethod.getValue());
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Can't register client for Resource: {}", e.getMessage(), e);
             throw new CredentialsInternalException("Can't register client for Resource: %s.".formatted(resourceId), e);
