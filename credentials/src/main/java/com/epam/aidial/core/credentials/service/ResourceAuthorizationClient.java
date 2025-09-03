@@ -18,7 +18,7 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class ResourceAuthorizationClient {
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient;
 
     public <R> R executeGet(String url, Class<R> responseType) {
         try {
@@ -35,6 +35,8 @@ public class ResourceAuthorizationClient {
             Thread.currentThread().interrupt();
             log.error("Request was interrupted: {}", e.getMessage(), e);
             throw new CredentialsInternalException("Request was interrupted", e);
+        } catch (HttpException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Unexpected error occurred: {}", e.getMessage(), e);
             throw new CredentialsInternalException("Unexpected error occurred while making GET request", e);
@@ -66,6 +68,8 @@ public class ResourceAuthorizationClient {
             Thread.currentThread().interrupt();
             log.error("Request was interrupted: {}", e.getMessage(), e);
             throw new CredentialsInternalException("Request was interrupted", e);
+        } catch (HttpException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Unexpected error occurred: {}", e.getMessage(), e);
             throw new CredentialsInternalException("Unexpected error occurred while making POST request", e);

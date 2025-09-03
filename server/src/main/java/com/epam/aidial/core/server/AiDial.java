@@ -177,7 +177,8 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
+            java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
+            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpClient);
             TokenService tokenService = new TokenService(resourceAuthorizationClient);
             ResourceRegistrationService resourceRegistrationService = new ResourceRegistrationService(resourceAuthorizationClient);
             ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
