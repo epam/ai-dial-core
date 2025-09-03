@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.exception.CredentialsInternalException;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -329,6 +330,8 @@ public class ResourceController extends AccessControlBaseController {
             context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
         } else if (error instanceof PermissionDeniedException) {
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+        } else if (error instanceof CredentialsInternalException) {
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
             log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
