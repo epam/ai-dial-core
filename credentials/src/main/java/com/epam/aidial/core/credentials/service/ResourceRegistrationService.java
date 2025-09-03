@@ -37,19 +37,19 @@ public class ResourceRegistrationService {
             AuthorizationServerMetadata resourceAuthorizationServerMetadata = getResourceAuthorizationServerMetadata(resourceAuthServerEndpoint);
 
             ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
-                .clientName(resourceId)
-                .redirectUris(List.of(resourceRedirectUri))
-                .build();
+                    .clientName(resourceId)
+                    .redirectUris(List.of(resourceRedirectUri))
+                    .build();
 
             ClientRegistrationResponse clientRegistrationResponse = resourceAuthorizationClient.executePost(
-                resourceAuthorizationServerMetadata.getRegistrationEndpoint(),
-                clientRegistrationRequest,
-                ContentType.APPLICATION_JSON.toString(),
-                ClientRegistrationResponse.class);
+                    resourceAuthorizationServerMetadata.getRegistrationEndpoint(),
+                    clientRegistrationRequest,
+                    ContentType.APPLICATION_JSON.toString(),
+                    ClientRegistrationResponse.class);
 
             ClientRegistration resourceRegistration = createResourceRegistration(
-                clientRegistrationResponse,
-                resourceAuthorizationServerMetadata);
+                    clientRegistrationResponse,
+                    resourceAuthorizationServerMetadata);
             log.info("Finished Resource: {} registration.", resourceId);
             return resourceRegistration;
         } catch (HttpException e) {
