@@ -1,11 +1,14 @@
 dependencies {
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
-    testImplementation platform('org.junit:junit-bom:5.9.1')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-    testImplementation 'org.mockito:mockito-core:5.7.0'
-    testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
-    implementation 'com.networknt:json-schema-validator:1.5.2'
-    implementation 'org.hibernate.validator:hibernate-validator:8.0.0.Final'
+    // External dependencies
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    implementation("com.networknt:json-schema-validator:${networknt_version}")
+    implementation("org.hibernate.validator:hibernate-validator:${hibernate_validator_version}")
+
+    // Test dependencies
+    testImplementation platform("org.junit:junit-bom:${junit_version}")
+    testImplementation("org.junit.jupiter:junit-jupiter:${junit_version}")
+    testImplementation("org.mockito:mockito-core:${mockito_version}")
+    testImplementation("org.mockito:mockito-junit-jupiter:${mockito_version}")
 }
 
 test {
