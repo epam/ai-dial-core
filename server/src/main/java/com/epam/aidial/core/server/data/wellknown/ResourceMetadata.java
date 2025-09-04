@@ -15,4 +15,6 @@ public class ResourceMetadata {
     private String resource;
     @JsonProperty("authorization_servers")
     private List<String> authorizationServers;
+    @JsonProperty("scopes_supported")
+    private List<String> scopesSupported;
 }

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
@@ -198,15 +199,21 @@ public class AccessService {
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
             String resourceUrl = resource.getUrl();
-            AutoSharedData autoSharedData = context.getApiKeyData().getAttachedFiles().get(resourceUrl);
+            AutoSharedData autoSharedData = apiKeyData.getAttachedFiles().get(resourceUrl);
             if (autoSharedData != null) {
                 result.put(resource, autoSharedData.accessTypes());
                 continue;
             }
-            Set<Map.Entry<String, AutoSharedData>> attachedFolders = context.getApiKeyData()
+            autoSharedData = apiKeyData.getAttachedToolSets().get(resourceUrl);
+            if (autoSharedData != null) {
+                result.put(resource, autoSharedData.accessTypes());
+                continue;
+            }
+            Set<Map.Entry<String, AutoSharedData>> attachedFolders = apiKeyData
                     .getAttachedFolders().entrySet();
             for (var entry : attachedFolders) {
                 String folder = entry.getKey();
