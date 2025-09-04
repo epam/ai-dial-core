@@ -1,9 +1,3 @@
-// TODO: Temporary override modul specific versions.
-//       Dependency version upgrade should be done in separate PR.
-ext {
-    slf4j_version = "1.7.32"
-}
-
 dependencies {
     // Project dependencies (internal modules)
     implementation project(':config')

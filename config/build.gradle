@@ -1,9 +1,3 @@
-// TODO: Temporary override modul specific versions.
-//       Dependency version upgrade should be done in separate PR.
-ext {
-    junit_version = "5.9.1"
-}
-
 dependencies {
     // External dependencies
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
