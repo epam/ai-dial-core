@@ -1,6 +1,5 @@
 package com.epam.aidial.core.credentials.service;
 
-import com.epam.aidial.core.credentials.exception.CredentialsInternalException;
 import com.epam.aidial.core.storage.http.HttpException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -12,7 +11,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -20,7 +18,6 @@ import java.net.http.HttpResponse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -58,47 +55,35 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
-    void testExecuteGet_NonSuccessStatus() throws Exception {
+    void testExecuteGet_NotFoundStatus() throws Exception {
         // Given
         String url = "https://example.com/resource";
         HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(404);
-        when(httpResponseMock.body()).thenReturn("Resource not found");
 
         // When
         HttpException exception = assertThrows(HttpException.class, () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
 
         //Then
         assertEquals(404, exception.getStatus().getCode());
-        assertEquals("Resource not found", exception.getMessage());
+        assertEquals("Authorization server returns error code", exception.getMessage());
     }
 
     @Test
-    void testExecuteGet_IoException() throws Exception {
+    void testExecuteGet_UnauthorizedStatus() throws Exception {
         // Given
         String url = "https://example.com/resource";
-        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenThrow(new IOException("IO exception"));
+        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(401);
 
-        // When & Then
-        assertThrows(CredentialsInternalException.class, () -> {
-            resourceAuthorizationClient.executeGet(url, TestResponse.class);
-        });
-    }
+        // When
+        HttpException exception = assertThrows(HttpException.class, () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
 
-    @Test
-    void testExecuteGet_InterruptedException() throws Exception {
-        // Given
-        String url = "https://example.com/resource";
-        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenThrow(new InterruptedException("Interrupted Exception"));
-
-        // When & Then
-        assertThrows(CredentialsInternalException.class, () -> {
-            resourceAuthorizationClient.executeGet(url, TestResponse.class);
-        });
-        assertTrue(Thread.currentThread().isInterrupted());
+        //Then
+        assertEquals(401, exception.getStatus().getCode());
+        assertEquals("Authorization server returns error code", exception.getMessage());
     }
 
     @Test
@@ -119,32 +104,6 @@ class ResourceAuthorizationClientTest {
         // Then
         assertNotNull(actualResponse);
         assertEquals("responseValue", actualResponse.getKey());
-    }
-
-    @Test
-    void testExecutePost_IoError() throws Exception {
-        // Given
-        String url = "https://example.com/resource";
-        TestRequest requestPayload = new TestRequest("testValue");
-        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenThrow(new IOException("IO exception"));
-
-        // When & Then
-        assertThrows(CredentialsInternalException.class, () -> resourceAuthorizationClient.executePost(
-                url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class));
-    }
-
-    @Test
-    void testExecutePost_UnhandledException() throws Exception {
-        // Given
-        String url = "https://example.com/resource";
-        TestRequest requestPayload = new TestRequest("testValue");
-        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenThrow(new RuntimeException("Runtime Exception"));
-
-        // When & Then
-        assertThrows(CredentialsInternalException.class, () -> resourceAuthorizationClient.executePost(
-                url, requestPayload, ContentType.APPLICATION_JSON.toString(), TestResponse.class));
     }
 
     @Data

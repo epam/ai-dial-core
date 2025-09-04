@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ResourceAuthStatus;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
-import com.epam.aidial.core.credentials.exception.CredentialsInternalException;
 import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
@@ -28,48 +27,41 @@ public class ResourceAuthSettingsService {
     public void enrichResourceAuthSettings(String resourceId,
                                            String resourceEndpoint,
                                            ResourceAuthSettings resourceAuthSettings) {
-        try {
-            if (resourceAuthSettings == null) {
-                throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + resourceId);
-            }
-
-            resourceAuthSettingsValidator.validate(resourceAuthSettings);
-
-            if (resourceAuthSettings.getAuthenticationType() != AuthenticationType.OAUTH) {
-                // do nothing
-                return;
-            }
-
-            ClientRegistration clientRegistration = shouldRegisterResourceDynamically(resourceAuthSettings)
-                                                    ? resourceRegistrationService.createDynamicResourceRegistration(
-                                                        resourceId, resourceEndpoint, resourceAuthSettings.getRedirectUri())
-                                                    : resourceRegistrationService.createStaticResourceRegistration(
-                                                        resourceId, resourceEndpoint, resourceAuthSettings);
-
-            CodeVerifier codeVerifier = new CodeVerifier();
-            CodeChallengeMethod codeChallengeMethod = CodeChallengeMethod.parse(clientRegistration.getCodeChallengeMethod());
-            CodeChallenge codeChallenge = CodeChallenge.compute(codeChallengeMethod, codeVerifier);
-
-            resourceAuthSettings.setClientId(clientRegistration.getClientId());
-            resourceAuthSettings.setClientSecret(clientRegistration.getClientSecret());
-            resourceAuthSettings.setAuthorizationEndpoint(clientRegistration.getAuthorizationEndpoint());
-            resourceAuthSettings.setTokenEndpoint(clientRegistration.getTokenEndpoint());
-            resourceAuthSettings.setRedirectUri(clientRegistration.getRedirectUri());
-            resourceAuthSettings.setCodeChallenge(codeChallenge.getValue());
-            resourceAuthSettings.setCodeVerifier(codeVerifier.getValue());
-            resourceAuthSettings.setCodeChallengeMethod(codeChallengeMethod.getValue());
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Can't register client for Resource: {}", e.getMessage(), e);
-            throw new CredentialsInternalException("Can't register client for Resource: %s.".formatted(resourceId), e);
+        if (resourceAuthSettings == null) {
+            throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + resourceId);
         }
+
+        resourceAuthSettingsValidator.validate(resourceAuthSettings);
+
+        if (resourceAuthSettings.getAuthenticationType() != AuthenticationType.OAUTH) {
+            // do nothing
+            return;
+        }
+
+        ClientRegistration clientRegistration = shouldRegisterResourceDynamically(resourceAuthSettings)
+                ? resourceRegistrationService.createDynamicResourceRegistration(
+                resourceId, resourceEndpoint, resourceAuthSettings.getRedirectUri())
+                : resourceRegistrationService.createStaticResourceRegistration(
+                resourceId, resourceEndpoint, resourceAuthSettings);
+
+        CodeVerifier codeVerifier = new CodeVerifier();
+        CodeChallengeMethod codeChallengeMethod = CodeChallengeMethod.parse(clientRegistration.getCodeChallengeMethod());
+        CodeChallenge codeChallenge = CodeChallenge.compute(codeChallengeMethod, codeVerifier);
+
+        resourceAuthSettings.setClientId(clientRegistration.getClientId());
+        resourceAuthSettings.setClientSecret(clientRegistration.getClientSecret());
+        resourceAuthSettings.setAuthorizationEndpoint(clientRegistration.getAuthorizationEndpoint());
+        resourceAuthSettings.setTokenEndpoint(clientRegistration.getTokenEndpoint());
+        resourceAuthSettings.setRedirectUri(clientRegistration.getRedirectUri());
+        resourceAuthSettings.setCodeChallenge(codeChallenge.getValue());
+        resourceAuthSettings.setCodeVerifier(codeVerifier.getValue());
+        resourceAuthSettings.setCodeChallengeMethod(codeChallengeMethod.getValue());
     }
 
     private boolean shouldRegisterResourceDynamically(ResourceAuthSettings resourceAuthSettings) {
         return AuthenticationType.OAUTH.equals(resourceAuthSettings.getAuthenticationType())
-            && resourceAuthSettings.getClientId() == null
-            && resourceAuthSettings.getClientSecret() == null;
+                && resourceAuthSettings.getClientId() == null
+                && resourceAuthSettings.getClientSecret() == null;
     }
 
     public void setResourceAuthStatuses(String resourceId,
