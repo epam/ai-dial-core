@@ -42,6 +42,8 @@ public class ApiKeyData {
     // list of attached file URLs collected from conversation history of the current request
     private Map<String, AutoSharedData> attachedFiles = new HashMap<>();
     private Map<String, AutoSharedData> attachedFolders = new HashMap<>();
+    // list of toolsets included into application properties
+    private Map<String, AutoSharedData> attachedToolSets = new HashMap<>();
     // deployment name of the source(application/assistant/model/interceptor) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request
