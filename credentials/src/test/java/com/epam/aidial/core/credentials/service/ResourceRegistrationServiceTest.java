@@ -6,7 +6,6 @@ import com.epam.aidial.core.credentials.data.registration.AuthorizationServerPro
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationRequest;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationResponse;
-import com.epam.aidial.core.credentials.exception.CredentialsInternalException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import org.apache.hc.core5.http.ContentType;
@@ -215,19 +214,19 @@ class ResourceRegistrationServiceTest {
     }
 
     @Test
-    void testCreateDynamicResourceRegistration_UnexpectedException_ThrowsCredentialsInternalException() {
+    void testCreateDynamicResourceRegistration_UnexpectedException_ThrowsHttpException() {
         // Given
         String resourceId = "testResource";
         String resourceEndpoint = "https://test.endpoint.com";
 
         when(resourceAuthorizationClient.executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class)))
-                .thenThrow(new CredentialsInternalException("Unexpected error occurred while making GET request"));
+                .thenThrow(new HttpException(500, "Authorization server returns error code"));
 
         // When & Then
-        Exception exception = assertThrows(CredentialsInternalException.class, () ->
+        Exception exception = assertThrows(HttpException.class, () ->
                 resourceRegistrationService.createDynamicResourceRegistration(resourceId, resourceEndpoint, "https://redirect.uri"));
 
-        assertTrue(exception.getMessage().contains("Unexpected error occurred while making GET request"));
+        assertTrue(exception.getMessage().contains("Authorization server returns error code"));
         verify(resourceAuthorizationClient, times(1)).executeGet(anyString(), eq(AuthorizationServerProtectedResourceMetadata.class));
         verifyNoMoreInteractions(resourceAuthorizationClient);
     }
