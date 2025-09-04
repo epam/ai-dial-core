@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -242,7 +243,10 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void handleError(Throwable error) {
-        if (error instanceof HttpException httpException) {
+        if (error instanceof PermissionDeniedException) {
+            respond(HttpStatus.FORBIDDEN, error.getMessage());
+            log.warn("Forbidden toolset {}", toolSetId);
+        } else if (error instanceof HttpException httpException) {
             respond(httpException);
         } else {
             String errorMsg = "Error occurred on processing MCP request by toolset: %s".formatted(toolSetId);

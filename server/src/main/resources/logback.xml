@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <!-- Configuration variables -->
-    <property name="LOG_LEVEL" value="${LOG_LEVEL:-INFO}"/>
+    <property name="AIDIAL_LOG_LEVEL" value="${AIDIAL_LOG_LEVEL:-INFO}"/>
 
     <!-- Console JSON Appender -->
     <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
@@ -20,7 +20,7 @@
     <logger name="org.redisson" level="WARN"/>
 
     <!-- Root logger -->
-    <root level="${LOG_LEVEL}">
+    <root level="${AIDIAL_LOG_LEVEL}">
         <appender-ref ref="CONSOLE_JSON"/>
         <appender-ref ref="OTEL"/>
     </root>

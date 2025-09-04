@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachme
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectToolSetsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceAssistantRequestFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
@@ -77,7 +78,8 @@ public class DeploymentPostController {
                 new EnhanceAssistantRequestFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context));
+                new BuildUpstreamCacheFn(proxy, context),
+                new CollectToolSetsFn(proxy, context));
     }
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
@@ -202,7 +204,7 @@ public class DeploymentPostController {
                     .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                         handleRequestBody(body);
                         return null;
-                    }).onFailure(this::handleError))
+                    }).onFailure(error -> handleRequestError(context.getDeployment().getName(), error)))
                     .onFailure(this::handleRequestBodyError);
             return null;
         });
@@ -231,11 +233,6 @@ public class DeploymentPostController {
 
         respond(httpException);
         log.warn("Rate limit error {}. Deployment: {}", result.errorMessage(), deploymentId);
-    }
-
-    private void handleError(Throwable error) {
-        respond(HttpStatus.INTERNAL_SERVER_ERROR);
-        log.error("Can't handle request. Error: {}", error.getMessage());
     }
 
     @SneakyThrows

@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
+import java.util.List;
 import java.util.Set;
 
 @AllArgsConstructor
@@ -25,4 +26,16 @@ public abstract class MetadataBase {
     private ResourceType resourceType;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Set<ResourceAccessType> permissions;
+    /**
+     * The list of users (display names or project names) who shared the resource with the current user.
+     * This is populated when listing shares with "with": "me".
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List<ShareMetadata> sharedBy;
+    /**
+     * The list of users (display names or project names) with whom the resource is shared.
+     * This is populated when listing shares with "with": "others".
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List<ShareMetadata> sharedWith;
 }
