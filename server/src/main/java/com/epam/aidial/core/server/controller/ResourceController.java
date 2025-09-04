@@ -269,6 +269,9 @@ public class ResourceController extends AccessControlBaseController {
             responseFuture = requestFuture.compose(pair -> {
                 EtagHeader etag = pair.getKey();
                 Application application = ProxyUtil.convertToObject(pair.getValue(), Application.class);
+                if (application == null) {
+                    throw new HttpException(BAD_REQUEST, "Application can't be empty");
+                }
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application).getKey();
