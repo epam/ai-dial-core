@@ -1,10 +1,11 @@
 package com.epam.aidial.core.credentials.service.encryption;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import lombok.RequiredArgsConstructor;
 
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 @RequiredArgsConstructor
@@ -20,7 +21,7 @@ public class CachedContentEncryptionKeyManager implements ContentEncryptionKeyMa
             long expiration
     ) {
         this.contentEncryptionKeyManager = contentEncryptionKeyManager;
-        this.cekCache = Caffeine.newBuilder()
+        this.cekCache = CacheBuilder.newBuilder()
                 .maximumSize(maxSize)
                 .expireAfterWrite(expiration, TimeUnit.MILLISECONDS)
                 .build();
@@ -35,12 +36,20 @@ public class CachedContentEncryptionKeyManager implements ContentEncryptionKeyMa
 
     @Override
     public byte[] getOrCreateKey(ResourceDescriptor cekDescriptor) {
-        return cekCache.get(cekDescriptor, contentEncryptionKeyManager::getOrCreateKey);
+        try {
+            return cekCache.get(cekDescriptor, () -> contentEncryptionKeyManager.getOrCreateKey(cekDescriptor));
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Failed to getOrCreateKey for " + cekDescriptor, e);
+        }
     }
 
     @Override
     public byte[] getKey(ResourceDescriptor cekDescriptor) {
-        return cekCache.get(cekDescriptor, contentEncryptionKeyManager::getKey);
+        try {
+            return cekCache.get(cekDescriptor, () -> contentEncryptionKeyManager.getKey(cekDescriptor));
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Failed to getKey for " + cekDescriptor, e);
+        }
     }
 
 }
