@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
@@ -38,6 +39,22 @@ public class WellKnownResourceMetadataServiceTest {
         Optional<String> pathOptional = service.resolveResourceMetadataPath(request);
         assertTrue(pathOptional.isPresent());
         assertEquals("https://custom.com/.well-known/oauth-protected-resource/abc", pathOptional.get());
+    }
+
+    @Test
+    void resolveResourceMetadataPath_withResourceSchema() {
+        JsonObject mcp = new JsonObject()
+                .put("security", new JsonObject()
+                        .put("authorizationServers", "https://auth.example.com")
+                        .put("resourceSchema", "http"));
+        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
+
+        when(request.path()).thenReturn("/x");
+        when(request.authority()).thenReturn(HostAndPort.create("host.com", -1));
+
+        Optional<String> pathOptional = service.resolveResourceMetadataPath(request);
+        assertTrue(pathOptional.isPresent());
+        assertEquals("http://host.com/.well-known/oauth-protected-resource/x", pathOptional.get());
     }
 
     @Test
@@ -81,6 +98,27 @@ public class WellKnownResourceMetadataServiceTest {
         ResourceMetadata metadata = metadataOptional.get();
         assertEquals("https://custom.com", metadata.getResource());
         assertEquals(List.of("https://auth.example.com"), metadata.getAuthorizationServers());
+        assertNull(metadata.getScopesSupported());
+    }
+
+    @Test
+    void resolveResourceMetadata_withSupportedScopes_setsRootResource() {
+        JsonObject mcp = new JsonObject()
+                .put("security", new JsonObject()
+                        .put("authorizationServers", "https://auth.example.com")
+                        .put("resourceHost", "custom.com")
+                        .put("scopesSupported", List.of("scope1", "scope2")));
+        WellKnownResourceMetadataService service = new WellKnownResourceMetadataService(mcp);
+
+        when(request.path()).thenReturn("/.well-known/oauth-protected-resource");
+        when(request.authority()).thenReturn(HostAndPort.create("ignored.com", -1));
+
+        Optional<ResourceMetadata> metadataOptional = service.resolveResourceMetadata(request);
+        assertTrue(metadataOptional.isPresent());
+        ResourceMetadata metadata = metadataOptional.get();
+        assertEquals("https://custom.com", metadata.getResource());
+        assertEquals(List.of("https://auth.example.com"), metadata.getAuthorizationServers());
+        assertEquals(List.of("scope1", "scope2"), metadata.getScopesSupported());
     }
 
     @Test
