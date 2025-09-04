@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
@@ -184,10 +185,13 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
+            KmsSettings kmsSettings = Json.decodeValue(settings("toolsets")
+                    .getJsonObject("security", new JsonObject())
+                    .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
             ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator();
-            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(settings("toolsets"));
+            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
             ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                    resourceService, contentEncryptionKeyGenerator, keyManagementService, settings("toolsets"));
+                    resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
             ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
             CredentialsEncryptionService credentialsEncryptionService = new CredentialsEncryptionService();
 

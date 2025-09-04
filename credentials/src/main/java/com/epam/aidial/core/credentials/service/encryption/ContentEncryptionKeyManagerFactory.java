@@ -1,9 +1,12 @@
 package com.epam.aidial.core.credentials.service.encryption;
 
+import com.epam.aidial.core.credentials.data.configuration.CacheSettings;
 import com.epam.aidial.core.credentials.service.encryption.keymanagement.KeyManagementService;
 import com.epam.aidial.core.storage.service.ResourceService;
-import io.vertx.core.json.JsonObject;
 import lombok.experimental.UtilityClass;
+
+import javax.annotation.Nullable;
+
 
 @UtilityClass
 public class ContentEncryptionKeyManagerFactory {
@@ -12,21 +15,28 @@ public class ContentEncryptionKeyManagerFactory {
             ResourceService resourceService,
             ContentEncryptionKeyGenerator contentEncryptionKeyGenerator,
             KeyManagementService keyManagementService,
-            JsonObject toolsetSettings) {
+            @Nullable CacheSettings cacheSettings) {
 
-        JsonObject security = toolsetSettings != null ? toolsetSettings.getJsonObject("security") : null;
-        JsonObject kmsSettings = security != null ? security.getJsonObject("kms") : null;
-        JsonObject cacheSettings = kmsSettings != null ? kmsSettings.getJsonObject("cache") : null;
+        ContentEncryptionKeyManager baseManager =
+                new ContentEncryptionKeyManagerImpl(resourceService, contentEncryptionKeyGenerator, keyManagementService);
 
-        Long maxSize = cacheSettings != null ? cacheSettings.getLong("maxSize") : null;
-        Long expiration = cacheSettings != null ? cacheSettings.getLong("expiration") : null;
+        return addCacheIfEnabled(baseManager, cacheSettings);
+    }
 
-        maxSize = maxSize != null ? maxSize : 10_000;
-        expiration = expiration != null ? expiration : 600_000;
+    private ContentEncryptionKeyManager addCacheIfEnabled(
+            ContentEncryptionKeyManager contentEncryptionKeyManager,
+            CacheSettings cacheSettings) {
 
-        ContentEncryptionKeyManager contentEncryptionKeyManager = new ContentEncryptionKeyManagerImpl(resourceService,
-                contentEncryptionKeyGenerator, keyManagementService);
-        return new CachedContentEncryptionKeyManager(contentEncryptionKeyManager, maxSize, expiration);
+        if (cacheSettings == null) {
+            cacheSettings = CacheSettings.builder().build();
+        }
+        if (cacheSettings.isEnabled()) {
+            long maxSize = cacheSettings.getMaxSize();
+            long expiration = cacheSettings.getExpiration();
+            return new CachedContentEncryptionKeyManager(contentEncryptionKeyManager, maxSize, expiration);
+        } else {
+            return contentEncryptionKeyManager;
+        }
     }
 
 }

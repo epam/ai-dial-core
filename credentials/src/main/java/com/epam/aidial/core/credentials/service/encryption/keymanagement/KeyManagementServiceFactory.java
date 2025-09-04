@@ -4,33 +4,40 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
-import io.vertx.core.json.JsonObject;
+import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass
 public class KeyManagementServiceFactory {
 
-    public KeyManagementService create(JsonObject toolsetSettings) {
-        JsonObject security = toolsetSettings != null ? toolsetSettings.getJsonObject("security") : null;
-        JsonObject kmsSettings = security != null ? security.getJsonObject("kms") : null;
-
-        String keyId = kmsSettings != null ? kmsSettings.getString("keyId") : null;
-        String region = kmsSettings != null ? kmsSettings.getString("region") : null;
-
-        if (keyId != null && region != null) {
-            AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
-            AWSKMS kms = AWSKMSClientBuilder.standard()
-                    .withCredentials(awsCredentialsProvider)
-                    .withRegion(region)
-                    .build();
-            return new AwsKeyManagementService(kms, keyId);
+    public KeyManagementService create(KmsSettings kmsSettings) {
+        if (kmsSettings == null || kmsSettings.getProvider() == null) {
+            throw new IllegalArgumentException("toolsets.security.kms.provider must be specified");
         }
 
-        if (keyId == null && region == null) {
+        String provider = kmsSettings.getProvider();
+        if ("aws".equalsIgnoreCase(provider)) {
+            return createAwsKeyManagementService(kmsSettings);
+        } else if ("unencrypted".equalsIgnoreCase(provider)) {
             return new SimpleKeyManagementService();
         }
 
-        throw new IllegalArgumentException("Both keyId and region must be specified");
+        throw new IllegalArgumentException("Unknown toolsets.security.kms.provider: %s.".formatted(provider));
+    }
+
+    private KeyManagementService createAwsKeyManagementService(KmsSettings kmsSettings) {
+        String keyId = kmsSettings.getKeyId();
+        String region = kmsSettings.getRegion();
+        if (keyId == null || region == null) {
+            throw new IllegalArgumentException("Both keyId and region must be specified");
+        }
+
+        AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
+        AWSKMS kms = AWSKMSClientBuilder.standard()
+                .withCredentials(awsCredentialsProvider)
+                .withRegion(region)
+                .build();
+        return new AwsKeyManagementService(kms, keyId);
     }
 
 }
