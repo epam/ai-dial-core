@@ -95,6 +95,12 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPutApplicationWithEmptyPayload() {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, "");
+        verify(response, 400);
+    }
+
+    @Test
     void testApplicationListing() {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {
