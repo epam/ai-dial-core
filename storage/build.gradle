@@ -1,28 +1,29 @@
-
 dependencies {
-
+    // Project dependencies (internal modules)
     implementation project(':config')
 
-    implementation 'com.google.protobuf:protobuf-java:3.25.5'
-    implementation 'org.slf4j:slf4j-api:1.7.32'
-    implementation 'org.apache.commons:commons-lang3:3.18.0'
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
-    implementation 'org.apache.jclouds:jclouds-allblobstore:2.7.3'
-    implementation 'org.apache.jclouds.api:filesystem:2.7.3'
-    implementation 'org.redisson:redisson:3.27.0'
-    implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
-    implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
-    implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
-    implementation group: 'com.google.cloud', name: 'google-cloud-iamcredentials', version: '2.60.0'
-    implementation group: 'com.azure', name: 'azure-identity', version: '1.13.2'
+    // External dependencies
+    implementation("com.amazonaws:aws-java-sdk-core:${aws_java_sdk_version}")
+    implementation("com.amazonaws:aws-java-sdk-sts:${aws_java_sdk_version}")
+    implementation("com.azure:azure-identity:${azure_version}")
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    implementation("com.google.auth:google-auth-library-oauth2-http:${google_auth_version}")
+    implementation("com.google.cloud:google-cloud-iamcredentials:${google_cloud_version}")
+    implementation("com.google.protobuf:protobuf-java:${google_protobuf_version}")
+    implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
+    implementation("org.apache.jclouds.api:filesystem:${apache_jclouds_version}")
+    implementation("org.apache.jclouds:jclouds-allblobstore:${apache_jclouds_version}")
+    implementation("org.redisson:redisson:${redisson_version}")
+    implementation("org.slf4j:slf4j-api:${slf4j_version}")
 
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
-    testImplementation 'org.mockito:mockito-core:5.7.0'
-    testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
-    testImplementation('com.github.codemonstur:embedded-redis:1.4.3') {
+    // Test dependencies
+    testImplementation("com.github.codemonstur:embedded-redis:${github_codemonstur_embedded_redis}") {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
+    testImplementation("org.junit.jupiter:junit-jupiter:${junit_version}")
+    testImplementation("org.mockito:mockito-core:${mockito_version}")
+    testImplementation("org.mockito:mockito-junit-jupiter:${mockito_version}")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junit_version}")
 }
 
 test {
