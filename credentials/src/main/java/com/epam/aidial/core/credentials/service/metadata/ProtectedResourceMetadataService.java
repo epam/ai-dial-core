@@ -3,12 +3,11 @@ package com.epam.aidial.core.credentials.service.metadata;
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerProtectedResourceMetadata;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.util.FallbackHandler;
-import com.epam.aidial.core.credentials.util.HeaderUtils;
 import com.epam.aidial.core.credentials.util.ResourceEndpointUtil;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import lombok.RequiredArgsConstructor;
+import com.google.common.annotations.VisibleForTesting;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
@@ -34,13 +33,29 @@ import java.util.Set;
  * </p>
  */
 @Slf4j
-@RequiredArgsConstructor
 public class ProtectedResourceMetadataService {
 
     private static final String WELL_KNOWN_SUFFIX = "oauth-protected-resource";
 
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataValidator protectedResourceMetadataValidator;
+    private final HttpHeadersHandler httpHeadersHandler;
+
+
+    public ProtectedResourceMetadataService(ResourceAuthorizationClient resourceAuthorizationClient,
+                                            ProtectedResourceMetadataValidator protectedResourceMetadataValidator,
+                                            HttpHeadersHandler httpHeadersHandler) {
+        this.resourceAuthorizationClient = resourceAuthorizationClient;
+        this.protectedResourceMetadataValidator = protectedResourceMetadataValidator;
+        this.httpHeadersHandler = httpHeadersHandler;
+    }
+
+    @VisibleForTesting
+    private ProtectedResourceMetadataService() {
+        this.resourceAuthorizationClient = new ResourceAuthorizationClient();
+        this.protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
+        this.httpHeadersHandler = new HttpHeadersHandler();
+    }
 
     /**
      * Fetches metadata for a protected resource, using fallback mechanisms if necessary.
@@ -97,7 +112,7 @@ public class ProtectedResourceMetadataService {
         } catch (HttpException e) {
             HttpStatus httpExceptionStatus = e.getStatus();
             if (httpExceptionStatus.equals(HttpStatus.UNAUTHORIZED)) {
-                Optional<String> metadataUrl = HeaderUtils.extractMetadataUrl(e.getHeaders());
+                Optional<String> metadataUrl = httpHeadersHandler.extractMetadataUrl(e.getHeaders());
                 if (metadataUrl.isPresent()) {
                     log.debug("Retrieved metadata URL from WWW-Authenticate header: {}", metadataUrl.get());
                     return tryFetchMetadata(metadataUrl.get());

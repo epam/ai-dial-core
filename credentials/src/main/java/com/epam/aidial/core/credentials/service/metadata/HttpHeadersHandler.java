@@ -1,14 +1,11 @@
-package com.epam.aidial.core.credentials.util;
-
-import lombok.experimental.UtilityClass;
+package com.epam.aidial.core.credentials.service.metadata;
 
 import java.net.http.HttpHeaders;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-@UtilityClass
-public class HeaderUtils {
+public class HttpHeadersHandler {
 
     private static final String WWW_AUTHENTICATE_HEADER = "WWW-Authenticate";
     private static final String RESOURCE_METADATA_PARAMETER = "resource_metadata=";
@@ -19,7 +16,7 @@ public class HeaderUtils {
      * @param headers Map of response headers.
      * @return Optional metadata URL if found.
      */
-    public static Optional<String> extractMetadataUrl(Map<String, String> headers) {
+    public Optional<String> extractMetadataUrl(Map<String, String> headers) {
         if (headers == null || headers.isEmpty() || !headers.containsKey(WWW_AUTHENTICATE_HEADER)) {
             return Optional.empty();
         }
@@ -33,7 +30,7 @@ public class HeaderUtils {
      * @param authHeader Header string to search for metadata URL.
      * @return Optional metadata URL if found.
      */
-    private static Optional<String> extractMetadataUrl(String authHeader) {
+    private Optional<String> extractMetadataUrl(String authHeader) {
         if (authHeader == null || authHeader.isEmpty()) {
             return Optional.empty();
         }
@@ -45,17 +42,17 @@ public class HeaderUtils {
 
         startIndex += RESOURCE_METADATA_PARAMETER.length();
 
-        while (startIndex < authHeader.length() && Character.isWhitespace(authHeader.charAt(startIndex))) {
-            startIndex++;
-        }
+        startIndex = skipLeadingWhitespace(authHeader, startIndex);
 
-        if (authHeader.charAt(startIndex) == '"') {
+        if (startIndex < authHeader.length() && authHeader.charAt(startIndex) == '"') {
             int endIndex = authHeader.indexOf("\"", startIndex + 1);
-            if (endIndex > startIndex) {
-                return Optional.of(authHeader.substring(startIndex + 1, endIndex));
-            } else {
+
+            if (endIndex <= startIndex + 1) {
                 return Optional.empty();
             }
+
+            String value = authHeader.substring(startIndex + 1, endIndex).trim();
+            return value.isEmpty() ? Optional.empty() : Optional.of(value);
         }
 
         int endIndex = authHeader.indexOf(" ", startIndex);
@@ -67,7 +64,14 @@ public class HeaderUtils {
         return metadataUrl.isEmpty() ? Optional.empty() : Optional.of(metadataUrl);
     }
 
-    public static Map<String, String> convertHttpHeadersToMap(HttpHeaders httpHeaders) {
+    private int skipLeadingWhitespace(String input, int index) {
+        while (index < input.length() && Character.isWhitespace(input.charAt(index))) {
+            index++;
+        }
+        return index;
+    }
+
+    public Map<String, String> convertHttpHeadersToMap(HttpHeaders httpHeaders) {
         return httpHeaders.map().entrySet()
                 .stream()
                 .collect(Collectors.toMap(

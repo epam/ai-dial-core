@@ -1,6 +1,6 @@
 package com.epam.aidial.core.credentials.service;
 
-import com.epam.aidial.core.credentials.util.HeaderUtils;
+import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.google.common.annotations.VisibleForTesting;
@@ -18,15 +18,18 @@ import java.nio.charset.StandardCharsets;
 public class ResourceAuthorizationClient {
 
     private final HttpClient httpClient;
+    private final HttpHeadersHandler httpHeadersHandler;
 
     public ResourceAuthorizationClient() {
         this.httpClient = HttpClient.newHttpClient();
+        this.httpHeadersHandler = new HttpHeadersHandler();
     }
 
     @SuppressWarnings("unused")
     @VisibleForTesting
-    private ResourceAuthorizationClient(HttpClient httpClient) {
+    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler) {
         this.httpClient = httpClient;
+        this.httpHeadersHandler = httpHeadersHandler;
     }
 
     public <R> R executeGet(String url, Class<R> responseType) {
@@ -69,7 +72,7 @@ public class ResourceAuthorizationClient {
             log.debug("Error executing request {}: status {}, response {}, headers: {}",
                     request.uri(), response.statusCode(), response.body(), response.headers());
             throw new HttpException(status, "Authorization server returns error code",
-                    HeaderUtils.convertHttpHeadersToMap(response.headers()));
+                    httpHeadersHandler.convertHttpHeadersToMap(response.headers()));
         }
 
         return JsonMapperUtil.convertToObject(body, responseType);

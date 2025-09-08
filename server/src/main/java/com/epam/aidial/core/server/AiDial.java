@@ -8,6 +8,7 @@ import com.epam.aidial.core.credentials.service.TokenService;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
+import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
@@ -222,8 +223,9 @@ public class AiDial {
 
     private static ResourceRegistrationService getResourceRegistrationService(ResourceAuthorizationClient resourceAuthorizationClient) {
         ProtectedResourceMetadataValidator protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
+        HttpHeadersHandler httpHeadersHandler = new HttpHeadersHandler();
         ProtectedResourceMetadataService protectedResourceMetadataService = new ProtectedResourceMetadataService(
-                resourceAuthorizationClient, protectedResourceMetadataValidator);
+                resourceAuthorizationClient, protectedResourceMetadataValidator, httpHeadersHandler);
 
         AuthorizationServerMetadataValidator authorizationServerMetadataValidator = new AuthorizationServerMetadataValidator();
         AuthorizationServerMetadataService authorizationServerMetadataService = new AuthorizationServerMetadataService(

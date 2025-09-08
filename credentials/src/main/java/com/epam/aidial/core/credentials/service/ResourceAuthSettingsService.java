@@ -77,7 +77,7 @@ public class ResourceAuthSettingsService {
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
                     && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
                     && userSub.equals(resourceCredentials.getUserSub())
-                    && resourceCredentials.isTokenAlive())
+                    && resourceCredentials.hasUnexpiredToken())
                 .findFirst();
         // TODO: implement logic for API_KEY auth type
         if (userResourceCredentials.isPresent()) {
@@ -92,7 +92,7 @@ public class ResourceAuthSettingsService {
         Optional<ResourceCredentials> globalResourceCredentials = resourceCredentialsList.stream()
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)
                     && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
-                    && resourceCredentials.isTokenAlive()
+                    && resourceCredentials.hasUnexpiredToken()
                 )
                 .findFirst();
         // TODO: implement logic for API_KEY auth type

@@ -168,7 +168,7 @@ class ResourceAuthSettingsServiceTest {
         ResourceCredentials credentials = Mockito.mock(ResourceCredentials.class);
         Mockito.when(credentials.getCredentialsLevel()).thenReturn(level);
         Mockito.when(credentials.getAuthenticationType()).thenReturn(authenticationType);
-        Mockito.when(credentials.isTokenAlive()).thenReturn(isAlive);
+        Mockito.when(credentials.hasUnexpiredToken()).thenReturn(isAlive);
         Mockito.when(credentials.getUserSub()).thenReturn(userSub);
         return credentials;
     }

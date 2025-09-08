@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.concurrent.TimeUnit;
+
 @Data
 @Builder
 public class ResourceCredentials {
@@ -18,31 +20,35 @@ public class ResourceCredentials {
     private String refreshToken;
     private long createdAt;
     private long updatedAt;
-    private Long expiresIn;
+    private Long expiresInSeconds;
     private String userSub;
 
-    public boolean isTokenAlive() {
+    public boolean hasUnexpiredToken() {
+        validateOauthAuthentication();
+        return !supportsTokenRefreshFlow() || isTokenUnexpired();
+    }
+
+    public boolean requiresTokenRefresh() {
+        validateOauthAuthentication();
+        return supportsTokenRefreshFlow() && !isTokenUnexpired();
+    }
+
+    private void validateOauthAuthentication() {
         if (!AuthenticationType.OAUTH.equals(authenticationType)) {
             throw new UnsupportedOperationException("Access token exists only for OAuth authentication type.");
         }
-
-        return !hasRefreshToken() || isAccessTokenWithinExpiry();
     }
 
-    public boolean needsRefresh() {
-        return hasRefreshToken() && !isTokenAlive();
+    private boolean supportsTokenRefreshFlow() {
+        return refreshToken != null && expiresInSeconds != null;
     }
 
-    private boolean hasRefreshToken() {
-        return refreshToken != null && expiresIn != null;
-    }
-
-    private boolean isAccessTokenWithinExpiry() {
-        if (updatedAt <= 0 || expiresIn == null || expiresIn <= 0) {
+    private boolean isTokenUnexpired() {
+        if (updatedAt <= 0 || expiresInSeconds == null || expiresInSeconds <= 0) {
             return false;
         }
 
-        long expiryTimeInMillis = updatedAt + expiresIn * 1000;
+        long expiryTimeInMillis = updatedAt + TimeUnit.SECONDS.toMillis(expiresInSeconds);
         return expiryTimeInMillis > System.currentTimeMillis();
     }
 }
