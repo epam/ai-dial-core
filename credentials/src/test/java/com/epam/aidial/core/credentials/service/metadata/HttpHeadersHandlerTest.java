@@ -55,7 +55,6 @@ class HttpHeadersHandlerTest {
         );
     }
 
-    /** @noinspection OptionalUsedAsFieldOrParameterType*/
     @ParameterizedTest
     @MethodSource("provideHeadersForExtractMetadataTests")
     void testExtractMetadataUrl(Map<String, String> headers, Optional<String> expected) {
