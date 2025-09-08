@@ -18,13 +18,31 @@ public class ResourceCredentials {
     private String refreshToken;
     private long createdAt;
     private long updatedAt;
-    private long expiresIn;
+    private Long expiresIn;
     private String userSub;
 
-    public boolean isTokenExpired() {
-        if (authenticationType.equals(AuthenticationType.OAUTH)) {
-            return updatedAt + expiresIn * 1000 <= System.currentTimeMillis();
+    public boolean isTokenAlive() {
+        if (!AuthenticationType.OAUTH.equals(authenticationType)) {
+            throw new UnsupportedOperationException("Access token exists only for OAuth authentication type.");
         }
-        return true;
+
+        return !hasRefreshToken() || isAccessTokenWithinExpiry();
+    }
+
+    public boolean needsRefresh() {
+        return hasRefreshToken() && !isTokenAlive();
+    }
+
+    private boolean hasRefreshToken() {
+        return refreshToken != null && expiresIn != null;
+    }
+
+    private boolean isAccessTokenWithinExpiry() {
+        if (updatedAt <= 0 || expiresIn == null || expiresIn <= 0) {
+            return false;
+        }
+
+        long expiryTimeInMillis = updatedAt + expiresIn * 1000;
+        return expiryTimeInMillis > System.currentTimeMillis();
     }
 }

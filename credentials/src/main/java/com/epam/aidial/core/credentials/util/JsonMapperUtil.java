@@ -17,6 +17,7 @@ public class JsonMapperUtil {
 
     public static final JsonMapper MAPPER = JsonMapper.builder()
                 .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+                .configure(MapperFeature.DEFAULT_VIEW_INCLUSION, false)
                 .build();
 
     public static String convertToString(Object data) {
@@ -50,7 +51,9 @@ public class JsonMapperUtil {
             return MAPPER.readValue(payload, clazz);
         } catch (JsonProcessingException e) {
             log.warn("Failed to convert payload to the object", e);
-            if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
+            if (e instanceof MismatchedInputException mismatchedInputException
+                    && mismatchedInputException.getPath() != null
+                    && !mismatchedInputException.getPath().isEmpty()) {
                 String missingField = mismatchedInputException.getPath().stream()
                         .map(JsonMappingException.Reference::getFieldName)
                         .collect(Collectors.joining("."));

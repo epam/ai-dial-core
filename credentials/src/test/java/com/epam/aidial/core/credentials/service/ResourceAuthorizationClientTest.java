@@ -12,8 +12,11 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -60,6 +63,9 @@ class ResourceAuthorizationClientTest {
         String url = "https://example.com/resource";
         HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
+        when(httpHeadersMock.map()).thenReturn(new HashMap<>());
+        when(httpResponseMock.headers()).thenReturn(httpHeadersMock);
         when(httpResponseMock.statusCode()).thenReturn(404);
 
         // When
@@ -77,6 +83,9 @@ class ResourceAuthorizationClientTest {
         HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(401);
+        HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
+        when(httpHeadersMock.map()).thenReturn(new HashMap<>());
+        when(httpResponseMock.headers()).thenReturn(httpHeadersMock);
 
         // When
         HttpException exception = assertThrows(HttpException.class, () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));

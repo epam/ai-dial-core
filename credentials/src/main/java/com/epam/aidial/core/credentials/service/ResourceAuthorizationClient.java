@@ -1,5 +1,6 @@
 package com.epam.aidial.core.credentials.service;
 
+import com.epam.aidial.core.credentials.util.HeaderUtils;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.google.common.annotations.VisibleForTesting;
@@ -50,6 +51,7 @@ public class ResourceAuthorizationClient {
                 .uri(URI.create(url))
                 .timeout(createRequestConfig())
                 .header("Content-Type", contentType)
+                .header("Accept", ContentType.APPLICATION_JSON.toString())
                 .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
                 .build();
 
@@ -64,8 +66,10 @@ public class ResourceAuthorizationClient {
         String body = response.body();
 
         if (status != 200 && status != 201) {
-            log.info("Error executing request {}: status {}, response {}", request.uri(), response.statusCode(), response.body());
-            throw new HttpException(status, "Authorization server returns error code");
+            log.debug("Error executing request {}: status {}, response {}, headers: {}",
+                    request.uri(), response.statusCode(), response.body(), response.headers());
+            throw new HttpException(status, "Authorization server returns error code",
+                    HeaderUtils.convertHttpHeadersToMap(response.headers()));
         }
 
         return JsonMapperUtil.convertToObject(body, responseType);

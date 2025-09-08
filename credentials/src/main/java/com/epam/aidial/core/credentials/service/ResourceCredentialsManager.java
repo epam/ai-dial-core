@@ -52,7 +52,7 @@ public class ResourceCredentialsManager {
             if (credentials.getCredentialsLevel() == CredentialsLevel.USER
                     && userSub != null
                     && userSub.equals(credentials.getUserSub())) {
-                if (credentials.isTokenExpired()) {
+                if (credentials.needsRefresh()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
                     resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
                 }
@@ -60,7 +60,7 @@ public class ResourceCredentialsManager {
             }
 
             if (credentials.getCredentialsLevel() == CredentialsLevel.GLOBAL) {
-                if (credentials.isTokenExpired()) {
+                if (credentials.needsRefresh()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
                 }
                 globalCredentials = credentials;
