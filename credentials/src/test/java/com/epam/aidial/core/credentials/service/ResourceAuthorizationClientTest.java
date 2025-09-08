@@ -1,5 +1,6 @@
 package com.epam.aidial.core.credentials.service;
 
+import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.storage.http.HttpException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -29,6 +30,9 @@ class ResourceAuthorizationClientTest {
 
     @Mock
     private HttpClient httpClientMock;
+
+    @Mock
+    private HttpHeadersHandler httpHeadersHandler;
 
     @InjectMocks
     private ResourceAuthorizationClient resourceAuthorizationClient;
@@ -66,6 +70,7 @@ class ResourceAuthorizationClientTest {
         HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
         when(httpHeadersMock.map()).thenReturn(new HashMap<>());
         when(httpResponseMock.headers()).thenReturn(httpHeadersMock);
+        when(httpHeadersHandler.convertHttpHeadersToMap(httpHeadersMock)).thenReturn(new HashMap<>());
         when(httpResponseMock.statusCode()).thenReturn(404);
 
         // When
@@ -86,6 +91,7 @@ class ResourceAuthorizationClientTest {
         HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
         when(httpHeadersMock.map()).thenReturn(new HashMap<>());
         when(httpResponseMock.headers()).thenReturn(httpHeadersMock);
+        when(httpHeadersHandler.convertHttpHeadersToMap(httpHeadersMock)).thenReturn(new HashMap<>());
 
         // When
         HttpException exception = assertThrows(HttpException.class, () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
