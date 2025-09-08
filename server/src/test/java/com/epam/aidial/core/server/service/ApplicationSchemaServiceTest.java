@@ -82,7 +82,7 @@ public class ApplicationSchemaServiceTest {
                               "description": "The Dial ID associated with this MCP toolset.",
                               "title": "Dial Id",
                               "type": "string",
-                              "dial:toolset": true
+                              "dial:resource": true
                             },
                             "allowed_tools": {
                               "anyOf": [
