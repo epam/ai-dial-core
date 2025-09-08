@@ -56,7 +56,7 @@ public class PublicationService {
             ResourceTypes.PUBLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
-            ResourceTypes.PROMPT, ResourceTypes.APPLICATION);
+            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final EncryptionService encryption;
     private final ResourceService resourceService;
@@ -771,7 +771,7 @@ public class PublicationService {
 
     private void verifyResourceType(ResourceDescriptor descriptor) {
         if (!ALLOWED_RESOURCES.contains(descriptor.getType())) {
-            throw new IllegalStateException("Unsupported type: " + descriptor.getType());
+            throw new IllegalArgumentException("Unsupported type: " + descriptor.getType());
         }
     }
 
