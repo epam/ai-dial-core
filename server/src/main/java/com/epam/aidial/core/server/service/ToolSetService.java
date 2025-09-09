@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
@@ -8,19 +7,11 @@ import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.AllArgsConstructor;
 import org.apache.commons.lang3.tuple.Pair;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
 
 @AllArgsConstructor
 public class ToolSetService {
@@ -33,7 +24,7 @@ public class ToolSetService {
     }
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource, EtagHeader etagHeader) {
-        var result = getToolSet(resource, etagHeader);
+        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(resource, etagHeader);
         ToolSet toolSet = result.getValue();
         ResourceItemMetadata meta = result.getKey();
 
