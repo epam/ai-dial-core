@@ -6,7 +6,6 @@ import com.epam.aidial.core.credentials.data.registration.AuthorizationServerPro
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationRequest;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationResponse;
-import com.epam.aidial.core.credentials.exception.CredentialsInternalException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
@@ -21,8 +20,6 @@ import java.util.List;
 public class ResourceRegistrationService {
     private static final String AUTH_SERVER_ENDPOINT = "%s/.well-known/oauth-authorization-server";
     private static final String PROTECTED_RESOURCE_ENDPOINT = "%s/.well-known/oauth-protected-resource";
-    private static final String AUTHORIZE_ENDPOINT = "%s/authorize";
-    private static final String TOKEN_ENDPOINT = "%s/token";
 
     private final ResourceAuthorizationClient resourceAuthorizationClient;
 
@@ -35,7 +32,7 @@ public class ResourceRegistrationService {
         log.debug("Resource {} base endpoint: {}", resourceId, baseResourceEndpoint);
 
         String resourceAuthServerEndpoint = getResourceAuthorizationServerEndpoint(baseResourceEndpoint);
-        AuthorizationServerMetadata resourceAuthorizationServerMetadata = getResourceAuthorizationServerMetadata(resourceAuthServerEndpoint);
+        AuthorizationServerMetadata resourceAuthorizationServerMetadata = getResourceAuthorizationServerMetadata(resourceId, resourceAuthServerEndpoint);
 
         ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
                 .clientName(resourceId)
@@ -51,7 +48,6 @@ public class ResourceRegistrationService {
         ClientRegistration resourceRegistration = createResourceRegistration(
                 clientRegistrationResponse,
                 resourceAuthorizationServerMetadata);
-
         log.info("Finished Resource: {} registration.", resourceId);
         return resourceRegistration;
     }
@@ -63,37 +59,25 @@ public class ResourceRegistrationService {
         log.debug("Resource {} base endpoint: {}", resourceId, baseResourceEndpoint);
 
         String resourceAuthServerEndpoint = getResourceAuthorizationServerEndpoint(baseResourceEndpoint);
-
-        String resourceAuthorizationEndpoint;
-        String tokenEndpoint;
-        String codeChallengeMethodSupported;
-        try {
-            AuthorizationServerMetadata authorizationServerMetadata = getResourceAuthorizationServerMetadata(resourceAuthServerEndpoint);
-            resourceAuthorizationEndpoint = authorizationServerMetadata.getAuthorizationEndpoint();
-            tokenEndpoint = authorizationServerMetadata.getTokenEndpoint();
-            codeChallengeMethodSupported = getCodeChallengeMethod(authorizationServerMetadata);
-        } catch (HttpException e) {
-            log.error(e.getMessage(), e);
-            resourceAuthorizationEndpoint = AUTHORIZE_ENDPOINT.formatted(baseResourceEndpoint);
-            tokenEndpoint = TOKEN_ENDPOINT.formatted(baseResourceEndpoint);
-            codeChallengeMethodSupported = CodeChallengeMethod.S256.getValue();
-        }
-
+        AuthorizationServerMetadata authorizationServerMetadata = getResourceAuthorizationServerMetadata(resourceId, resourceAuthServerEndpoint);
+        String resourceAuthorizationEndpoint = authorizationServerMetadata.getAuthorizationEndpoint();
+        String tokenEndpoint = authorizationServerMetadata.getTokenEndpoint();
+        String codeChallengeMethodSupported = getCodeChallengeMethod(authorizationServerMetadata);
         return ClientRegistration.builder()
-            .resourceId(resourceId)
-            .clientId(resourceAuthSettings.getClientId())
-            .clientSecret(resourceAuthSettings.getClientSecret())
-            .redirectUri(resourceAuthSettings.getRedirectUri())
-            .authorizationEndpoint(resourceAuthorizationEndpoint)
-            .tokenEndpoint(tokenEndpoint)
-            .codeChallengeMethod(codeChallengeMethodSupported)
-            .build();
+                .resourceId(resourceId)
+                .clientId(resourceAuthSettings.getClientId())
+                .clientSecret(resourceAuthSettings.getClientSecret())
+                .redirectUri(resourceAuthSettings.getRedirectUri())
+                .authorizationEndpoint(resourceAuthorizationEndpoint)
+                .tokenEndpoint(tokenEndpoint)
+                .codeChallengeMethod(codeChallengeMethodSupported)
+                .build();
     }
 
     private String getBaseResourceEndpoint(String resourceEndpoint) {
         return resourceEndpoint.endsWith("/mcp")
-               ? resourceEndpoint.substring(0, resourceEndpoint.lastIndexOf("/mcp"))
-               : resourceEndpoint;
+                ? resourceEndpoint.substring(0, resourceEndpoint.lastIndexOf("/mcp"))
+                : resourceEndpoint;
     }
 
     private ClientRegistration createResourceRegistration(ClientRegistrationResponse clientRegistrationResponse,
@@ -130,11 +114,12 @@ public class ResourceRegistrationService {
             //TODO: should we get the first one?
             resourceAuthServerBaseEndpoint = authorizationServers.getFirst();
         } catch (HttpException e) {
-            if (e.getStatus().equals(HttpStatus.NOT_FOUND)) {
+            HttpStatus status = e.getStatus();
+            if (status.equals(HttpStatus.NOT_FOUND) || status.equals(HttpStatus.UNAUTHORIZED)) {
                 resourceAuthServerBaseEndpoint = baseResourceEndpoint;
             } else {
-                log.error("Error getting authorization servers for dynamic client registration: {}", e.getMessage(), e);
-                throw new CredentialsInternalException("Error getting authorization servers for dynamic client registration.", e);
+                log.info("Error getting authorization servers for dynamic client registration: {}", e.getMessage());
+                throw e;
             }
         }
         String authServerWellKnownEndpoint = AUTH_SERVER_ENDPOINT.formatted(resourceAuthServerBaseEndpoint);
@@ -142,11 +127,21 @@ public class ResourceRegistrationService {
         return authServerWellKnownEndpoint;
     }
 
-    private AuthorizationServerMetadata getResourceAuthorizationServerMetadata(String resourceAuthServerEndpoint) {
-        AuthorizationServerMetadata authorizationServerMetadata = resourceAuthorizationClient.executeGet(resourceAuthServerEndpoint,
-                AuthorizationServerMetadata.class);
-        log.debug("AuthorizationServerMetadata: {}", authorizationServerMetadata);
-        return authorizationServerMetadata;
+    private AuthorizationServerMetadata getResourceAuthorizationServerMetadata(String resourceId, String resourceAuthServerEndpoint) {
+        try {
+            AuthorizationServerMetadata authorizationServerMetadata = resourceAuthorizationClient.executeGet(resourceAuthServerEndpoint,
+                    AuthorizationServerMetadata.class);
+            log.debug("AuthorizationServerMetadata: {}", authorizationServerMetadata);
+            return authorizationServerMetadata;
+        } catch (HttpException e) {
+            HttpStatus status = e.getStatus();
+            if (status.equals(HttpStatus.NOT_FOUND) || status.equals(HttpStatus.UNAUTHORIZED)) {
+                throw new IllegalArgumentException("The MCP server for Resource: %s does not support OAuth authentication.".formatted(resourceId));
+            } else {
+                log.info("Error getting authorization server's metadata for client registration: {}", e.getMessage());
+                throw e;
+            }
+        }
     }
 
     private AuthorizationServerProtectedResourceMetadata getAuthorizationServerProtectedResourceMetadata(String baseResourceEndpoint) {

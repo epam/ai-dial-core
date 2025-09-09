@@ -1,57 +1,60 @@
-
 dependencies {
+    // Project dependencies (internal modules)
     implementation project(':config')
-    implementation project(':storage')
     implementation project(':credentials')
+    implementation project(':storage')
 
-    implementation 'com.google.protobuf:protobuf-java:3.25.5'
-    implementation 'org.slf4j:slf4j-api:2.0.9'
-    implementation 'ch.qos.logback:logback-classic:1.5.13'
-    implementation 'ch.qos.logback:logback-core:1.5.13'
-    implementation 'com.epam.deltix:gflog-api:3.0.6'
-    implementation 'com.epam.deltix:gflog-core:3.0.6'
-    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
-    implementation 'org.codehaus.janino:janino:3.1.10'
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:2.17.0-alpha'
-    implementation 'io.vertx:vertx-core:4.5.18'
-    implementation 'io.vertx:vertx-config:4.5.18'
-    implementation 'io.vertx:vertx-opentelemetry:4.5.18'
-    implementation 'io.vertx:vertx-micrometer-metrics:4.5.18'
-    implementation 'io.micrometer:micrometer-registry-prometheus:1.11.2'
-    implementation 'io.micrometer:micrometer-registry-otlp:1.11.2'
-    implementation 'io.opentelemetry:opentelemetry-api:1.47.0'
-    implementation 'io.opentelemetry:opentelemetry-context:1.47.0'
-    implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.47.0'
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.47.0'
-    implementation 'org.apache.commons:commons-lang3:3.18.0'
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
-    implementation 'com.auth0:java-jwt:4.4.0'
-    implementation 'com.auth0:jwks-rsa:0.22.1'
-    implementation 'org.apache.jclouds:jclouds-allblobstore:2.7.3'
-    implementation 'org.apache.jclouds.api:filesystem:2.7.3'
-    implementation 'org.redisson:redisson:3.27.0'
-    implementation 'com.networknt:json-schema-validator:1.5.2'
-    implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: '1.12.663'
-    implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: '1.12.663'
-    implementation group: 'com.google.auth', name: 'google-auth-library-oauth2-http', version: '1.23.0'
-    implementation group: 'com.azure', name: 'azure-identity', version: '1.13.2'
-    implementation 'org.hibernate.validator:hibernate-validator:8.0.0.Final'
-    implementation 'org.glassfish:jakarta.el:4.0.2'
-    implementation 'jakarta.validation:jakarta.validation-api:3.0.2' // Ensure you have Jakarta Validation API dependency
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.4.3'
-    implementation 'com.jayway.jsonpath:json-path:2.9.0'
+    // External dependencies
+    implementation("ch.qos.logback:logback-classic:${logback_version}")
+    implementation("ch.qos.logback:logback-core:${logback_version}")
+    implementation("com.amazonaws:aws-java-sdk-core:${aws_java_sdk_version}")
+    implementation("com.amazonaws:aws-java-sdk-sts:${aws_java_sdk_version}")
+    implementation("com.auth0:java-jwt:${auth0_java_version}")
+    implementation("com.auth0:jwks-rsa:${auth0_jwks_version}")
+    implementation("com.azure:azure-identity:${azure_version}")
+    implementation("com.epam.deltix:gflog-api:${epam_deltix_gflog_version}")
+    implementation("com.epam.deltix:gflog-core:${epam_deltix_gflog_version}")
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    implementation("com.google.auth:google-auth-library-oauth2-http:${google_auth_version}")
+    implementation("com.google.protobuf:protobuf-java:${google_protobuf_version}")
+    implementation("com.jayway.jsonpath:json-path:${jayway_jsonpath_version}")
+    implementation("com.networknt:json-schema-validator:${networknt_version}")
+    implementation("io.micrometer:micrometer-registry-otlp:${micrometer_version}")
+    implementation("io.micrometer:micrometer-registry-prometheus:${micrometer_version}")
+    implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:${opentelemetry_instrumentation_version}")
+    implementation("io.opentelemetry:opentelemetry-api:${opentelemetry_version}")
+    implementation("io.opentelemetry:opentelemetry-context:${opentelemetry_version}")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp:${opentelemetry_version}")
+    implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:${opentelemetry_version}")
+    implementation("io.vertx:vertx-config:${vertx_version}")
+    implementation("io.vertx:vertx-core:${vertx_version}")
+    implementation("io.vertx:vertx-micrometer-metrics:${vertx_version}")
+    implementation("io.vertx:vertx-opentelemetry:${vertx_version}")
+    implementation("jakarta.validation:jakarta.validation-api:${jakarta_validation_version}") // Ensure you have Jakarta Validation API dependency
+    implementation("net.logstash.logback:logstash-logback-encoder:${logstash_logback_version}")
+    implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
+    implementation("org.apache.httpcomponents.client5:httpclient5:${apache_httpclient5_version}")
+    implementation("org.apache.jclouds.api:filesystem:${apache_jclouds_version}")
+    implementation("org.apache.jclouds:jclouds-allblobstore:${apache_jclouds_version}")
+    implementation("org.codehaus.janino:janino:${codehaus_janino_version}")
+    implementation("org.glassfish:jakarta.el:${glassfish_jakarta_version}")
+    implementation("org.hibernate.validator:hibernate-validator:${hibernate_validator_version}")
+    implementation("org.redisson:redisson:${redisson_version}")
+    implementation("org.slf4j:slf4j-api:${slf4j_version}")
 
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
-    testImplementation 'commons-io:commons-io:2.14.0'
-    testImplementation 'io.vertx:vertx-web-client:4.5.18'
-    testImplementation 'io.vertx:vertx-junit5:4.5.18'
-    testImplementation 'org.mockito:mockito-core:5.7.0'
-    testImplementation 'org.mockito:mockito-junit-jupiter:5.7.0'
-    testImplementation('com.github.codemonstur:embedded-redis:1.4.3') {
+    // Test dependencies
+    testImplementation("com.github.codemonstur:embedded-redis:${github_codemonstur_embedded_redis}") {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
-    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testImplementation("com.squareup.okhttp3:mockwebserver:${squareup_okhttp3_version}")
+    testImplementation("commons-io:commons-io:${commons_io_version}")
+    testImplementation("io.vertx:vertx-junit5:${vertx_version}")
+    testImplementation("io.vertx:vertx-web-client:${vertx_version}")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:${junit_version}")
+    testImplementation("org.mockito:mockito-core:${mockito_version}")
+    testImplementation("org.mockito:mockito-junit-jupiter:${mockito_version}")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junit_version}")
+
 }
 
 application {
