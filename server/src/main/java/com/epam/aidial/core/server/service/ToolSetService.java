@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
@@ -7,11 +8,19 @@ import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.AllArgsConstructor;
 import org.apache.commons.lang3.tuple.Pair;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
 @AllArgsConstructor
 public class ToolSetService {
@@ -24,6 +33,19 @@ public class ToolSetService {
     }
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource, EtagHeader etagHeader) {
+        var result = getToolSet(resource, etagHeader);
+        ToolSet toolSet = result.getValue();
+        ResourceItemMetadata meta = result.getKey();
+
+        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), context.getUserSub());
+        toolSet.setAuthor(meta.getAuthor());
+        toolSet.setCreatedAt(meta.getCreatedAt());
+        toolSet.setUpdatedAt(meta.getUpdatedAt());
+
+        return Pair.of(meta, toolSet);
+    }
+
+    private Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource, EtagHeader etagHeader) {
         verifyToolSet(resource);
         Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource, etagHeader);
 
@@ -37,12 +59,6 @@ public class ToolSetService {
         if (toolSet == null) {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
-
-        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), context.getUserSub());
-        toolSet.setAuthor(meta.getAuthor());
-        toolSet.setCreatedAt(meta.getCreatedAt());
-        toolSet.setUpdatedAt(meta.getUpdatedAt());
-
         return Pair.of(meta, toolSet);
     }
 
@@ -63,6 +79,23 @@ public class ToolSetService {
         });
 
         return Pair.of(meta, toolSet);
+    }
+
+    public void copyToolSet(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite) {
+        verifyToolSet(source);
+        verifyToolSet(destination);
+
+        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, EtagHeader.ANY);
+        ToolSet toolSet = result.getValue();
+        if (author == null) {
+            author = result.getKey().getAuthor();
+        }
+
+        EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
+        toolSet.setName(destination.getUrl());
+        toolSet.setReference(ProxyUtil.generateReference());
+        String json = ProxyUtil.convertToString(toolSet);
+        resourceService.putResource(destination, json, etag, author);
     }
 
     private static void verifyToolSet(ResourceDescriptor resource) {

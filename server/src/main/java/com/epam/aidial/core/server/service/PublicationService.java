@@ -64,6 +64,7 @@ public class PublicationService {
     private final RuleService ruleService;
     private final NotificationService notificationService;
     private final ApplicationService applicationService;
+    private final ToolSetService toolSetService;
     private final ResourceOperationService resourceOperationService;
     private final Supplier<String> ids;
     private final LongSupplier clock;
@@ -683,6 +684,8 @@ public class PublicationService {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
+            } else if (from.getType() == ResourceTypes.TOOL_SET) {
+                toolSetService.copyToolSet(from, to, null, false);
             } else if (!resourceService.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
@@ -724,6 +727,8 @@ public class PublicationService {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
+            } else if (from.getType() == ResourceTypes.TOOL_SET) {
+                toolSetService.copyToolSet(from, to, publication.getDisplayAuthor(), false);
             } else {
                 UserMetadata userMetadata = new UserMetadata();
                 ResourceItemMetadata metadata = resourceService.getResourceMetadata(from);
