@@ -9,13 +9,13 @@ import java.util.List;
 public class ListCollector<T> implements Collector<List<T>> {
 
     @Getter
-    public enum FileCollectorType {
-        ALL_FILES("file"),
-        ONLY_SERVER_FILES("server_file");
+    public enum ResourceCollectorType {
+        ALL_RESOURCES("resource"),
+        ONLY_SERVER_RESOURCES("server_resource");
 
         private final String value;
 
-        FileCollectorType(String value) {
+        ResourceCollectorType(String value) {
             this.value = value;
         }
     }

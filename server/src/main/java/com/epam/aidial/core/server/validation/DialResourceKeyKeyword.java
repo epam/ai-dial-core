@@ -16,13 +16,13 @@ import com.networknt.schema.ValidationMessage;
 import java.util.List;
 import java.util.Set;
 
-public class DialToolSetKeyKeyword implements Keyword {
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.PROPERTY_KIND;
 
-    public static final String COLLECTOR_NAME = "toolset";
+public class DialResourceKeyKeyword implements Keyword {
 
     @Override
     public String getValue() {
-        return "dial:toolset";
+        return "dial:resource";
     }
 
     @Override
@@ -32,15 +32,31 @@ public class DialToolSetKeyKeyword implements Keyword {
     }
 
     private static class DialToolSetCollectorValidator extends BaseJsonValidator {
-        private static final ErrorMessageType ERROR_MESSAGE_TYPE = () -> "dial:toolset";
+        private static final ErrorMessageType ERROR_MESSAGE_TYPE = () -> "dial:resource";
 
         private final Boolean value;
+        private final Boolean isServerProp;
+
+        private static JsonNode findMetaNode(JsonSchema schema) {
+            JsonNode metaNode = schema.getSchemaNode().get("dial:meta");
+            if (metaNode != null) {
+                return metaNode;
+            }
+            JsonSchema parentSchema = schema.getParentSchema();
+            if (parentSchema != null) {
+                return findMetaNode(parentSchema);
+            }
+            return null;
+        }
 
         public DialToolSetCollectorValidator(SchemaLocation schemaLocation, JsonNodePath evaluationPath, JsonNode schemaNode,
                                              JsonSchema parentSchema, Keyword keyword,
                                              ValidationContext validationContext, boolean suppressSubSchemaRetrieval) {
             super(schemaLocation, evaluationPath, schemaNode, parentSchema, ERROR_MESSAGE_TYPE, keyword, validationContext, suppressSubSchemaRetrieval);
             this.value = schemaNode.booleanValue();
+            JsonNode metaNode = findMetaNode(parentSchema);
+            JsonNode propertyKindNode = (metaNode != null) ? metaNode.get(PROPERTY_KIND) : null;
+            this.isServerProp = (propertyKindNode != null) && propertyKindNode.asText().equalsIgnoreCase("server");
         }
 
         @Override
@@ -49,12 +65,17 @@ public class DialToolSetKeyKeyword implements Keyword {
             if (value) {
                 CollectorContext collectorContext = executionContext.getCollectorContext();
                 ListCollector<String> toolsetCollector = (ListCollector<String>) collectorContext.getCollectorMap()
-                        .computeIfAbsent(COLLECTOR_NAME, k -> new ListCollector<String>());
+                        .computeIfAbsent(ListCollector.ResourceCollectorType.ALL_RESOURCES.getValue(), k -> new ListCollector<String>());
                 String nodeValue = jsonNode.asText();
                 if (nodeValue == null || nodeValue.isEmpty()) {
                     return Set.of();
                 }
                 toolsetCollector.combine(List.of(nodeValue));
+                if (isServerProp) {
+                    ListCollector<String> serverFileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
+                            .computeIfAbsent(ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES.getValue(), k -> new ListCollector<String>());
+                    serverFileCollector.combine(List.of(nodeValue));
+                }
             }
             return Set.of();
         }

@@ -14,7 +14,7 @@ import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.server.validation.DialFileKeyword;
 import com.epam.aidial.core.server.validation.DialMetaKeyword;
-import com.epam.aidial.core.server.validation.DialToolSetKeyKeyword;
+import com.epam.aidial.core.server.validation.DialResourceKeyKeyword;
 import com.epam.aidial.core.server.validation.ListCollector;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -56,7 +56,7 @@ public class ApplicationSchemaService {
     private static final JsonMetaSchema DIAL_META_SCHEMA = getMetaschemaBuilder()
             .keyword(new DialMetaKeyword())
             .keyword(new DialFileKeyword())
-            .keyword(new DialToolSetKeyKeyword())
+            .keyword(new DialResourceKeyKeyword())
             .build();
 
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.builder()
@@ -224,15 +224,15 @@ public class ApplicationSchemaService {
     }
 
     public List<ResourceDescriptor> getServerFiles(Application application) {
-        return getFiles(application, ListCollector.FileCollectorType.ONLY_SERVER_FILES);
+        return getFiles(application, ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES);
     }
 
     public List<ResourceDescriptor> getFiles(Application application) {
-        return getFiles(application, ListCollector.FileCollectorType.ALL_FILES);
+        return getFiles(application, ListCollector.ResourceCollectorType.ALL_RESOURCES);
     }
 
     @SuppressWarnings("unchecked")
-    private List<ResourceDescriptor> getFiles(Application application, ListCollector.FileCollectorType collectorName) {
+    private List<ResourceDescriptor> getFiles(Application application, ListCollector.ResourceCollectorType collectorName) {
         try {
             ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application, collectorName.getValue());
             if (propsCollector == null) {
@@ -242,6 +242,9 @@ public class ApplicationSchemaService {
             for (String item : propsCollector.collect()) {
                 try {
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
+                    if (descriptor.getType() != ResourceTypes.FILE) {
+                        continue;
+                    }
                     if (!descriptor.isFolder() && !resourceService.hasResource(descriptor)) {
                         throw new ApplicationTypeResourceException("Resource listed as dependent to the application not found or inaccessible", item);
                     }
@@ -261,7 +264,8 @@ public class ApplicationSchemaService {
     @SuppressWarnings("unchecked")
     public List<ResourceDescriptor> getToolSets(Application application) {
         try {
-            ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application, DialToolSetKeyKeyword.COLLECTOR_NAME);
+            ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application,
+                    ListCollector.ResourceCollectorType.ALL_RESOURCES.getValue());
             if (propsCollector == null) {
                 return Collections.emptyList();
             }
@@ -269,7 +273,10 @@ public class ApplicationSchemaService {
             for (String item : propsCollector.collect()) {
                 try {
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
-                    if (descriptor.isFolder() || !resourceService.hasResource(descriptor) || descriptor.getType() != ResourceTypes.TOOL_SET) {
+                    if (descriptor.getType() != ResourceTypes.TOOL_SET) {
+                        continue;
+                    }
+                    if (descriptor.isFolder() || !resourceService.hasResource(descriptor)) {
                         throw new ApplicationTypeResourceException("Toolset listed as dependent to the application not found or inaccessible", item);
                     }
                     result.add(descriptor);
