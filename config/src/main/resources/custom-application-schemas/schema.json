@@ -176,7 +176,7 @@
       ]
     },
     "dialFileFormatAndTypeSchema": {
-      "$comment": "Sub-schema defining the type format and dial:file properties",
+      "$comment": "Sub-schema defining the type format and dial:file properties. The schema is deprecated. Use dialResourceFormatAndTypeSchema",
       "properties": {
         "format": {
           "type": "string"
@@ -231,9 +231,12 @@
         }
       ]
     },
-    "dialToolSetTypeSchema": {
-      "$comment": "Sub-schema defining the type format and dial:toolset properties",
+    "dialResourceFormatAndTypeSchema": {
+      "$comment": "Sub-schema defining the type format and dial:resource properties",
       "properties": {
+        "format": {
+          "type": "string"
+        },
         "type": {
           "anyOf": [
             {
@@ -249,8 +252,8 @@
             }
           ]
         },
-        "dial:toolset": {
-          "description": "Required to check toolset existence in DIAL instance",
+        "dial:resource": {
+          "description": "Required to check resource existence in DIAL instance",
           "type": "boolean",
           "default": false
         }
@@ -262,7 +265,7 @@
           "$ref": "#/definitions/dialFileFormatAndTypeSchema"
         },
         {
-          "$ref": "#/definitions/dialToolSetTypeSchema"
+          "$ref": "#/definitions/dialResourceFormatAndTypeSchema"
         },
         {
           "type": [
@@ -454,7 +457,7 @@
           "$ref": "#/definitions/dialFileFormatAndTypeSchema"
         },
         {
-          "$ref": "#/definitions/dialToolSetTypeSchema"
+          "$ref": "#/definitions/dialResourceFormatAndTypeSchema"
         },
         {
           "type": [

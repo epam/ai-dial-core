@@ -43,7 +43,9 @@ public class Route extends RoleBasedEntity {
 
     @Data
     public static class Response {
+        @JsonAlias({"status", "dial:status"})
         private int status = 200;
+        @JsonAlias({"body", "dial:body"})
         private String body = "";
     }
 
@@ -52,14 +54,17 @@ public class Route extends RoleBasedEntity {
      */
     @Data
     public static class AttachmentPath {
+
         /**
          * List of JSON paths in the HTTP request body.
          */
+        @JsonAlias({"requestBody", "dial:requestBody"})
         private List<String> requestBody = List.of();
 
         /**
          * List of JSON paths in the HTTP response body.
          */
+        @JsonAlias({"responseBody", "dial:responseBody"})
         private List<String> responseBody = List.of();
     }
 }

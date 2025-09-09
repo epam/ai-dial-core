@@ -16,7 +16,10 @@ import com.networknt.schema.ValidationMessage;
 import java.util.List;
 import java.util.Set;
 
-
+/**
+ * The class is deprecated in favor of {@link DialResourceKeyKeyword}.
+ */
+@Deprecated
 public class DialFileKeyword implements Keyword {
     @Override
     public String getValue() {
@@ -63,7 +66,7 @@ public class DialFileKeyword implements Keyword {
             if (value) {
                 CollectorContext collectorContext = executionContext.getCollectorContext();
                 ListCollector<String> fileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
-                        .computeIfAbsent(ListCollector.FileCollectorType.ALL_FILES.getValue(), k -> new ListCollector<String>());
+                        .computeIfAbsent(ListCollector.ResourceCollectorType.ALL_RESOURCES.getValue(), k -> new ListCollector<String>());
                 String nodeValue = jsonNode.asText();
                 if (nodeValue == null || nodeValue.isEmpty()) {
                     return Set.of();
@@ -71,7 +74,7 @@ public class DialFileKeyword implements Keyword {
                 fileCollector.combine(List.of(nodeValue));
                 if (isServerProp) {
                     ListCollector<String> serverFileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
-                            .computeIfAbsent(ListCollector.FileCollectorType.ONLY_SERVER_FILES.getValue(), k -> new ListCollector<String>());
+                            .computeIfAbsent(ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES.getValue(), k -> new ListCollector<String>());
                     serverFileCollector.combine(List.of(nodeValue));
                 }
             }
