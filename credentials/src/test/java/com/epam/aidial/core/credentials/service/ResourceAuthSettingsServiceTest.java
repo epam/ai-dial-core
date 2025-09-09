@@ -150,6 +150,34 @@ class ResourceAuthSettingsServiceTest {
         Assertions.assertEquals(ResourceAuthStatus.SIGNED_OUT, toolSet.getAuthSettings().getGlobalAuthStatus());
     }
 
+    private ToolSet createToolSet() {
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        ToolSet toolSet = Mockito.mock(ToolSet.class);
+        Mockito.when(toolSet.getName()).thenReturn("toolset-1");
+        Mockito.when(toolSet.getAuthSettings()).thenReturn(authSettings);
+        return toolSet;
+    }
+
+    private ResourceCredentials createGlobalLevelResourceCredentials(boolean isExpired) {
+        return createResourceCredentials(CredentialsLevel.GLOBAL, AuthenticationType.OAUTH, isExpired, null);
+    }
+
+    private ResourceCredentials createUserLevelResourceCredentials(boolean isExpired, String userSub) {
+        return createResourceCredentials(CredentialsLevel.USER, AuthenticationType.OAUTH, isExpired, userSub);
+    }
+
+    private ResourceCredentials createResourceCredentials(CredentialsLevel level,
+                                                          AuthenticationType authenticationType,
+                                                          boolean isExpired,
+                                                          String userSub) {
+        ResourceCredentials credentials = Mockito.mock(ResourceCredentials.class);
+        Mockito.when(credentials.getCredentialsLevel()).thenReturn(level);
+        Mockito.when(credentials.getAuthenticationType()).thenReturn(authenticationType);
+        Mockito.when(credentials.isTokenExpired()).thenReturn(isExpired);
+        Mockito.when(credentials.getUserSub()).thenReturn(userSub);
+        return credentials;
+    }
+
     private CredentialsLocator createCredentialsLocator() {
         return CredentialsLocator.builder()
                 .resourceId("bucket-name/folder1/my-toolset")
@@ -165,31 +193,4 @@ class ResourceAuthSettingsServiceTest {
                 .build();
     }
 
-    private ToolSet createToolSet() {
-        ResourceAuthSettings authSettings = new ResourceAuthSettings();
-        ToolSet toolSet = Mockito.mock(ToolSet.class);
-        Mockito.when(toolSet.getName()).thenReturn("toolset-1");
-        Mockito.when(toolSet.getAuthSettings()).thenReturn(authSettings);
-        return toolSet;
-    }
-
-    private ResourceCredentials createGlobalLevelResourceCredentials(boolean isExpired) {
-        return createCredentialsLocator(CredentialsLevel.GLOBAL, AuthenticationType.OAUTH, isExpired, null);
-    }
-
-    private ResourceCredentials createUserLevelResourceCredentials(boolean isExpired, String userSub) {
-        return createCredentialsLocator(CredentialsLevel.USER, AuthenticationType.OAUTH, isExpired, userSub);
-    }
-
-    private ResourceCredentials createCredentialsLocator(CredentialsLevel level,
-                                                         AuthenticationType authenticationType,
-                                                         boolean isExpired,
-                                                         String userSub) {
-        ResourceCredentials credentials = Mockito.mock(ResourceCredentials.class);
-        Mockito.when(credentials.getCredentialsLevel()).thenReturn(level);
-        Mockito.when(credentials.getAuthenticationType()).thenReturn(authenticationType);
-        Mockito.when(credentials.isTokenExpired()).thenReturn(isExpired);
-        Mockito.when(credentials.getUserSub()).thenReturn(userSub);
-        return credentials;
-    }
 }
