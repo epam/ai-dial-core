@@ -14,7 +14,6 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import org.apache.commons.lang3.NotImplementedException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,17 +56,8 @@ class ResourceCredentialsServiceTest {
     private ResourceCredentialsService service;
 
     @Test
-    public void testAddResourceCredentials_nonGlobal_throws() {
+    public void testAddResourceCredentials_putsResource() {
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
-        CredentialsDescriptor descriptor = createCredentialsDescriptor();
-
-        assertThrows(NotImplementedException.class, () -> service.addResourceCredentials(descriptor, creds));
-        verifyNoInteractions(resourceService);
-    }
-
-    @Test
-    public void testAddResourceCredentials_global_putsResource() {
-        ResourceCredentials creds = createCredentials(CredentialsLevel.GLOBAL);
         CredentialsDescriptor descriptor = createCredentialsDescriptor();
         when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
@@ -83,7 +73,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
@@ -95,7 +85,7 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testGetAllResourceCredentials_returnsOne() {
-        ResourceCredentials creds = createCredentials(CredentialsLevel.GLOBAL);
+        ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
         CredentialsLocator credentialsLocator = createCredentialsLocator();
 
@@ -108,7 +98,7 @@ class ResourceCredentialsServiceTest {
         assertNotNull(list);
         assertEquals(1, list.size());
         ResourceCredentials c = list.getFirst();
-        assertEquals(CredentialsLevel.GLOBAL, c.getCredentialsLevel());
+        assertEquals(CredentialsLevel.USER, c.getCredentialsLevel());
         assertEquals(TOOL_SET_NAME, c.getResourceId());
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
@@ -117,7 +107,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
     }
@@ -134,28 +124,19 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
-    public void testUpdateAllResourceCredentials_multipleEntries_throws() {
-        CredentialsLocator credentialsLocator = createCredentialsLocator();
-        ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
-        ResourceCredentials c2 = createCredentials(CredentialsLevel.GLOBAL);
-
-        assertThrows(UnsupportedOperationException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1, c2)));
-        verifyNoInteractions(resourceService);
-    }
-
-    @Test
-    public void testUpdateAllResourceCredentials_nonGlobal_throws() {
+    public void testUpdateAllResourceCredentials_multipleEntriesWithSameLevel_throws() {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
         ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
+        ResourceCredentials c2 = createCredentials(CredentialsLevel.USER);
 
-        assertThrows(UnsupportedOperationException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1)));
+        assertThrows(IllegalStateException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1, c2)));
         verifyNoInteractions(resourceService);
     }
 
     @Test
     public void testUpdateAllResourceCredentials_notFound_throws() {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
-        ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
+        ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
 
         doAnswer(inv -> {
             Function<String, String> mapper = inv.getArgument(1);
@@ -170,7 +151,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
     }
@@ -188,7 +169,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
@@ -199,7 +180,7 @@ class ResourceCredentialsServiceTest {
     @Test
     public void testUpdateAllResourceCredentials_updatesBody() {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
-        ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
+        ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
         when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
@@ -212,7 +193,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 

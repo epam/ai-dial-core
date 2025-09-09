@@ -14,12 +14,12 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.NotImplementedException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,9 +32,6 @@ public class ResourceCredentialsService {
     private final CredentialsEncryptionService credentialsEncryptionService;
 
     public void addResourceCredentials(CredentialsDescriptor credentialDescriptor, ResourceCredentials resourceCredentials) {
-        if (resourceCredentials.getCredentialsLevel() != CredentialsLevel.GLOBAL) {
-            throw new NotImplementedException("Only GLOBAL credentials level is supported for now.");
-        }
         byte[] body = JsonMapperUtil.convertToString(resourceCredentials).getBytes(StandardCharsets.UTF_8);
         byte[] encryptedBody = encrypt(credentialDescriptor, body);
         resourceService.putResourceBytes(getResourceDescriptor(credentialDescriptor), encryptedBody, EtagHeader.ANY);
@@ -52,6 +49,7 @@ public class ResourceCredentialsService {
                         .credentialsLevel(bucket.getCredentialsLevel())
                         .build())
                 .map(this::getResourceCredentials)
+                .filter(Objects::nonNull)
                 .toList();
     }
 
@@ -99,6 +97,10 @@ public class ResourceCredentialsService {
                                           ResourceCredentials credentials) {
 
         resourceService.computeResourceBytes(getResourceDescriptor(credentialsDescriptor), existing -> {
+            if (existing == null) {
+                throw new ResourceNotFoundException("Credentials for %s %s not found"
+                        .formatted(credentialsDescriptor.getType().group(), credentialsDescriptor.getResourceId()));
+            }
             if (credentials == null) {
                 return null;
             }
