@@ -52,7 +52,7 @@ public class ResourceCredentialsManager {
             if (credentials.getCredentialsLevel() == CredentialsLevel.USER
                     && userSub != null
                     && userSub.equals(credentials.getUserSub())) {
-                if (credentials.isTokenExpired()) {
+                if (credentials.requiresTokenRefresh()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
                     resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
                 }
@@ -60,7 +60,7 @@ public class ResourceCredentialsManager {
             }
 
             if (credentials.getCredentialsLevel() == CredentialsLevel.GLOBAL) {
-                if (credentials.isTokenExpired()) {
+                if (credentials.requiresTokenRefresh()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
                 }
                 globalCredentials = credentials;
@@ -113,7 +113,7 @@ public class ResourceCredentialsManager {
         TokenResponse newAccessTokenResponse = tokenService.getToken(resourceId,
                 authSettings, resourceCredentials.getRefreshToken());
 
-        resourceCredentials.setExpiresIn(newAccessTokenResponse.getExpiresIn());
+        resourceCredentials.setExpiresInSeconds(newAccessTokenResponse.getExpiresIn());
         resourceCredentials.setUpdatedAt(System.currentTimeMillis());
         resourceCredentials.setAccessToken(newAccessTokenResponse.getAccessToken());
         resourceCredentials.setRefreshToken(newAccessTokenResponse.getRefreshToken());

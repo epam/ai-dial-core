@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ResourceAuthStatus;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
+import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
@@ -38,11 +39,8 @@ public class ResourceAuthSettingsService {
             return;
         }
 
-        ClientRegistration clientRegistration = shouldRegisterResourceDynamically(resourceAuthSettings)
-                ? resourceRegistrationService.createDynamicResourceRegistration(
-                resourceId, resourceEndpoint, resourceAuthSettings.getRedirectUri())
-                : resourceRegistrationService.createStaticResourceRegistration(
-                resourceId, resourceEndpoint, resourceAuthSettings);
+        ClientRegistration clientRegistration = resourceRegistrationService.registerResource(resourceId,
+                resourceEndpoint, resourceAuthSettings, shouldRegisterResourceDynamically(resourceAuthSettings));
 
         CodeVerifier codeVerifier = new CodeVerifier();
         CodeChallengeMethod codeChallengeMethod = CodeChallengeMethod.parse(clientRegistration.getCodeChallengeMethod());
@@ -79,7 +77,7 @@ public class ResourceAuthSettingsService {
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
                     && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
                     && userSub.equals(resourceCredentials.getUserSub())
-                    && !resourceCredentials.isTokenExpired())
+                    && resourceCredentials.hasUnexpiredToken())
                 .findFirst();
         // TODO: implement logic for API_KEY auth type
         if (userResourceCredentials.isPresent()) {
@@ -94,7 +92,7 @@ public class ResourceAuthSettingsService {
         Optional<ResourceCredentials> globalResourceCredentials = resourceCredentialsList.stream()
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)
                     && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
-                    && !resourceCredentials.isTokenExpired()
+                    && resourceCredentials.hasUnexpiredToken()
                 )
                 .findFirst();
         // TODO: implement logic for API_KEY auth type
