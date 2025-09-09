@@ -3,9 +3,8 @@ package com.epam.aidial.core.credentials.service.encryption;
 import com.epam.aidial.core.credentials.data.configuration.CacheSettings;
 import com.epam.aidial.core.credentials.service.encryption.keymanagement.KeyManagementService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import jakarta.annotation.Nullable;
 import lombok.experimental.UtilityClass;
-
-import javax.annotation.Nullable;
 
 
 @UtilityClass
