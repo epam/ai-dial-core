@@ -1,0 +1,86 @@
+package com.epam.aidial.core.credentials.service.registration;
+
+import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.credentials.data.registration.AuthorizationServerMetadata;
+import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
+import com.epam.aidial.core.credentials.data.registration.ClientRegistrationRequest;
+import com.epam.aidial.core.credentials.data.registration.ClientRegistrationResponse;
+import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
+import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.core5.http.ContentType;
+
+import java.util.List;
+
+/**
+ * Strategy for performing dynamic registration of a protected resource.
+ *
+ * <p>
+ * This implementation of {@link ResourceRegistrationStrategy} performs dynamic registration by utilizing
+ * the dynamic client registration functionality of the authorization server. It discovers the
+ * registration endpoint, authorization server metadata, and other required details dynamically.
+ * </p>
+ *
+ * <p>
+ * The strategy begins by retrieving metadata from the authorization server using the
+ * {@link AuthorizationServerMetadataService}. Then it sends a dynamic registration request
+ * to the server's registration endpoint. Finally, it constructs a complete {@link ClientRegistration}
+ * object using the response from the server.
+ * </p>
+ */
+@Slf4j
+@RequiredArgsConstructor
+public class DynamicResourceRegistrationStrategy implements ResourceRegistrationStrategy {
+
+    private final AuthorizationServerMetadataService authorizationServerMetadataService;
+    private final ResourceAuthorizationClient resourceAuthorizationClient;
+
+    /**
+     * Registers a protected resource dynamically using the authorization server's dynamic client registration
+     * functionality.
+     *
+     * <p>
+     * This method begins by retrieving the metadata from the authorization server. It constructs a
+     * {@link ClientRegistrationRequest} to dynamically register the client with the authorization system.
+     * The registration response is used to build a {@link ClientRegistration} that contains all the details
+     * required for OAuth 2.0 or OpenID Connect authentication.
+     * </p>
+     *
+     * @param resourceId          The unique identifier of the protected resource.
+     * @param resourceEndpoint    The base URL of the protected resource's endpoint.
+     * @param resourceAuthSettings The static authentication settings provided for the resource.
+     * @return A {@link ClientRegistration} object containing the complete registration details for the resource.
+     * @throws IllegalArgumentException If the registration endpoint, authorization server metadata, or required details are missing.
+     */
+    @Override
+    public ClientRegistration register(String resourceId, String resourceEndpoint, ResourceAuthSettings resourceAuthSettings) {
+        log.info("Start dynamic registration for Resource: {}", resourceId);
+
+        AuthorizationServerMetadata authServerMetadata = authorizationServerMetadataService.getAuthorizationServerMetadata(
+                resourceId, resourceEndpoint, true);
+
+        ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
+                .clientName(resourceId)
+                .redirectUris(List.of(resourceAuthSettings.getRedirectUri()))
+                .build();
+
+        ClientRegistrationResponse clientRegistrationResponse = resourceAuthorizationClient.executePost(
+                authServerMetadata.getRegistrationEndpoint(),
+                clientRegistrationRequest,
+                ContentType.APPLICATION_JSON.toString(),
+                ClientRegistrationResponse.class);
+
+        ClientRegistration clientRegistration = ClientRegistration.builder()
+                .resourceId(clientRegistrationResponse.getClientName())
+                .clientId(clientRegistrationResponse.getClientId())
+                .clientSecret(clientRegistrationResponse.getClientSecret())
+                .redirectUri(clientRegistrationResponse.getRedirectUris().getFirst())
+                .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
+                .tokenEndpoint(authServerMetadata.getTokenEndpoint())
+                .codeChallengeMethod(getCodeChallengeMethod(authServerMetadata))
+                .build();
+        log.info("Finished dynamic registration for Resource: {}", resourceId);
+        return clientRegistration;
+    }
+}

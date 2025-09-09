@@ -4,8 +4,13 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
-import com.epam.aidial.core.credentials.service.ResourceRegistrationService;
 import com.epam.aidial.core.credentials.service.TokenService;
+import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
+import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
+import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
+import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
+import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
+import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
@@ -179,7 +184,7 @@ public class AiDial {
 
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
             TokenService tokenService = new TokenService(resourceAuthorizationClient);
-            ResourceRegistrationService resourceRegistrationService = new ResourceRegistrationService(resourceAuthorizationClient);
+            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient);
             ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
             ResourceCredentialsService resourceCredentialsService = new ResourceCredentialsService();
             ResourceCredentialsManager resourceCredentialsManager = new ResourceCredentialsManager(resourceCredentialsService, tokenService);
@@ -195,15 +200,15 @@ public class AiDial {
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
-            WellKnownResourceMetadataService resourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
-            WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(resourceMetadataService);
+            WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
+            WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
 
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, resourceMetadataService, resourceMetadataController,
+                    consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, resourceCredentialsManager, resourceAuthSettingsService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
@@ -214,6 +219,18 @@ public class AiDial {
             stop();
             throw e;
         }
+    }
+
+    private static ResourceRegistrationService getResourceRegistrationService(ResourceAuthorizationClient resourceAuthorizationClient) {
+        ProtectedResourceMetadataValidator protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
+        HttpHeadersHandler httpHeadersHandler = new HttpHeadersHandler();
+        ProtectedResourceMetadataService protectedResourceMetadataService = new ProtectedResourceMetadataService(
+                resourceAuthorizationClient, protectedResourceMetadataValidator, httpHeadersHandler);
+
+        AuthorizationServerMetadataValidator authorizationServerMetadataValidator = new AuthorizationServerMetadataValidator();
+        AuthorizationServerMetadataService authorizationServerMetadataService = new AuthorizationServerMetadataService(
+                resourceAuthorizationClient, protectedResourceMetadataService, authorizationServerMetadataValidator);
+        return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient);
     }
 
     @VisibleForTesting

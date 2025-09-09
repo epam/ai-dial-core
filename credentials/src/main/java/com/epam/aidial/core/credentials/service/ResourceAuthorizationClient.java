@@ -1,5 +1,6 @@
 package com.epam.aidial.core.credentials.service;
 
+import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.google.common.annotations.VisibleForTesting;
@@ -17,15 +18,18 @@ import java.nio.charset.StandardCharsets;
 public class ResourceAuthorizationClient {
 
     private final HttpClient httpClient;
+    private final HttpHeadersHandler httpHeadersHandler;
 
     public ResourceAuthorizationClient() {
         this.httpClient = HttpClient.newHttpClient();
+        this.httpHeadersHandler = new HttpHeadersHandler();
     }
 
     @SuppressWarnings("unused")
     @VisibleForTesting
-    private ResourceAuthorizationClient(HttpClient httpClient) {
+    private ResourceAuthorizationClient(HttpClient httpClient, HttpHeadersHandler httpHeadersHandler) {
         this.httpClient = httpClient;
+        this.httpHeadersHandler = httpHeadersHandler;
     }
 
     public <R> R executeGet(String url, Class<R> responseType) {
@@ -50,6 +54,7 @@ public class ResourceAuthorizationClient {
                 .uri(URI.create(url))
                 .timeout(createRequestConfig())
                 .header("Content-Type", contentType)
+                .header("Accept", ContentType.APPLICATION_JSON.toString())
                 .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
                 .build();
 
@@ -64,8 +69,10 @@ public class ResourceAuthorizationClient {
         String body = response.body();
 
         if (status != 200 && status != 201) {
-            log.info("Error executing request {}: status {}, response {}", request.uri(), response.statusCode(), response.body());
-            throw new HttpException(status, "Authorization server returns error code");
+            log.debug("Error executing request {}: status {}, response {}, headers: {}",
+                    request.uri(), response.statusCode(), response.body(), response.headers());
+            throw new HttpException(status, "Authorization server returns error code",
+                    httpHeadersHandler.convertHttpHeadersToMap(response.headers()));
         }
 
         return JsonMapperUtil.convertToObject(body, responseType);
