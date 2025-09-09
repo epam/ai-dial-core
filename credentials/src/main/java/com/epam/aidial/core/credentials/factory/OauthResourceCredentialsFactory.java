@@ -28,7 +28,7 @@ public class OauthResourceCredentialsFactory implements ResourceCredentialsFacto
             .authenticationType(signInRequest.getAuthenticationType())
             .accessToken(tokenResponse.getAccessToken())
             .refreshToken(tokenResponse.getRefreshToken())
-            .expiresIn(tokenResponse.getExpiresIn())
+            .expiresInSeconds(tokenResponse.getExpiresIn())
             .createdAt(currentTime)
             .updatedAt(currentTime)
             .build();

@@ -7,6 +7,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.extern.jackson.Jacksonized;
 
+import java.util.concurrent.TimeUnit;
+
 @Data
 @Builder
 @Jacksonized
@@ -21,14 +23,36 @@ public class ResourceCredentials {
     private String refreshToken;
     private long createdAt;
     private long updatedAt;
-    private long expiresIn;
+    private Long expiresInSeconds;
     private String userSub;
 
     @JsonIgnore
-    public boolean isTokenExpired() {
-        if (authenticationType.equals(AuthenticationType.OAUTH)) {
-            return updatedAt + expiresIn * 1000 <= System.currentTimeMillis();
+    public boolean hasUnexpiredToken() {
+        validateOauthAuthentication();
+        return !supportsTokenRefreshFlow() || isTokenUnexpired();
+    }
+
+    public boolean requiresTokenRefresh() {
+        validateOauthAuthentication();
+        return supportsTokenRefreshFlow() && !isTokenUnexpired();
+    }
+
+    private void validateOauthAuthentication() {
+        if (!AuthenticationType.OAUTH.equals(authenticationType)) {
+            throw new UnsupportedOperationException("Access token exists only for OAuth authentication type.");
         }
-        return true;
+    }
+
+    private boolean supportsTokenRefreshFlow() {
+        return refreshToken != null && expiresInSeconds != null;
+    }
+
+    private boolean isTokenUnexpired() {
+        if (updatedAt <= 0 || expiresInSeconds == null || expiresInSeconds <= 0) {
+            return false;
+        }
+
+        long expiryTimeInMillis = updatedAt + TimeUnit.SECONDS.toMillis(expiresInSeconds);
+        return expiryTimeInMillis > System.currentTimeMillis();
     }
 }

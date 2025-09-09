@@ -16,6 +16,9 @@ import java.util.List;
 @AllArgsConstructor
 public class AuthorizationServerMetadata {
 
+    @JsonProperty("issuer")
+    private String issuer;
+
     @JsonProperty("authorization_endpoint")
     private String authorizationEndpoint;
 
