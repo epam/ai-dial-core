@@ -142,7 +142,7 @@ public class DeploymentFeatureController {
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {
                 proxyRequest.headers().add(HEADER_APPLICATION_ID, deployment.getName());
-                proxy.getApplicationSchemaService().consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                proxy.getApplicationSchemaService().consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                     if (appendApplicationPropertiesHeader) {
                         String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                         proxyRequest.headers().add(HEADER_APPLICATION_PROPERTIES, propsString);
