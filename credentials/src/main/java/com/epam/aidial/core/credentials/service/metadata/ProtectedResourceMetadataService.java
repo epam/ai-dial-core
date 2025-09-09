@@ -118,8 +118,8 @@ public class ProtectedResourceMetadataService {
                     return tryFetchMetadata(metadataUrl.get());
                 }
                 log.debug("401 Unauthorized at endpoint: {}. Proceeding to next fallback.", resourceEndpoint);
-            } else if (httpExceptionStatus.equals(HttpStatus.NOT_FOUND)) {
-                log.debug("404 Not Found at endpoint: {}. Proceeding to next fallback.", resourceEndpoint);
+            } else if (httpExceptionStatus.is4xx()) {
+                log.debug("{} at endpoint: {}. Proceeding to next fallback.", httpExceptionStatus.getCode(), resourceEndpoint);
             } else {
                 throw e;
             }
