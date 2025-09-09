@@ -481,11 +481,11 @@ public class DeploymentPostControllerTest {
         when(context.getRequestHeaders()).thenReturn(Map.of());
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         doAnswer(ans -> {
-            ApplicationSchemaService.ServerPropertiesConsumer consumer = ans.getArgument(1);
+            ApplicationSchemaService.MetadataPropertiesConsumer consumer = ans.getArgument(1);
             Map<String, Object> props = Map.of("serverFile", "files/public/some-path/server-file.ext");
             consumer.accept(props, true);
             return null;
-        }).when(applicationSchemaService).consumeServerProperties(eq(application), any(ApplicationSchemaService.ServerPropertiesConsumer.class));
+        }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -552,11 +552,11 @@ public class DeploymentPostControllerTest {
         when(context.getRequestHeaders()).thenReturn(Map.of());
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         doAnswer(ans -> {
-            ApplicationSchemaService.ServerPropertiesConsumer consumer = ans.getArgument(1);
+            ApplicationSchemaService.MetadataPropertiesConsumer consumer = ans.getArgument(1);
             Map<String, Object> props = Map.of("serverFile", "files/public/some-path/server-file.ext");
             consumer.accept(props, true);
             return null;
-        }).when(applicationSchemaService).consumeServerProperties(eq(application), any(ApplicationSchemaService.ServerPropertiesConsumer.class));
+        }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
 
         controller.handleProxyRequest(proxyRequest);
 

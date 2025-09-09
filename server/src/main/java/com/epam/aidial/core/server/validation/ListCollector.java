@@ -20,6 +20,18 @@ public class ListCollector<T> implements Collector<List<T>> {
         }
     }
 
+    @Getter
+    public enum MetaDataCollectorType {
+        ALL("metadata_all"),
+        CLIENT("metadata_client");
+
+        private final String value;
+
+        MetaDataCollectorType(String value) {
+            this.value = value;
+        }
+    }
+
     private final List<T> references = new ArrayList<>();
 
     @Override

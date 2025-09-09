@@ -29,6 +29,15 @@ public class DialMetaKeyword implements Keyword {
         return new DialMetaCollectorValidator(schemaLocation, evaluationPath, schemaNode, parentSchema, this, validationContext, false);
     }
 
+    private enum PropertyKind {
+        CLIENT("client"), SERVER("server");
+        private final String value;
+
+        PropertyKind(String value) {
+            this.value = value;
+        }
+    }
+
     private static class DialMetaCollectorValidator extends BaseJsonValidator {
         private static final ErrorMessageType ERROR_MESSAGE_TYPE = () -> "dial:meta";
 
@@ -46,16 +55,15 @@ public class DialMetaKeyword implements Keyword {
         public Set<ValidationMessage> validate(ExecutionContext executionContext, JsonNode jsonNode, JsonNode jsonNode1, JsonNodePath jsonNodePath) {
 
             CollectorContext collectorContext = executionContext.getCollectorContext();
-            ListCollector<String> serverPropsCollector = (ListCollector<String>) collectorContext.getCollectorMap()
-                    .computeIfAbsent("server", k -> new ListCollector<String>());
+            ListCollector<String> allPropsCollector = (ListCollector<String>) collectorContext.getCollectorMap()
+                    .computeIfAbsent(ListCollector.MetaDataCollectorType.ALL.getValue(), k -> new ListCollector<String>());
             ListCollector<String> clientPropsCollector = (ListCollector<String>) collectorContext
-                    .getCollectorMap().computeIfAbsent("client", k -> new ListCollector<String>());
+                    .getCollectorMap().computeIfAbsent(ListCollector.MetaDataCollectorType.CLIENT.getValue(), k -> new ListCollector<String>());
             String propertyName = jsonNodePath.getName(-1);
-            if (Objects.equals(propertyKindString, "server")) {
-                serverPropsCollector.combine(List.of(propertyName));
-            } else {
+            if (Objects.equals(propertyKindString, PropertyKind.CLIENT.value)) {
                 clientPropsCollector.combine(List.of(propertyName));
             }
+            allPropsCollector.combine(List.of(propertyName));
             return Set.of();
         }
     }
