@@ -41,22 +41,4 @@ public class CredentialsDescriptor {
         return builder.toString();
     }
 
-    public String getEncodedPath() {
-        StringBuilder builder = new StringBuilder();
-        builder.append(bucketName)
-                .append(type.group())
-                .append(PATH_SEPARATOR)
-                .append(sourceType)
-                .append(PATH_SEPARATOR);
-
-        if (!parentFolders.isEmpty()) {
-            builder.append(String.join(PATH_SEPARATOR, parentFolders))
-                    .append(PATH_SEPARATOR);
-        }
-
-        builder.append(name);
-
-        return builder.toString();
-    }
-
 }

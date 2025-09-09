@@ -134,16 +134,16 @@ public class ResourceCredentialsManager {
         }
         if (AuthenticationType.OAUTH.equals(resourceCredentials.getAuthenticationType())) {
             return AuthorizationHeader
-                    .builder()
-                    .headerName("Authorization")
-                    .headerValue("Bearer " + resourceCredentials.getAccessToken())
-                    .build();
+                .builder()
+                .headerName("Authorization")
+                .headerValue("Bearer " + resourceCredentials.getAccessToken())
+                .build();
         } else if (AuthenticationType.API_KEY.equals(resourceCredentials.getAuthenticationType())) {
             return AuthorizationHeader
-                    .builder()
-                    .headerName(resourceCredentials.getApiKeyHeader())
-                    .headerValue(resourceCredentials.getApiKey())
-                    .build();
+                .builder()
+                .headerName(resourceCredentials.getApiKeyHeader())
+                .headerValue(resourceCredentials.getApiKey())
+                .build();
         }
         return null;
     }
