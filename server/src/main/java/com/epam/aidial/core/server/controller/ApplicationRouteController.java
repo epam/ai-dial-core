@@ -75,7 +75,7 @@ public class ApplicationRouteController extends BaseRouteController {
     protected void injectAdditionalHeaders(HttpClientRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_APPLICATION_ID, deploymentId);
         if ((context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId())) {
-            proxy.getApplicationSchemaService().consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+            proxy.getApplicationSchemaService().consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                 if (appendApplicationPropertiesHeader) {
                     String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
