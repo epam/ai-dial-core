@@ -36,7 +36,7 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
 
     @Test
     public void testAppRoute() {
-        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20custom%20application", null, """
                 {
                 "endpoint": "http://application1/v1/completions",
                 "display_name": "My Custom Application",
@@ -60,10 +60,10 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
                 """);
         verifyJsonNotExact(response, 200, """
                 {
-                "name":"my-custom-application",
+                "name":"my custom application",
                 "parentPath":null,
                 "bucket":"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                "url":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
+                "url":"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20custom%20application",
                 "nodeType":"ITEM",
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
@@ -92,7 +92,7 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
                      "payload": "some content"
                     }
                     """;
-            String appPath = "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application/route/v1/index/search";
+            String appPath = "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20custom%20application/route/v1/index/search";
             ResourceBaseTest.Response appResponse = send(HttpMethod.POST, appPath, null, requestBody);
 
             verify(appResponse, 200, responseBody);
