@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
@@ -11,7 +12,7 @@ import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -46,9 +47,9 @@ public class ToolSetController {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory
-                        .fromAnyUrl(toolSetId, context.getProxy().getEncryptionService());
-                resourceAuthSettingsService.setResourceAuthStatuses(resourceDescriptor,
+                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId,
+                        ResourceTypes.TOOL_SET, context.getUserSub(), context.getProxy().getEncryptionService());
+                resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator,
                         toolSet.getAuthSettings(), context.getUserSub());
                 toolSet.clearAuthSettings();
                 return toolSet;
@@ -83,7 +84,9 @@ public class ToolSetController {
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
                 ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
                 toolSet.clearAuthSettings();
-                resourceAuthSettingsService.setResourceAuthStatuses(resource, toolSet.getAuthSettings(), context.getUserSub());
+                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(),
+                        ResourceTypes.TOOL_SET, context.getUserSub(), context.getProxy().getEncryptionService());
+                resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
                 return toolSet;
             }
         });

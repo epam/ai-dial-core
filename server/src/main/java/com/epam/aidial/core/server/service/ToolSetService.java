@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -38,7 +40,9 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        resourceAuthSettingsService.setResourceAuthStatuses(resource, toolSet.getAuthSettings(), context.getUserSub());
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(),
+                ResourceTypes.TOOL_SET, context.getUserSub(), context.getProxy().getEncryptionService());
+        resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());

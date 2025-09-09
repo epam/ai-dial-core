@@ -1,8 +1,11 @@
 package com.epam.aidial.core.credentials.service.encryption;
 
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
 
 @RequiredArgsConstructor
 public class ContentEncryptionKeyService {
@@ -11,23 +14,23 @@ public class ContentEncryptionKeyService {
 
     private final ContentEncryptionKeyManager contentEncryptionKeyManager;
 
-    public byte[] getOrCreateKey(ResourceDescriptor resourceDescriptor) {
-        ResourceDescriptor cekDescription = getContentEncryptionKeyDescriptor(resourceDescriptor);
+    public byte[] getOrCreateKey(CredentialsDescriptor credentialsDescriptor) {
+        ResourceDescriptor cekDescription = getContentEncryptionKeyDescriptor(credentialsDescriptor);
         return contentEncryptionKeyManager.getOrCreateKey(cekDescription);
     }
 
-    public byte[] getKey(ResourceDescriptor resourceDescriptor) {
-        ResourceDescriptor cekDescriptor = getContentEncryptionKeyDescriptor(resourceDescriptor);
+    public byte[] getKey(CredentialsDescriptor credentialsDescriptor) {
+        ResourceDescriptor cekDescriptor = getContentEncryptionKeyDescriptor(credentialsDescriptor);
         return contentEncryptionKeyManager.getKey(cekDescriptor);
     }
 
-    private ResourceDescriptor getContentEncryptionKeyDescriptor(ResourceDescriptor resourceDescriptor) {
+    private ResourceDescriptor getContentEncryptionKeyDescriptor(CredentialsDescriptor credentialsDescriptor) {
         return new ResourceDescriptor(
                 ResourceTypes.CREDENTIALS,
                 CEK_FILENAME,
-                resourceDescriptor.getParentFolders(),
-                resourceDescriptor.getBucketName(),
-                resourceDescriptor.getBucketLocation(),
+                List.of(),
+                credentialsDescriptor.getBucketName(),
+                credentialsDescriptor.getBucketLocation(),
                 false
         );
     }

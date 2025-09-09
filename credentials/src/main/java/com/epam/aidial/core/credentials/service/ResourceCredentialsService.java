@@ -1,12 +1,13 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
 import com.epam.aidial.core.credentials.service.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.service.encryption.CredentialsEncryptionService;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
-import com.epam.aidial.core.credentials.util.ResourceDescriptorUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -17,96 +18,124 @@ import org.apache.commons.lang3.NotImplementedException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RequiredArgsConstructor
 public class ResourceCredentialsService {
-
-    private static final String CREDENTIALS_PATH = "credentials";
 
     private final ResourceService resourceService;
 
     private final ContentEncryptionKeyService contentEncryptionKeyService;
     private final CredentialsEncryptionService credentialsEncryptionService;
 
-    public void addResourceCredentials(ResourceDescriptor resourceDescriptor, ResourceCredentials resourceCredentials) {
+    public void addResourceCredentials(CredentialsDescriptor credentialDescriptor, ResourceCredentials resourceCredentials) {
         if (resourceCredentials.getCredentialsLevel() != CredentialsLevel.GLOBAL) {
             throw new NotImplementedException("Only GLOBAL credentials level is supported for now.");
         }
-        ResourceDescriptor credentialsDescriptor = getCredentialsDescriptor(resourceDescriptor);
         byte[] body = JsonMapperUtil.convertToString(resourceCredentials).getBytes(StandardCharsets.UTF_8);
-        byte[] encryptedBody = encrypt(resourceDescriptor, body);
-        resourceService.putResourceBytes(credentialsDescriptor, encryptedBody, EtagHeader.ANY);
+        byte[] encryptedBody = encrypt(credentialDescriptor, body);
+        resourceService.putResourceBytes(getResourceDescriptor(credentialDescriptor), encryptedBody, EtagHeader.ANY);
     }
 
-    public List<ResourceCredentials> getAllResourceCredentials(ResourceDescriptor resourceDescriptor) {
-        ResourceDescriptor credentialsDescriptor = getCredentialsDescriptor(resourceDescriptor);
-        byte[] encryptedBody = resourceService.getResourceBytes(credentialsDescriptor);
+    public List<ResourceCredentials> getAllResourceCredentials(CredentialsLocator credentialsLocator) {
+        return credentialsLocator.getBuckets().stream()
+                .map(bucket -> CredentialsDescriptor.builder()
+                        .type(credentialsLocator.getType())
+                        .sourceType(credentialsLocator.getSourceType())
+                        .name(credentialsLocator.getName())
+                        .parentFolders(credentialsLocator.getParentFolders())
+                        .bucketName(bucket.getBucketName())
+                        .bucketLocation(bucket.getBucketLocation())
+                        .credentialsLevel(bucket.getCredentialsLevel())
+                        .build())
+                .map(this::getResourceCredentials)
+                .toList();
+    }
+
+    public ResourceCredentials getResourceCredentials(CredentialsDescriptor credentialsDescriptor) {
+        byte[] encryptedBody = resourceService.getResourceBytes(getResourceDescriptor(credentialsDescriptor));
         if (encryptedBody != null) {
-            byte[] body = decrypt(resourceDescriptor, encryptedBody);
-            ResourceCredentials toolSetCredentials = JsonMapperUtil.convertToObject(body, ResourceCredentials.class);
-            return List.of(toolSetCredentials);
+            byte[] body = decrypt(credentialsDescriptor, encryptedBody);
+            return JsonMapperUtil.convertToObject(body, ResourceCredentials.class);
         }
-        return Collections.emptyList();
+        return null;
     }
 
-    public void updateResourceCredentials(ResourceDescriptor resourceDescriptor,
-                                          List<ResourceCredentials> toolSetCredentialsList) {
-        if (toolSetCredentialsList.size() > 1) {
-            throw new UnsupportedOperationException("Only a single credentials entry is supported.");
+    public void updateAllResourceCredentials(CredentialsLocator credentialsLocator,
+                                             List<ResourceCredentials> toolSetCredentialsList) {
+
+        Map<CredentialsLevel, CredentialsDescriptor> levelToDescriptor = credentialsLocator.getBuckets().stream()
+                .map(bucket -> CredentialsDescriptor.builder()
+                        .type(credentialsLocator.getType())
+                        .sourceType(credentialsLocator.getSourceType())
+                        .name(credentialsLocator.getName())
+                        .parentFolders(credentialsLocator.getParentFolders())
+                        .bucketName(bucket.getBucketName())
+                        .bucketLocation(bucket.getBucketLocation())
+                        .credentialsLevel(bucket.getCredentialsLevel())
+                        .build())
+                .collect(Collectors.toMap(CredentialsDescriptor::getCredentialsLevel, c -> c));
+
+        Map<CredentialsLevel, ResourceCredentials> levelToCredential = toolSetCredentialsList.stream()
+                .collect(Collectors.toMap(ResourceCredentials::getCredentialsLevel, c -> c));
+
+        if (!levelToDescriptor.keySet().containsAll(levelToCredential.keySet())) {
+            throw new IllegalArgumentException("Credential levels mismatch. Available credentials levels: %s, Current: %s"
+                    .formatted(levelToDescriptor.keySet(), levelToCredential.keySet()));
         }
 
-        ResourceCredentials credentials = toolSetCredentialsList.isEmpty() ? null : toolSetCredentialsList.getFirst();
-
-        if (credentials != null && credentials.getCredentialsLevel() != CredentialsLevel.GLOBAL) {
-            throw new UnsupportedOperationException("Only GLOBAL credentials level is supported.");
+        for (Map.Entry<CredentialsLevel, CredentialsDescriptor> entry : levelToDescriptor.entrySet()) {
+            CredentialsLevel credentialsLevel = entry.getKey();
+            CredentialsDescriptor credentialsDescriptor = entry.getValue();
+            ResourceCredentials resourceCredentials = levelToCredential.get(credentialsLevel);
+            updateResourceCredentials(credentialsDescriptor, resourceCredentials);
         }
+    }
 
-        ResourceDescriptor credentialsDescriptor = getCredentialsDescriptor(resourceDescriptor);
+    public void updateResourceCredentials(CredentialsDescriptor credentialsDescriptor,
+                                          ResourceCredentials credentials) {
 
-        resourceService.computeResourceBytes(credentialsDescriptor, existing -> {
-            if (existing == null) {
-                throw new ResourceNotFoundException("Credentials for ToolSet %s not found"
-                        .formatted(resourceDescriptor.getDecodedUrl()));
-            }
+        resourceService.computeResourceBytes(getResourceDescriptor(credentialsDescriptor), existing -> {
             if (credentials == null) {
                 return null;
             }
 
             byte[] body = JsonMapperUtil.convertToString(credentials).getBytes(StandardCharsets.UTF_8);
-            return encrypt(resourceDescriptor, body);
+            return encrypt(credentialsDescriptor, body);
         });
     }
 
-    private byte[] encrypt(ResourceDescriptor resourceDescriptor, byte[] data) {
-        byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(resourceDescriptor);
-        byte[] aad = ResourceDescriptorUtil.getDecryptedUrl(resourceDescriptor).getBytes(StandardCharsets.UTF_8);
+    private byte[] encrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
+        byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(credentialsDescriptor);
+        byte[] aad = credentialsDescriptor.getDecodedPath().getBytes(StandardCharsets.UTF_8);
         return credentialsEncryptionService.encrypt(data, contentEncryptionKey, aad);
     }
 
-    private byte[] decrypt(ResourceDescriptor resourceDescriptor, byte[] data) {
-        byte[] contentEncryptionKey = contentEncryptionKeyService.getKey(resourceDescriptor);
+    private byte[] decrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
+        byte[] contentEncryptionKey = contentEncryptionKeyService.getKey(credentialsDescriptor);
         if (contentEncryptionKey == null) {
-            throw new ResourceNotFoundException("Content encryption key for ToolSet %s not found"
-                    .formatted(resourceDescriptor.getDecodedUrl()));
+            throw new ResourceNotFoundException("Content encryption key for %s %s not found"
+                    .formatted(credentialsDescriptor.getType().group(), credentialsDescriptor.getResourceId()));
         }
-        byte[] aad = ResourceDescriptorUtil.getDecryptedUrl(resourceDescriptor).getBytes(StandardCharsets.UTF_8);
+        byte[] aad = credentialsDescriptor.getDecodedPath().getBytes(StandardCharsets.UTF_8);
         return credentialsEncryptionService.decrypt(data, contentEncryptionKey, aad);
     }
 
-    private ResourceDescriptor getCredentialsDescriptor(ResourceDescriptor resourceDescriptor) {
+    private ResourceDescriptor getResourceDescriptor(CredentialsDescriptor credentialsDescriptor) {
         List<String> parentFolders = new ArrayList<>();
-        parentFolders.add(CREDENTIALS_PATH);
-        parentFolders.addAll(resourceDescriptor.getParentFolders());
+        parentFolders.add(credentialsDescriptor.getType().group());
+        parentFolders.add(credentialsDescriptor.getSourceType().getValue());
+        parentFolders.addAll(credentialsDescriptor.getParentFolders());
 
         return new ResourceDescriptor(
                 ResourceTypes.CREDENTIALS,
-                resourceDescriptor.getName(),
+                credentialsDescriptor.getName(),
                 parentFolders,
-                resourceDescriptor.getBucketName(),
-                resourceDescriptor.getBucketLocation(),
+                credentialsDescriptor.getBucketName(),
+                credentialsDescriptor.getBucketLocation(),
                 false
         );
     }

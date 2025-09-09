@@ -1,8 +1,12 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.credentials.data.credentials.CredentialBucketLocation;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
+import com.epam.aidial.core.credentials.data.credentials.SourceType;
 import com.epam.aidial.core.credentials.service.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.service.encryption.CredentialsEncryptionService;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
@@ -55,7 +59,7 @@ class ResourceCredentialsServiceTest {
     @Test
     public void testAddResourceCredentials_nonGlobal_throws() {
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
-        ResourceDescriptor descriptor = createResourceDescriptor();
+        CredentialsDescriptor descriptor = createCredentialsDescriptor();
 
         assertThrows(NotImplementedException.class, () -> service.addResourceCredentials(descriptor, creds));
         verifyNoInteractions(resourceService);
@@ -64,7 +68,7 @@ class ResourceCredentialsServiceTest {
     @Test
     public void testAddResourceCredentials_global_putsResource() {
         ResourceCredentials creds = createCredentials(CredentialsLevel.GLOBAL);
-        ResourceDescriptor descriptor = createResourceDescriptor();
+        CredentialsDescriptor descriptor = createCredentialsDescriptor();
         when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
@@ -93,13 +97,13 @@ class ResourceCredentialsServiceTest {
     public void testGetAllResourceCredentials_returnsOne() {
         ResourceCredentials creds = createCredentials(CredentialsLevel.GLOBAL);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
-        ResourceDescriptor descriptor = createResourceDescriptor();
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
 
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
         when(contentEncryptionKeyService.getKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
 
-        List<ResourceCredentials> list = service.getAllResourceCredentials(descriptor);
+        List<ResourceCredentials> list = service.getAllResourceCredentials(credentialsLocator);
 
         assertNotNull(list);
         assertEquals(1, list.size());
@@ -120,37 +124,37 @@ class ResourceCredentialsServiceTest {
 
     @Test
     public void testGetAllResourceCredentials_returnsEmptyWhenNull() {
-        ResourceDescriptor descriptor = createResourceDescriptor();
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(null);
 
-        List<ResourceCredentials> list = service.getAllResourceCredentials(descriptor);
+        List<ResourceCredentials> list = service.getAllResourceCredentials(credentialsLocator);
 
         assertNotNull(list);
         assertTrue(list.isEmpty());
     }
 
     @Test
-    public void testUpdateResourceCredentials_multipleEntries_throws() {
-        ResourceDescriptor descriptor = createResourceDescriptor();
+    public void testUpdateAllResourceCredentials_multipleEntries_throws() {
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
         ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
         ResourceCredentials c2 = createCredentials(CredentialsLevel.GLOBAL);
 
-        assertThrows(UnsupportedOperationException.class, () -> service.updateResourceCredentials(descriptor, List.of(c1, c2)));
+        assertThrows(UnsupportedOperationException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1, c2)));
         verifyNoInteractions(resourceService);
     }
 
     @Test
-    public void testUpdateResourceCredentials_nonGlobal_throws() {
-        ResourceDescriptor descriptor = createResourceDescriptor();
+    public void testUpdateAllResourceCredentials_nonGlobal_throws() {
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
         ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
 
-        assertThrows(UnsupportedOperationException.class, () -> service.updateResourceCredentials(descriptor, List.of(c1)));
+        assertThrows(UnsupportedOperationException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1)));
         verifyNoInteractions(resourceService);
     }
 
     @Test
-    public void testUpdateResourceCredentials_notFound_throws() {
-        ResourceDescriptor descriptor = createResourceDescriptor();
+    public void testUpdateAllResourceCredentials_notFound_throws() {
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
         ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
 
         doAnswer(inv -> {
@@ -159,7 +163,7 @@ class ResourceCredentialsServiceTest {
             return null;
         }).when(resourceService).computeResourceBytes(any(ResourceDescriptor.class), any());
 
-        assertThrows(ResourceNotFoundException.class, () -> service.updateResourceCredentials(descriptor, List.of(c1)));
+        assertThrows(ResourceNotFoundException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1)));
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), any());
@@ -172,10 +176,10 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
-    public void testUpdateResourceCredentials_deleteWhenEmptyList() {
-        ResourceDescriptor descriptor = createResourceDescriptor();
+    public void testUpdateAllResourceCredentials_deleteWhenEmptyList() {
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
 
-        service.updateResourceCredentials(descriptor, List.of());
+        service.updateAllResourceCredentials(credentialsLocator, List.of());
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         ArgumentCaptor<Function<byte[], byte[]>> fnCaptor = ArgumentCaptor.forClass(Function.class);
@@ -193,13 +197,13 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
-    public void testUpdateResourceCredentials_updatesBody() {
-        ResourceDescriptor descriptor = createResourceDescriptor();
+    public void testUpdateAllResourceCredentials_updatesBody() {
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
         ResourceCredentials c1 = createCredentials(CredentialsLevel.GLOBAL);
         when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
-        service.updateResourceCredentials(descriptor, List.of(c1));
+        service.updateAllResourceCredentials(credentialsLocator, List.of(c1));
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         ArgumentCaptor<Function<byte[], byte[]>> fnCaptor = ArgumentCaptor.forClass(Function.class);
@@ -217,15 +221,32 @@ class ResourceCredentialsServiceTest {
         assertEquals(ENCRYPTED_BODY, updatedBody);
     }
 
-    private ResourceDescriptor createResourceDescriptor() {
-        return new ResourceDescriptor(
-                ResourceTypes.CREDENTIALS,
-                "my-toolset",
-                List.of("folder1"),
-                "bucket-name",
-                "bucket-location/",
-                false
-        );
+    private CredentialsDescriptor createCredentialsDescriptor() {
+        return CredentialsDescriptor.builder()
+                .resourceId("bucket-name/folder1/my-toolset")
+                .type(ResourceTypes.CREDENTIALS)
+                .sourceType(SourceType.STORAGE)
+                .name("my-toolset")
+                .parentFolders(List.of("folder1"))
+                .credentialsLevel(CredentialsLevel.USER)
+                .bucketName("bucket-name")
+                .bucketLocation("bucket-location/")
+                .build();
+    }
+
+    private CredentialsLocator createCredentialsLocator() {
+        return CredentialsLocator.builder()
+                .resourceId("bucket-name/folder1/my-toolset")
+                .type(ResourceTypes.CREDENTIALS)
+                .sourceType(SourceType.STORAGE)
+                .name("my-toolset")
+                .parentFolders(List.of("folder1"))
+                .buckets(List.of(CredentialBucketLocation.builder()
+                        .credentialsLevel(CredentialsLevel.USER)
+                        .bucketName("bucket-name")
+                        .bucketLocation("bucket-location/")
+                        .build()))
+                .build();
     }
 
     private ResourceCredentials createCredentials(CredentialsLevel credentialsLevel) {
