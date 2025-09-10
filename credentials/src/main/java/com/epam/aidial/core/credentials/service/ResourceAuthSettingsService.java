@@ -40,8 +40,8 @@ public class ResourceAuthSettingsService {
             return;
         }
 
-        ClientRegistration clientRegistration = resourceRegistrationService.registerResource(resourceId,
-                resourceEndpoint, resourceAuthSettings, shouldRegisterResourceDynamically(resourceAuthSettings));
+        ClientRegistration clientRegistration = resourceRegistrationService.register(
+                resourceId, resourceEndpoint, resourceAuthSettings);
 
         CodeVerifier codeVerifier = new CodeVerifier();
         CodeChallengeMethod codeChallengeMethod = CodeChallengeMethod.parse(clientRegistration.getCodeChallengeMethod());
@@ -55,12 +55,6 @@ public class ResourceAuthSettingsService {
         resourceAuthSettings.setCodeChallenge(codeChallenge.getValue());
         resourceAuthSettings.setCodeVerifier(codeVerifier.getValue());
         resourceAuthSettings.setCodeChallengeMethod(codeChallengeMethod.getValue());
-    }
-
-    private boolean shouldRegisterResourceDynamically(ResourceAuthSettings resourceAuthSettings) {
-        return AuthenticationType.OAUTH.equals(resourceAuthSettings.getAuthenticationType())
-                && resourceAuthSettings.getClientId() == null
-                && resourceAuthSettings.getClientSecret() == null;
     }
 
     public void setResourceAuthStatuses(CredentialsLocator credentialsLocator,

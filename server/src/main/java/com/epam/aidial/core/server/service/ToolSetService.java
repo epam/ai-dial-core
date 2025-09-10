@@ -64,7 +64,7 @@ public class ToolSetService {
         }
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
-            if (existing == null || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())) {
+            if (shouldEnrichResourceAuthSettings(toolSet, existing)) {
                 resourceAuthSettingsService.enrichResourceAuthSettings(toolSet.getName(), toolSet.getEndpoint(), toolSet.getAuthSettings());
             } else {
                 //TODO we don't support auth settings update yet
@@ -99,5 +99,9 @@ public class ToolSetService {
         }
     }
 
-
+    private boolean shouldEnrichResourceAuthSettings(ToolSet toolSet, ToolSet existing) {
+        return existing == null
+                || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())
+                || !existing.getEndpoint().equals(toolSet.getEndpoint());
+    }
 }
