@@ -17,11 +17,13 @@ import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -98,7 +100,7 @@ class ResourceAuthorizationClientTest {
 
         //Then
         assertEquals(401, exception.getStatus().getCode());
-        assertEquals("Authorization server returns error code", exception.getMessage());
+        assertEquals("Authorization server returns 401 error code", exception.getMessage());
     }
 
     @Test
@@ -106,6 +108,7 @@ class ResourceAuthorizationClientTest {
         // Given
         String url = "https://example.com/resource";
         TestRequest requestPayload = new TestRequest("testValue");
+
         String jsonResponse = "{\"key\":\"responseValue\"}";
         HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
@@ -119,6 +122,58 @@ class ResourceAuthorizationClientTest {
         // Then
         assertNotNull(actualResponse);
         assertEquals("responseValue", actualResponse.getKey());
+    }
+
+    @Test
+    void testExecutePost_NotFoundStatusStatus() throws Exception {
+        // Given
+        String url = "https://example.com/resource";
+        TestRequest requestPayload = new TestRequest("testValue");
+
+        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(404);
+
+        HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
+        when(httpHeadersMock.map()).thenReturn(Map.of("header_1", List.of("header_1_value")));
+        when(httpResponseMock.headers()).thenReturn(httpHeadersMock);
+
+        // When
+        HttpException exception = assertThrows(HttpException.class, () ->
+                resourceAuthorizationClient.executePost(url, requestPayload,
+                        ContentType.APPLICATION_JSON.toString(), TestResponse.class));
+
+        // Then
+        assertEquals(404, exception.getStatus().getCode());
+        assertEquals("Authorization server returns error code", exception.getMessage());
+        assertTrue(exception.getHeaders().isEmpty());
+    }
+
+    @Test
+    void testExecutePost_UnauthorizedStatus() throws Exception {
+        // Given
+        String url = "https://example.com/resource";
+        TestRequest requestPayload = new TestRequest("testValue");
+
+        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(401);
+
+        HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
+        when(httpHeadersMock.map()).thenReturn(Map.of("header_1", List.of("header_1_value")));
+        when(httpResponseMock.headers()).thenReturn(httpHeadersMock);
+        Map<String, String> expectedResponseHeaders = Map.of("header_1", "header_1_value");
+        when(httpHeadersHandler.convertHttpHeadersToMap(httpHeadersMock)).thenReturn(expectedResponseHeaders);
+
+        // When
+        HttpException exception = assertThrows(HttpException.class, () ->
+                resourceAuthorizationClient.executePost(url, requestPayload,
+                        ContentType.APPLICATION_JSON.toString(), TestResponse.class));
+
+        // Then
+        assertEquals(401, exception.getStatus().getCode());
+        assertEquals("Authorization server returns 401 error code", exception.getMessage());
+        assertEquals(expectedResponseHeaders, exception.getHeaders());
     }
 
     @Data
