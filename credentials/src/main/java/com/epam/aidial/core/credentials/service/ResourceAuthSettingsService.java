@@ -54,6 +54,7 @@ public class ResourceAuthSettingsService {
         resourceAuthSettings.setCodeChallenge(codeChallenge.getValue());
         resourceAuthSettings.setCodeVerifier(codeVerifier.getValue());
         resourceAuthSettings.setCodeChallengeMethod(codeChallengeMethod.getValue());
+        resourceAuthSettings.setScopesSupported(clientRegistration.getScopesSupported());
     }
 
     public void setResourceAuthStatuses(String resourceId,
