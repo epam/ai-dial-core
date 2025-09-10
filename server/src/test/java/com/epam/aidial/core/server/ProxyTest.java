@@ -132,7 +132,7 @@ public class ProxyTest {
     @Test
     public void testHandle_HttpMethodNotAllowed() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
-        when(request.method()).thenReturn(HttpMethod.PATCH);
+        when(request.method()).thenReturn(HttpMethod.MERGE);
 
         proxy.handle(request);
 
