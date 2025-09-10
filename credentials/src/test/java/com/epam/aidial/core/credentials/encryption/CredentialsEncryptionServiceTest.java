@@ -49,7 +49,7 @@ class CredentialsEncryptionServiceTest {
     }
 
     @Test
-    void encryptAndDecrypt_withoutAAD_shouldWork() {
+    void encryptAndDecrypt_withoutAad_shouldWork() {
         byte[] plain = "No AAD here".getBytes();
 
         byte[] encrypted = service.encrypt(plain, key256, null);
@@ -59,7 +59,7 @@ class CredentialsEncryptionServiceTest {
     }
 
     @Test
-    void decrypt_withWrongAAD_shouldThrowSecurityException() {
+    void decrypt_withWrongAad_shouldThrowSecurityException() {
         byte[] plain = "Secret text!".getBytes();
         byte[] aadCorrect = "CorrectAAD".getBytes();
         byte[] aadWrong = "WrongAAD".getBytes();
