@@ -58,12 +58,13 @@ public class ToolSetCredentialsController {
                 .compose(body -> {
                     ResourceSignInRequest resourceSignInRequest = ProxyUtil.convertToObject(body, ResourceSignInRequest.class);
                     String toolsetId = resourceSignInRequest.getUrl();
-                    CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(toolsetId,
-                            ResourceTypes.TOOL_SET, resourceSignInRequest.getCredentialsLevel(), context.getUserSub(), encryptionService);
                     return taskExecutor.submit(() -> {
                         Deployment deployment = deploymentService.findDeployment(context, toolsetId);
                         if (deployment instanceof ToolSet toolSet) {
                             verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
+                            CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
+                                    toolsetId, ResourceTypes.TOOL_SET, resourceSignInRequest.getCredentialsLevel(),
+                                    context.getUserSub(), encryptionService);
                             ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
                                     credentialsDescriptor,
                                     toolSet.getAuthSettings(),

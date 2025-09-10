@@ -19,11 +19,6 @@ public class ContentEncryptionKeyService {
         return contentEncryptionKeyManager.getOrCreateKey(cekDescription);
     }
 
-    public byte[] getKey(CredentialsDescriptor credentialsDescriptor) {
-        ResourceDescriptor cekDescriptor = getContentEncryptionKeyDescriptor(credentialsDescriptor);
-        return contentEncryptionKeyManager.getKey(cekDescriptor);
-    }
-
     private ResourceDescriptor getContentEncryptionKeyDescriptor(CredentialsDescriptor credentialsDescriptor) {
         return new ResourceDescriptor(
                 ResourceTypes.CREDENTIALS,

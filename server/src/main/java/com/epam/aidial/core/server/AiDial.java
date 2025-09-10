@@ -1,11 +1,6 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
-import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
-import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
-import com.epam.aidial.core.credentials.service.TokenService;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyGenerator;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManager;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManagerFactory;
@@ -13,6 +8,11 @@ import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.encryption.CredentialsEncryptionService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementServiceFactory;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.credentials.service.TokenService;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;

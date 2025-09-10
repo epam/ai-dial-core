@@ -90,7 +90,7 @@ class ResourceCredentialsServiceTest {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
 
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
-        when(contentEncryptionKeyService.getKey(any())).thenReturn(CEK);
+        when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
         when(credentialsEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
 
         List<ResourceCredentials> list = service.getAllResourceCredentials(credentialsLocator);

@@ -117,11 +117,7 @@ public class ResourceCredentialsService {
     }
 
     private byte[] decrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
-        byte[] contentEncryptionKey = contentEncryptionKeyService.getKey(credentialsDescriptor);
-        if (contentEncryptionKey == null) {
-            throw new ResourceNotFoundException("Content encryption key for %s %s not found"
-                    .formatted(credentialsDescriptor.getType().group(), credentialsDescriptor.getResourceId()));
-        }
+        byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(credentialsDescriptor);
         byte[] aad = credentialsDescriptor.getDecodedPath().getBytes(StandardCharsets.UTF_8);
         return credentialsEncryptionService.decrypt(data, contentEncryptionKey, aad);
     }

@@ -28,27 +28,11 @@ public class CachedContentEncryptionKeyManager implements ContentEncryptionKeyMa
     }
 
     @Override
-    public byte[] createKey(ResourceDescriptor cekDescriptor) {
-        byte[] cek = contentEncryptionKeyManager.createKey(cekDescriptor);
-        cekCache.put(cekDescriptor, cek);
-        return cek;
-    }
-
-    @Override
     public byte[] getOrCreateKey(ResourceDescriptor cekDescriptor) {
         try {
             return cekCache.get(cekDescriptor, () -> contentEncryptionKeyManager.getOrCreateKey(cekDescriptor));
         } catch (ExecutionException e) {
             throw new RuntimeException("Failed to getOrCreateKey for " + cekDescriptor, e);
-        }
-    }
-
-    @Override
-    public byte[] getKey(ResourceDescriptor cekDescriptor) {
-        try {
-            return cekCache.get(cekDescriptor, () -> contentEncryptionKeyManager.getKey(cekDescriptor));
-        } catch (ExecutionException e) {
-            throw new RuntimeException("Failed to getKey for " + cekDescriptor, e);
         }
     }
 
