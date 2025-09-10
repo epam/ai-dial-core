@@ -2,11 +2,14 @@ package com.epam.aidial.core.credentials.service.registration;
 
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerMetadata;
+import com.epam.aidial.core.credentials.data.registration.AuthorizationServerProtectedResourceMetadata;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
+import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -14,13 +17,13 @@ import java.util.Optional;
  *
  * <p>
  * This implementation of {@link ResourceRegistrationStrategy} handles static registration
- * by determining the resource's endpoints (authorization, token, and code challenge method)
+ * by determining the resource's properties (authorization, token, code challenge method and scopes supported)
  * either through the provided {@link ResourceAuthSettings} or by dynamically resolving them
- * using metadata from the {@link AuthorizationServerMetadataService}.
+ * using metadata from the {@link ProtectedResourceMetadataService} and {@link AuthorizationServerMetadataService}.
  * </p>
  *
  * <p>
- * If essential endpoints (authorization, token, code challenge method) are missing in the
+ * If essential properties (authorization, token, code challenge method, scopes supported) are missing in the
  * settings, the strategy attempts to fetch metadata from the authorization server to fill
  * in the missing information. If these endpoints cannot be resolved, the registration fails
  * with an {@link IllegalArgumentException}.
@@ -31,13 +34,14 @@ import java.util.Optional;
 public class StaticResourceRegistrationStrategy implements ResourceRegistrationStrategy {
 
     private final AuthorizationServerMetadataService authorizationServerMetadataService;
+    private final ProtectedResourceMetadataService protectedResourceMetadataService;
 
     /**
      * Registers a protected resource using static configuration settings.
      *
      * <p>
      * Attempts to register a resource using the provided {@link ResourceAuthSettings} (static settings),
-     * but fills in missing information (authorization endpoint, token endpoint, code challenge method)
+     * but fills in missing information (authorization endpoint, token endpoint, code challenge method, scopes supported)
      * by retrieving metadata from the authorization server if necessary.
      * </p>
      *
@@ -55,13 +59,21 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
         String authorizationEndpoint = resourceAuthSettings.getAuthorizationEndpoint();
         String tokenEndpoint = resourceAuthSettings.getTokenEndpoint();
         String codeChallengeMethod = resourceAuthSettings.getCodeChallengeMethod();
+        List<String> supportedScopes = resourceAuthSettings.getScopesSupported();
 
-        if (authorizationEndpoint == null || tokenEndpoint == null || codeChallengeMethod == null) {
-            log.debug("AuthorizationEndpoint: {}, TokenEndpoint: {}, CodeChallengeMethod: {}. Trying to retrieve AS Metadata.",
-                    authorizationEndpoint, tokenEndpoint, codeChallengeMethod);
+        if (authorizationEndpoint == null || tokenEndpoint == null
+                || codeChallengeMethod == null || supportedScopes == null) {
+            log.debug("AuthorizationEndpoint: {}, TokenEndpoint: {}, CodeChallengeMethod: {}, SupportedScopes: {}. "
+                            + "Trying to retrieve AS Metadata.",
+                    authorizationEndpoint, tokenEndpoint, codeChallengeMethod, supportedScopes);
+
+            AuthorizationServerProtectedResourceMetadata protectedResourceMetadata =
+                    protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
 
             AuthorizationServerMetadata authServerMetadata = authorizationServerMetadataService.getAuthorizationServerMetadata(
-                    resourceId, resourceEndpoint, false);
+                    resourceId, resourceEndpoint, protectedResourceMetadata, false);
+
+            supportedScopes = collectSupportedScopes(protectedResourceMetadata, authServerMetadata);
 
             if (authServerMetadata != null) {
                 authorizationEndpoint = Optional.ofNullable(authServerMetadata.getAuthorizationEndpoint())
@@ -85,6 +97,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                 .authorizationEndpoint(authorizationEndpoint)
                 .tokenEndpoint(tokenEndpoint)
                 .codeChallengeMethod(codeChallengeMethod)
+                .scopesSupported(supportedScopes)
                 .build();
 
         log.info("Finished static registration for Resource: {}", resourceId);

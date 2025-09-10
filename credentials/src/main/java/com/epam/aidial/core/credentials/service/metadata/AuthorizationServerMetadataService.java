@@ -29,7 +29,6 @@ public class AuthorizationServerMetadataService {
     private static final String WELL_KNOWN_OPENID_CONFIG_SUFFIX = "openid-configuration";
 
     private final ResourceAuthorizationClient resourceAuthorizationClient;
-    private final ProtectedResourceMetadataService protectedResourceMetadataService;
     private final AuthorizationServerMetadataValidator authorizationServerMetadataValidator;
 
     /**
@@ -44,6 +43,7 @@ public class AuthorizationServerMetadataService {
      *
      * @param resourceId          The unique identifier of the resource.
      * @param resourceEndpoint    The base URL of the resource endpoint.
+     * @param protectedResourceMetadata The metadata for the protected resource.
      * @param forDynamicRegistration Indicates whether dynamic client registration is required.
      * @return The {@link AuthorizationServerMetadata} containing the authorization server's details.
      * @throws IllegalArgumentException If the metadata cannot be fetched or if required properties
@@ -51,10 +51,8 @@ public class AuthorizationServerMetadataService {
      */
     public AuthorizationServerMetadata getAuthorizationServerMetadata(String resourceId,
                                                                       String resourceEndpoint,
+                                                                      AuthorizationServerProtectedResourceMetadata protectedResourceMetadata,
                                                                       boolean forDynamicRegistration) {
-        AuthorizationServerProtectedResourceMetadata protectedResourceMetadata =
-                protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
-
         Set<String> fallbackEndpoints = new LinkedHashSet<>();
         addAuthServerEndpointsFromProtectedResourceMetadata(protectedResourceMetadata, fallbackEndpoints);
         addAuthServerEndpoints(resourceEndpoint, fallbackEndpoints);
