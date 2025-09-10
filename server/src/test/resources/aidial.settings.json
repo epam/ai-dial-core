@@ -72,7 +72,10 @@
   "toolsets": {
     "security": {
       "authorizationServers": "https://example.com",
-      "resourceHost": "localhost"
+      "resourceHost": "localhost",
+      "kms": {
+        "provider": "unencrypted"
+      }
     }
   }
 }
