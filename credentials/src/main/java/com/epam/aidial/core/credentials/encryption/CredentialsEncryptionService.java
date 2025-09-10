@@ -1,4 +1,4 @@
-package com.epam.aidial.core.credentials.service.encryption;
+package com.epam.aidial.core.credentials.encryption;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

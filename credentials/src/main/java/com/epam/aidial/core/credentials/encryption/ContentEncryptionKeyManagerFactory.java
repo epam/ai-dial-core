@@ -1,7 +1,7 @@
-package com.epam.aidial.core.credentials.service.encryption;
+package com.epam.aidial.core.credentials.encryption;
 
 import com.epam.aidial.core.credentials.data.configuration.CacheSettings;
-import com.epam.aidial.core.credentials.service.encryption.keymanagement.KeyManagementService;
+import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import jakarta.annotation.Nullable;
 import lombok.experimental.UtilityClass;

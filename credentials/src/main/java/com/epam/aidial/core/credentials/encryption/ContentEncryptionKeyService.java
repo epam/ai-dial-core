@@ -1,4 +1,4 @@
-package com.epam.aidial.core.credentials.service.encryption;
+package com.epam.aidial.core.credentials.encryption;
 
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;

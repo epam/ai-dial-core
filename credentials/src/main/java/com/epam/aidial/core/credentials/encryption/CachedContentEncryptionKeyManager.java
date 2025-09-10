@@ -1,4 +1,4 @@
-package com.epam.aidial.core.credentials.service.encryption;
+package com.epam.aidial.core.credentials.encryption;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.google.common.cache.Cache;

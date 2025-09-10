@@ -1,4 +1,4 @@
-package com.epam.aidial.core.credentials.service.encryption.keymanagement;
+package com.epam.aidial.core.credentials.keymanagement;
 
 public class SimpleKeyManagementService implements KeyManagementService {
 
