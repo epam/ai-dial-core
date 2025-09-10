@@ -16,8 +16,6 @@ import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
-import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
-import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectToolSetsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceAssistantRequestFn;
@@ -48,7 +46,6 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -59,19 +56,16 @@ import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 
 @Slf4j
-public class DeploymentPostController {
+public class DeploymentPostController extends BaseDeploymentPostController {
 
     private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
 
-    private final Proxy proxy;
-    private final ProxyContext context;
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
-        this.proxy = proxy;
-        this.context = context;
+        super(proxy, context);
         this.enhancementFunctions = List.of(new CollectRequestChatCompletionAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
@@ -374,10 +368,7 @@ public class DeploymentPostController {
             upstreamRoute.fail(proxyResponse);
         }
 
-        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseChatCompletionAttachmentsFn(proxy, context) : null;
-
-        BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024), handler);
+        BufferingReadStream responseStream = createResponseStream(proxyResponse);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -461,20 +452,6 @@ public class DeploymentPostController {
         return tokenUsageFuture;
     }
 
-    private Future<Void> collectResponseAttachments(Buffer responseBody) {
-        if (context.isStreamingRequest()) {
-            return Future.succeededFuture();
-        }
-        try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            var fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
-            return fn.apply(tree);
-        } catch (IOException e) {
-            log.warn("Can't parse JSON response body. Error:", e);
-            return Future.failedFuture(e);
-        }
-    }
-
     private void completeProxyResponse(BufferingReadStream responseStream) {
         HttpServerResponse response = context.getResponse();
         responseStream.end(response);
@@ -496,24 +473,6 @@ public class DeploymentPostController {
                 currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
-    }
-
-    /**
-     * Called when proxy failed to receive request body from the client.
-     */
-    private void handleRequestBodyError(Throwable error) {
-        respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
-        log.warn("Failed to receive client body. Error: {}", error.getMessage());
-    }
-
-    /**
-     * Called when proxy failed to connect to the origin.
-     */
-    private void handleProxyConnectionError(Throwable error) {
-        respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
-        log.warn("Can't connect to origin. Deployment: {}. Address: {}. Error: {}",
-                context.getDeployment().getName(),
-                buildUri(context), error.getMessage());
     }
 
     /**
@@ -576,38 +535,5 @@ public class DeploymentPostController {
             return false;
         }
         return true;
-    }
-
-    private Future<?> respond(HttpStatus status, String errorMessage) {
-        finalizeRequest();
-        return context.respond(status, errorMessage);
-    }
-
-    private void respond(HttpException exception) {
-        finalizeRequest();
-        context.respond(exception);
-    }
-
-    private void respond(HttpStatus status) {
-        finalizeRequest();
-        context.respond(status);
-    }
-
-    private void respond(HttpStatus status, Object result) {
-        finalizeRequest();
-        context.respond(status, result);
-    }
-
-    private void finalizeRequest() {
-        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
-        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
-        if (proxyApiKeyData != null) {
-            proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
-                    .onSuccess(invalidated -> {
-                        if (!invalidated) {
-                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
-                        }
-                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
-        }
     }
 }

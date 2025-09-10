@@ -7,8 +7,6 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
-import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
-import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -30,16 +28,12 @@ import java.io.InputStream;
 import java.util.List;
 
 @Slf4j
-public class InterceptorController {
-
-    private final Proxy proxy;
-    private final ProxyContext context;
+public class InterceptorController extends BaseDeploymentPostController {
 
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
     public InterceptorController(Proxy proxy, ProxyContext context) {
-        this.proxy = proxy;
-        this.context = context;
+        super(proxy, context);
         this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new CollectRequestChatCompletionAttachmentsFn(proxy, context),
                 new CollectRequestDataFn(proxy, context));
@@ -110,21 +104,6 @@ public class InterceptorController {
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private void handleRequestBodyError(Throwable error) {
-        respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
-        log.warn("Failed to receive client body. Error: {}", error.getMessage());
-    }
-
-    /**
-     * Called when proxy failed to connect to the origin.
-     */
-    private void handleProxyConnectionError(Throwable error) {
-        respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
-        log.warn("Can't connect to origin.  Deployment: {}. Address: {}. Error: {}",
-                context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(), error.getMessage());
-    }
-
 
     void handleProxyRequest(HttpClientRequest proxyRequest) {
         log.info("Connected to interceptor. Deployment: {}. Address: {}",
@@ -162,10 +141,7 @@ public class InterceptorController {
                 context.getDeployment().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        CollectResponseAttachmentsFn handler = context.isStreamingRequest() ? new CollectResponseChatCompletionAttachmentsFn(proxy, context) : null;
-
-        BufferingReadStream responseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024), handler);
+        BufferingReadStream responseStream = createResponseStream(proxyResponse);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -196,20 +172,6 @@ public class InterceptorController {
         });
     }
 
-    private Future<Void> collectResponseAttachments(Buffer responseBody) {
-        if (context.isStreamingRequest()) {
-            return Future.succeededFuture();
-        }
-        try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            var fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
-            return fn.apply(tree);
-        } catch (Throwable e) {
-            log.warn("Can't parse JSON response body. Error:", e);
-            return Future.failedFuture(e);
-        }
-    }
-
     private void completeProxyResponse(BufferingReadStream responseStream) {
         HttpServerResponse response = context.getResponse();
         responseStream.end(response);
@@ -225,29 +187,6 @@ public class InterceptorController {
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         finalizeRequest();
-    }
-
-    private void respond(HttpStatus status) {
-        finalizeRequest();
-        context.respond(status);
-    }
-
-    private void respond(HttpStatus status, Object result) {
-        finalizeRequest();
-        context.respond(status, result);
-    }
-
-    private void finalizeRequest() {
-        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
-        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
-        if (proxyApiKeyData != null) {
-            proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
-                    .onSuccess(invalidated -> {
-                        if (!invalidated) {
-                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
-                        }
-                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
-        }
     }
 
 }
