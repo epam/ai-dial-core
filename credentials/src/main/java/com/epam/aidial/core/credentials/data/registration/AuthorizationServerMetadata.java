@@ -30,4 +30,7 @@ public class AuthorizationServerMetadata {
 
     @JsonProperty("code_challenge_methods_supported")
     private List<String> codeChallengeMethodsSupported;
+
+    @JsonProperty("scopes_supported")
+    private List<String> scopesSupported;
 }

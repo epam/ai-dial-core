@@ -2,11 +2,13 @@ package com.epam.aidial.core.credentials.service.registration;
 
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerMetadata;
+import com.epam.aidial.core.credentials.data.registration.AuthorizationServerProtectedResourceMetadata;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationRequest;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationResponse;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
+import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
@@ -23,9 +25,10 @@ import java.util.List;
  * </p>
  *
  * <p>
- * The strategy begins by retrieving metadata from the authorization server using the
- * {@link AuthorizationServerMetadataService}. Then it sends a dynamic registration request
- * to the server's registration endpoint. Finally, it constructs a complete {@link ClientRegistration}
+ * The strategy begins by retrieving protected resource metadata using the {@link ProtectedResourceMetadataService}.
+ * Then it retrieves authorization server metadata using the {@link AuthorizationServerMetadataService}.
+ * Then it sends a dynamic registration request to the server's registration endpoint.
+ * Finally, it constructs a complete {@link ClientRegistration}
  * object using the response from the server.
  * </p>
  */
@@ -35,6 +38,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
 
     private final AuthorizationServerMetadataService authorizationServerMetadataService;
     private final ResourceAuthorizationClient resourceAuthorizationClient;
+    private final ProtectedResourceMetadataService protectedResourceMetadataService;
 
     /**
      * Registers a protected resource dynamically using the authorization server's dynamic client registration
@@ -57,8 +61,13 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
     public ClientRegistration register(String resourceId, String resourceEndpoint, ResourceAuthSettings resourceAuthSettings) {
         log.info("Start dynamic registration for Resource: {}", resourceId);
 
+        AuthorizationServerProtectedResourceMetadata protectedResourceMetadata =
+                protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
+
         AuthorizationServerMetadata authServerMetadata = authorizationServerMetadataService.getAuthorizationServerMetadata(
-                resourceId, resourceEndpoint, true);
+                resourceId, resourceEndpoint, protectedResourceMetadata, true);
+
+        List<String> supportedScopes = collectSupportedScopes(protectedResourceMetadata, authServerMetadata);
 
         ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
                 .clientName(resourceId)
@@ -79,6 +88,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
                 .codeChallengeMethod(getCodeChallengeMethod(authServerMetadata))
+                .scopesSupported(supportedScopes)
                 .build();
         log.info("Finished dynamic registration for Resource: {}", resourceId);
         return clientRegistration;
