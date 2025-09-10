@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.credentials.data.configuration.EncryptionSettings;
 import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyGenerator;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManager;
@@ -94,6 +95,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -188,15 +190,18 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            KmsSettings kmsSettings = Json.decodeValue(settings("toolsets")
-                    .getJsonObject("security", new JsonObject())
+            JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
+            KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
                     .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
-            ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator();
+            EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
+                    .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+            ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
             KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
             ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
                     resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
             ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
-            CredentialsEncryptionService credentialsEncryptionService = new CredentialsEncryptionService();
+            CredentialsEncryptionService credentialsEncryptionService = new CredentialsEncryptionService(
+                    encryptionSettings, new SecureRandom());
 
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
             TokenService tokenService = new TokenService(resourceAuthorizationClient);

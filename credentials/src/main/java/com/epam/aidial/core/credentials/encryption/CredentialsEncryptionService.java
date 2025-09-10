@@ -1,6 +1,6 @@
 package com.epam.aidial.core.credentials.encryption;
 
-import lombok.RequiredArgsConstructor;
+import com.epam.aidial.core.credentials.data.configuration.EncryptionSettings;
 import lombok.extern.slf4j.Slf4j;
 
 import java.security.GeneralSecurityException;
@@ -11,13 +11,20 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 @Slf4j
-@RequiredArgsConstructor
 public class CredentialsEncryptionService {
 
-    private static final String CIPHER_TRANSFORMATION = "AES/GCM/NoPadding";
-    private static final int IV_LENGTH_BYTES = 12; // 96-bit nonce as recommended for GCM
-    private static final int GCM_TAG_LENGTH_BITS = 128; // 16-byte authentication tag
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private final String cipherTransformation;
+    private final int ivLengthBytes;
+    private final int gcmTagLengthBits;
+    private final SecureRandom secureRandom;
+
+    public CredentialsEncryptionService(EncryptionSettings encryptionSettings, SecureRandom secureRandom) {
+        this.cipherTransformation = encryptionSettings.getCipherTransformation();
+        this.ivLengthBytes = encryptionSettings.getIvLengthBytes();
+        this.gcmTagLengthBits = encryptionSettings.getGcmTagLengthBits();
+
+        this.secureRandom = secureRandom;
+    }
 
     public byte[] encrypt(byte[] plain, byte[] contentEncryptionKey, byte[] aad) {
         if (plain == null) {
@@ -25,13 +32,13 @@ public class CredentialsEncryptionService {
         }
         validateKey(contentEncryptionKey);
 
-        byte[] iv = new byte[IV_LENGTH_BYTES];
-        SECURE_RANDOM.nextBytes(iv);
+        byte[] iv = new byte[ivLengthBytes];
+        secureRandom.nextBytes(iv);
 
         try {
-            Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
+            Cipher cipher = Cipher.getInstance(cipherTransformation);
             SecretKeySpec keySpec = new SecretKeySpec(contentEncryptionKey, "AES");
-            GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv);
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(gcmTagLengthBits, iv);
             cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec);
 
             if (aad != null && aad.length > 0) {
@@ -40,9 +47,9 @@ public class CredentialsEncryptionService {
 
             byte[] cipherText = cipher.doFinal(plain);
 
-            byte[] output = new byte[IV_LENGTH_BYTES + cipherText.length];
-            System.arraycopy(iv, 0, output, 0, IV_LENGTH_BYTES);
-            System.arraycopy(cipherText, 0, output, IV_LENGTH_BYTES, cipherText.length);
+            byte[] output = new byte[ivLengthBytes + cipherText.length];
+            System.arraycopy(iv, 0, output, 0, ivLengthBytes);
+            System.arraycopy(cipherText, 0, output, ivLengthBytes, cipherText.length);
             return output;
         } catch (GeneralSecurityException e) {
             throw new RuntimeException("Encryption failed", e);
@@ -54,20 +61,20 @@ public class CredentialsEncryptionService {
             throw new IllegalArgumentException("encrypted must not be null");
         }
         validateKey(contentEncryptionKey);
-        if (encrypted.length < IV_LENGTH_BYTES + (GCM_TAG_LENGTH_BITS / 8)) {
+        if (encrypted.length < ivLengthBytes + (gcmTagLengthBits / 8)) {
             throw new IllegalArgumentException("Invalid encrypted payload");
         }
 
-        byte[] iv = new byte[IV_LENGTH_BYTES];
-        System.arraycopy(encrypted, 0, iv, 0, IV_LENGTH_BYTES);
+        byte[] iv = new byte[ivLengthBytes];
+        System.arraycopy(encrypted, 0, iv, 0, ivLengthBytes);
 
-        byte[] cipherText = new byte[encrypted.length - IV_LENGTH_BYTES];
-        System.arraycopy(encrypted, IV_LENGTH_BYTES, cipherText, 0, cipherText.length);
+        byte[] cipherText = new byte[encrypted.length - ivLengthBytes];
+        System.arraycopy(encrypted, ivLengthBytes, cipherText, 0, cipherText.length);
 
         try {
-            Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
+            Cipher cipher = Cipher.getInstance(cipherTransformation);
             SecretKeySpec keySpec = new SecretKeySpec(contentEncryptionKey, "AES");
-            GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv);
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(gcmTagLengthBits, iv);
             cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec);
 
             if (aad != null && aad.length > 0) {
@@ -85,10 +92,6 @@ public class CredentialsEncryptionService {
     private static void validateKey(byte[] key) {
         if (key == null) {
             throw new IllegalArgumentException("contentEncryptionKey must not be null");
-        }
-        int len = key.length;
-        if (len != 32) {
-            throw new IllegalArgumentException("contentEncryptionKey must be 32 bytes for AES-256");
         }
     }
 
