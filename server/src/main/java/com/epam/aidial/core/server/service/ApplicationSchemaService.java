@@ -89,7 +89,7 @@ public class ApplicationSchemaService {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> filterProperties(Map<String, Object> applicationProperties, String schema, String collectorName) {
+    private static Map<String, Object> filterProperties(Map<String, Object> applicationProperties, String schema, ListCollector.MetaDataCollectorType collector) {
         try {
             JsonSchema appSchema = SCHEMA_FACTORY.getSchema(schema);
             CollectorContext collectorContext = new CollectorContext();
@@ -99,7 +99,7 @@ public class ApplicationSchemaService {
             if (!validationResult.isEmpty()) {
                 throw new ApplicationTypeSchemaValidationException("Failed to validate custom app against the schema", validationResult);
             }
-            ListCollector<String> propsCollector = (ListCollector<String>) collectorContext.getCollectorMap().get(collectorName);
+            ListCollector<String> propsCollector = (ListCollector<String>) collectorContext.getCollectorMap().get(collector.getValue());
             if (propsCollector == null) {
                 return Collections.emptyMap();
             }
@@ -116,11 +116,11 @@ public class ApplicationSchemaService {
     }
 
     @FunctionalInterface
-    public interface ServerPropertiesConsumer {
+    public interface MetadataPropertiesConsumer {
         void accept(Map<String, Object> properties, boolean appendApplicationPropertiesHeader) throws JsonProcessingException;
     }
 
-    public void consumeServerProperties(Application application, ServerPropertiesConsumer consumer) {
+    public void consumeMetadataProperties(Application application, MetadataPropertiesConsumer consumer) {
         String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
         if (customApplicationSchema == null) {
             return;
@@ -134,7 +134,8 @@ public class ApplicationSchemaService {
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
             boolean appendApplicationPropertiesHeader = !schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES)
                                                         || schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES).asBoolean();
-            Map<String, Object> serverProperties = filterProperties(application.getApplicationProperties(), customApplicationSchema, "server");
+            Map<String, Object> serverProperties = filterProperties(application.getApplicationProperties(),
+                    customApplicationSchema, ListCollector.MetaDataCollectorType.ALL);
             consumer.accept(serverProperties, appendApplicationPropertiesHeader);
         } catch (JsonProcessingException e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to parse custom application schema", e);
@@ -218,7 +219,8 @@ public class ApplicationSchemaService {
             return application;
         }
         Application copy = new Application(application);
-        Map<String, Object> appWithClientOptionsOnly = filterProperties(application.getApplicationProperties(), customApplicationSchema, "client");
+        Map<String, Object> appWithClientOptionsOnly = filterProperties(application.getApplicationProperties(),
+                customApplicationSchema, ListCollector.MetaDataCollectorType.CLIENT);
         copy.setApplicationProperties(appWithClientOptionsOnly);
         return copy;
     }

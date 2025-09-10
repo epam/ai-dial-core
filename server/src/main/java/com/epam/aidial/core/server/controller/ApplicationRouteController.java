@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
@@ -47,7 +48,8 @@ public class ApplicationRouteController extends BaseRouteController {
     protected Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions) {
         ResourceDescriptor appResource;
         try {
-            appResource = ResourceDescriptorFactory.fromAnyUrl(deploymentId, proxy.getEncryptionService());
+            String encodedPath = UrlUtil.encodePath(deploymentId);
+            appResource = ResourceDescriptorFactory.fromAnyUrl(encodedPath, proxy.getEncryptionService());
         } catch (IllegalArgumentException e) {
             // it looks like deployment id is not a custom application
             return Future.succeededFuture(true);
@@ -75,7 +77,7 @@ public class ApplicationRouteController extends BaseRouteController {
     protected void injectAdditionalHeaders(HttpClientRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_APPLICATION_ID, deploymentId);
         if ((context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId())) {
-            proxy.getApplicationSchemaService().consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+            proxy.getApplicationSchemaService().consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                 if (appendApplicationPropertiesHeader) {
                     String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);

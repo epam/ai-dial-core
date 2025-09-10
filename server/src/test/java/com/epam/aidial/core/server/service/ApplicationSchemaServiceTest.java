@@ -159,36 +159,36 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
-    void consumeServerProperties_returnsProperties_whenSchemaExists() {
+    void consumeMetadataProperties_returnsProperties_whenSchemaExists() {
         when(configStore.get()).thenReturn(config);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
 
-        service.consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
-            Assertions.assertEquals(serverProperties, properties);
+        service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+            Assertions.assertEquals(customProperties, properties);
             Assertions.assertTrue(appendApplicationPropertiesHeader);
         });
     }
 
     @Test
-    void consumeServerProperties_returnsEmptyMap_whenSchemaIsNull() {
+    void consumeMetadataProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        service.consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+        service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
             Assertions.assertEquals(Collections.emptyMap(), properties);
             Assertions.assertTrue(appendApplicationPropertiesHeader);
         });
     }
 
     @Test
-    void consumeServerProperties_throws_whenSchemaNotFound() {
+    void consumeMetadataProperties_throws_whenSchemaNotFound() {
         when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                service.consumeServerProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                 }));
     }
 

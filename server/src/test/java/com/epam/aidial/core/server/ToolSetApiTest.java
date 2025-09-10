@@ -294,4 +294,76 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals(mcpResponse, resp.body());
         }
     }
+
+    @Test
+    void testPublication() {
+        testToolsetCreation();
+
+        var response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
+                      "targetUrl": "toolsets/public/my-toolset"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve", """
+                {
+                "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123"
+                }
+                """, "authorization", "admin");
+        verifyJson(response, 200, """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "targetFolder" : "public/",
+                  "status" : "APPROVED",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                    "action" : "ADD",
+                    "sourceUrl" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
+                    "targetUrl" : "toolsets/public/my-toolset",
+                    "reviewUrl" : "toolsets/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/my-toolset"
+                  } ],
+                  "resourceTypes" : [ "TOOL_SET" ],
+                  "author" : "EPM-RTC-GPT"
+                }
+                """);
+
+        response = send(HttpMethod.GET, "/v1/toolsets/public/my-toolset",
+                null, null, "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                    "name" : "toolsets/public/my-toolset",
+                    "endpoint" : "http://toolset/v1/mcp",
+                    "display_name" : "My Toolset",
+                    "display_version" : "1.0",
+                    "icon_url" : "http://toolset/icon.svg",
+                    "description" : "My toolset Description",
+                    "reference" : "@ignore",
+                    "forward_auth_token" : false,
+                    "defaults" : { },
+                    "interceptors" : [ ],
+                    "description_keywords" : [ ],
+                    "max_retry_attempts" : 1,
+                    "author" : "EPM-RTC-GPT",
+                    "created_at" : "@ignore",
+                    "updated_at" : "@ignore",
+                    "dependencies" : [ ],
+                    "auth_settings" : {
+                        "authentication_type" : "NONE",
+                        "global_auth_status" : "SIGNED_OUT",
+                        "user_level_auth_status" : "SIGNED_OUT"
+                    },
+                    "transport" : "HTTP",
+                    "allowed_tools" : [ "tool1", "tool2" ]
+                }
+                """);
+    }
+
 }

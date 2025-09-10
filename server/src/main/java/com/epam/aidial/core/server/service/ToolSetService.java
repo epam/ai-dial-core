@@ -26,6 +26,21 @@ public class ToolSetService {
     }
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource, EtagHeader etagHeader) {
+        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(resource, etagHeader);
+        ToolSet toolSet = result.getValue();
+        ResourceItemMetadata meta = result.getKey();
+
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(),
+                ResourceTypes.TOOL_SET, context.getUserSub(), context.getProxy().getEncryptionService());
+        resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
+        toolSet.setAuthor(meta.getAuthor());
+        toolSet.setCreatedAt(meta.getCreatedAt());
+        toolSet.setUpdatedAt(meta.getUpdatedAt());
+
+        return Pair.of(meta, toolSet);
+    }
+
+    private Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource, EtagHeader etagHeader) {
         verifyToolSet(resource);
         Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource, etagHeader);
 
@@ -39,14 +54,6 @@ public class ToolSetService {
         if (toolSet == null) {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
-
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(),
-                ResourceTypes.TOOL_SET, context.getUserSub(), context.getProxy().getEncryptionService());
-        resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
-        toolSet.setAuthor(meta.getAuthor());
-        toolSet.setCreatedAt(meta.getCreatedAt());
-        toolSet.setUpdatedAt(meta.getUpdatedAt());
-
         return Pair.of(meta, toolSet);
     }
 
@@ -67,6 +74,23 @@ public class ToolSetService {
         });
 
         return Pair.of(meta, toolSet);
+    }
+
+    public void copyToolSet(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite) {
+        verifyToolSet(source);
+        verifyToolSet(destination);
+
+        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, EtagHeader.ANY);
+        ToolSet toolSet = result.getValue();
+        if (author == null) {
+            author = result.getKey().getAuthor();
+        }
+
+        EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
+        toolSet.setName(destination.getUrl());
+        toolSet.setReference(ProxyUtil.generateReference());
+        String json = ProxyUtil.convertToString(toolSet);
+        resourceService.putResource(destination, json, etag, author);
     }
 
     private static void verifyToolSet(ResourceDescriptor resource) {
