@@ -58,7 +58,7 @@
         },
         "dial:appendApplicationPropertiesHeader": {
           "type": "boolean",
-          "description": "If this flag is set to true, the header with properties will augment the request while proxying"
+          "description": "If this flag is set to true, the header with properties will augment the request while proxying. The default value is true"
         },
         "dial:applicationTypePlaybackSupport": {
           "type": "boolean",
