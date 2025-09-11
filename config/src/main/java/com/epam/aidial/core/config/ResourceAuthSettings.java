@@ -11,6 +11,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
+import java.util.List;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -60,4 +62,7 @@ public class ResourceAuthSettings {
 
     @JsonAlias({"appLevelAuthStatus", "app_level_auth_status"})
     private ResourceAuthStatus appLevelAuthStatus;
+
+    @JsonAlias({"scopesSupported", "scopes_supported"})
+    private List<String> scopesSupported;
 }

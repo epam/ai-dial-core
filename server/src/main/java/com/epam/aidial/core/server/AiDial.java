@@ -253,8 +253,8 @@ public class AiDial {
 
         AuthorizationServerMetadataValidator authorizationServerMetadataValidator = new AuthorizationServerMetadataValidator();
         AuthorizationServerMetadataService authorizationServerMetadataService = new AuthorizationServerMetadataService(
-                resourceAuthorizationClient, protectedResourceMetadataService, authorizationServerMetadataValidator);
-        return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient);
+                resourceAuthorizationClient, authorizationServerMetadataValidator);
+        return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService);
     }
 
     @VisibleForTesting

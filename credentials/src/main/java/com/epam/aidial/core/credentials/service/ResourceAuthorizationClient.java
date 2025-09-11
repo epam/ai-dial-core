@@ -71,8 +71,12 @@ public class ResourceAuthorizationClient {
         if (status != 200 && status != 201) {
             log.debug("Error executing request {}: status {}, response {}, headers: {}",
                     request.uri(), response.statusCode(), response.body(), response.headers());
-            throw new HttpException(status, "Authorization server returns error code",
-                    httpHeadersHandler.convertHttpHeadersToMap(response.headers()));
+            if (status == 401) {
+                throw new HttpException(status, "Authorization server returns 401 error code",
+                        httpHeadersHandler.convertHttpHeadersToMap(response.headers()));
+            } else {
+                throw new HttpException(status, "Authorization server returns error code");
+            }
         }
 
         return JsonMapperUtil.convertToObject(body, responseType);

@@ -78,7 +78,7 @@ public class EventStreamParser {
                 }
             }
         } catch (Throwable e) {
-            log.warn("Error occurred at parsing chunk", e);
+            log.error("Error occurred at parsing chunk", e);
             return Future.failedFuture(e);
         }
 

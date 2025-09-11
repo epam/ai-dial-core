@@ -38,13 +38,13 @@ This API allows the creation of a new ToolSet with customizable properties. The 
 }
 ```
 
-| **Field**                 | **Type**   | **Description**                                                                                   |
-|---------------------------|------------|---------------------------------------------------------------------------------------------------|
-| `endpoint`                | `string`   | The URL of the microservice associated with the ToolSet.                                         |
-| `transport`               | `string`   | The communication protocol (e.g., HTTP) of the ToolSet.                                          |
-| `allowedTools`            | `array`    | List of tools authorized to use this ToolSet.                                                    |
-| `auth_settings`           | `object`   | Authentication settings for the ToolSet.                                                        |
-| `authentication_type`     | `string`   | Type of authentication (**OAUTH**, **API_KEY**, or **NONE**) to be used.                         |
+| **Field**                 | **Type**   | **Description**                                                          |
+|---------------------------|------------|--------------------------------------------------------------------------|
+| `endpoint`                | `string`   | The URL of the microservice associated with the ToolSet.                 |
+| `transport`               | `string`   | The communication protocol (e.g., HTTP) of the ToolSet.                  |
+| `allowedTools`            | `array`    | List of tools authorized to use this ToolSet.                            |
+| `auth_settings`           | `object`   | Authentication settings for the ToolSet.                                 |
+| `authentication_type`     | `string`   | Type of authentication (**OAUTH**, **API_KEY**, or **NONE**) to be used. |
 
 ---
 
@@ -52,7 +52,16 @@ This API allows the creation of a new ToolSet with customizable properties. The 
 
 ##### **1. OAUTH (Client Already Exists)**
 
-The client ID and secret are pre-defined and must be provided.
+| **Field**                  | **Type** | **Description**                                                                                                                                                           | **Required**                                                                                         |
+|----------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
+| `client_id`                | `string` | The unique identifier of the client/application requesting access to the resource.                                                                                        | Yes                                                                                                  |
+| `client_secret`            | `string` | A confidential key used by the client to authenticate itself with the authentication server.                                                                              | Yes (for confidential clients) / No (for public clients like SPAs or mobile apps implementing PKCE)  |
+| `authorization_endpoint`   | `string` | The URL where the client directs the user to authenticate and obtain authorization. Can be discovered via .well-known metadata if provided by the Authorization Server.   | No (if discoverable) / Yes (if not discoverable)                                                     |
+| `token_endpoint`           | `string` | The URL where the client exchanges the authorization code for an access token. Can be discovered via .well-known metadata if provided by the Authorization Server.        | No (if discoverable) / Yes (if not discoverable)                                                     |
+| `code_challenge_method`    | `string` | The method used for Proof Key for Code Exchange (PKCE), usually plain or S256.                                                                                            | No (Required only if using PKCE)                                                                     |
+
+--- 
+
 
 ```json
 {
@@ -60,7 +69,10 @@ The client ID and secret are pre-defined and must be provided.
         "authentication_type": "OAUTH",
         "client_id": "your-client-id",
         "client_secret": "your-client-secret",
-        "redirect_uri": "{chat-host}/toolset/sign-in"
+        "redirect_uri": "{chat-host}/toolset/sign-in",
+        "authorization_endpoint": "https://my-mcp-as/authorize",
+        "token_endpoint": "https://my-mcp-as/token",
+        "code_challenge_method": "S256"
     }
 }
 ```
@@ -143,23 +155,25 @@ The **Get ToolSet** API retrieves the details of a ToolSet. The new addition to 
         "redirect_uri": "{chat-host}/toolset/sign-in",
         "code_challenge": "generated-code-challenge",
         "code_challenge_method": "code-challenge-method",
+        "scopes_supported": ["scope1", "scope2", "scope3"],
         "global_auth_status": "SIGNED_OUT",
         "user_level_auth_status": "SIGNED_IN"
     }
 }
 ```
 
-| **Field**                     | **Type**     | **Description**                                                                             |
-|-------------------------------|--------------|---------------------------------------------------------------------------------------------|
-| `auth_settings`               | `object`     | Authentication settings configured for this ToolSet.                                        |
-| `authentication_type`         | `string`     | Type of authentication: **OAUTH**, **API_KEY**, or **NONE**.                                |
-| `client_id`                   | `string`     | (OAUTH only) Pre-defined client ID used during signin flows.                                |
-| `authorization_endpoint`      | `string`     | (OAUTH only) URL for performing authorization.                                              |
-| `redirect_uri`                | `string`     | (OAUTH only) Redirect URI used during signin flows.                                         |
-| `code_challenge`              | `string`     | (OAUTH only) Value derived from the code_verifier, used in the PKCE flow.                   |
-| `code_challenge_method`       | `string`     | (OAUTH only) Method used to derive code_challenge from code_verifier (e.g., plain or S256). |
-| `global_auth_status`          | `string`     | Dynamic status for global credentials: SIGNED_IN, SIGNED_OUT, or FAILED.                    |
-| `user_level_auth_status`      | `string`     | Dynamic status for user-level credentials: SIGNED_IN, SIGNED_OUT, or FAILED.                |
+| **Field**                | **Type** | **Description**                                                                                               |
+|--------------------------|----------|---------------------------------------------------------------------------------------------------------------|
+| `auth_settings`          | `object` | Authentication settings configured for this ToolSet.                                                          |
+| `authentication_type`    | `string` | Type of authentication: **OAUTH**, **API_KEY**, or **NONE**.                                                  |
+| `client_id`              | `string` | (OAUTH only) Pre-defined client ID used during signin flows.                                                  |
+| `authorization_endpoint` | `string` | (OAUTH only) URL for performing authorization.                                                                |
+| `redirect_uri`           | `string` | (OAUTH only) Redirect URI used during signin flows.                                                           |
+| `code_challenge`         | `string` | (OAUTH only) Value derived from the code_verifier, used in the PKCE flow.                                     |
+| `code_challenge_method`  | `string` | (OAUTH only) Method used to derive code_challenge from code_verifier (e.g., plain or S256).                   |
+| `scopes_supported `      | `array`  | (OAUTH only) List of supported scopes that define access levels. May be discovered via .well-known endpoints. |
+| `global_auth_status`     | `string` | Dynamic status for global credentials: SIGNED_IN, SIGNED_OUT, or FAILED.                                      |
+| `user_level_auth_status` | `string` | Dynamic status for user-level credentials: SIGNED_IN, SIGNED_OUT, or FAILED.                                  |
 
 ---
 
@@ -282,10 +296,34 @@ Include the following data in the `state` parameter:
 
 ---
 
+
+## **4. Frontend Instructions: Using the `scopes_supported` Parameter**
+
+#### **Purpose of the `scopes_supported` Parameter**
+The `scopes_supported` parameter defines the available authorization scopes (permissions) that can be requested during the OAuth flow.
+
+---
+
+#### **What to Do with `scopes_supported`**
+- Fetch the `scopes_supported` parameter from the backend as part of the `auth_settings` object.
+
+```json
+{"scopes_supported": ["read", "write", "admin"]}
+```
+- If `scopes_supported` is not null and not empty convert the `scopes_supported` array into a space-separated string `scope` that can be sent in the /authorize request.
+
+```plaintext
+scope=read write admin
+```
+
+- Include `scope` in the Authorization URL, if it's not empty.
+
+---
+
 #### **Steps for frontend**
 
 1. **Construct the Authorization URL**:
-    - **Retrieve Toolset Settings**: Use the backend-provided `auth_settings` (e.g., `client_id`, `redirect_uri`, `code_challenge`, `code_challenge_method`) 
+    - **Retrieve Toolset Settings**: Use the backend-provided `auth_settings` (e.g., `client_id`, `redirect_uri`, `code_challenge`, `code_challenge_method`, `scopes_supported`) 
         for the Toolset.
     - **Add `state`**: Build the **/authorize URL** with a serialized `state` parameter, e.g.:
       ```plaintext

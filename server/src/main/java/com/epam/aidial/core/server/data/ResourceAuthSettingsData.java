@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -26,6 +28,7 @@ public class ResourceAuthSettingsData {
     private ResourceAuthStatus globalAuthStatus;
     private ResourceAuthStatus appLevelAuthStatus;
     private ResourceAuthStatus userLevelAuthStatus;
+    private List<String> scopesSupported;
 
     @JsonIgnore
     public static ResourceAuthSettingsData toData(ResourceAuthSettings toolsetAuthSettings) {
@@ -40,6 +43,7 @@ public class ResourceAuthSettingsData {
             .globalAuthStatus(toolsetAuthSettings.getGlobalAuthStatus())
             .appLevelAuthStatus(toolsetAuthSettings.getAppLevelAuthStatus())
             .userLevelAuthStatus(toolsetAuthSettings.getUserLevelAuthStatus())
+            .scopesSupported(toolsetAuthSettings.getScopesSupported())
             .build();
     }
 }

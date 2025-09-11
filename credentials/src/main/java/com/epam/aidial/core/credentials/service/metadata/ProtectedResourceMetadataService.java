@@ -104,10 +104,10 @@ public class ProtectedResourceMetadataService {
      *
      * @param resourceEndpoint The base URL of the resource endpoint.
      * @return The {@link AuthorizationServerProtectedResourceMetadata}, or {@code null} if metadata cannot be resolved.
-     * @throws HttpException If the HTTP request fails with a non-recoverable status.
      */
     private AuthorizationServerProtectedResourceMetadata tryFetchMetadataUsingHeader(String resourceEndpoint) {
         try {
+            log.debug("Resolving Resource Metadata endpoint for resource: {}", resourceEndpoint);
             resourceAuthorizationClient.executePost(resourceEndpoint, "{}", ContentType.APPLICATION_JSON.toString(), Object.class);
         } catch (HttpException e) {
             HttpStatus httpExceptionStatus = e.getStatus();
@@ -117,15 +117,9 @@ public class ProtectedResourceMetadataService {
                     log.debug("Retrieved metadata URL from WWW-Authenticate header: {}", metadataUrl.get());
                     return tryFetchMetadata(metadataUrl.get());
                 }
-                log.debug("401 Unauthorized at endpoint: {}. Proceeding to next fallback.", resourceEndpoint);
-            } else if (httpExceptionStatus.is4xx()) {
-                log.debug("{} at endpoint: {}. Proceeding to next fallback.", httpExceptionStatus.getCode(), resourceEndpoint);
-            } else {
-                throw e;
             }
-            return null;
+            log.debug("{} at endpoint: {}. Proceeding to next fallback.", httpExceptionStatus.getCode(), resourceEndpoint);
         }
-        log.debug("Resolving Resource Metadata endpoint for resource: {}", resourceEndpoint);
         return null;
     }
 
@@ -154,6 +148,7 @@ public class ProtectedResourceMetadataService {
                     || httpExceptionStatus.equals(HttpStatus.NOT_FOUND)) {
                 log.debug("401 Unauthorized at endpoint: {}. Proceeding to next fallback.", endpoint);
             } else {
+                log.debug("Error {} getting metadata from endpoint: {}.", httpExceptionStatus.getCode(), endpoint);
                 throw e;
             }
         }
