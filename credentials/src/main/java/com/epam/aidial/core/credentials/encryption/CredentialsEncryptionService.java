@@ -10,6 +10,15 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+/**
+ * Service class for encrypting and decrypting credential data using AES-GCM.
+ * <p>
+ * Uses a provided Content Encryption Key (CEK) to perform symmetric encryption.
+ * The CEK itself is typically decrypted via a {@link ContentEncryptionKeyManager}.
+ * <p>
+ * The output of encryption prepends the randomly generated IV to the ciphertext
+ * for use during decryption.
+ */
 @Slf4j
 public class CredentialsEncryptionService {
 
@@ -26,6 +35,15 @@ public class CredentialsEncryptionService {
         this.secureRandom = secureRandom;
     }
 
+    /**
+     * Encrypts the given plaintext using AES-GCM with the provided CEK and
+     * optional Additional Authenticated Data (AAD).
+     *
+     * @param plain                plaintext bytes
+     * @param contentEncryptionKey CEK for encryption
+     * @param aad                  optional AAD for authentication
+     * @return encrypted payload with IV prepended
+     */
     public byte[] encrypt(byte[] plain, byte[] contentEncryptionKey, byte[] aad) {
         if (plain == null) {
             throw new IllegalArgumentException("plain must not be null");
@@ -56,6 +74,15 @@ public class CredentialsEncryptionService {
         }
     }
 
+    /**
+     * Decrypts the given AES-GCM encrypted payload with the provided CEK
+     * and optional Additional Authenticated Data (AAD).
+     *
+     * @param encrypted            encrypted bytes with IV prepended
+     * @param contentEncryptionKey CEK for decryption
+     * @param aad                  optional AAD for authentication
+     * @return decrypted plaintext bytes
+     */
     public byte[] decrypt(byte[] encrypted, byte[] contentEncryptionKey, byte[] aad) {
         if (encrypted == null) {
             throw new IllegalArgumentException("encrypted must not be null");
