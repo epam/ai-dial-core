@@ -16,11 +16,22 @@ public interface ResourceRegistrationStrategy {
     ClientRegistration register(String resourceId, String resourceEndpoint, ResourceAuthSettings resourceAuthSettings);
 
     default Optional<String> getCodeChallengeMethod(AuthorizationServerMetadata metadata) {
-        return Optional.ofNullable(metadata.getCodeChallengeMethodsSupported())
-                .filter(codeChallengeMethodsSupported -> !codeChallengeMethodsSupported.isEmpty())
-                .map(codeChallengeMethodsSupported -> codeChallengeMethodsSupported.contains(CodeChallengeMethod.S256.getValue())
-                        ? CodeChallengeMethod.S256.getValue()
-                        : CodeChallengeMethod.PLAIN.getValue());
+        List<String> codeChallengeMethodsSupported = metadata.getCodeChallengeMethodsSupported();
+
+        if (codeChallengeMethodsSupported == null || codeChallengeMethodsSupported.isEmpty()) {
+            return Optional.empty();
+        }
+
+        boolean containsS256 = codeChallengeMethodsSupported.contains(CodeChallengeMethod.S256.getValue());
+        boolean containsPlain = codeChallengeMethodsSupported.contains(CodeChallengeMethod.PLAIN.getValue());
+
+        if (!containsS256 && !containsPlain) {
+            throw new IllegalArgumentException("Unsupported code challenge methods detected: " + codeChallengeMethodsSupported);
+        }
+
+        return containsS256
+                ? Optional.of(CodeChallengeMethod.S256.getValue())
+                : Optional.of(CodeChallengeMethod.PLAIN.getValue());
     }
 
     default List<String> collectSupportedScopes(AuthorizationServerProtectedResourceMetadata protectedResourceMetadata,
