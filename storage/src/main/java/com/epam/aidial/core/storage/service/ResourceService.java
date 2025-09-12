@@ -542,29 +542,18 @@ public class ResourceService implements AutoCloseable {
     }
 
     public ResourceItemMetadata computeResource(ResourceDescriptor descriptor, EtagHeader etag, String author, Function<String, String> fn) {
-        String redisKey = redisKey(descriptor);
-
-        try (var ignore = lockService.lock(redisKey)) {
-            Pair<ResourceItemMetadata, String> oldResult = getResourceWithMetadata(descriptor, etag, false);
-
-            String oldBody = oldResult == null ? null : oldResult.getValue();
-            String newBody = fn.apply(oldBody);
-
-            if (oldBody == null && newBody == null) {
-                return null;
+        Function<byte[], byte[]> wrapper = bytes -> {
+            String json = null;
+            if (bytes != null) {
+                json = new String(bytes, StandardCharsets.UTF_8);
             }
-
-            if (oldBody != null && newBody == null) {
-                deleteResource(descriptor, etag, false);
-                return oldResult.getKey();
+            String result = fn.apply(json);
+            if (result != null) {
+                return result.getBytes(StandardCharsets.UTF_8);
             }
-
-            if (Objects.equals(oldBody, newBody)) {
-                return oldResult.getKey();
-            }
-
-            return putResource(descriptor, newBody, etag, author, false);
-        }
+            return null;
+        };
+        return computeResourceBytes(descriptor, etag, author, wrapper);
     }
 
     public ResourceItemMetadata computeResourceBytes(ResourceDescriptor descriptor, Function<byte[], byte[]> fn) {
