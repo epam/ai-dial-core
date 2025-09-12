@@ -12,11 +12,11 @@ import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Service class for encrypting and decrypting credential data using AES-GCM.
- * <p>
- * Uses a provided Content Encryption Key (CEK) to perform symmetric encryption.
+ *
+ * <p>Uses a provided Content Encryption Key (CEK) to perform symmetric encryption.
  * The CEK itself is typically decrypted via a {@link ContentEncryptionKeyManager}.
- * <p>
- * The output of encryption prepends the randomly generated IV to the ciphertext
+ *
+ * <p>The output of encryption prepends the randomly generated IV to the ciphertext
  * for use during decryption.
  */
 @Slf4j

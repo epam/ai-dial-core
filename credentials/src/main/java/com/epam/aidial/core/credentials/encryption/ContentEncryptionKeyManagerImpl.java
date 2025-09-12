@@ -9,11 +9,11 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Default implementation of {@link ContentEncryptionKeyManager}.
- * <p>
- * Retrieves an encrypted CEK from a {@link ResourceService}, decrypts it using
+ *
+ * <p>Retrieves an encrypted CEK from a {@link ResourceService}, decrypts it using
  * a {@link KeyManagementService}, and returns the decrypted CEK.
- * <p>
- * If the CEK does not exist, generates a new one via
+ *
+ * <p>If the CEK does not exist, generates a new one via
  * {@link ContentEncryptionKeyGenerator}, encrypts it with the KMS, and stores
  * it in the {@link ResourceService}.
  */

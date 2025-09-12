@@ -11,8 +11,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * A {@link ContentEncryptionKeyManager} decorator that caches decrypted
  * Content Encryption Keys (CEKs) for a configurable amount of time and size limit.
- * <p>
- * This avoids repeated Key Management Service (KMS) calls, which can be costly,
+ *
+ * <p>This avoids repeated Key Management Service (KMS) calls, which can be costly,
  * by storing CEKs temporarily in memory. Each CEK is fetched or created
  * via the underlying {@link ContentEncryptionKeyManager} if not present in the cache.
  */

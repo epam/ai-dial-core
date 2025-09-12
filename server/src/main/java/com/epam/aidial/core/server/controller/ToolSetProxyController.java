@@ -9,7 +9,6 @@ import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -72,8 +71,8 @@ public class ToolSetProxyController implements Controller {
         this.context = context;
         this.resourceCredentialsManager = proxy.getResourceCredentialsManager();
         this.toolSetId = toolSetId;
-        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId, ResourceTypes.TOOL_SET,
-                context.getUserSub(), proxy.getEncryptionService());
+        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId, context.getUserSub(),
+                proxy.getEncryptionService());
     }
 
     @Override

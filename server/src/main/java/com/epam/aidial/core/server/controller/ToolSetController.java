@@ -48,7 +48,7 @@ public class ToolSetController {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
                 CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId,
-                        ResourceTypes.TOOL_SET, context.getUserSub(), context.getProxy().getEncryptionService());
+                        context.getUserSub(), context.getProxy().getEncryptionService());
                 resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator,
                         toolSet.getAuthSettings(), context.getUserSub());
                 toolSet.clearAuthSettings();
@@ -85,7 +85,7 @@ public class ToolSetController {
                 ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
                 toolSet.clearAuthSettings();
                 CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(),
-                        ResourceTypes.TOOL_SET, context.getUserSub(), context.getProxy().getEncryptionService());
+                        context.getUserSub(), context.getProxy().getEncryptionService());
                 resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
                 return toolSet;
             }

@@ -5,8 +5,8 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 /**
  * Manages creation and retrieval of decrypted Content Encryption Keys (CEKs)
  * used to encrypt/decrypt sensitive data.
- * <p>
- * Implementations may retrieve encrypted CEKs from storage and decrypt them
+ *
+ * <p>Implementations may retrieve encrypted CEKs from storage and decrypt them
  * using a Key Management Service (KMS), or generate and store new CEKs if none exist.
  */
 public interface ContentEncryptionKeyManager {

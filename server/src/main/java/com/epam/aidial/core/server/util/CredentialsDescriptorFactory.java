@@ -3,9 +3,11 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.SourceType;
+import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.experimental.UtilityClass;
 
 import java.util.Arrays;
@@ -16,18 +18,19 @@ public class CredentialsDescriptorFactory {
 
     public static CredentialsDescriptor fromAnyUrl(
             String url,
-            ResourceType resourceType,
             CredentialsLevel credentialsLevel,
             String userSub,
             EncryptionService encryption
     ) {
 
         String name;
+        ResourceType resourceType;
         List<String> parentFolders;
         SourceType sourceType;
         try {
             ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(url, encryption);
             name = resourceDescriptor.getName();
+            resourceType = resourceDescriptor.getType();
             parentFolders = resourceDescriptor.getParentFolders();
             sourceType = SourceType.STORAGE;
         } catch (RuntimeException e) {
@@ -40,6 +43,7 @@ public class CredentialsDescriptorFactory {
 
             String[] parts = url.split(ResourceDescriptor.PATH_SEPARATOR);
             name = parts[parts.length - 1];
+            resourceType = ResourceTypes.of(UrlUtil.decodePath(parts[0]));
             parentFolders = Arrays.asList(Arrays.copyOf(parts, parts.length - 1));
             sourceType = SourceType.CONFIG;
         }
