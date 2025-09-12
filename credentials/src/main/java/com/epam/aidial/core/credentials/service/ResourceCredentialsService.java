@@ -1,10 +1,10 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.encryption.CredentialsEncryptionService;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
@@ -16,10 +16,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,27 +34,18 @@ public class ResourceCredentialsService {
     public void addResourceCredentials(CredentialsDescriptor credentialDescriptor, ResourceCredentials resourceCredentials) {
         byte[] body = JsonMapperUtil.convertToString(resourceCredentials).getBytes(StandardCharsets.UTF_8);
         byte[] encryptedBody = encrypt(credentialDescriptor, body);
-        resourceService.putResourceBytes(getResourceDescriptor(credentialDescriptor), encryptedBody, EtagHeader.ANY);
+        resourceService.putResourceBytes(credentialDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
     }
 
     public List<ResourceCredentials> getAllResourceCredentials(CredentialsLocator credentialsLocator) {
-        return credentialsLocator.getBuckets().stream()
-                .map(bucket -> CredentialsDescriptor.builder()
-                        .type(credentialsLocator.getType())
-                        .sourceType(credentialsLocator.getSourceType())
-                        .name(credentialsLocator.getName())
-                        .parentFolders(credentialsLocator.getParentFolders())
-                        .bucketName(bucket.getBucketName())
-                        .bucketLocation(bucket.getBucketLocation())
-                        .credentialsLevel(bucket.getCredentialsLevel())
-                        .build())
+        return credentialsLocator.getUniqueCredentialsDescriptors().stream()
                 .map(this::getResourceCredentials)
                 .filter(Objects::nonNull)
                 .toList();
     }
 
     public ResourceCredentials getResourceCredentials(CredentialsDescriptor credentialsDescriptor) {
-        byte[] encryptedBody = resourceService.getResourceBytes(getResourceDescriptor(credentialsDescriptor));
+        byte[] encryptedBody = resourceService.getResourceBytes(credentialsDescriptor.toResourceDescriptor());
         if (encryptedBody != null) {
             byte[] body = decrypt(credentialsDescriptor, encryptedBody);
             return JsonMapperUtil.convertToObject(body, ResourceCredentials.class);
@@ -62,44 +53,77 @@ public class ResourceCredentialsService {
         return null;
     }
 
-    public void updateAllResourceCredentials(CredentialsLocator credentialsLocator,
-                                             List<ResourceCredentials> toolSetCredentialsList) {
+    public void updateAllResourceCredentials(
+            CredentialsLocator credentialsLocator,
+            List<ResourceCredentials> toolSetCredentialsList) {
 
-        Map<CredentialsLevel, CredentialsDescriptor> levelToDescriptor = credentialsLocator.getBuckets().stream()
-                .map(bucket -> CredentialsDescriptor.builder()
-                        .type(credentialsLocator.getType())
-                        .sourceType(credentialsLocator.getSourceType())
-                        .name(credentialsLocator.getName())
-                        .parentFolders(credentialsLocator.getParentFolders())
-                        .bucketName(bucket.getBucketName())
-                        .bucketLocation(bucket.getBucketLocation())
-                        .credentialsLevel(bucket.getCredentialsLevel())
-                        .build())
-                .collect(Collectors.toMap(CredentialsDescriptor::getCredentialsLevel, c -> c));
-
-        Map<CredentialsLevel, ResourceCredentials> levelToCredential = toolSetCredentialsList.stream()
+        Map<CredentialsLevel, ResourceCredentials> credentialsByLevel = toolSetCredentialsList.stream()
                 .collect(Collectors.toMap(ResourceCredentials::getCredentialsLevel, c -> c));
 
-        if (!levelToDescriptor.keySet().containsAll(levelToCredential.keySet())) {
-            throw new IllegalArgumentException("Credential levels mismatch. Available credentials levels: %s, Current: %s"
-                    .formatted(levelToDescriptor.keySet(), levelToCredential.keySet()));
+        validateLevels(credentialsLocator, credentialsByLevel);
+
+        Map<CredentialsDescriptor, Set<CredentialsLevel>> descriptorToLevels =
+                groupByDescriptor(credentialsLocator.getCredentialsDescriptors());
+
+        for (Map.Entry<CredentialsDescriptor, Set<CredentialsLevel>> entry : descriptorToLevels.entrySet()) {
+            CredentialsDescriptor descriptor = entry.getKey();
+            ResourceCredentials resolvedCredential = resolveSingleCredential(entry.getValue(), credentialsByLevel, descriptor);
+            updateResourceCredentials(descriptor, resolvedCredential);
+        }
+    }
+
+    private void validateLevels(CredentialsLocator locator, Map<CredentialsLevel, ResourceCredentials> credentialsByLevel) {
+        Set<CredentialsLevel> requiredLevels = credentialsByLevel.keySet();
+        Set<CredentialsLevel> availableLevels = locator.getBuckets().keySet();
+
+        if (!availableLevels.containsAll(requiredLevels)) {
+            throw new IllegalArgumentException(
+                    "Credential levels mismatch. Available: %s, Provided: %s"
+                            .formatted(availableLevels, requiredLevels)
+            );
+        }
+    }
+
+    private Map<CredentialsDescriptor, Set<CredentialsLevel>> groupByDescriptor(
+            Map<CredentialsLevel, CredentialsDescriptor> credentialsDescriptors) {
+
+        return credentialsDescriptors.entrySet().stream()
+                .collect(Collectors.groupingBy(
+                        Map.Entry::getValue,
+                        Collectors.mapping(Map.Entry::getKey, Collectors.toSet())
+                ));
+    }
+
+    private ResourceCredentials resolveSingleCredential(
+            Set<CredentialsLevel> levels,
+            Map<CredentialsLevel, ResourceCredentials> credentialsByLevel,
+            CredentialsDescriptor descriptor) {
+
+        List<ResourceCredentials> matchedCredentials = levels.stream()
+                .map(credentialsByLevel::get)
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (matchedCredentials.isEmpty()) {
+            return null;
         }
 
-        for (Map.Entry<CredentialsLevel, CredentialsDescriptor> entry : levelToDescriptor.entrySet()) {
-            CredentialsLevel credentialsLevel = entry.getKey();
-            CredentialsDescriptor credentialsDescriptor = entry.getValue();
-            ResourceCredentials resourceCredentials = levelToCredential.get(credentialsLevel);
-            updateResourceCredentials(credentialsDescriptor, resourceCredentials);
+        if (matchedCredentials.size() > 1) {
+            throw new IllegalArgumentException(
+                    "Duplicate credentials found for resource %s".formatted(descriptor.getResourceId())
+            );
         }
+
+        return matchedCredentials.getFirst();
     }
 
     public void updateResourceCredentials(CredentialsDescriptor credentialsDescriptor,
                                           ResourceCredentials credentials) {
 
-        resourceService.computeResourceBytes(getResourceDescriptor(credentialsDescriptor), existing -> {
+        resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existing -> {
             if (existing == null) {
-                throw new ResourceNotFoundException("Credentials for %s %s not found"
-                        .formatted(credentialsDescriptor.getType().group(), credentialsDescriptor.getResourceId()));
+                throw new ResourceNotFoundException("Credentials for %s not found"
+                        .formatted(credentialsDescriptor.getResourceId()));
             }
             if (credentials == null) {
                 return null;
@@ -112,30 +136,14 @@ public class ResourceCredentialsService {
 
     private byte[] encrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
         byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(credentialsDescriptor);
-        byte[] aad = credentialsDescriptor.getDecodedPath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
         return credentialsEncryptionService.encrypt(data, contentEncryptionKey, aad);
     }
 
     private byte[] decrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
         byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(credentialsDescriptor);
-        byte[] aad = credentialsDescriptor.getDecodedPath().getBytes(StandardCharsets.UTF_8);
+        byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
         return credentialsEncryptionService.decrypt(data, contentEncryptionKey, aad);
-    }
-
-    private ResourceDescriptor getResourceDescriptor(CredentialsDescriptor credentialsDescriptor) {
-        List<String> parentFolders = new ArrayList<>();
-        parentFolders.add(credentialsDescriptor.getType().group());
-        parentFolders.add(credentialsDescriptor.getSourceType().getValue());
-        parentFolders.addAll(credentialsDescriptor.getParentFolders());
-
-        return new ResourceDescriptor(
-                ResourceTypes.CREDENTIALS,
-                credentialsDescriptor.getName(),
-                parentFolders,
-                credentialsDescriptor.getBucketName(),
-                credentialsDescriptor.getBucketLocation(),
-                false
-        );
     }
 
 }

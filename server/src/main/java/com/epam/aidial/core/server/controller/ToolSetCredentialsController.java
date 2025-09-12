@@ -12,7 +12,6 @@ import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -63,7 +62,7 @@ public class ToolSetCredentialsController {
                         if (deployment instanceof ToolSet toolSet) {
                             verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
                             CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
-                                    toolsetId, resourceSignInRequest.getCredentialsLevel(), context.getUserSub(), encryptionService);
+                                    toolsetId, context.getUserSub(), resourceSignInRequest.getCredentialsLevel(), encryptionService);
                             ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
                                     credentialsDescriptor,
                                     toolSet.getAuthSettings(),
@@ -93,7 +92,7 @@ public class ToolSetCredentialsController {
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->
-                    respondError("Can't signOut from Toolset", error));
+                        respondError("Can't signOut from Toolset", error));
 
         return Future.succeededFuture();
     }
@@ -123,10 +122,10 @@ public class ToolSetCredentialsController {
     // TODO: Create dto for 'public' credentials information?
     private ResourceCredentials clearResourceCredentialsSecrets(ResourceCredentials resourceCredentials) {
         return ResourceCredentials.builder()
-            .resourceId(resourceCredentials.getResourceId())
-            .authenticationType(resourceCredentials.getAuthenticationType())
-            .credentialsLevel(resourceCredentials.getCredentialsLevel())
-            .build();
+                .resourceId(resourceCredentials.getResourceId())
+                .authenticationType(resourceCredentials.getAuthenticationType())
+                .credentialsLevel(resourceCredentials.getCredentialsLevel())
+                .build();
     }
 
     private void respondError(String message, Throwable error) {

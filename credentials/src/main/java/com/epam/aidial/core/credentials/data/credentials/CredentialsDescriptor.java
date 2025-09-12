@@ -1,44 +1,39 @@
 package com.epam.aidial.core.credentials.data.credentials;
 
-import com.epam.aidial.core.config.CredentialsLevel;
-import com.epam.aidial.core.storage.resource.ResourceType;
-import lombok.Builder;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.Data;
 
+import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Represents the location and identifier of a specific credentials resource
+ * stored in a storage bucket.
+ */
 @Data
-@Builder
 public class CredentialsDescriptor {
 
-    private static final String PATH_SEPARATOR = "/";
+    private final String resourceId;
+    private final String bucketName;
+    private final String bucketLocation;
 
-    private String resourceId;
+    public String getFullPath() {
+        return bucketLocation + "/" + resourceId;
+    }
 
-    private ResourceType type;
-    private SourceType sourceType;
-    private String name;
-    private List<String> parentFolders;
-    private String bucketName;
-    private String bucketLocation;
-    private CredentialsLevel credentialsLevel;
+    public ResourceDescriptor toResourceDescriptor() {
+        String[] parts = resourceId.split(ResourceDescriptor.PATH_SEPARATOR);
+        String name = parts[parts.length - 1];
+        List<String> parentFolders = Arrays.asList(Arrays.copyOf(parts, parts.length - 1));
 
-    public String getDecodedPath() {
-        StringBuilder builder = new StringBuilder();
-        builder.append(bucketLocation)
-                .append(type.group())
-                .append(PATH_SEPARATOR)
-                .append(sourceType)
-                .append(PATH_SEPARATOR);
-
-        if (!parentFolders.isEmpty()) {
-            builder.append(String.join(PATH_SEPARATOR, parentFolders))
-                    .append(PATH_SEPARATOR);
-        }
-
-        builder.append(name);
-
-        return builder.toString();
+        return new ResourceDescriptor(
+                ResourceTypes.CREDENTIALS,
+                name,
+                parentFolders,
+                bucketName,
+                bucketLocation,
+                false
+        );
     }
 
 }

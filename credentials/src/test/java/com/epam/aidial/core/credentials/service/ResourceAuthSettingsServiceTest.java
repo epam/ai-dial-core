@@ -5,11 +5,9 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ResourceAuthStatus;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.credentials.data.credentials.CredentialBucketLocation;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
-import com.epam.aidial.core.credentials.data.credentials.SourceType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +17,7 @@ import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
 import java.util.List;
+import java.util.Map;
 
 class ResourceAuthSettingsServiceTest {
 
@@ -178,18 +177,9 @@ class ResourceAuthSettingsServiceTest {
     }
 
     private CredentialsLocator createCredentialsLocator() {
-        return CredentialsLocator.builder()
-                .resourceId("bucket-name/folder1/my-toolset")
-                .type(ResourceTypes.CREDENTIALS)
-                .sourceType(SourceType.STORAGE)
-                .name("my-toolset")
-                .parentFolders(List.of("folder1"))
-                .buckets(List.of(CredentialBucketLocation.builder()
-                        .credentialsLevel(CredentialsLevel.USER)
-                        .bucketName("bucket-name")
-                        .bucketLocation("bucket-location/")
-                        .build()))
-                .build();
+        return new CredentialsLocator("bucket-name/folder1/my-toolset", Map.of(
+                CredentialsLevel.USER, new BucketInfo("bucket-name", "bucket-location/")
+        ));
     }
 
 }

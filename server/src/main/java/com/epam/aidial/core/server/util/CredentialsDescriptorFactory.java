@@ -1,75 +1,71 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
-import com.epam.aidial.core.credentials.data.credentials.SourceType;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceType;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.experimental.UtilityClass;
 
-import java.util.Arrays;
-import java.util.List;
+import java.util.Objects;
 
 @UtilityClass
 public class CredentialsDescriptorFactory {
 
     public static CredentialsDescriptor fromAnyUrl(
-            String url,
+            String resourceId,
+            String userSub,
             CredentialsLevel credentialsLevel,
+            EncryptionService encryption
+    ) {
+        ResourceDescriptor resourceDescriptor = null;
+        try {
+            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceId, encryption);
+        } catch (RuntimeException ignored) {
+            // resource might be static, resourceDescriptor remains null
+        }
+
+        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, resourceId, userSub, encryption);
+        return new CredentialsDescriptor(resourceId, bucketInfo.name(), bucketInfo.location());
+    }
+
+    private BucketInfo resolveBucketInfo(
+            CredentialsLevel credentialsLevel,
+            ResourceDescriptor resourceDescriptor,
+            String resourceId,
             String userSub,
             EncryptionService encryption
     ) {
+        BucketInfo globalLocation = getPublicBucketInfo();
+        BucketInfo userLocation = getUserBucketInfo(userSub, encryption);
 
-        String name;
-        ResourceType resourceType;
-        List<String> parentFolders;
-        SourceType sourceType;
-        try {
-            ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(url, encryption);
-            name = resourceDescriptor.getName();
-            resourceType = resourceDescriptor.getType();
-            parentFolders = resourceDescriptor.getParentFolders();
-            sourceType = SourceType.STORAGE;
-        } catch (RuntimeException e) {
-            if (url.startsWith(ResourceDescriptor.PATH_SEPARATOR)) {
-                throw new IllegalArgumentException("Url must not start with " + ResourceDescriptor.PATH_SEPARATOR + ", but: " + url);
+        switch (credentialsLevel) {
+            case GLOBAL -> {
+                if (resourceDescriptor == null || resourceDescriptor.isPublic()) {
+                    return globalLocation;
+                }
+                if (Objects.equals(resourceDescriptor.getBucketLocation(), userLocation.location())) {
+                    return userLocation;
+                }
+                throw new IllegalArgumentException(
+                        "Cannot modify global credentials of other users: " + resourceId
+                );
             }
-            if (url.endsWith(ResourceDescriptor.PATH_SEPARATOR)) {
-                throw new IllegalArgumentException("Url must not end with " + ResourceDescriptor.PATH_SEPARATOR + ", but: " + url);
+            case USER -> {
+                return userLocation;
             }
-
-            String[] parts = url.split(ResourceDescriptor.PATH_SEPARATOR);
-            name = parts[parts.length - 1];
-            resourceType = ResourceTypes.of(UrlUtil.decodePath(parts[0]));
-            parentFolders = Arrays.asList(Arrays.copyOf(parts, parts.length - 1));
-            sourceType = SourceType.CONFIG;
+            default -> throw new IllegalArgumentException("Invalid credentials level: " + credentialsLevel);
         }
+    }
 
-        String bucketName;
-        String bucketLocation;
-        if (credentialsLevel == CredentialsLevel.GLOBAL) {
-            bucketLocation = ResourceDescriptor.PUBLIC_LOCATION;
-            bucketName = ResourceDescriptor.PUBLIC_BUCKET;
-        } else if (credentialsLevel == CredentialsLevel.USER) {
-            bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(userSub);
-            bucketName = encryption.encrypt(bucketLocation);
-        } else {
-            throw new IllegalArgumentException("Unsupported credentials level: " + credentialsLevel);
-        }
+    public static BucketInfo getUserBucketInfo(String userSub, EncryptionService encryption) {
+        String userBucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(userSub);
+        String userBucketName = encryption.encrypt(userBucketLocation);
+        return new BucketInfo(userBucketLocation, userBucketName);
+    }
 
-        return CredentialsDescriptor.builder()
-                .resourceId(url)
-                .type(resourceType)
-                .sourceType(sourceType)
-                .name(name)
-                .parentFolders(parentFolders)
-                .bucketName(bucketName)
-                .bucketLocation(bucketLocation)
-                .credentialsLevel(credentialsLevel)
-                .build();
+    public static BucketInfo getPublicBucketInfo() {
+        return new BucketInfo(ResourceDescriptor.PUBLIC_LOCATION, ResourceDescriptor.PUBLIC_BUCKET);
     }
 
 }

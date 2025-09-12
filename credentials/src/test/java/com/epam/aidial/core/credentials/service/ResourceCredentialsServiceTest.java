@@ -1,12 +1,11 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
-import com.epam.aidial.core.credentials.data.credentials.CredentialBucketLocation;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
-import com.epam.aidial.core.credentials.data.credentials.SourceType;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.encryption.CredentialsEncryptionService;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
@@ -24,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -40,7 +40,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ResourceCredentialsServiceTest {
 
-    private static final String TOOL_SET_NAME = "toolsets/bucket-name/folder1/my-toolset";
+    private static final String TOOL_SET_NAME = "toolsets/toolset-bucket-name/folder1/my-toolset";
     private static final byte[] CEK = "test_cek".getBytes();
     private static final byte[] OLD_ENCRYPTED_BODY = "old_encrypted_body".getBytes();
     private static final byte[] ENCRYPTED_BODY = "encrypted_body".getBytes();
@@ -73,7 +73,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
@@ -107,7 +107,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
     }
@@ -151,7 +151,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
     }
@@ -169,7 +169,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
@@ -193,7 +193,7 @@ class ResourceCredentialsServiceTest {
         ResourceDescriptor passed = descriptorCaptor.getValue();
         Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
         assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("credentials", "storage", "folder1"), passed.getParentFolders());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
         assertEquals("bucket-name", passed.getBucketName());
         assertEquals("bucket-location/", passed.getBucketLocation());
 
@@ -203,31 +203,13 @@ class ResourceCredentialsServiceTest {
     }
 
     private CredentialsDescriptor createCredentialsDescriptor() {
-        return CredentialsDescriptor.builder()
-                .resourceId("bucket-name/folder1/my-toolset")
-                .type(ResourceTypes.CREDENTIALS)
-                .sourceType(SourceType.STORAGE)
-                .name("my-toolset")
-                .parentFolders(List.of("folder1"))
-                .credentialsLevel(CredentialsLevel.USER)
-                .bucketName("bucket-name")
-                .bucketLocation("bucket-location/")
-                .build();
+        return new CredentialsDescriptor(TOOL_SET_NAME, "bucket-name", "bucket-location/");
     }
 
     private CredentialsLocator createCredentialsLocator() {
-        return CredentialsLocator.builder()
-                .resourceId("bucket-name/folder1/my-toolset")
-                .type(ResourceTypes.CREDENTIALS)
-                .sourceType(SourceType.STORAGE)
-                .name("my-toolset")
-                .parentFolders(List.of("folder1"))
-                .buckets(List.of(CredentialBucketLocation.builder()
-                        .credentialsLevel(CredentialsLevel.USER)
-                        .bucketName("bucket-name")
-                        .bucketLocation("bucket-location/")
-                        .build()))
-                .build();
+        return new CredentialsLocator(TOOL_SET_NAME, Map.of(
+                CredentialsLevel.USER, new BucketInfo("bucket-name", "bucket-location/")
+        ));
     }
 
     private ResourceCredentials createCredentials(CredentialsLevel credentialsLevel) {
