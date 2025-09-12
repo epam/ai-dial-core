@@ -289,6 +289,7 @@ public abstract class BaseRouteController implements Controller {
             HttpServerResponse response = context.getResponse();
             responseStream.end(response);
             proxy.getLogStore().save(context);
+            finalizeRequest();
         });
     }
 
