@@ -4,8 +4,7 @@ import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import lombok.RequiredArgsConstructor;
-
-import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 /**
  * Default implementation of {@link ContentEncryptionKeyManager}.
@@ -26,15 +25,15 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
 
     @Override
     public byte[] getOrCreateKey(ResourceDescriptor cekDescriptor) {
-        AtomicReference<byte[]> cekHolder = new AtomicReference<>();
+        MutableObject<byte[]> cekHolder = new MutableObject<>();
         resourceService.computeResourceBytes(cekDescriptor, encryptedCek -> {
             if (encryptedCek != null) {
                 byte[] cek = keyManagementService.decrypt(encryptedCek);
-                cekHolder.set(cek);
+                cekHolder.setValue(cek);
                 return encryptedCek;
             } else {
                 byte[] cek = contentEncryptionKeyGenerator.generate();
-                cekHolder.set(cek);
+                cekHolder.setValue(cek);
                 return keyManagementService.encrypt(cek);
             }
         });
