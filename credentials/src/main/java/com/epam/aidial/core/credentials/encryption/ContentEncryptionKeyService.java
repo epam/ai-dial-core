@@ -21,7 +21,7 @@ public class ContentEncryptionKeyService {
 
     private ResourceDescriptor getContentEncryptionKeyDescriptor(CredentialsDescriptor credentialsDescriptor) {
         return new ResourceDescriptor(
-                ResourceTypes.CREDENTIALS,
+                ResourceTypes.ENCRYPTION_KEYS,
                 CEK_FILENAME,
                 List.of(),
                 credentialsDescriptor.getBucketName(),
