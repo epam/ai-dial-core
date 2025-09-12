@@ -79,7 +79,6 @@ public class ToolSetController {
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
                 ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
                 toolSet.clearAuthSettings();
-                resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), context.getUserSub());
                 return toolSet;
             }
         });
