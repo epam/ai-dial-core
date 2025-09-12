@@ -58,7 +58,8 @@
         },
         "dial:appendApplicationPropertiesHeader": {
           "type": "boolean",
-          "description": "If this flag is set to true, the header with properties will augment the request while proxying"
+          "description": "If this flag is set to true, the header with properties will augment the request while proxying",
+          "default": true
         },
         "dial:applicationTypePlaybackSupport": {
           "type": "boolean",
@@ -83,7 +84,7 @@
                   "type": "array",
                   "items": {
                     "type": "string",
-                    "enum": ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+                    "enum": ["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH"]
                   }
                 },
                 "dial:userRoles": {
