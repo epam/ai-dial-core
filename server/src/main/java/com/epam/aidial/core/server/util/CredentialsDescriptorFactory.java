@@ -21,7 +21,7 @@ public class CredentialsDescriptorFactory {
         ResourceDescriptor resourceDescriptor = null;
         try {
             resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceId, encryption);
-        } catch (RuntimeException ignored) {
+        } catch (IllegalArgumentException ignored) {
             // resource might be static, resourceDescriptor remains null
         }
 
