@@ -32,6 +32,7 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -44,6 +45,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 
@@ -59,6 +61,7 @@ public class ShareService {
     private final ApplicationService applicationService;
     private final LockService lockService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final LongSupplier clock;
 
     private static final Map<ResourceType, ShareResourceLimit> DEFAULT_LIMITS = Map.of(
             ResourceTypes.APPLICATION, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)),
@@ -362,6 +365,7 @@ public class ShareService {
             return null;
         });
         lockService.underBucketLock(location, () -> {
+            long time = clock.getAsLong();
             resourceGroups.forEach((resourceType, links) -> {
                 ResourceDescriptor sharedWithMe = getShareResource(ResourceTypes.SHARED_WITH_ME, resourceType, bucket, location);
                 String state = resourceService.getResource(sharedWithMe);
@@ -371,7 +375,7 @@ public class ShareService {
                 }
 
                 // add all links to the user
-                sharedResources.addSharedResources(links, invitation.getAuthor());
+                sharedResources.addSharedResources(links, invitation.getAuthor(), time);
 
                 resourceService.putResource(sharedWithMe, ProxyUtil.convertToString(sharedResources), EtagHeader.ANY);
             });
@@ -657,7 +661,7 @@ public class ShareService {
                         List<ShareMetadata> perUserPermissions = new ArrayList<>();
                         dto.getUserPermissions(link).forEach((user, access) -> {
                             String userDisplayName = dto.getUserIdToDisplayName().get(user);
-                            if (userDisplayName != null) {
+                            if (StringUtils.isNotBlank(userDisplayName)) {
                                 ShareMetadata shareMetadata = new ShareMetadata();
                                 shareMetadata.setUser(userDisplayName);
                                 shareMetadata.setPermissions(access);
