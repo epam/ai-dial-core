@@ -25,16 +25,20 @@ import java.util.stream.Collectors;
 public class ResourceCredentialsService {
 
     private final ResourceService resourceService;
-
     private final CredentialEncryptionService encryptionService;
 
     public void addResourceCredentials(CredentialsDescriptor credentialDescriptor, ResourceCredentials resourceCredentials) {
+        log.debug("Adding resource credentials for resourceId={}, bucket={}, credentialsLevel={}",
+                credentialDescriptor.getResourceId(), credentialDescriptor.getBucketName(), resourceCredentials.getCredentialsLevel());
         byte[] body = JsonMapperUtil.convertToString(resourceCredentials).getBytes(StandardCharsets.UTF_8);
         byte[] encryptedBody = encrypt(credentialDescriptor, body);
         resourceService.putResourceBytes(credentialDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+        log.debug("Resource credentials for resourceId={}, bucket={} stored successfully",
+                credentialDescriptor.getResourceId(), credentialDescriptor.getBucketName());
     }
 
     public List<ResourceCredentials> getAllResourceCredentials(CredentialsLocator credentialsLocator) {
+        log.debug("Fetching all resource credentials for resourceId={}", credentialsLocator.getResourceId());
         return credentialsLocator.getUniqueCredentialsDescriptors().stream()
                 .map(this::getResourceCredentials)
                 .filter(Objects::nonNull)
@@ -42,17 +46,25 @@ public class ResourceCredentialsService {
     }
 
     public ResourceCredentials getResourceCredentials(CredentialsDescriptor credentialsDescriptor) {
+        log.debug("Fetching resource credentials for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
         byte[] encryptedBody = resourceService.getResourceBytes(credentialsDescriptor.toResourceDescriptor());
         if (encryptedBody != null) {
             byte[] body = decrypt(credentialsDescriptor, encryptedBody);
+            log.debug("Successfully decrypted credentials for resourceId={}, bucket={}",
+                    credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
             return JsonMapperUtil.convertToObject(body, ResourceCredentials.class);
         }
+        log.debug("No credentials found for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
         return null;
     }
 
     public void updateAllResourceCredentials(
             CredentialsLocator credentialsLocator,
             List<ResourceCredentials> toolSetCredentialsList) {
+
+        log.debug("Updating all resource credentials for resourceId={}", credentialsLocator.getResourceId());
 
         Map<CredentialsLevel, ResourceCredentials> credentialsByLevel = toolSetCredentialsList.stream()
                 .collect(Collectors.toMap(ResourceCredentials::getCredentialsLevel, c -> c));
@@ -67,16 +79,19 @@ public class ResourceCredentialsService {
             ResourceCredentials resolvedCredential = resolveSingleCredential(entry.getValue(), credentialsByLevel, descriptor);
             updateResourceCredentials(descriptor, resolvedCredential);
         }
+
+        log.debug("All resource credentials updated successfully for resourceId={}", credentialsLocator.getResourceId());
     }
 
     private void validateLevels(CredentialsLocator locator, Map<CredentialsLevel, ResourceCredentials> credentialsByLevel) {
         Set<CredentialsLevel> requiredLevels = credentialsByLevel.keySet();
         Set<CredentialsLevel> availableLevels = locator.getBuckets().keySet();
 
+        log.debug("Validating credential levels for resourceId={}: available={}, provided={}",
+                locator.getResourceId(), availableLevels, requiredLevels);
         if (!availableLevels.containsAll(requiredLevels)) {
             throw new IllegalArgumentException(
-                    "Credential levels mismatch. Available: %s, Provided: %s"
-                            .formatted(availableLevels, requiredLevels)
+                    "Credential levels mismatch. Available: %s, Provided: %s".formatted(availableLevels, requiredLevels)
             );
         }
     }
@@ -96,12 +111,16 @@ public class ResourceCredentialsService {
             Map<CredentialsLevel, ResourceCredentials> credentialsByLevel,
             CredentialsDescriptor descriptor) {
 
+        log.debug("Resolving single credential for resourceId={}, bucket={} from {} possible levels",
+                descriptor.getResourceId(), descriptor.getBucketName(), levels.size());
         List<ResourceCredentials> matchedCredentials = levels.stream()
                 .map(credentialsByLevel::get)
                 .filter(Objects::nonNull)
                 .toList();
 
         if (matchedCredentials.isEmpty()) {
+            log.debug("No credentials found for resourceId={}, bucket={}, levels={}",
+                    descriptor.getResourceId(), descriptor.getBucketName(), levels);
             return null;
         }
 
@@ -111,11 +130,15 @@ public class ResourceCredentialsService {
             );
         }
 
+        log.debug("Single credential resolved for resourceId={}, bucket={}, levels={}",
+                descriptor.getResourceId(), descriptor.getBucketName(), levels);
         return matchedCredentials.getFirst();
     }
 
     public void updateResourceCredentials(CredentialsDescriptor credentialsDescriptor,
                                           ResourceCredentials credentials) {
+        log.debug("Updating resource credentials for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
 
         resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existing -> {
             if (existing == null) {
@@ -123,25 +146,31 @@ public class ResourceCredentialsService {
                         .formatted(credentialsDescriptor.getResourceId()));
             }
             if (credentials == null) {
+                log.debug("Null credentials provided for resourceId={}, bucket={}. Deleting existing credentials",
+                        credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
                 return null;
             }
 
+            log.debug("Encrypting and storing updated credentials for resourceId={}, bucket={}",
+                    credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
             byte[] body = JsonMapperUtil.convertToString(credentials).getBytes(StandardCharsets.UTF_8);
             return encrypt(credentialsDescriptor, body);
         });
     }
 
     private byte[] encrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
+        log.trace("Encrypting credentials for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
         BucketInfo bucketInfo = new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation());
         byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
         return encryptionService.encrypt(bucketInfo, data, aad);
-
     }
 
     private byte[] decrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
+        log.trace("Decrypting credentials for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
         BucketInfo bucketInfo = new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation());
         byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
         return encryptionService.decrypt(bucketInfo, data, aad);
     }
-
 }
