@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ResourceAuthStatus;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
@@ -20,6 +22,7 @@ import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
 
@@ -120,14 +123,15 @@ class ResourceAuthSettingsServiceTest {
                                      ResourceAuthStatus expectedGlobalLevelStatus) {
         // Given
         ToolSet toolSet = createToolSet();
-        when(resourceCredentialsManager.getAllResourceCredentials(toolSet.getName()))
+        CredentialsLocator credentialsLocator = createCredentialsLocator();
+        when(resourceCredentialsManager.getAllResourceCredentials(credentialsLocator))
                 .thenReturn(
                         Stream.of(userCredentials, globalCredentials)
                                 .filter(Objects::nonNull)
                                 .toList());
 
         // When
-        resourceAuthSettingsService.setResourceAuthStatuses(toolSet.getName(), toolSet.getAuthSettings(), USER_1);
+        resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), USER_1);
 
         // Then
         assertEquals(expectedUserLevelStatus, toolSet.getAuthSettings().getUserLevelAuthStatus());
@@ -269,4 +273,11 @@ class ResourceAuthSettingsServiceTest {
         when(credentials.getUserSub()).thenReturn(userSub);
         return credentials;
     }
+
+    private CredentialsLocator createCredentialsLocator() {
+        return new CredentialsLocator("bucket-name/folder1/my-toolset", Map.of(
+                CredentialsLevel.USER, new BucketInfo("bucket-name", "bucket-location/")
+        ));
+    }
+
 }
