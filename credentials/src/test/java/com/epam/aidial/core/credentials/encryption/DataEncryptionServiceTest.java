@@ -12,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class CredentialsEncryptionServiceTest {
+class DataEncryptionServiceTest {
 
-    private CredentialsEncryptionService service;
+    private DataEncryptionService service;
     private SecureRandom secureRandom;
 
     private byte[] key256;
@@ -30,7 +30,7 @@ class CredentialsEncryptionServiceTest {
                 .build();
 
         secureRandom = SecureRandom.getInstanceStrong();
-        service = new CredentialsEncryptionService(encryptionSettings, secureRandom);
+        service = new DataEncryptionService(encryptionSettings, secureRandom);
 
         // Generate 256-bit AES key
         key256 = new byte[32];

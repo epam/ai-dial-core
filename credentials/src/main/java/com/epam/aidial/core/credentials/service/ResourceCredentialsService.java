@@ -5,11 +5,9 @@ import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
-import com.epam.aidial.core.credentials.encryption.CredentialsEncryptionService;
+import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.RequiredArgsConstructor;
@@ -28,8 +26,7 @@ public class ResourceCredentialsService {
 
     private final ResourceService resourceService;
 
-    private final ContentEncryptionKeyService contentEncryptionKeyService;
-    private final CredentialsEncryptionService credentialsEncryptionService;
+    private final CredentialEncryptionService encryptionService;
 
     public void addResourceCredentials(CredentialsDescriptor credentialDescriptor, ResourceCredentials resourceCredentials) {
         byte[] body = JsonMapperUtil.convertToString(resourceCredentials).getBytes(StandardCharsets.UTF_8);
@@ -135,15 +132,16 @@ public class ResourceCredentialsService {
     }
 
     private byte[] encrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
-        byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(credentialsDescriptor);
+        BucketInfo bucketInfo = new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation());
         byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
-        return credentialsEncryptionService.encrypt(data, contentEncryptionKey, aad);
+        return encryptionService.encrypt(bucketInfo, data, aad);
+
     }
 
     private byte[] decrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
-        byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(credentialsDescriptor);
+        BucketInfo bucketInfo = new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation());
         byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
-        return credentialsEncryptionService.decrypt(data, contentEncryptionKey, aad);
+        return encryptionService.decrypt(bucketInfo, data, aad);
     }
 
 }

@@ -6,8 +6,7 @@ import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
-import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
-import com.epam.aidial.core.credentials.encryption.CredentialsEncryptionService;
+import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -48,9 +47,7 @@ class ResourceCredentialsServiceTest {
     @Mock
     private ResourceService resourceService;
     @Mock
-    private ContentEncryptionKeyService contentEncryptionKeyService;
-    @Mock
-    private CredentialsEncryptionService credentialsEncryptionService;
+    private CredentialEncryptionService credentialEncryptionService;
 
     @InjectMocks
     private ResourceCredentialsService service;
@@ -59,8 +56,7 @@ class ResourceCredentialsServiceTest {
     public void testAddResourceCredentials_putsResource() {
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         CredentialsDescriptor descriptor = createCredentialsDescriptor();
-        when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
-        when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
+        when(credentialEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
         service.addResourceCredentials(descriptor, creds);
 
@@ -90,8 +86,7 @@ class ResourceCredentialsServiceTest {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
 
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
-        when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
-        when(credentialsEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
+        when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
 
         List<ResourceCredentials> list = service.getAllResourceCredentials(credentialsLocator);
 
@@ -181,8 +176,7 @@ class ResourceCredentialsServiceTest {
     public void testUpdateAllResourceCredentials_updatesBody() {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
         ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
-        when(contentEncryptionKeyService.getOrCreateKey(any())).thenReturn(CEK);
-        when(credentialsEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
+        when(credentialEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
 
         service.updateAllResourceCredentials(credentialsLocator, List.of(c1));
 

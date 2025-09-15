@@ -20,14 +20,14 @@ import javax.crypto.spec.SecretKeySpec;
  * for use during decryption.
  */
 @Slf4j
-public class CredentialsEncryptionService {
+public class DataEncryptionService {
 
     private final String cipherTransformation;
     private final int ivLengthBytes;
     private final int gcmTagLengthBits;
     private final SecureRandom secureRandom;
 
-    public CredentialsEncryptionService(EncryptionSettings encryptionSettings, SecureRandom secureRandom) {
+    public DataEncryptionService(EncryptionSettings encryptionSettings, SecureRandom secureRandom) {
         this.cipherTransformation = encryptionSettings.getCipherTransformation();
         this.ivLengthBytes = encryptionSettings.getIvLengthBytes();
         this.gcmTagLengthBits = encryptionSettings.getGcmTagLengthBits();

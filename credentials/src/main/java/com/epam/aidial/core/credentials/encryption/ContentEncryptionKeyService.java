@@ -1,6 +1,6 @@
 package com.epam.aidial.core.credentials.encryption;
 
-import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.RequiredArgsConstructor;
@@ -14,18 +14,18 @@ public class ContentEncryptionKeyService {
 
     private final ContentEncryptionKeyManager contentEncryptionKeyManager;
 
-    public byte[] getOrCreateKey(CredentialsDescriptor credentialsDescriptor) {
-        ResourceDescriptor cekDescription = getContentEncryptionKeyDescriptor(credentialsDescriptor);
+    public byte[] getOrCreateKey(BucketInfo bucketInfo) {
+        ResourceDescriptor cekDescription = getContentEncryptionKeyDescriptor(bucketInfo);
         return contentEncryptionKeyManager.getOrCreateKey(cekDescription);
     }
 
-    private ResourceDescriptor getContentEncryptionKeyDescriptor(CredentialsDescriptor credentialsDescriptor) {
+    private ResourceDescriptor getContentEncryptionKeyDescriptor(BucketInfo bucketInfo) {
         return new ResourceDescriptor(
                 ResourceTypes.ENCRYPTION_KEYS,
                 CEK_FILENAME,
                 List.of(),
-                credentialsDescriptor.getBucketName(),
-                credentialsDescriptor.getBucketLocation(),
+                bucketInfo.name(),
+                bucketInfo.location(),
                 false
         );
     }

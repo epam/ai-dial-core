@@ -6,7 +6,8 @@ import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyGenerator
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManager;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManagerFactory;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
-import com.epam.aidial.core.credentials.encryption.CredentialsEncryptionService;
+import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.credentials.encryption.DataEncryptionService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementServiceFactory;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -190,25 +191,13 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
-            KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
-                    .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
-            EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
-                    .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
-            ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
-            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
-            ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                    resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
-            ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
-            CredentialsEncryptionService credentialsEncryptionService = new CredentialsEncryptionService(
-                    encryptionSettings, new SecureRandom());
-
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
             TokenService tokenService = new TokenService(resourceAuthorizationClient);
             ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient);
             ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
             ResourceCredentialsService resourceCredentialsService = new ResourceCredentialsService(resourceService,
-                    contentEncryptionKeyService, credentialsEncryptionService);
+                    credentialEncryptionService);
             ResourceCredentialsManager resourceCredentialsManager = new ResourceCredentialsManager(resourceCredentialsService, tokenService);
             ResourceAuthSettingsService resourceAuthSettingsService = new ResourceAuthSettingsService(resourceRegistrationService,
                     resourceAuthSettingsValidator, resourceCredentialsManager);
@@ -255,6 +244,21 @@ public class AiDial {
         AuthorizationServerMetadataService authorizationServerMetadataService = new AuthorizationServerMetadataService(
                 resourceAuthorizationClient, authorizationServerMetadataValidator);
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService);
+    }
+
+    private CredentialEncryptionService getCredentialEncryptionService() {
+        JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
+        KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
+                .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
+        EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
+                .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
+        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
+        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
+        ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
+        DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
+        return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
     }
 
     @VisibleForTesting
