@@ -43,19 +43,13 @@ public class ResourceAuthSettingsService {
         ClientRegistration clientRegistration = resourceRegistrationService.register(
                 resourceId, resourceEndpoint, resourceAuthSettings);
 
-        CodeVerifier codeVerifier = new CodeVerifier();
-        CodeChallengeMethod codeChallengeMethod = CodeChallengeMethod.parse(clientRegistration.getCodeChallengeMethod());
-        CodeChallenge codeChallenge = CodeChallenge.compute(codeChallengeMethod, codeVerifier);
-
         resourceAuthSettings.setClientId(clientRegistration.getClientId());
         resourceAuthSettings.setClientSecret(clientRegistration.getClientSecret());
         resourceAuthSettings.setAuthorizationEndpoint(clientRegistration.getAuthorizationEndpoint());
         resourceAuthSettings.setTokenEndpoint(clientRegistration.getTokenEndpoint());
         resourceAuthSettings.setRedirectUri(clientRegistration.getRedirectUri());
-        resourceAuthSettings.setCodeChallenge(codeChallenge.getValue());
-        resourceAuthSettings.setCodeVerifier(codeVerifier.getValue());
-        resourceAuthSettings.setCodeChallengeMethod(codeChallengeMethod.getValue());
         resourceAuthSettings.setScopesSupported(clientRegistration.getScopesSupported());
+        setCodeChallengeProperties(resourceAuthSettings, clientRegistration.getCodeChallengeMethod());
     }
 
     public void setResourceAuthStatuses(CredentialsLocator credentialsLocator,
@@ -96,6 +90,19 @@ public class ResourceAuthSettingsService {
             resourceAuthSettings.setGlobalAuthStatus(ResourceAuthStatus.SIGNED_IN);
         } else {
             resourceAuthSettings.setGlobalAuthStatus(ResourceAuthStatus.SIGNED_OUT);
+        }
+    }
+
+    private void setCodeChallengeProperties(ResourceAuthSettings resourceAuthSettings,
+                                            String codeChallengeMethod) {
+        if (codeChallengeMethod != null) {
+            CodeVerifier codeVerifier = new CodeVerifier();
+            CodeChallengeMethod parsedCodeChallengeMethod = CodeChallengeMethod.parse(codeChallengeMethod);
+            CodeChallenge codeChallenge = CodeChallenge.compute(parsedCodeChallengeMethod, codeVerifier);
+
+            resourceAuthSettings.setCodeChallenge(codeChallenge.getValue());
+            resourceAuthSettings.setCodeVerifier(codeVerifier.getValue());
+            resourceAuthSettings.setCodeChallengeMethod(parsedCodeChallengeMethod.getValue());
         }
     }
 }

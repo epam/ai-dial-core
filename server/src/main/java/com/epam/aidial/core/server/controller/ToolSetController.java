@@ -84,9 +84,6 @@ public class ToolSetController {
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
                 ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
                 toolSet.clearAuthSettings();
-                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(),
-                        context.getUserSub(), context.getProxy().getEncryptionService());
-                resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
                 return toolSet;
             }
         });

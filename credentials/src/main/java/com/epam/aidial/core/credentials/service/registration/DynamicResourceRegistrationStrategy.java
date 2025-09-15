@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Strategy for performing dynamic registration of a protected resource.
@@ -87,9 +88,12 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .redirectUri(clientRegistrationResponse.getRedirectUris().getFirst())
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
-                .codeChallengeMethod(getCodeChallengeMethod(authServerMetadata))
                 .scopesSupported(supportedScopes)
                 .build();
+
+        Optional<String> codeChallengeMethod = getCodeChallengeMethod(authServerMetadata);
+        codeChallengeMethod.ifPresent(clientRegistration::setCodeChallengeMethod);
+
         log.info("Finished dynamic registration for Resource: {}", resourceId);
         return clientRegistration;
     }

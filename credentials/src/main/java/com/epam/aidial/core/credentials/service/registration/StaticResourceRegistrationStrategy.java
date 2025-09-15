@@ -80,13 +80,13 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                         .orElse(authorizationEndpoint);
                 tokenEndpoint = Optional.ofNullable(authServerMetadata.getTokenEndpoint())
                         .orElse(tokenEndpoint);
-                codeChallengeMethod = Optional.ofNullable(getCodeChallengeMethod(authServerMetadata))
+                codeChallengeMethod = getCodeChallengeMethod(authServerMetadata)
                         .orElse(codeChallengeMethod);
             }
         }
 
-        if (authorizationEndpoint == null || tokenEndpoint == null || codeChallengeMethod == null) {
-            throw new IllegalArgumentException("Static resource registration requires: authorizationEndpoint, tokenEndpoint, codeChallengeMethod");
+        if (authorizationEndpoint == null || tokenEndpoint == null) {
+            throw new IllegalArgumentException("Static resource registration requires: authorizationEndpoint, tokenEndpoint");
         }
 
         ClientRegistration clientRegistration = ClientRegistration.builder()
