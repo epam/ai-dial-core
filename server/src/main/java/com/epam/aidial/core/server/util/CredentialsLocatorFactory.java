@@ -42,7 +42,7 @@ public class CredentialsLocatorFactory {
 
         if (resourceDescriptor != null) {
             bucketInfo.put(CredentialsLevel.GLOBAL,
-                    new BucketInfo(resourceDescriptor.getBucketLocation(), resourceDescriptor.getBucketName()));
+                    new BucketInfo(resourceDescriptor.getBucketName(), resourceDescriptor.getBucketLocation()));
         } else {
             bucketInfo.put(CredentialsLevel.GLOBAL, CredentialsDescriptorFactory.getPublicBucketInfo());
         }

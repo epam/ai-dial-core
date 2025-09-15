@@ -61,11 +61,11 @@ public class CredentialsDescriptorFactory {
     public static BucketInfo getUserBucketInfo(String userSub, EncryptionService encryption) {
         String userBucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(userSub);
         String userBucketName = encryption.encrypt(userBucketLocation);
-        return new BucketInfo(userBucketLocation, userBucketName);
+        return new BucketInfo(userBucketName, userBucketLocation);
     }
 
     public static BucketInfo getPublicBucketInfo() {
-        return new BucketInfo(ResourceDescriptor.PUBLIC_LOCATION, ResourceDescriptor.PUBLIC_BUCKET);
+        return new BucketInfo(ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION);
     }
 
 }
