@@ -272,7 +272,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testProxyMcpCall() {
+    void testProxyMcpPostCall() {
         String mcpRequest = """
                 {
                    "payload": "foo"
@@ -289,6 +289,22 @@ public class ToolSetApiTest extends ResourceBaseTest {
         };
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
             Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null, mcpRequest);
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
+    }
+
+    @Test
+    void testProxyMcpGetCall() {
+        String mcpResponse = """
+                    {
+                      "result": "success"
+                    }
+                    """;
+        TestWebServer.Handler handler = request -> new MockResponse().setBody(mcpResponse);
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/mcp");
 
             assertEquals(200, resp.status());
             assertEquals(mcpResponse, resp.body());

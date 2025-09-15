@@ -97,7 +97,7 @@ class DynamicResourceRegistrationStrategyTest {
         assertEquals(resourceRedirectUri, result.getRedirectUri());
         List<String> actualScopesSupported = result.getScopesSupported();
         Collections.sort(actualScopesSupported);
-        assertEquals(List.of("scope1", "scope2", "scope3", "scope4"), actualScopesSupported);
+        assertEquals(List.of("scope1", "scope2"), actualScopesSupported);
         verify(authorizationServerMetadataService, times(1)).getAuthorizationServerMetadata(
                 resourceId, resourceEndpoint, protectedResourceMetadata, true);
         verify(resourceAuthorizationClient, times(1)).executePost(

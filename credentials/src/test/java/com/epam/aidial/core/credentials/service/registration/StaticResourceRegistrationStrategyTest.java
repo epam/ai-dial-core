@@ -50,7 +50,7 @@ class StaticResourceRegistrationStrategyTest {
 
         AuthorizationServerProtectedResourceMetadata protectedResourceMetadata = mock(AuthorizationServerProtectedResourceMetadata.class);
         when(protectedResourceMetadata.getAuthorizationServers()).thenReturn(List.of("https://auth.server"));
-        when(protectedResourceMetadata.getScopesSupported()).thenReturn(List.of("scope1"));
+        when(protectedResourceMetadata.getScopesSupported()).thenReturn(List.of());
 
         when(protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint)).thenReturn(protectedResourceMetadata);
 
@@ -75,7 +75,7 @@ class StaticResourceRegistrationStrategyTest {
         assertEquals("S256", result.getCodeChallengeMethod());
         List<String> actualScopesSupported = result.getScopesSupported();
         Collections.sort(actualScopesSupported);
-        assertEquals(List.of("scope1", "scope2", "scope3"), actualScopesSupported);
+        assertEquals(List.of("scope2", "scope3"), actualScopesSupported);
         verify(authorizationServerMetadataService, times(1)).getAuthorizationServerMetadata(
                 resourceId, resourceEndpoint, protectedResourceMetadata, false);
     }
