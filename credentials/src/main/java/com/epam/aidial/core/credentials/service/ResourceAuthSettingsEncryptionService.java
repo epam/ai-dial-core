@@ -19,11 +19,6 @@ public class ResourceAuthSettingsEncryptionService {
 
     private static final Charset UTF_8 = StandardCharsets.UTF_8;
 
-    private static final List<FieldDescriptor> FIELD_DESCRIPTORS = List.of(
-            new FieldDescriptor(ResourceAuthSettings::getClientSecret, ResourceAuthSettings::setClientSecret),
-            new FieldDescriptor(ResourceAuthSettings::getApiKeyHeader, ResourceAuthSettings::setApiKeyHeader)
-    );
-
     private final CredentialEncryptionService encryptionService;
 
     public void encrypt(String resourceId,
@@ -42,20 +37,17 @@ public class ResourceAuthSettingsEncryptionService {
                                BucketInfo bucketInfo,
                                ResourceAuthSettings settings,
                                boolean encrypt) {
+
         byte[] aad = resourceId.getBytes(UTF_8);
 
-        FIELD_DESCRIPTORS.forEach(field -> {
-            String currentValue = field.getter().apply(settings);
-            if (currentValue == null) {
-                return;
-            }
-
+        String clientSecret = settings.getClientSecret();
+        if (clientSecret != null) {
             String processedValue = encrypt
-                    ? encryptValue(bucketInfo, aad, currentValue)
-                    : decryptValue(bucketInfo, aad, currentValue);
+                    ? encryptValue(bucketInfo, aad, clientSecret)
+                    : decryptValue(bucketInfo, aad, clientSecret);
+            settings.setClientSecret(processedValue);
+        }
 
-            field.setter().accept(settings, processedValue);
-        });
     }
 
     private String encryptValue(BucketInfo bucketInfo, byte[] aad, String plainText) {
@@ -68,12 +60,6 @@ public class ResourceAuthSettingsEncryptionService {
         byte[] encrypted = Base64.getDecoder().decode(encryptedText);
         byte[] plain = encryptionService.decrypt(bucketInfo, encrypted, aad);
         return new String(plain, UTF_8);
-    }
-
-    private record FieldDescriptor(
-            Function<ResourceAuthSettings, String> getter,
-            BiConsumer<ResourceAuthSettings, String> setter
-    ) {
     }
 
 }
