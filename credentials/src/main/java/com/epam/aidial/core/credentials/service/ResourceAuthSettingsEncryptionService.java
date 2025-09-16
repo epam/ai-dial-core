@@ -46,7 +46,9 @@ public class ResourceAuthSettingsEncryptionService {
 
         FIELD_DESCRIPTORS.forEach(field -> {
             String currentValue = field.getter().apply(settings);
-            if (currentValue == null) return;
+            if (currentValue == null) {
+                return;
+            }
 
             String processedValue = encrypt
                     ? encryptValue(bucketInfo, aad, currentValue)
