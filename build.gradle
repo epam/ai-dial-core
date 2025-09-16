@@ -21,7 +21,6 @@ allprojects {
     }
 
     checkstyle {
-        toolVersion = "${checkstyle_version}"
         configDirectory = file("$rootProject.projectDir/checkstyle")
     }
 
