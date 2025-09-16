@@ -2302,7 +2302,7 @@ public class ShareApiTest extends ResourceBaseTest {
                     "sharedBy" : [ {
                       "user" : "EPM-RTC-RAIL",
                       "permissions" : [ "READ" ],
-                      "acceptedAt" : 456
+                      "acceptedAt" : 567
                     } ],
                     "author" : "EPM-RTC-GPT"
                   } ]
