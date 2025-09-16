@@ -10,6 +10,7 @@ import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.credentials.encryption.DataEncryptionService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementServiceFactory;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
@@ -201,8 +202,11 @@ public class AiDial {
             ResourceCredentialsManager resourceCredentialsManager = new ResourceCredentialsManager(resourceCredentialsService, tokenService);
             ResourceAuthSettingsService resourceAuthSettingsService = new ResourceAuthSettingsService(resourceRegistrationService,
                     resourceAuthSettingsValidator, resourceCredentialsManager);
+            ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
+                    credentialEncryptionService);
 
-            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService);
+            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
+                    resourceAuthSettingsEncryptionService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService, generator, clock);
 
