@@ -172,6 +172,7 @@ public class ShareApiTest extends ResourceBaseTest {
         assertNotNull(invitationLink);
 
         // accept invitation
+        time = 123;
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
         verify(response, 200);
 
@@ -195,7 +196,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "permissions" : [ "READ" ],
                     "sharedBy" : [ {
                       "user" : "EPM-RTC-GPT",
-                      "permissions" : [ "READ" ]
+                      "permissions" : [ "READ" ],
+                      "acceptedAt" : 123
                     } ],
                     "author" : "EPM-RTC-GPT"
                   } ]
@@ -1377,6 +1379,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 403);
 
         // accept invitation
+        time = 234;
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
         verify(response, 200);
 
@@ -1435,7 +1438,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "permissions" : [ "READ" ],
                       "sharedBy" : [ {
                         "user" : "EPM-RTC-GPT",
-                        "permissions" : [ "READ" ]
+                        "permissions" : [ "READ" ],
+                        "acceptedAt" : 234
                       } ],
                       "author" : "EPM-RTC-GPT"
                     },
@@ -1449,7 +1453,8 @@ public class ShareApiTest extends ResourceBaseTest {
                       "permissions" : [ "READ" ],
                       "sharedBy" : [ {
                         "user" : "EPM-RTC-GPT",
-                        "permissions" : [ "READ" ]
+                        "permissions" : [ "READ" ],
+                        "acceptedAt" : 234
                       } ],
                       "author" : "EPM-RTC-GPT"
                     }
@@ -2035,6 +2040,7 @@ public class ShareApiTest extends ResourceBaseTest {
         assertNotNull(invitationLink);
 
         // accept invitation
+        time = 345;
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
         verify(response, 200);
 
@@ -2062,7 +2068,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "permissions" : [ "READ", "SHARE" ],
                     "sharedBy" : [ {
                       "user" : "EPM-RTC-GPT",
-                      "permissions" : [ "READ", "SHARE" ]
+                      "permissions" : [ "READ", "SHARE" ],
+                      "acceptedAt" : 345
                     } ],
                     "author" : "EPM-RTC-GPT"
                     } ]
@@ -2123,7 +2130,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "permissions" : [ "READ" ],
                     "sharedBy" : [ {
                       "user" : "EPM-RTC-RAIL",
-                      "permissions" : [ "READ" ]
+                      "permissions" : [ "READ" ],
+                      "acceptedAt" : 345
                     } ],
                     "author" : "EPM-RTC-GPT"
                   } ]
@@ -2202,6 +2210,7 @@ public class ShareApiTest extends ResourceBaseTest {
         assertNotNull(invitationLink);
 
         // accept invitation by user 3
+        time = 456;
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
         verify(response, 200);
 
@@ -2223,6 +2232,7 @@ public class ShareApiTest extends ResourceBaseTest {
         assertNotNull(invitationLink);
 
         // accept invitation by user 3
+        time = 567;
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
         verify(response, 200);
 
@@ -2246,10 +2256,12 @@ public class ShareApiTest extends ResourceBaseTest {
                     "permissions" : [ "WRITE", "READ" ],
                     "sharedBy" : [ {
                       "user" : "EPM-RTC-GPT",
-                      "permissions" : [ "WRITE" ]
+                      "permissions" : [ "WRITE" ],
+                      "acceptedAt" : 456
                     },{
                       "user" : "EPM-RTC-RAIL",
-                      "permissions" : [ "READ" ]
+                      "permissions" : [ "READ" ],
+                      "acceptedAt" : 567
                     } ],
                     "author" : "EPM-RTC-GPT"
                   } ]
@@ -2289,7 +2301,8 @@ public class ShareApiTest extends ResourceBaseTest {
                     "permissions" : [ "READ" ],
                     "sharedBy" : [ {
                       "user" : "EPM-RTC-RAIL",
-                      "permissions" : [ "READ" ]
+                      "permissions" : [ "READ" ],
+                      "acceptedAt" : 567
                     } ],
                     "author" : "EPM-RTC-GPT"
                   } ]
