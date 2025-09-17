@@ -3,7 +3,9 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
-import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.experimental.UtilityClass;
 
@@ -14,18 +16,18 @@ public class CredentialsDescriptorFactory {
 
     public static CredentialsDescriptor fromAnyUrl(
             String resourceId,
-            String userSub,
             CredentialsLevel credentialsLevel,
-            EncryptionService encryption
+            ProxyContext proxyContext
     ) {
         ResourceDescriptor resourceDescriptor = null;
         try {
-            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceId, encryption);
+            Proxy proxy = proxyContext.getProxy();
+            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceId, proxy.getEncryptionService());
         } catch (IllegalArgumentException ignored) {
             // resource might be static, resourceDescriptor remains null
         }
 
-        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, resourceId, userSub, encryption);
+        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, resourceId, proxyContext);
         return new CredentialsDescriptor(resourceId, bucketInfo.name(), bucketInfo.location());
     }
 
@@ -33,11 +35,10 @@ public class CredentialsDescriptorFactory {
             CredentialsLevel credentialsLevel,
             ResourceDescriptor resourceDescriptor,
             String resourceId,
-            String userSub,
-            EncryptionService encryption
+            ProxyContext proxyContext
     ) {
         BucketInfo globalLocation = getPublicBucketInfo();
-        BucketInfo userLocation = getUserBucketInfo(userSub, encryption);
+        BucketInfo userLocation = getUserBucketInfo(proxyContext);
 
         switch (credentialsLevel) {
             case GLOBAL -> {
@@ -48,8 +49,7 @@ public class CredentialsDescriptorFactory {
                     return userLocation;
                 }
                 throw new IllegalArgumentException(
-                        "Cannot modify global credentials of other users: " + resourceId
-                );
+                        "Cannot modify global credentials of other users: " + resourceId);
             }
             case USER -> {
                 return userLocation;
@@ -58,10 +58,9 @@ public class CredentialsDescriptorFactory {
         }
     }
 
-    public static BucketInfo getUserBucketInfo(String userSub, EncryptionService encryption) {
-        String userBucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(userSub);
-        String userBucketName = encryption.encrypt(userBucketLocation);
-        return new BucketInfo(userBucketName, userBucketLocation);
+    public static BucketInfo getUserBucketInfo(ProxyContext proxyContext) {
+        AuthBucket authBucket = BucketBuilder.buildBucket(proxyContext);
+        return new BucketInfo(authBucket.getUserBucket(), authBucket.getUserBucketLocation());
     }
 
     public static BucketInfo getPublicBucketInfo() {

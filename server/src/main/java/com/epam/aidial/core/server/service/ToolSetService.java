@@ -30,8 +30,7 @@ public class ToolSetService {
         ToolSet toolSet = result.getValue();
         ResourceItemMetadata meta = result.getKey();
 
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(),
-                context.getUserSub(), context.getProxy().getEncryptionService());
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(), context);
         resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());

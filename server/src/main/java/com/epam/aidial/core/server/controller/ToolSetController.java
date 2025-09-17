@@ -47,8 +47,7 @@ public class ToolSetController {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId,
-                        context.getUserSub(), context.getProxy().getEncryptionService());
+                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId, context);
                 resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator,
                         toolSet.getAuthSettings(), context.getUserSub());
                 toolSet.clearAuthSettings();
