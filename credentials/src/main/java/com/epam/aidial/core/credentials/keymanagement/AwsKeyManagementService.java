@@ -7,7 +7,6 @@ import com.amazonaws.services.kms.model.EncryptRequest;
 import com.amazonaws.services.kms.model.EncryptResult;
 
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.Objects;
 
 public class AwsKeyManagementService implements KeyManagementService {
@@ -16,18 +15,15 @@ public class AwsKeyManagementService implements KeyManagementService {
 
     private final AWSKMS kms;
     private final String keyId;
-    private final Map<String, String> encryptionContext;
+    private final String encryptionAlgorithm;
 
-    public AwsKeyManagementService(AWSKMS kms, String keyId) {
-        this(kms, keyId, Map.of());
-    }
+    public AwsKeyManagementService(AWSKMS kms,
+                                   String keyId,
+                                   String encryptionAlgorithm) {
 
-    public AwsKeyManagementService(AWSKMS kms, String keyId, Map<String, String> encryptionContext) {
         this.kms = Objects.requireNonNull(kms, "kms");
         this.keyId = Objects.requireNonNull(keyId, "keyId");
-        this.encryptionContext = encryptionContext == null
-                ? Map.of()
-                : Map.copyOf(encryptionContext);
+        this.encryptionAlgorithm = encryptionAlgorithm;
     }
 
     @Override
@@ -39,10 +35,8 @@ public class AwsKeyManagementService implements KeyManagementService {
 
         EncryptRequest req = new EncryptRequest()
                 .withKeyId(keyId)
+                .withEncryptionAlgorithm(encryptionAlgorithm)
                 .withPlaintext(ByteBuffer.wrap(plain));
-        if (!encryptionContext.isEmpty()) {
-            req.setEncryptionContext(encryptionContext);
-        }
 
         EncryptResult result = kms.encrypt(req);
         return toByteArray(result.getCiphertextBlob());
@@ -53,10 +47,9 @@ public class AwsKeyManagementService implements KeyManagementService {
         Objects.requireNonNull(encrypted, "encrypted");
 
         DecryptRequest req = new DecryptRequest()
+                .withKeyId(keyId)
+                .withEncryptionAlgorithm(encryptionAlgorithm)
                 .withCiphertextBlob(ByteBuffer.wrap(encrypted));
-        if (!encryptionContext.isEmpty()) {
-            req.setEncryptionContext(encryptionContext);
-        }
 
         DecryptResult result = kms.decrypt(req);
         return toByteArray(result.getPlaintext());
