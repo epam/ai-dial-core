@@ -18,4 +18,5 @@ public class ShareMetadata {
      */
     String user;
     Set<ResourceAccessType> permissions;
+    Long acceptedAt;
 }

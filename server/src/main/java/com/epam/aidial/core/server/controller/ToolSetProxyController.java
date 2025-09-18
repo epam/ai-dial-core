@@ -71,8 +71,7 @@ public class ToolSetProxyController implements Controller {
         this.context = context;
         this.resourceCredentialsManager = proxy.getResourceCredentialsManager();
         this.toolSetId = toolSetId;
-        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId, context.getUserSub(),
-                proxy.getEncryptionService());
+        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId, context);
     }
 
     @Override
