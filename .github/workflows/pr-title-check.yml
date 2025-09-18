@@ -5,10 +5,14 @@ on:
     types:
       - opened
       - edited
-      - synchronize
+      - reopened
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   pr-title-check:
-    uses: epam/ai-dial-ci/.github/workflows/pr-title-check.yml@2.4.1
+    uses: epam/ai-dial-ci/.github/workflows/pr-title-check.yml@2.6.0
     secrets:
       ACTIONS_BOT_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}
