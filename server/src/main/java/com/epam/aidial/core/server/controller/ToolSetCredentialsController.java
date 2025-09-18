@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -27,6 +28,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -56,6 +58,7 @@ public class ToolSetCredentialsController {
                 .body()
                 .compose(body -> {
                     ResourceSignInRequest resourceSignInRequest = ProxyUtil.convertToObject(body, ResourceSignInRequest.class);
+                    ValidationUtil.validate(resourceSignInRequest);
                     String toolsetId = resourceSignInRequest.getUrl();
                     return taskExecutor.submit(() -> {
                         Deployment deployment = deploymentService.findDeployment(context, toolsetId);
@@ -85,6 +88,7 @@ public class ToolSetCredentialsController {
                 .body()
                 .compose(body -> taskExecutor.submit(() -> {
                     ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
+                    ValidationUtil.validate(resourceSignOutRequest);
                     verifyAccess(resourceSignOutRequest.getUrl(), resourceSignOutRequest.getCredentialsLevel());
                     CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                             resourceSignOutRequest.getUrl(), context);
@@ -144,6 +148,10 @@ public class ToolSetCredentialsController {
             case IllegalArgumentException illegalArgumentException -> {
                 status = HttpStatus.BAD_REQUEST;
                 body = illegalArgumentException.getMessage();
+            }
+            case ConstraintViolationException constraintViolationException -> {
+                status = HttpStatus.BAD_REQUEST;
+                body = constraintViolationException.getMessage();
             }
             case PermissionDeniedException permissionDeniedException -> {
                 status = HttpStatus.FORBIDDEN;

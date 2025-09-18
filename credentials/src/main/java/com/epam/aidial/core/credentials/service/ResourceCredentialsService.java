@@ -173,4 +173,13 @@ public class ResourceCredentialsService {
         byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
         return encryptionService.decrypt(bucketInfo, data, aad);
     }
+
+    public boolean deleteResourceCredentials(CredentialsDescriptor credentialsDescriptor) {
+        log.debug("Deleting resource credentials for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
+        boolean deleteSucceeded = resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), EtagHeader.ANY);
+        log.debug("Deleting resource credentials for resourceId={}, bucket={} finished. Status: {}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), deleteSucceeded);
+        return deleteSucceeded;
+    }
 }

@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -57,7 +58,8 @@ public class ResourceCredentialsManager {
             if (credentials.getCredentialsLevel() == CredentialsLevel.USER
                     && userSub != null
                     && userSub.equals(credentials.getUserSub())) {
-                if (credentials.requiresTokenRefresh()) {
+                if (authSettings.getAuthenticationType() == AuthenticationType.OAUTH
+                        && credentials.requiresTokenRefresh()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
                     resourceCredentialsService.updateAllResourceCredentials(credentialsLocator, resourceCredentialsList);
                 }
@@ -65,7 +67,8 @@ public class ResourceCredentialsManager {
             }
 
             if (credentials.getCredentialsLevel() == CredentialsLevel.GLOBAL) {
-                if (credentials.requiresTokenRefresh()) {
+                if (authSettings.getAuthenticationType() == AuthenticationType.OAUTH
+                        && credentials.requiresTokenRefresh()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
                 }
                 globalCredentials = credentials;
@@ -89,26 +92,29 @@ public class ResourceCredentialsManager {
     public boolean deleteResourceCredentials(CredentialsLocator credentialsLocator,
                                              ResourceSignOutRequest resourceSignOutRequest,
                                              String userSub) {
-        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
+        log.debug("Start deleting credentials for resource: {}.", credentialsLocator.getResourceId());
+        CredentialsLevel signOutRequestCredentialsLevel = resourceSignOutRequest.getCredentialsLevel();
+        CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(signOutRequestCredentialsLevel);
+        ResourceCredentials resourceCredentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
 
-        if (resourceCredentialsList == null || resourceCredentialsList.isEmpty()) {
-            return false;
+        CredentialsLevel savedResourceCredentialsLevel = resourceCredentials.getCredentialsLevel();
+        Objects.requireNonNull(savedResourceCredentialsLevel, "Invalid saved credentials: missing CredentialsLevel");
+
+        if (!savedResourceCredentialsLevel.equals(signOutRequestCredentialsLevel)) {
+            throw new IllegalArgumentException("Invalid CredentialsLevel: %s in resource sign out request".formatted(signOutRequestCredentialsLevel));
         }
 
-        boolean removed = false;
-
-        if (resourceSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
-            removed = resourceCredentialsList.removeIf(
-                    resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel()));
-        } else if (resourceSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
-            removed = resourceCredentialsList.removeIf(
-                    resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel())
-                            && resourceCredentials.getUserSub().equals(userSub));
+        if (signOutRequestCredentialsLevel.equals(CredentialsLevel.USER)) {
+            String savedCredentialsUserSub = resourceCredentials.getUserSub();
+            Objects.requireNonNull(savedCredentialsUserSub, "Invalid saved credentials: missing userSub");
+            if (!savedCredentialsUserSub.equals(userSub)) {
+                throw new IllegalArgumentException("Can't delete other user's personal credentials");
+            }
         }
 
-        resourceCredentialsService.updateAllResourceCredentials(credentialsLocator, resourceCredentialsList);
+        boolean removed = resourceCredentialsService.deleteResourceCredentials(credentialsDescriptor);
 
-        log.info("Resource signOut done. {}", credentialsLocator.getResourceId());
+        log.debug("Finished deleting credentials for resource: {}, Success: {}.", credentialsLocator.getResourceId(), removed);
         return removed;
     }
 
