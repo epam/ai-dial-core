@@ -62,7 +62,7 @@ public class ToolSetCredentialsController {
                         if (deployment instanceof ToolSet toolSet) {
                             verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
                             CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
-                                    toolsetId, context.getUserSub(), resourceSignInRequest.getCredentialsLevel(), encryptionService);
+                                    toolsetId, resourceSignInRequest.getCredentialsLevel(), context);
                             ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
                                     credentialsDescriptor,
                                     toolSet.getAuthSettings(),
@@ -86,8 +86,8 @@ public class ToolSetCredentialsController {
                 .compose(body -> taskExecutor.submit(() -> {
                     ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
                     verifyAccess(resourceSignOutRequest.getUrl(), resourceSignOutRequest.getCredentialsLevel());
-                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceSignOutRequest.getUrl(),
-                            context.getUserSub(), encryptionService);
+                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
+                            resourceSignOutRequest.getUrl(), context);
                     return resourceCredentialsManager.deleteResourceCredentials(credentialsLocator, resourceSignOutRequest, context.getUserSub());
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))

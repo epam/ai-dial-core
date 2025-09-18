@@ -3,7 +3,8 @@ package com.epam.aidial.core.server.util;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.experimental.UtilityClass;
 
@@ -15,29 +16,28 @@ public class CredentialsLocatorFactory {
 
     public static CredentialsLocator fromAnyUrl(
             String resourceId,
-            String userSub,
-            EncryptionService encryption
+            ProxyContext proxyContext
     ) {
         ResourceDescriptor resourceDescriptor = null;
         try {
-            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceId, encryption);
+            Proxy proxy = proxyContext.getProxy();
+            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceId, proxy.getEncryptionService());
         } catch (IllegalArgumentException ignored) {
             // resource might be static, resourceDescriptor remains null
         }
 
-        Map<CredentialsLevel, BucketInfo> bucketInfo = resolveBucketInfo(resourceDescriptor, userSub, encryption);
+        Map<CredentialsLevel, BucketInfo> bucketInfo = resolveBucketInfo(resourceDescriptor, proxyContext);
 
         return new CredentialsLocator(resourceId, bucketInfo);
     }
 
     private static Map<CredentialsLevel, BucketInfo> resolveBucketInfo(
             ResourceDescriptor resourceDescriptor,
-            String userSub,
-            EncryptionService encryption
+            ProxyContext proxyContext
     ) {
         Map<CredentialsLevel, BucketInfo> bucketInfo = new HashMap<>();
 
-        BucketInfo userBucketInfo = CredentialsDescriptorFactory.getUserBucketInfo(userSub, encryption);
+        BucketInfo userBucketInfo = CredentialsDescriptorFactory.getUserBucketInfo(proxyContext);
         bucketInfo.put(CredentialsLevel.USER, userBucketInfo);
 
         if (resourceDescriptor != null) {

@@ -40,6 +40,7 @@ import static org.mockito.Mockito.when;
 class ResourceCredentialsServiceTest {
 
     private static final String TOOL_SET_NAME = "toolsets/toolset-bucket-name/folder1/my-toolset";
+    private static final byte[] CEK = "test_cek".getBytes();
     private static final byte[] OLD_ENCRYPTED_BODY = "old_encrypted_body".getBytes();
     private static final byte[] ENCRYPTED_BODY = "encrypted_body".getBytes();
 
