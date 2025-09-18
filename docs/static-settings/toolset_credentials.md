@@ -1,39 +1,45 @@
 # Static Settings for Toolset Credentials
 
-In static settings, you can configure how toolset credentials are encrypted and managed. This ensures that sensitive information is stored securely.
+In static settings, you can configure how toolset credentials are encrypted and managed. This ensures that sensitive
+information is stored securely.
 
 ## Credential Storage and Encryption Flow
 
-This section details where credentials and their corresponding encryption keys are stored and the process used to secure them.
+This section details where credentials and their corresponding encryption keys are stored and the process used to secure
+them.
 
 ### Storage Locations
 
 All credentials and keys are persisted in a "parallel branch of folders" relative to where the toolsets are stored.
 
-*   **Credentials**: Stored in a `credentials` folder.
-    *   **Path Structure**: `<bucket-path>/credentials/<resource-id>`
-    *   The `<resource-id>` is derived from the toolset path: `/toolsets/<bucket-id>/<toolset-path>`
-    *   **Examples**:
-        *   `/public/credentials/<resource-id>`
-        *   `/users/<user-id>/credentials/<resource-id>`
+* **Credentials**: Stored in a `credentials` folder.
+    * **Path Structure**: `<bucket-path>/credentials/<resource-id>`
+    * The `<resource-id>` is derived from the toolset path: `/toolsets/<bucket-id>/<toolset-path>`
+    * **Examples**:
+        * `/public/credentials/<resource-id>`
+        * `/users/<user-id>/credentials/<resource-id>`
 
-*   **Content Encryption Keys (CEKs)**: Stored in an `encryption_keys` folder.
-    *   A unique CEK is created per bucket and is stored inside the `encryption_keys` folder within that specific bucket.
+* **Content Encryption Keys (CEKs)**: Stored in an `encryption_keys` folder.
+    * A unique CEK is created per bucket and is stored inside the `encryption_keys` folder within that specific bucket.
 
 ### Encryption Process
 
 A two-tiered encryption model ensures robust security:
 
-1.  Each credential is encrypted using a **Content Encryption Key (CEK)**.
-2.  The CEK (which is unique to each bucket) is itself stored in an encrypted format. It is encrypted and decrypted using a master key from a configured Key Management Service (KMS).
+1. Each credential is encrypted using a **Content Encryption Key (CEK)**.
+2. The CEK (which is unique to each bucket) is itself stored in an encrypted format. It is encrypted and decrypted using
+   a master key from a configured Key Management Service (KMS).
 
 This means the KMS provider (like AWS, Azure, or GCP) protects the CEK, and the CEK protects the actual credential.
 
 ## toolsets.security
 
-This section outlines the security settings for toolsets, specifically for configuring the OAuth 2.0 Protected Resource endpoint as defined by RFC 9728.
-These settings enable clients, such as those using the Model Context Protocol (MCP), to securely connect to the toolsets using OAuth 2.0 for authorization.
-By providing this metadata, a toolset can declare its security capabilities and point clients to the trusted authorization servers.
+This section outlines the security settings for toolsets, specifically for configuring the OAuth 2.0 Protected Resource
+endpoint as defined by RFC 9728.
+These settings enable clients, such as those using the Model Context Protocol (MCP), to securely connect to the toolsets
+using OAuth 2.0 for authorization.
+By providing this metadata, a toolset can declare its security capabilities and point clients to the trusted
+authorization servers.
 
 | Setting                                  | Default Value | Required | Description                                                                                                                                                                                                                                                                    |
 |:-----------------------------------------|:--------------|:---------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -44,7 +50,9 @@ By providing this metadata, a toolset can declare its security capabilities and 
 
 ### toolsets.security.kms
 
-This section configures the Key Management Service (KMS) used to encrypt and decrypt Content Encryption Keys (CEKs). As detailed in the encryption process, each bucket has a unique CEK for encrypting credentials. This CEK is, in turn, protected by the configured KMS provider.
+This section configures the Key Management Service (KMS) used to encrypt and decrypt Content Encryption Keys (CEKs). As
+detailed in the encryption process, each bucket has a unique CEK for encrypting credentials. This CEK is, in turn,
+protected by the configured KMS provider.
 
 | Setting                                     | Default Value | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 |:--------------------------------------------|:--------------|:---------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -52,11 +60,15 @@ This section configures the Key Management Service (KMS) used to encrypt and dec
 | `toolsets.security.kms.keyId`               | -             | No       | Identifies the KMS key for the encryption operation. <br> **For AWS:** Use the key ID, key ARN, alias name, or alias ARN. When using an alias, prefix it with "alias/". To use a key from a different AWS account, you must provide the key ARN or alias ARN. <br> **For GCP:** Use the resource name of the CryptoKey or CryptoKeyVersion. If a CryptoKey is specified, its primary version will be used. The format is `projects/<project_id>/locations/<location>/keyRings/<key_ring_name>/cryptoKeys/<key_name>`.           |
 | `toolsets.security.kms.region`              | -             | No       | The geographic region where the KMS is located. **Required** if the `provider` is set to `aws`.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `toolsets.security.kms.encryptionAlgorithm` | -             | No       | The encryption algorithm to be used. <br> **Required** if the `provider` is `azure`. For a list of supported algorithms, refer to the [Azure Key Vault documentation](https://learn.microsoft.com/en-us/rest/api/keyvault/keys/wrap-key/wrap-key). <br> **For AWS:** The default is `SYMMETRIC_DEFAULT`. For asymmetric keys, it is recommended to use `RSAES_OAEP_SHA_256`. For more details, see the [AWS KMS documentation](https://docs.aws.amazon.com/kms/latest/APIReference/API_Encrypt.html#API_Encrypt_RequestSyntax). |
+
 #### KMS Provider Authentication
 
-*   **AWS KMS:** Authentication uses the [Credential chain](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html).
-*   **Azure KMS:** Authentication uses [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential).
-*   **GCP KMS:** Authentication uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials).
+* **AWS KMS:** Authentication uses
+  the [Credential chain](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html).
+* **Azure KMS:** Authentication
+  uses [DefaultAzureCredential](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential).
+* **GCP KMS:** Authentication
+  uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials).
 
 #### toolsets.security.kms.cache
 
@@ -83,6 +95,7 @@ This section defines the settings for the Content Encryption Key (CEK) used to e
 ## Configuration Examples
 
 ### AWS KMS Configuration
+
 ```json
 {
   "toolsets": {
