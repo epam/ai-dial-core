@@ -132,7 +132,7 @@ Priority order:
 | codeInterpreter.checkSize                     |        256         |    No    |The maximum number of active sessions to check in single check
 | perRequestApiKey.ttl                          |        1800        |    No    |The TTL in seconds of per request API key
 | asyncTaskExecutor.useVirtualThreads           |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.
-| toolsets.*                                    |         -          |   Yes    |Refert to [Toolset Credentials](/docs/static-settings/toolset_credentials.md) for the full list of configuration options.
+| toolsets.*                                    |         -          |   Yes    |Refert to [Toolset](/docs/static-settings/toolsets.md) to see static settings.
 
 ### Storage requirements
 
