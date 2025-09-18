@@ -196,6 +196,25 @@ class ResourceCredentialsServiceTest {
         assertEquals(ENCRYPTED_BODY, updatedBody);
     }
 
+    @Test
+    public void testDeleteResourceCredentials_removesResource() {
+        CredentialsDescriptor descriptor = createCredentialsDescriptor();
+        service.deleteResourceCredentials(descriptor);
+
+        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        ArgumentCaptor<EtagHeader> etagCaptor = ArgumentCaptor.forClass(EtagHeader.class);
+
+        verify(resourceService).deleteResource(descriptorCaptor.capture(), etagCaptor.capture());
+
+        ResourceDescriptor passed = descriptorCaptor.getValue();
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
+        assertEquals("my-toolset", passed.getName());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
+        assertEquals("bucket-name", passed.getBucketName());
+        assertEquals("bucket-location/", passed.getBucketLocation());
+        assertEquals(EtagHeader.ANY, etagCaptor.getValue());
+    }
+
     private CredentialsDescriptor createCredentialsDescriptor() {
         return new CredentialsDescriptor(TOOL_SET_NAME, "bucket-name", "bucket-location/");
     }
