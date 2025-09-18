@@ -31,14 +31,16 @@ This means the KMS provider (like AWS, Azure, or GCP) protects the CEK, and the 
 
 ## toolsets.security
 
-This section contains the security settings for toolsets, including authorization, resource identification, and encryption.
+This section outlines the security settings for toolsets, specifically for configuring the OAuth 2.0 Protected Resource endpoint as defined by RFC 9728.
+These settings enable clients, such as those using the Model Context Protocol (MCP), to securely connect to the toolsets using OAuth 2.0 for authorization.
+By providing this metadata, a toolset can declare its security capabilities and point clients to the trusted authorization servers.
 
-| Setting                                  | Default Value | Required | Description                                                                                                                                                                                                                           |
-|:-----------------------------------------|:--------------|:---------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `toolsets.security.authorizationServers` | -             | No       | Path(s) to the authorization server URLs trusted to issue access tokens for MCP clients.                                                                                                                                              |
-| `toolsets.security.resourceSchema`       | https         | No       | Schema of the resource server. This URL schema is used to construct the resource identifier for token validation, as defined in RFC 9728. If not specified, the default value will be applied.                                        |
-| `toolsets.security.resourceHost`         | -             | No       | The public, fully-qualified hostname of this resource server (e.g., api.example.com). This is used to construct the resource identifier for token validation per RFC 9728. If not set, the host is derived from the incoming request. |
-| `toolsets.security.scopesSupported`      | -             | No       | List of scope values, as defined in OAuth 2.0 [RFC6749], that are used in authorization requests to request access to this protected resource.                                                                                        |
+| Setting                                  | Default Value | Required | Description                                                                                                                                                                                                                                                                    |
+|:-----------------------------------------|:--------------|:---------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `toolsets.security.authorizationServers` | -             | No       | Specifies the URL(s) of the authorization servers that are trusted to issue access tokens for MCP clients. This is a key piece of metadata for clients to initiate the OAuth flow.                                                                                             |
+| `toolsets.security.resourceSchema`       | https         | No       | The URL schema used to build the resource identifier for token validation, as specified in RFC 9728. If not provided, the default value of "https" will be used.                                                                                                               |
+| `toolsets.security.resourceHost`         | -             | No       | The publicly accessible, fully-qualified hostname of this resource server (e.g., `api.example.com`). This is used to construct the resource identifier for token validation in accordance with RFC 9728. If this is not set, the host is determined from the incoming request. |
+| `toolsets.security.scopesSupported`      | -             | No       | A list of scope values, as defined in OAuth 2.0 [RFC6749], that this protected resource supports. This allows clients to request specific levels of access during the authorization process.                                                                                   |
 
 ### toolsets.security.kms
 
@@ -81,54 +83,27 @@ This section defines the settings for the Content Encryption Key (CEK) used to e
 ## Configuration Examples
 
 ### AWS KMS Configuration
-
 ```json
 {
   "toolsets": {
     "security": {
+      "authorizationServers": "https://auth.test.com",
+      "resourceSchema": "https",
+      "resourceHost": "test.com",
+      "scopesSupported": [
+        "test_scope"
+      ],
+      "encryption": {
+        "algorithm": "AES",
+        "keySize": 256,
+        "cipherTransformation": "AES/GCM/NoPadding",
+        "ivLengthBytes": 12,
+        "gcmTagLengthBits": 128
+      },
       "kms": {
         "provider": "aws",
         "keyId": "arn:aws:kms:us-east-1:123456789012:key/your-key-id",
         "region": "us-east-1",
-        "cache": {
-          "maxSize": 10000,
-          "expiration": 300000
-        }
-      }
-    }
-  }
-}
-```
-
-### AZURE KMS Configuration
-
-```json
-{
-  "toolsets": {
-    "security": {
-      "kms": {
-        "provider": "azure",
-        "keyId": "https://your-key-vault.vault.azure.net/keys/your-key-name",
-        "encryptionAlgorithm": "RSA-OAEP-256",
-        "cache": {
-          "maxSize": 10000,
-          "expiration": 300000
-        }
-      }
-    }
-  }
-}
-```
-
-### GCP KMS Configuration
-
-```json
-{
-  "toolsets": {
-    "security": {
-      "kms": {
-        "provider": "gcp",
-        "keyId": "projects/your-gcp-project-id/locations/your-location/keyRings/your-key-ring/cryptoKeys/your-key-name/cryptoKeyVersions/1",
         "cache": {
           "maxSize": 10000,
           "expiration": 300000
