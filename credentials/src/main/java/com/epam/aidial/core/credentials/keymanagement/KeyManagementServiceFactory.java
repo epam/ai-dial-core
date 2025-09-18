@@ -38,11 +38,9 @@ public class KeyManagementServiceFactory {
     }
 
     private KeyManagementService createAwsKeyManagementService(KmsSettings kmsSettings) {
-        String keyId = kmsSettings.getKeyId();
-        String region = kmsSettings.getRegion();
+        String keyId = Objects.requireNonNull(kmsSettings.getKeyId(), "keyId cannot be null.");
+        String region = Objects.requireNonNull(kmsSettings.getRegion(), "region cannot be null.");
         String encryptionAlgorithm = kmsSettings.getEncryptionAlgorithm();
-        Objects.requireNonNull(keyId, "keyId cannot be null.");
-        Objects.requireNonNull(keyId, "region cannot be null.");
 
         AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
         AWSKMS kms = AWSKMSClientBuilder.standard()
