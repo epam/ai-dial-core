@@ -4,6 +4,8 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
@@ -23,7 +25,8 @@ public class ResourceCredentialsManager {
     private final ResourceCredentialsService resourceCredentialsService;
     private final TokenService tokenService;
 
-    public ResourceCredentials createResourceCredentials(ResourceAuthSettings resourceAuthSettings,
+    public ResourceCredentials createResourceCredentials(CredentialsDescriptor credentialsDescriptor,
+                                                         ResourceAuthSettings resourceAuthSettings,
                                                          ResourceSignInRequest resourceSignInRequest,
                                                          String userSub) {
         ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
@@ -35,18 +38,20 @@ public class ResourceCredentialsManager {
             resourceCredentials.setUserSub(userSub);
         }
 
-        resourceCredentialsService.addResourceCredentials(resourceCredentials);
+        resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceCredentials);
         log.info("Resource signIn done. {}", resourceSignInRequest.getUrl());
         return resourceCredentials;
     }
 
-    public ResourceCredentials getResourceCredentials(String resourceId, ResourceAuthSettings authSettings, String userSub) {
+    public ResourceCredentials getResourceCredentials(CredentialsLocator credentialsLocator, ResourceAuthSettings authSettings, String userSub) {
         if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
             return null;
         }
-        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(resourceId);
+        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
 
         ResourceCredentials globalCredentials = null;
+
+        String resourceId = credentialsLocator.getResourceId();
 
         for (ResourceCredentials credentials : resourceCredentialsList) {
             if (credentials.getCredentialsLevel() == CredentialsLevel.USER
@@ -54,7 +59,7 @@ public class ResourceCredentialsManager {
                     && userSub.equals(credentials.getUserSub())) {
                 if (credentials.requiresTokenRefresh()) {
                     updateExpiredResourceCredentials(credentials, resourceId, authSettings);
-                    resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
+                    resourceCredentialsService.updateAllResourceCredentials(credentialsLocator, resourceCredentialsList);
                 }
                 return credentials;
             }
@@ -68,7 +73,7 @@ public class ResourceCredentialsManager {
         }
 
         if (globalCredentials != null) {
-            resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
+            resourceCredentialsService.updateAllResourceCredentials(credentialsLocator, resourceCredentialsList);
             return globalCredentials;
         }
 
@@ -77,14 +82,14 @@ public class ResourceCredentialsManager {
         throw new ResourceNotFoundException("Credentials (Global or Personal) for Resource %s not found".formatted(resourceId));
     }
 
-    public List<ResourceCredentials> getAllResourceCredentials(String resourceId) {
-        return resourceCredentialsService.getAllResourceCredentials(resourceId);
+    public List<ResourceCredentials> getAllResourceCredentials(CredentialsLocator credentialsLocator) {
+        return resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
     }
 
-    public boolean deleteResourceCredentials(ResourceSignOutRequest resourceSignOutRequest,
+    public boolean deleteResourceCredentials(CredentialsLocator credentialsLocator,
+                                             ResourceSignOutRequest resourceSignOutRequest,
                                              String userSub) {
-        String resourceId = resourceSignOutRequest.getUrl();
-        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(resourceId);
+        List<ResourceCredentials> resourceCredentialsList = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
 
         if (resourceCredentialsList == null || resourceCredentialsList.isEmpty()) {
             return false;
@@ -94,16 +99,16 @@ public class ResourceCredentialsManager {
 
         if (resourceSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
             removed = resourceCredentialsList.removeIf(
-                resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel()));
+                    resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel()));
         } else if (resourceSignOutRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
             removed = resourceCredentialsList.removeIf(
-                resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel())
-                    && resourceCredentials.getUserSub().equals(userSub));
+                    resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(resourceSignOutRequest.getCredentialsLevel())
+                            && resourceCredentials.getUserSub().equals(userSub));
         }
 
-        resourceCredentialsService.updateResourceCredentials(resourceId, resourceCredentialsList);
+        resourceCredentialsService.updateAllResourceCredentials(credentialsLocator, resourceCredentialsList);
 
-        log.info("Resource signOut done. {}", resourceId);
+        log.info("Resource signOut done. {}", credentialsLocator.getResourceId());
         return removed;
     }
 
@@ -120,10 +125,10 @@ public class ResourceCredentialsManager {
         log.debug("Finished updating expired token for Resource: {}", resourceId);
     }
 
-    public AuthorizationHeader createAuthorizationHeader(String resourceId,
+    public AuthorizationHeader createAuthorizationHeader(CredentialsLocator credentialsLocator,
                                                          ResourceAuthSettings resourceAuthSettings,
                                                          String userSub) {
-        ResourceCredentials resourceCredentials = getResourceCredentials(resourceId, resourceAuthSettings, userSub);
+        ResourceCredentials resourceCredentials = getResourceCredentials(credentialsLocator, resourceAuthSettings, userSub);
         if (resourceCredentials == null) {
             return null;
         }

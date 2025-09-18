@@ -93,6 +93,17 @@ Priority order:
 | toolsets.security.resourceSchema              |       https        |    No    |Schema of the resource server. This URL schema is used to construct the resource identifier for token validation, as defined in RFC 9728. If not specified, the default value will be applied.
 | toolsets.security.resourceHost                |         -          |    No    |The public, fully-qualified hostname of this resource server (e.g., api.example.com). This is used to construct the resource identifier for token validation per RFC 9728. If not set, the host is derived from the incoming request.
 | toolsets.security.scopesSupported             |         -          |    No    |List of scope values, as defined in OAuth 2.0 [RFC6749], that are used in authorization requests to request access to this protected resource.
+| toolsets.security.kms.provider                |         -          |   Yes    |Specifies KMS provider. Supported providers: aws, unencrypted
+| toolsets.security.kms.keyId                   |         -          |    No    |Identifies the KMS key to use in the encryption operation.
+| toolsets.security.kms.region                  |         -          |    No    |Geo region where the KMS is located.
+| toolsets.security.kms.cache.enabled           |        true        |    No    |The flag determines if CEK cache is enabled.
+| toolsets.security.kms.cache.maxSize           |       10000        |    No    |Maximum number of cached CEK.
+| toolsets.security.kms.cache.expiration        |       600000       |    No    |Expiration in milliseconds for cached CEK.
+| toolsets.security.encryption.algorithm        |        AES         |    No    |The encryption algorithm to use for content encryption operations. Commonly `"AES"`, but may be changed to support other algorithms supported by the JCE provider.
+| toolsets.security.encryption.keySize          |        256         |    No    |Key size in bits for the encryption algorithm. For AES, valid values are 128, 192, or 256, depending on the algorithm and provider policy.
+| toolsets.security.encryption.cipherTransformation | AES/GCM/NoPadding  |    No    | The cipher transformation specifying the algorithm, mode, and padding (e.g., `"AES/GCM/NoPadding"`). Must be compatible with the selected algorithm.
+| toolsets.security.encryption.ivLengthBytes    |         12         |    No    |Length of the initialization vector (IV) in bytes. For AES-GCM, 12 bytes (96 bits) is recommended by NIST.
+| toolsets.security.encryption.gcmTagLengthBits |        128         |    No    |Length of the authentication tag in bits when using GCM mode. NIST recommends 128 bits for maximum integrity protection.
 | vertx.*                                       |         -          |    No    |Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.
 | server.*                                      |         -          |    No    |Vertx HTTP server settings for incoming requests.
 | client.*                                      |         -          |    No    |Vertx HTTP client settings for outbound requests.

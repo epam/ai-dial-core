@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ResourceAuthStatus;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
@@ -51,10 +52,10 @@ public class ResourceAuthSettingsService {
         setCodeChallengeProperties(resourceAuthSettings, clientRegistration.getCodeChallengeMethod());
     }
 
-    public void setResourceAuthStatuses(String resourceId,
+    public void setResourceAuthStatuses(CredentialsLocator credentialsLocator,
                                         ResourceAuthSettings resourceAuthSettings,
                                         String userSub) {
-        List<ResourceCredentials> allResourceCredentials = resourceCredentialsManager.getAllResourceCredentials(resourceId);
+        List<ResourceCredentials> allResourceCredentials = resourceCredentialsManager.getAllResourceCredentials(credentialsLocator);
         setUserAuthStatus(resourceAuthSettings, allResourceCredentials, userSub);
         setGlobalAuthStatus(resourceAuthSettings, allResourceCredentials);
     }

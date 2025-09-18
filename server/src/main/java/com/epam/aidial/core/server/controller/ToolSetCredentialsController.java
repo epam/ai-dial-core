@@ -4,6 +4,8 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
@@ -14,6 +16,8 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
+import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -57,7 +61,10 @@ public class ToolSetCredentialsController {
                         Deployment deployment = deploymentService.findDeployment(context, toolsetId);
                         if (deployment instanceof ToolSet toolSet) {
                             verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
+                            CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
+                                    toolsetId, resourceSignInRequest.getCredentialsLevel(), context);
                             ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
+                                    credentialsDescriptor,
                                     toolSet.getAuthSettings(),
                                     resourceSignInRequest,
                                     context.getUserSub());
@@ -79,19 +86,18 @@ public class ToolSetCredentialsController {
                 .compose(body -> taskExecutor.submit(() -> {
                     ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
                     verifyAccess(resourceSignOutRequest.getUrl(), resourceSignOutRequest.getCredentialsLevel());
-
-                    return resourceCredentialsManager.deleteResourceCredentials(resourceSignOutRequest, context.getUserSub());
+                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
+                            resourceSignOutRequest.getUrl(), context);
+                    return resourceCredentialsManager.deleteResourceCredentials(credentialsLocator, resourceSignOutRequest, context.getUserSub());
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->
-                    respondError("Can't signOut from Toolset", error));
+                        respondError("Can't signOut from Toolset", error));
 
         return Future.succeededFuture();
     }
 
-    private void verifyAccess(String toolSetId,
-                              CredentialsLevel credentialsLevel) {
-
+    private void verifyAccess(String toolSetId, CredentialsLevel credentialsLevel) {
         ResourceDescriptor resourceDescriptor;
         try {
             String url = UrlUtil.encodePath(toolSetId);
@@ -100,6 +106,7 @@ public class ToolSetCredentialsController {
             // toolset is from config
             return;
         }
+
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
@@ -115,10 +122,10 @@ public class ToolSetCredentialsController {
     // TODO: Create dto for 'public' credentials information?
     private ResourceCredentials clearResourceCredentialsSecrets(ResourceCredentials resourceCredentials) {
         return ResourceCredentials.builder()
-            .resourceId(resourceCredentials.getResourceId())
-            .authenticationType(resourceCredentials.getAuthenticationType())
-            .credentialsLevel(resourceCredentials.getCredentialsLevel())
-            .build();
+                .resourceId(resourceCredentials.getResourceId())
+                .authenticationType(resourceCredentials.getAuthenticationType())
+                .credentialsLevel(resourceCredentials.getCredentialsLevel())
+                .build();
     }
 
     private void respondError(String message, Throwable error) {

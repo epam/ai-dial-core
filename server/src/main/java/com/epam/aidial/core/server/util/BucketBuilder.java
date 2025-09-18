@@ -12,7 +12,7 @@ import javax.annotation.Nullable;
 public class BucketBuilder {
 
     public static final String APPDATA_PATTERN = "appdata/%s";
-    private static final String USER_BUCKET_PATTERN = "Users/%s/";
+    public static final String USER_BUCKET_PATTERN = "Users/%s/";
     private static final String API_KEY_BUCKET_PATTERN = "Keys/%s/";
 
     public String buildUserBucket(ProxyContext context) {

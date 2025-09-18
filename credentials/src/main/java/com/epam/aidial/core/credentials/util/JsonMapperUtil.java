@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
 import java.util.stream.Collectors;
 
 @UtilityClass
@@ -54,6 +55,24 @@ public class JsonMapperUtil {
             if (e instanceof MismatchedInputException mismatchedInputException
                     && mismatchedInputException.getPath() != null
                     && !mismatchedInputException.getPath().isEmpty()) {
+                String missingField = mismatchedInputException.getPath().stream()
+                        .map(JsonMappingException.Reference::getFieldName)
+                        .collect(Collectors.joining("."));
+                throw new IllegalArgumentException("Missing required property '%s'".formatted(missingField));
+            }
+            throw new IllegalArgumentException("Provided payload do not match required schema");
+        }
+    }
+
+    public static <T> T convertToObject(byte[] payload, Class<T> clazz) {
+        if (payload == null) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(payload, clazz);
+        } catch (IOException e) {
+            log.warn("Failed to convert payload to the object", e);
+            if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
                 String missingField = mismatchedInputException.getPath().stream()
                         .map(JsonMappingException.Reference::getFieldName)
                         .collect(Collectors.joining("."));

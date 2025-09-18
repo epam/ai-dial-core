@@ -2,13 +2,16 @@ package com.epam.aidial.core.credentials.data.credentials;
 
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Builder;
 import lombok.Data;
+import lombok.extern.jackson.Jacksonized;
 
 import java.util.concurrent.TimeUnit;
 
 @Data
 @Builder
+@Jacksonized
 public class ResourceCredentials {
 
     private String resourceId;
@@ -23,6 +26,7 @@ public class ResourceCredentials {
     private Long expiresInSeconds;
     private String userSub;
 
+    @JsonIgnore
     public boolean hasUnexpiredToken() {
         validateOauthAuthentication();
         return !supportsTokenRefreshFlow() || isTokenUnexpired();

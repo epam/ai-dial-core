@@ -1,5 +1,15 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.credentials.data.configuration.EncryptionSettings;
+import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
+import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyGenerator;
+import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManager;
+import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManagerFactory;
+import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
+import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.credentials.encryption.DataEncryptionService;
+import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
+import com.epam.aidial.core.credentials.keymanagement.KeyManagementServiceFactory;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
@@ -86,6 +96,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -180,11 +191,13 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
             TokenService tokenService = new TokenService(resourceAuthorizationClient);
             ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient);
             ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
-            ResourceCredentialsService resourceCredentialsService = new ResourceCredentialsService();
+            ResourceCredentialsService resourceCredentialsService = new ResourceCredentialsService(resourceService,
+                    credentialEncryptionService);
             ResourceCredentialsManager resourceCredentialsManager = new ResourceCredentialsManager(resourceCredentialsService, tokenService);
             ResourceAuthSettingsService resourceAuthSettingsService = new ResourceAuthSettingsService(resourceRegistrationService,
                     resourceAuthSettingsValidator, resourceCredentialsManager);
@@ -231,6 +244,21 @@ public class AiDial {
         AuthorizationServerMetadataService authorizationServerMetadataService = new AuthorizationServerMetadataService(
                 resourceAuthorizationClient, authorizationServerMetadataValidator);
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService);
+    }
+
+    private CredentialEncryptionService getCredentialEncryptionService() {
+        JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
+        KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
+                .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
+        EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
+                .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
+        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
+        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
+        ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
+        DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
+        return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
     }
 
     @VisibleForTesting
