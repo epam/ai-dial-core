@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -20,6 +22,7 @@ public class ToolSetService {
 
     private final ResourceService resourceService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
+    private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource) {
         return getToolSet(context, resource, EtagHeader.ANY);
@@ -53,6 +56,11 @@ public class ToolSetService {
         if (toolSet == null) {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
+
+        resourceAuthSettingsEncryptionService.decrypt(toolSet.getName(),
+                new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
+                toolSet.getAuthSettings());
+
         return Pair.of(meta, toolSet);
     }
 
@@ -69,6 +77,9 @@ public class ToolSetService {
                 //TODO we don't support auth settings update yet
                 toolSet.setAuthSettings(existing.getAuthSettings());
             }
+            resourceAuthSettingsEncryptionService.encrypt(toolSet.getName(),
+                    new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
+                    toolSet.getAuthSettings());
             return ProxyUtil.convertToString(toolSet);
         });
 
