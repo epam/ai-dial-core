@@ -19,8 +19,8 @@ import java.util.Objects;
 public class KeyManagementServiceFactory {
 
     public KeyManagementService create(KmsSettings kmsSettings) {
-        if (kmsSettings == null || kmsSettings.getProvider() == null) {
-            throw new IllegalArgumentException("toolsets.security.kms.provider must be specified");
+        if (kmsSettings == null || kmsSettings.getProvider() == null || "unencrypted".equals(kmsSettings.getProvider())) {
+            return new SimpleKeyManagementService();
         }
 
         String provider = kmsSettings.getProvider();
@@ -30,8 +30,6 @@ public class KeyManagementServiceFactory {
             return createAzureKeyManagementService(kmsSettings);
         } else if ("gcp".equalsIgnoreCase(provider)) {
             return createGcpKeyManagementService(kmsSettings);
-        } else if ("unencrypted".equalsIgnoreCase(provider)) {
-            return new SimpleKeyManagementService();
         }
 
         throw new IllegalArgumentException("Unknown toolsets.security.kms.provider: %s.".formatted(provider));
