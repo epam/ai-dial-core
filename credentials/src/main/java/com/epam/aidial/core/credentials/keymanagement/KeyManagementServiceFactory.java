@@ -4,8 +4,16 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.AWSKMSClientBuilder;
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.security.keyvault.keys.cryptography.CryptographyClient;
+import com.azure.security.keyvault.keys.cryptography.CryptographyClientBuilder;
+import com.azure.security.keyvault.keys.cryptography.models.KeyWrapAlgorithm;
 import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
+import com.google.cloud.kms.v1.KeyManagementServiceClient;
+import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
+
+import java.util.Objects;
 
 @UtilityClass
 public class KeyManagementServiceFactory {
@@ -18,6 +26,10 @@ public class KeyManagementServiceFactory {
         String provider = kmsSettings.getProvider();
         if ("aws".equalsIgnoreCase(provider)) {
             return createAwsKeyManagementService(kmsSettings);
+        } else if ("azure".equalsIgnoreCase(provider)) {
+            return createAzureKeyManagementService(kmsSettings);
+        } else if ("gcp".equalsIgnoreCase(provider)) {
+            return createGcpKeyManagementService(kmsSettings);
         } else if ("unencrypted".equalsIgnoreCase(provider)) {
             return new SimpleKeyManagementService();
         }
@@ -26,18 +38,39 @@ public class KeyManagementServiceFactory {
     }
 
     private KeyManagementService createAwsKeyManagementService(KmsSettings kmsSettings) {
-        String keyId = kmsSettings.getKeyId();
-        String region = kmsSettings.getRegion();
-        if (keyId == null || region == null) {
-            throw new IllegalArgumentException("Both keyId and region must be specified");
-        }
+        String keyId = Objects.requireNonNull(kmsSettings.getKeyId(), "keyId cannot be null.");
+        String region = Objects.requireNonNull(kmsSettings.getRegion(), "region cannot be null.");
+        String encryptionAlgorithm = kmsSettings.getEncryptionAlgorithm();
 
         AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
         AWSKMS kms = AWSKMSClientBuilder.standard()
                 .withCredentials(awsCredentialsProvider)
                 .withRegion(region)
                 .build();
-        return new AwsKeyManagementService(kms, keyId);
+        return new AwsKeyManagementService(kms, keyId, encryptionAlgorithm);
+    }
+
+    private static KeyManagementService createAzureKeyManagementService(KmsSettings kmsSettings) {
+        String keyId = Objects.requireNonNull(kmsSettings.getKeyId(), "keyId cannot be null.");
+        String encryptionAlgorithm = Objects.requireNonNull(kmsSettings.getEncryptionAlgorithm(),
+                "encryptionAlgorithm cannot be null.");
+
+        KeyWrapAlgorithm parsedEncryptionAlgorithm = KeyWrapAlgorithm.fromString(encryptionAlgorithm);
+
+        CryptographyClient cryptographyClient = new CryptographyClientBuilder()
+                .keyIdentifier(keyId)
+                .credential(new DefaultAzureCredentialBuilder().build())
+                .buildClient();
+
+        return new AzureKeyManagementService(cryptographyClient, parsedEncryptionAlgorithm);
+    }
+
+    @SneakyThrows
+    private static KeyManagementService createGcpKeyManagementService(KmsSettings kmsSettings) {
+        String keyId = Objects.requireNonNull(kmsSettings.getKeyId(), "keyId cannot be null.");
+
+        KeyManagementServiceClient kmsClient = KeyManagementServiceClient.create();
+        return new GcpKeyManagementService(kmsClient, keyId);
     }
 
 }

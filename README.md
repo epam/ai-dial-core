@@ -93,9 +93,10 @@ Priority order:
 | toolsets.security.resourceSchema              |       https        |    No    |Schema of the resource server. This URL schema is used to construct the resource identifier for token validation, as defined in RFC 9728. If not specified, the default value will be applied.
 | toolsets.security.resourceHost                |         -          |    No    |The public, fully-qualified hostname of this resource server (e.g., api.example.com). This is used to construct the resource identifier for token validation per RFC 9728. If not set, the host is derived from the incoming request.
 | toolsets.security.scopesSupported             |         -          |    No    |List of scope values, as defined in OAuth 2.0 [RFC6749], that are used in authorization requests to request access to this protected resource.
-| toolsets.security.kms.provider                |         -          |   Yes    |Specifies KMS provider. Supported providers: aws, unencrypted
+| toolsets.security.kms.provider                |         -          |   Yes    |Specifies KMS provider. Supported providers: aws, azure, gcp, unencrypted
 | toolsets.security.kms.keyId                   |         -          |    No    |Identifies the KMS key to use in the encryption operation.
-| toolsets.security.kms.region                  |         -          |    No    |Geo region where the KMS is located.
+| toolsets.security.kms.region                  |         -          |    No    |Geo region where the KMS is located. **Required** if `provider` is set to `aws`.
+| toolsets.security.kms.encryptionAlgorithm     |         -          |    No    |Encryption algorithm. **Required** if `provider` is set to `azure`. **Note** Refer to [aws](https://docs.aws.amazon.com/kms/latest/APIReference/API_Encrypt.html#API_Encrypt_RequestSyntax), [azure](https://learn.microsoft.com/en-us/java/api/com.azure.security.keyvault.keys.cryptography.models.keywrapalgorithm) to get the list of supported algorithms for azure. Default value for `aws` is `SYMMETRIC_DEFAULT`
 | toolsets.security.kms.cache.enabled           |        true        |    No    |The flag determines if CEK cache is enabled.
 | toolsets.security.kms.cache.maxSize           |       10000        |    No    |Maximum number of cached CEK.
 | toolsets.security.kms.cache.expiration        |       600000       |    No    |Expiration in milliseconds for cached CEK.

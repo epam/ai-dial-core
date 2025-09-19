@@ -1,10 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.ResourceAccessType;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ShareMetadata;
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonParser;
@@ -14,10 +11,8 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Data;
-import net.minidev.json.annotate.JsonIgnore;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
