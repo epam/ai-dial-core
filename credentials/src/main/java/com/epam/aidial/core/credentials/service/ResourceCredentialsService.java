@@ -1,24 +1,31 @@
 package com.epam.aidial.core.credentials.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
+import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactory;
+import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
+import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
+import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -26,15 +33,30 @@ public class ResourceCredentialsService {
 
     private final ResourceService resourceService;
     private final CredentialEncryptionService encryptionService;
+    private final ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider;
+    private final TokenService tokenService;
+    private final TokenRefreshStrategyFactory tokenRefreshStrategyFactory;
+    private final TimeProvider timeProvider;
 
-    public void addResourceCredentials(CredentialsDescriptor credentialDescriptor, ResourceCredentials resourceCredentials) {
+    public void addResourceCredentials(CredentialsDescriptor credentialsDescriptor,
+                                       ResourceAuthSettings resourceAuthSettings,
+                                       ResourceSignInRequest resourceSignInRequest,
+                                       String userSub) {
         log.debug("Adding resource credentials for resourceId={}, bucket={}, credentialsLevel={}",
-                credentialDescriptor.getResourceId(), credentialDescriptor.getBucketName(), resourceCredentials.getCredentialsLevel());
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), resourceSignInRequest.getCredentialsLevel());
+        ResourceCredentialsFactory factory = resourceCredentialsFactoryProvider.getFactory(resourceSignInRequest.getAuthenticationType());
+
+        ResourceCredentials resourceCredentials = factory.createCredentials(resourceSignInRequest.getUrl(), resourceAuthSettings, resourceSignInRequest);
+
+        if (resourceSignInRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
+            resourceCredentials.setUserSub(userSub);
+        }
+
         byte[] body = JsonMapperUtil.convertToString(resourceCredentials).getBytes(StandardCharsets.UTF_8);
-        byte[] encryptedBody = encrypt(credentialDescriptor, body);
-        resourceService.putResourceBytes(credentialDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+        byte[] encryptedBody = encrypt(credentialsDescriptor, body);
+        resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
         log.debug("Resource credentials for resourceId={}, bucket={} stored successfully",
-                credentialDescriptor.getResourceId(), credentialDescriptor.getBucketName());
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
     }
 
     public List<ResourceCredentials> getAllResourceCredentials(CredentialsLocator credentialsLocator) {
@@ -60,102 +82,92 @@ public class ResourceCredentialsService {
         return null;
     }
 
-    public void updateAllResourceCredentials(
-            CredentialsLocator credentialsLocator,
-            List<ResourceCredentials> toolSetCredentialsList) {
+    public boolean deleteResourceCredentials(CredentialsLocator credentialsLocator,
+                                             ResourceSignOutRequest resourceSignOutRequest,
+                                             String userSub) {
+        log.debug("Deleting resource credentials for resourceId={}.", credentialsLocator.getResourceId());
+        CredentialsLevel signOutRequestCredentialsLevel = resourceSignOutRequest.getCredentialsLevel();
+        CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(signOutRequestCredentialsLevel);
+        AtomicBoolean deleteSucceeded = new AtomicBoolean(false);
 
-        log.debug("Updating all resource credentials for resourceId={}", credentialsLocator.getResourceId());
+        resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
+            if (existingCredentialsBytesEncrypted == null) {
+                throw new ResourceNotFoundException("Credentials for %s not found".formatted(credentialsDescriptor.getResourceId()));
+            }
 
-        Map<CredentialsLevel, ResourceCredentials> credentialsByLevel = toolSetCredentialsList.stream()
-                .collect(Collectors.toMap(ResourceCredentials::getCredentialsLevel, c -> c));
-
-        validateLevels(credentialsLocator, credentialsByLevel);
-
-        Map<CredentialsDescriptor, Set<CredentialsLevel>> descriptorToLevels =
-                groupByDescriptor(credentialsLocator.getCredentialsDescriptors());
-
-        for (Map.Entry<CredentialsDescriptor, Set<CredentialsLevel>> entry : descriptorToLevels.entrySet()) {
-            CredentialsDescriptor descriptor = entry.getKey();
-            ResourceCredentials resolvedCredential = resolveSingleCredential(entry.getValue(), credentialsByLevel, descriptor);
-            updateResourceCredentials(descriptor, resolvedCredential);
-        }
-
-        log.debug("All resource credentials updated successfully for resourceId={}", credentialsLocator.getResourceId());
-    }
-
-    private void validateLevels(CredentialsLocator locator, Map<CredentialsLevel, ResourceCredentials> credentialsByLevel) {
-        Set<CredentialsLevel> requiredLevels = credentialsByLevel.keySet();
-        Set<CredentialsLevel> availableLevels = locator.getBuckets().keySet();
-
-        log.debug("Validating credential levels for resourceId={}: available={}, provided={}",
-                locator.getResourceId(), availableLevels, requiredLevels);
-        if (!availableLevels.containsAll(requiredLevels)) {
-            throw new IllegalArgumentException(
-                    "Credential levels mismatch. Available: %s, Provided: %s".formatted(availableLevels, requiredLevels)
-            );
-        }
-    }
-
-    private Map<CredentialsDescriptor, Set<CredentialsLevel>> groupByDescriptor(
-            Map<CredentialsLevel, CredentialsDescriptor> credentialsDescriptors) {
-
-        return credentialsDescriptors.entrySet().stream()
-                .collect(Collectors.groupingBy(
-                        Map.Entry::getValue,
-                        Collectors.mapping(Map.Entry::getKey, Collectors.toSet())
-                ));
-    }
-
-    private ResourceCredentials resolveSingleCredential(
-            Set<CredentialsLevel> levels,
-            Map<CredentialsLevel, ResourceCredentials> credentialsByLevel,
-            CredentialsDescriptor descriptor) {
-
-        log.debug("Resolving single credential for resourceId={}, bucket={} from {} possible levels",
-                descriptor.getResourceId(), descriptor.getBucketName(), levels.size());
-        List<ResourceCredentials> matchedCredentials = levels.stream()
-                .map(credentialsByLevel::get)
-                .filter(Objects::nonNull)
-                .toList();
-
-        if (matchedCredentials.isEmpty()) {
-            log.debug("No credentials found for resourceId={}, bucket={}, levels={}",
-                    descriptor.getResourceId(), descriptor.getBucketName(), levels);
+            byte[] existingCredentialsBytesDecrypted = decrypt(credentialsDescriptor, existingCredentialsBytesEncrypted);
+            ResourceCredentials existingCredentials = JsonMapperUtil.convertToObject(existingCredentialsBytesDecrypted, ResourceCredentials.class);
+            validateDeleteOperation(existingCredentials, signOutRequestCredentialsLevel, userSub);
+            deleteSucceeded.set(true);
             return null;
-        }
+        });
 
-        if (matchedCredentials.size() > 1) {
-            throw new IllegalArgumentException(
-                    "Duplicate credentials found for resource %s".formatted(descriptor.getResourceId())
-            );
-        }
-
-        log.debug("Single credential resolved for resourceId={}, bucket={}, levels={}",
-                descriptor.getResourceId(), descriptor.getBucketName(), levels);
-        return matchedCredentials.getFirst();
+        log.debug("Deleting resource credentials for resourceId={}, bucket={} finished. Status: {}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), deleteSucceeded);
+        return deleteSucceeded.get();
     }
 
-    public void updateResourceCredentials(CredentialsDescriptor credentialsDescriptor,
-                                          ResourceCredentials credentials) {
-        log.debug("Updating resource credentials for resourceId={}, bucket={}",
-                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
+    private void validateDeleteOperation(ResourceCredentials existingCredentials,
+                                         CredentialsLevel credentialsLevel,
+                                         String userSub) {
+        CredentialsLevel existingResourceCredentialsLevel = existingCredentials.getCredentialsLevel();
+        Objects.requireNonNull(existingResourceCredentialsLevel, "Invalid saved credentials: missing CredentialsLevel");
 
-        resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existing -> {
-            if (existing == null) {
-                throw new ResourceNotFoundException("Credentials for %s not found"
-                        .formatted(credentialsDescriptor.getResourceId()));
+        if (!existingResourceCredentialsLevel.equals(credentialsLevel)) {
+            throw new IllegalArgumentException("Invalid CredentialsLevel: %s in resource sign out request".formatted(credentialsLevel));
+        }
+
+        if (credentialsLevel.equals(CredentialsLevel.USER)) {
+            String existingCredentialsUserSub = existingCredentials.getUserSub();
+            Objects.requireNonNull(existingCredentialsUserSub, "Invalid saved credentials: missing userSub");
+            if (!existingCredentialsUserSub.equals(userSub)) {
+                throw new IllegalArgumentException("Can't delete other user's personal credentials");
             }
-            if (credentials == null) {
-                log.debug("Null credentials provided for resourceId={}, bucket={}. Deleting existing credentials",
-                        credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
-                return null;
+        }
+    }
+
+    public ResourceCredentials getAndRefreshCredentials(CredentialsDescriptor credentialsDescriptor,
+                                                        ResourceAuthSettings authSettings) {
+        String resourceId = credentialsDescriptor.getResourceId();
+        String bucketName = credentialsDescriptor.getBucketName();
+        log.debug("Updating resource credentials for resourceId={}, bucket={}", resourceId, bucketName);
+
+        MutableObject<ResourceCredentials> reference = new MutableObject<>();
+        resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
+            if (existingCredentialsBytesEncrypted == null) {
+                throw new ResourceNotFoundException("Credentials for %s not found".formatted(credentialsDescriptor.getResourceId()));
             }
 
-            log.debug("Encrypting and storing updated credentials for resourceId={}, bucket={}",
-                    credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
-            byte[] body = JsonMapperUtil.convertToString(credentials).getBytes(StandardCharsets.UTF_8);
-            return encrypt(credentialsDescriptor, body);
+            byte[] existingCredentialsBytesDecrypted = decrypt(credentialsDescriptor, existingCredentialsBytesEncrypted);
+            ResourceCredentials resourceCredentials = JsonMapperUtil.convertToObject(existingCredentialsBytesDecrypted, ResourceCredentials.class);
+
+            if (tokenRefreshStrategyFactory.getTokenValidatorStrategy(authSettings.getAuthenticationType()).requiresTokenRefresh(resourceCredentials)) {
+                updateExpiredResourceCredentials(resourceCredentials, resourceId, authSettings);
+                reference.setValue(resourceCredentials);
+                byte[] body = JsonMapperUtil.convertToString(resourceCredentials).getBytes(StandardCharsets.UTF_8);
+                log.debug("Encrypting and storing refreshed credentials for resourceId={}, bucket={}", resourceId, bucketName);
+                return encrypt(credentialsDescriptor, body);
+            }
+
+            log.debug("Encrypting and storing updated credentials for resourceId={}, bucket={}", resourceId, bucketName);
+            reference.setValue(resourceCredentials);
+            return existingCredentialsBytesEncrypted;
         });
+        return reference.get();
+    }
+
+    private void updateExpiredResourceCredentials(ResourceCredentials resourceCredentials,
+                                                  String resourceId,
+                                                  ResourceAuthSettings authSettings) {
+        log.debug("Start updating expired token for Resource: {}", resourceId);
+        TokenResponse newAccessTokenResponse = tokenService.getToken(resourceId,
+                authSettings, resourceCredentials.getRefreshToken());
+
+        resourceCredentials.setExpiresInSeconds(newAccessTokenResponse.getExpiresIn());
+        resourceCredentials.setUpdatedAt(timeProvider.getCurrentTime());
+        resourceCredentials.setAccessToken(newAccessTokenResponse.getAccessToken());
+        resourceCredentials.setRefreshToken(newAccessTokenResponse.getRefreshToken());
+        log.debug("Finished updating expired token for Resource: {}", resourceId);
     }
 
     private byte[] encrypt(CredentialsDescriptor credentialsDescriptor, byte[] data) {
@@ -172,14 +184,5 @@ public class ResourceCredentialsService {
         BucketInfo bucketInfo = new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation());
         byte[] aad = credentialsDescriptor.getFullPath().getBytes(StandardCharsets.UTF_8);
         return encryptionService.decrypt(bucketInfo, data, aad);
-    }
-
-    public boolean deleteResourceCredentials(CredentialsDescriptor credentialsDescriptor) {
-        log.debug("Deleting resource credentials for resourceId={}, bucket={}",
-                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
-        boolean deleteSucceeded = resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), EtagHeader.ANY);
-        log.debug("Deleting resource credentials for resourceId={}, bucket={} finished. Status: {}",
-                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), deleteSucceeded);
-        return deleteSucceeded;
     }
 }

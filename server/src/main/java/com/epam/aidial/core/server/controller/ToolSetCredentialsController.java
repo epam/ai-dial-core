@@ -6,10 +6,9 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
@@ -39,7 +38,7 @@ public class ToolSetCredentialsController {
 
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
-    private final ResourceCredentialsManager resourceCredentialsManager;
+    private final ResourceCredentialsService resourceCredentialsService;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final DeploymentService deploymentService;
@@ -47,10 +46,10 @@ public class ToolSetCredentialsController {
     public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
         this.taskExecutor = proxy.getTaskExecutor();
-        this.resourceCredentialsManager = proxy.getResourceCredentialsManager();
         this.accessService = proxy.getAccessService();
         this.encryptionService = proxy.getEncryptionService();
         this.deploymentService = proxy.getDeploymentService();
+        this.resourceCredentialsService = proxy.getResourceCredentialsService();
     }
 
     public Future<?> signIn() {
@@ -66,17 +65,17 @@ public class ToolSetCredentialsController {
                             verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
                             CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
                                     toolsetId, resourceSignInRequest.getCredentialsLevel(), context);
-                            ResourceCredentials resourceCredentials = resourceCredentialsManager.createResourceCredentials(
+                            resourceCredentialsService.addResourceCredentials(
                                     credentialsDescriptor,
                                     toolSet.getAuthSettings(),
                                     resourceSignInRequest,
                                     context.getUserSub());
-                            return clearResourceCredentialsSecrets(resourceCredentials);
+                            return true;
                         }
                         throw new ResourceNotFoundException("Toolset is not found: " + toolsetId);
                     });
                 })
-                .onSuccess(toolsetCredentials -> context.respond(HttpStatus.OK, toolsetCredentials))
+                .onSuccess(added -> context.respond(HttpStatus.OK, added))
                 .onFailure(error ->
                         respondError("Can't signIn into Toolset", error));
 
@@ -92,7 +91,10 @@ public class ToolSetCredentialsController {
                     verifyAccess(resourceSignOutRequest.getUrl(), resourceSignOutRequest.getCredentialsLevel());
                     CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                             resourceSignOutRequest.getUrl(), context);
-                    return resourceCredentialsManager.deleteResourceCredentials(credentialsLocator, resourceSignOutRequest, context.getUserSub());
+                    return resourceCredentialsService.deleteResourceCredentials(
+                            credentialsLocator,
+                            resourceSignOutRequest,
+                            context.getUserSub());
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->
@@ -121,15 +123,6 @@ public class ToolSetCredentialsController {
         if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
             throw new PermissionDeniedException("no read access to ToolSet resource");
         }
-    }
-
-    // TODO: Create dto for 'public' credentials information?
-    private ResourceCredentials clearResourceCredentialsSecrets(ResourceCredentials resourceCredentials) {
-        return ResourceCredentials.builder()
-                .resourceId(resourceCredentials.getResourceId())
-                .authenticationType(resourceCredentials.getAuthenticationType())
-                .credentialsLevel(resourceCredentials.getCredentialsLevel())
-                .build();
     }
 
     private void respondError(String message, Throwable error) {

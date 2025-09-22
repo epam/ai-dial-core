@@ -1,13 +1,25 @@
 package com.epam.aidial.core.credentials.service;
 
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
+import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
+import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactory;
+import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
+import com.epam.aidial.core.credentials.service.token.ApiKeyRefreshStrategy;
+import com.epam.aidial.core.credentials.service.token.OauthTokenRefreshStrategy;
+import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
+import com.epam.aidial.core.credentials.util.TimeProvider;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -18,47 +30,72 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ResourceCredentialsServiceTest {
 
     private static final String TOOL_SET_NAME = "toolsets/toolset-bucket-name/folder1/my-toolset";
-    private static final byte[] CEK = "test_cek".getBytes();
-    private static final byte[] OLD_ENCRYPTED_BODY = "old_encrypted_body".getBytes();
     private static final byte[] ENCRYPTED_BODY = "encrypted_body".getBytes();
 
     @Mock
     private ResourceService resourceService;
     @Mock
     private CredentialEncryptionService credentialEncryptionService;
+    @Mock
+    private ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider;
+    @Mock
+    private TokenRefreshStrategyFactory tokenRefreshStrategyFactory;
+    @Mock
+    private OauthTokenRefreshStrategy oauthTokenRefreshStrategy;
+    @Mock
+    private ApiKeyRefreshStrategy apiKeyRefreshStrategy;
+    @Mock
+    private TokenService tokenService;
+    @Mock
+    private TimeProvider timeProvider;
 
     @InjectMocks
     private ResourceCredentialsService service;
 
     @Test
-    public void testAddResourceCredentials_putsResource() {
+    void testAddResourceCredentials_putsResource() {
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         CredentialsDescriptor descriptor = createCredentialsDescriptor();
-        when(credentialEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
+        ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder().build();
+        ResourceCredentialsFactory resourceCredentialsFactory = mock(ResourceCredentialsFactory.class);
 
-        service.addResourceCredentials(descriptor, creds);
+        ResourceSignInRequest resourceSignInRequest = mock(ResourceSignInRequest.class);
+        when(resourceSignInRequest.getAuthenticationType()).thenReturn(AuthenticationType.OAUTH);
+        when(resourceSignInRequest.getCredentialsLevel()).thenReturn(CredentialsLevel.USER);
+
+        when(credentialEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
+        when(resourceCredentialsFactoryProvider.getFactory(AuthenticationType.OAUTH)).thenReturn(resourceCredentialsFactory);
+        when(resourceCredentialsFactory.createCredentials(
+                resourceSignInRequest.getUrl(),
+                resourceAuthSettings,
+                resourceSignInRequest))
+                .thenReturn(creds);
+
+        service.addResourceCredentials(descriptor, resourceAuthSettings, resourceSignInRequest, "userSub");
 
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         ArgumentCaptor<byte[]> bodyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -80,7 +117,7 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
-    public void testGetAllResourceCredentials_returnsOne() {
+    void testGetAllResourceCredentials_returnsOne() {
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
         CredentialsLocator credentialsLocator = createCredentialsLocator();
@@ -108,7 +145,7 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
-    public void testGetAllResourceCredentials_returnsEmptyWhenNull() {
+    void testGetAllResourceCredentials_returnsEmptyWhenNull() {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(null);
 
@@ -119,100 +156,209 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
-    public void testUpdateAllResourceCredentials_multipleEntriesWithSameLevel_throws() {
-        CredentialsLocator credentialsLocator = createCredentialsLocator();
-        ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
-        ResourceCredentials c2 = createCredentials(CredentialsLevel.USER);
+    void getResourceCredentials() {
+        ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
+        byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
+        CredentialsDescriptor credentialsDescriptor = createCredentialsDescriptor();
 
-        assertThrows(IllegalStateException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1, c2)));
-        verifyNoInteractions(resourceService);
+        when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
+        when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
+
+        ResourceCredentials resourceCredentials = service.getResourceCredentials(credentialsDescriptor);
+
+        assertEquals(CredentialsLevel.USER, resourceCredentials.getCredentialsLevel());
+        assertEquals(TOOL_SET_NAME, resourceCredentials.getResourceId());
+
+        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        verify(resourceService).getResourceBytes(descriptorCaptor.capture());
+
+        ResourceDescriptor passed = descriptorCaptor.getValue();
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
+        assertEquals("my-toolset", passed.getName());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
+        assertEquals("bucket-name", passed.getBucketName());
+        assertEquals("bucket-location/", passed.getBucketLocation());
     }
 
     @Test
-    public void testUpdateAllResourceCredentials_notFound_throws() {
-        CredentialsLocator credentialsLocator = createCredentialsLocator();
-        ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
+    void testDeleteResourceCredentials_Success() {
+        // Given
+        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
+        ResourceSignOutRequest resourceSignOutRequest = Mockito.mock(ResourceSignOutRequest.class);
 
-        doAnswer(inv -> {
-            Function<String, String> mapper = inv.getArgument(1);
-            mapper.apply(null); // should cause ResourceNotFoundException in service logic
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        when(resourceSignOutRequest.getCredentialsLevel()).thenReturn(CredentialsLevel.USER);
+        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new HashMap<>();
+        descriptors.put(CredentialsLevel.USER, credentialsDescriptor);
+        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
+
+        ResourceCredentials resourceCredentials = createCredentials(CredentialsLevel.USER);
+        resourceCredentials.setUserSub("userSub");
+        byte[] resourceCredentialsBytes = JsonMapperUtil.convertToString(resourceCredentials).getBytes();
+
+        ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.getFullPath()).thenReturn("path");
+        when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(resourceCredentialsBytes);
+
+        doAnswer(invocation -> {
+            Function<byte[], byte[]> function = invocation.getArgument(1);
+            byte[] encryptedBytes = "mockEncryptedData".getBytes();
+            function.apply(encryptedBytes);
             return null;
-        }).when(resourceService).computeResourceBytes(any(ResourceDescriptor.class), any());
+        }).when(resourceService).computeResourceBytes(any(), any());
 
-        assertThrows(ResourceNotFoundException.class, () -> service.updateAllResourceCredentials(credentialsLocator, List.of(c1)));
+        // When
+        boolean result = service.deleteResourceCredentials(credentialsLocator, resourceSignOutRequest, "userSub");
 
-        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), any());
-        ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
-        assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
-        assertEquals("bucket-name", passed.getBucketName());
-        assertEquals("bucket-location/", passed.getBucketLocation());
+        // Then
+        assertTrue(result);
+        verify(resourceService).computeResourceBytes(eq(resourceDescriptor), any());
     }
 
     @Test
-    public void testUpdateAllResourceCredentials_deleteWhenEmptyList() {
-        CredentialsLocator credentialsLocator = createCredentialsLocator();
+    void testDeleteResourceCredentials_ValidationFailed() {
+        // Given
+        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
+        ResourceSignOutRequest resourceSignOutRequest = Mockito.mock(ResourceSignOutRequest.class);
 
-        service.updateAllResourceCredentials(credentialsLocator, List.of());
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        when(resourceSignOutRequest.getCredentialsLevel()).thenReturn(CredentialsLevel.USER);
+        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new HashMap<>();
+        descriptors.put(CredentialsLevel.USER, credentialsDescriptor);
+        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
 
-        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        ArgumentCaptor<Function<byte[], byte[]>> fnCaptor = ArgumentCaptor.forClass(Function.class);
-        verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), fnCaptor.capture());
+        ResourceCredentials resourceCredentials = createCredentials(CredentialsLevel.USER);
+        resourceCredentials.setUserSub("userSub-1");
+        byte[] resourceCredentialsBytes = JsonMapperUtil.convertToString(resourceCredentials).getBytes();
 
-        ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
-        assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
-        assertEquals("bucket-name", passed.getBucketName());
-        assertEquals("bucket-location/", passed.getBucketLocation());
+        ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.getFullPath()).thenReturn("path");
+        when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(resourceCredentialsBytes);
 
-        byte[] result = fnCaptor.getValue().apply(OLD_ENCRYPTED_BODY);
-        assertNull(result);
+        doAnswer(invocation -> {
+            Function<byte[], byte[]> function = invocation.getArgument(1);
+            byte[] encryptedBytes = "mockEncryptedData".getBytes();
+            function.apply(encryptedBytes);
+            return null;
+        }).when(resourceService).computeResourceBytes(any(), any());
+
+        // When & Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> service.deleteResourceCredentials(credentialsLocator, resourceSignOutRequest, "userSub-2")
+        );
+        assertEquals("Can't delete other user's personal credentials", exception.getMessage());
     }
 
     @Test
-    public void testUpdateAllResourceCredentials_updatesBody() {
-        CredentialsLocator credentialsLocator = createCredentialsLocator();
-        ResourceCredentials c1 = createCredentials(CredentialsLevel.USER);
-        when(credentialEncryptionService.encrypt(any(), any(), any())).thenReturn(ENCRYPTED_BODY);
+    void testGetAndRefreshCredentials_SuccessWithoutTokenRefresh() {
+        // Given
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.API_KEY);
 
-        service.updateAllResourceCredentials(credentialsLocator, List.of(c1));
 
-        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        ArgumentCaptor<Function<byte[], byte[]>> fnCaptor = ArgumentCaptor.forClass(Function.class);
-        verify(resourceService).computeResourceBytes(descriptorCaptor.capture(), fnCaptor.capture());
+        Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
+        Mockito.when(credentialsDescriptor.getBucketName()).thenReturn("testBucket");
+        Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
-        ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
-        assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
-        assertEquals("bucket-name", passed.getBucketName());
-        assertEquals("bucket-location/", passed.getBucketLocation());
+        byte[] encryptedBytes = "mockEncryptedData".getBytes(StandardCharsets.UTF_8);
+        byte[] decryptedBytes = "{\"authenticationType\": \"API_KEY\"}".getBytes(StandardCharsets.UTF_8);
 
-        Function<byte[], byte[]> fn = fnCaptor.getValue();
-        byte[] updatedBody = fn.apply(OLD_ENCRYPTED_BODY);
-        assertEquals(ENCRYPTED_BODY, updatedBody);
+        ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.getFullPath()).thenReturn("path");
+
+        Mockito.when(credentialEncryptionService.decrypt(any(), eq(encryptedBytes), any())).thenReturn(decryptedBytes);
+        Mockito.doAnswer(invocation -> {
+            Function<byte[], byte[]> callbackFunction = invocation.getArgument(1);
+            callbackFunction.apply(encryptedBytes);
+            return new ResourceItemMetadata();
+        }).when(resourceService).computeResourceBytes(any(), any());
+
+        when(tokenRefreshStrategyFactory.getTokenValidatorStrategy(AuthenticationType.API_KEY))
+                .thenReturn(apiKeyRefreshStrategy);
+
+        // When
+        ResourceCredentials result = service.getAndRefreshCredentials(credentialsDescriptor, authSettings);
+
+        // Then
+        Assertions.assertNotNull(result);
+        Assertions.assertEquals(AuthenticationType.API_KEY, result.getAuthenticationType());
     }
 
     @Test
-    public void testDeleteResourceCredentials_removesResource() {
-        CredentialsDescriptor descriptor = createCredentialsDescriptor();
-        service.deleteResourceCredentials(descriptor);
+    void testGetAndRefreshCredentials_SuccessWithTokenRefresh() {
+        // Given
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.OAUTH);
 
-        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        ArgumentCaptor<EtagHeader> etagCaptor = ArgumentCaptor.forClass(EtagHeader.class);
+        Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
+        Mockito.when(credentialsDescriptor.getBucketName()).thenReturn("testBucket");
+        Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
-        verify(resourceService).deleteResource(descriptorCaptor.capture(), etagCaptor.capture());
+        byte[] encryptedBytes = "mockEncryptedData".getBytes(StandardCharsets.UTF_8);
+        byte[] decryptedBytes = """
+                {
+                    "resourceId": "testResourceId",
+                    "authenticationType": "OAUTH",
+                    "accessToken": "expiredAccessToken",
+                    "refreshToken": "refreshTokenValue",
+                    "updatedAt": "1",
+                    "expiresInSeconds": "100"
+                }
+                """.getBytes(StandardCharsets.UTF_8);
 
-        ResourceDescriptor passed = descriptorCaptor.getValue();
-        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
-        assertEquals("my-toolset", passed.getName());
-        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
-        assertEquals("bucket-name", passed.getBucketName());
-        assertEquals("bucket-location/", passed.getBucketLocation());
-        assertEquals(EtagHeader.ANY, etagCaptor.getValue());
+        ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.getFullPath()).thenReturn("path");
+
+        Mockito.when(credentialEncryptionService.decrypt(any(), eq(encryptedBytes), any())).thenReturn(decryptedBytes);
+        ResourceCredentials decryptedResourceCredentials = JsonMapperUtil.convertToObject(decryptedBytes, ResourceCredentials.class);
+        when(tokenRefreshStrategyFactory.getTokenValidatorStrategy(AuthenticationType.OAUTH))
+                .thenReturn(oauthTokenRefreshStrategy);
+        when(oauthTokenRefreshStrategy.requiresTokenRefresh(decryptedResourceCredentials)).thenReturn(true);
+
+        TokenResponse mockedTokenResponse = new TokenResponse("newAccessToken", "newRefreshToken", 3600L);
+        Mockito.when(tokenService.getToken("testResourceId", authSettings, "refreshTokenValue"))
+                .thenReturn(mockedTokenResponse);
+        Mockito.doAnswer(invocation -> {
+            Function<byte[], byte[]> callbackFunction = invocation.getArgument(1);
+            callbackFunction.apply(encryptedBytes);
+            return new ResourceItemMetadata();
+        }).when(resourceService).computeResourceBytes(any(), any());
+
+        // When
+        ResourceCredentials result = service.getAndRefreshCredentials(credentialsDescriptor, authSettings);
+
+        // Then
+        Assertions.assertNotNull(result);
+        Assertions.assertEquals("newAccessToken", result.getAccessToken());
+        Assertions.assertEquals("newRefreshToken", result.getRefreshToken());
+        Mockito.verify(tokenService).getToken("testResourceId", authSettings, "refreshTokenValue");
+    }
+
+    @Test
+    void testGetAndRefreshCredentials_CredentialsNotFound() {
+        // Given
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+
+        Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
+        Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
+
+        Mockito.doAnswer(invocation -> {
+            Function<byte[], byte[]> callbackFunction = invocation.getArgument(1);
+            return callbackFunction.apply(null);
+        }).when(resourceService).computeResourceBytes(any(), any());
+
+        // When & Then
+        Assertions.assertThrows(ResourceNotFoundException.class, () -> {
+            service.getAndRefreshCredentials(credentialsDescriptor, authSettings);
+        });
+        Mockito.verify(resourceService).computeResourceBytes(any(), any());
     }
 
     private CredentialsDescriptor createCredentialsDescriptor() {

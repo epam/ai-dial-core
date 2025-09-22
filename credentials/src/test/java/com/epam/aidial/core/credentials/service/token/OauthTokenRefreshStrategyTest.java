@@ -1,19 +1,33 @@
-package com.epam.aidial.core.credentials.data;
+package com.epam.aidial.core.credentials.service.token;
 
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.util.TimeProvider;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
 
-class ResourceCredentialsTest {
+@ExtendWith(MockitoExtension.class)
+class OauthTokenRefreshStrategyTest {
+
+    @Mock
+    private TimeProvider timeProvider;
+
+    @InjectMocks
+    private OauthTokenRefreshStrategy oauthTokenRefreshStrategy;
 
     static Stream<Arguments> provideHasUnexpiredTokenCases() {
         long now = System.currentTimeMillis();
@@ -61,79 +75,53 @@ class ResourceCredentialsTest {
     @ParameterizedTest
     @MethodSource("provideHasUnexpiredTokenCases")
     void hasUnexpiredTokenParameterizedTest(ResourceCredentials creds, boolean expected) {
-        assertEquals(expected, creds.hasUnexpiredToken());
+        assertEquals(expected, oauthTokenRefreshStrategy.hasUnexpiredToken(creds));
     }
 
-    static Stream<Arguments> provideRequiresTokenRefreshCases() {
+    @Test
+    void requiresTokenRefreshParameterizedTest() {
+        long now = System.currentTimeMillis();
+        ResourceCredentials creds = ResourceCredentials.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .accessToken("access-token")
+                .refreshToken("refresh")
+                .updatedAt(now)
+                .expiresInSeconds(10L)
+                .build();
+        when(timeProvider.getCurrentTime()).thenReturn(now + TimeUnit.SECONDS.toMillis(20));
+        assertTrue(oauthTokenRefreshStrategy.requiresTokenRefresh(creds));
+    }
+
+    static Stream<Arguments> provideNotRequiresTokenRefreshCases() {
         long now = System.currentTimeMillis();
         return Stream.of(
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .refreshToken("refresh")
-                        .updatedAt(now - TimeUnit.SECONDS.toMillis(20))
-                        .expiresInSeconds(10L)
-                        .build(), true),
-                Arguments.of(ResourceCredentials.builder()
-                        .authenticationType(AuthenticationType.OAUTH)
-                        .refreshToken("refresh")
                         .updatedAt(now)
                         .expiresInSeconds(10L)
-                        .build(), false),
+                        .build()),
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .refreshToken(null)
                         .expiresInSeconds(60L)
-                        .build(), false),
+                        .build()),
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .refreshToken("refresh")
                         .expiresInSeconds(null)
-                        .build(), false),
+                        .build()),
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .refreshToken(null)
                         .expiresInSeconds(null)
-                        .build(), false)
+                        .build())
         );
     }
 
     @ParameterizedTest
-    @MethodSource("provideRequiresTokenRefreshCases")
-    void requiresTokenRefreshParameterizedTest(ResourceCredentials creds, boolean expected) {
-        assertEquals(expected, creds.requiresTokenRefresh());
-    }
-
-    @ParameterizedTest
-    @EnumSource(
-            value = AuthenticationType.class,
-            names = {"API_KEY", "NONE"}
-    )
-    void hasUnexpiredToken_shouldThrowUnsupportedOperationExceptionIfNotOauth(AuthenticationType type) {
-        ResourceCredentials resourceCredentials = ResourceCredentials.builder()
-                .authenticationType(type)
-                .build();
-
-        UnsupportedOperationException ex = assertThrows(
-                UnsupportedOperationException.class,
-                resourceCredentials::hasUnexpiredToken
-        );
-        assertEquals("Access token exists only for OAuth authentication type.", ex.getMessage());
-    }
-
-    @ParameterizedTest
-    @EnumSource(
-            value = AuthenticationType.class,
-            names = {"API_KEY", "NONE"}
-    )
-    void requiresTokenRefresh_shouldThrowUnsupportedOperationExceptionIfNotOauth(AuthenticationType type) {
-        ResourceCredentials resourceCredentials = ResourceCredentials.builder()
-                .authenticationType(type)
-                .build();
-
-        UnsupportedOperationException ex = assertThrows(
-                UnsupportedOperationException.class,
-                resourceCredentials::requiresTokenRefresh
-        );
-        assertEquals("Access token exists only for OAuth authentication type.", ex.getMessage());
+    @MethodSource("provideNotRequiresTokenRefreshCases")
+    void requiresTokenRefreshTest_NoRefresh(ResourceCredentials creds) {
+        assertFalse(oauthTokenRefreshStrategy.requiresTokenRefresh(creds));
     }
 }
