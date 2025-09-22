@@ -26,7 +26,7 @@ An object containing parameters for each [role](#roles).
 
 * `limits`: Limits for the number of tokens a role can use with a specific resource. **IMPORTANT:** Unlimited if not defined. Refer to [limits](#rolesrole_namelimits) for more details.
 * `share`: Use this parameter to define resource sharing limits based on user roles. Refer to [share](#rolesrole_nameshare) for more details.
-* `costLimits`: Use this parameter to define time-based spending limits (minute/day/week/month) in dollars for a role across all models. Refer to [costLimits](#rolesrole_namecostlimits) for more details.
+* `costLimit`: Use this parameter to define time-based spending limits (minute/day/week/month) in dollars for a role across all models. Refer to [costLimits](#rolesrole_namecostlimits) for more details.
 
 **Example:**
 
@@ -38,18 +38,21 @@ An object containing parameters for each [role](#roles).
                 "minute": "200000",
                 "day": "10000000",
                 "week": "10000000",
-                "month": "10000000",
+                "month": "10000000"
             }
+        },
+        "costLimit": {
+            "day": 100.00
         },
         "share": {
             "APPLICATION": {
                 "invitation_ttl": "24",
                 "max_accepted_users": "10"
-                },
+            },
             "FILE": {
                 "invitation_ttl": "24",
                 "max_accepted_users": "10"
-                }
+            }
         }
     }
 }
@@ -78,7 +81,7 @@ Available values:
     }
 }
 ```
-#### roles.<role_name>.costLimits 
+#### roles.<role_name>.costLimit 
 
 Use to define cost limits for a role applied across all models. Cost limits work additively with existing token/request limits. Use to implement cost-conscious resource allocation policies.
 
