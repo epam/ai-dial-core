@@ -25,7 +25,6 @@ import org.apache.commons.lang3.mutable.MutableObject;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -88,7 +87,7 @@ public class ResourceCredentialsService {
         log.debug("Deleting resource credentials for resourceId={}.", credentialsLocator.getResourceId());
         CredentialsLevel signOutRequestCredentialsLevel = resourceSignOutRequest.getCredentialsLevel();
         CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(signOutRequestCredentialsLevel);
-        AtomicBoolean deleteSucceeded = new AtomicBoolean(false);
+        MutableObject<Boolean> result = new MutableObject<>();
 
         resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
             if (existingCredentialsBytesEncrypted == null) {
@@ -98,13 +97,13 @@ public class ResourceCredentialsService {
             byte[] existingCredentialsBytesDecrypted = decrypt(credentialsDescriptor, existingCredentialsBytesEncrypted);
             ResourceCredentials existingCredentials = JsonMapperUtil.convertToObject(existingCredentialsBytesDecrypted, ResourceCredentials.class);
             validateDeleteOperation(existingCredentials, signOutRequestCredentialsLevel, userSub);
-            deleteSucceeded.set(true);
+            result.setValue(true);
             return null;
         });
 
-        log.debug("Deleting resource credentials for resourceId={}, bucket={} finished. Status: {}",
-                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), deleteSucceeded);
-        return deleteSucceeded.get();
+        log.debug("Deleting resource credentials for resourceId={}, bucket={} finished. Result: {}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), result.get());
+        return result.get();
     }
 
     private void validateDeleteOperation(ResourceCredentials existingCredentials,
