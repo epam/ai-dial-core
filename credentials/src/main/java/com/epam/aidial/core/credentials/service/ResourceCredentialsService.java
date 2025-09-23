@@ -87,7 +87,7 @@ public class ResourceCredentialsService {
         log.debug("Deleting resource credentials for resourceId={}.", credentialsLocator.getResourceId());
         CredentialsLevel signOutRequestCredentialsLevel = resourceSignOutRequest.getCredentialsLevel();
         CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(signOutRequestCredentialsLevel);
-        MutableObject<Boolean> result = new MutableObject<>();
+        MutableObject<Boolean> result = new MutableObject<>(false);
 
         resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
             if (existingCredentialsBytesEncrypted == null) {
