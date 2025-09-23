@@ -12,6 +12,7 @@ import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvid
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementServiceFactory;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
@@ -195,15 +196,19 @@ public class AiDial {
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
             TimeProvider timeProvider = new TimeProvider();
-            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
+            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
-                    tokenRefreshStrategyFactory, resourceAuthorizationClient, timeProvider);
+                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider);
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
                     resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
+            ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
+                    credentialEncryptionService);
 
-            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService);
+            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
+                    resourceAuthSettingsEncryptionService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService, generator, clock);
 
@@ -265,8 +270,8 @@ public class AiDial {
 
     private ResourceCredentialsService getResourceCredentialsService(TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
                                                                      ResourceAuthorizationClient resourceAuthorizationClient,
+                                                                     CredentialEncryptionService credentialEncryptionService,
                                                                      TimeProvider timeProvider) {
-        CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
         TokenService tokenService = new TokenService(resourceAuthorizationClient);
         ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
         return new ResourceCredentialsService(resourceService, credentialEncryptionService, resourceCredentialsFactoryProvider,

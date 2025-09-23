@@ -31,7 +31,7 @@ public class CachedContentEncryptionKeyManager implements ContentEncryptionKeyMa
         this.contentEncryptionKeyManager = contentEncryptionKeyManager;
         this.cekCache = CacheBuilder.newBuilder()
                 .maximumSize(maxSize)
-                .expireAfterWrite(expiration, TimeUnit.MILLISECONDS)
+                .expireAfterAccess(expiration, TimeUnit.MILLISECONDS)
                 .build();
     }
 
