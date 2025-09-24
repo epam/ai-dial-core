@@ -19,11 +19,12 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class ToolSetCredentialsControllerTest {
 
     @Mock private ProxyContext context;
@@ -54,14 +56,11 @@ class ToolSetCredentialsControllerTest {
 
     @BeforeEach
     void setup() {
-        MockitoAnnotations.openMocks(this);
-
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
         when(proxy.getResourceCredentialsService()).thenReturn(resourceCredentialsService);
         when(proxy.getAccessService()).thenReturn(accessService);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getDeploymentService()).thenReturn(deploymentService);
-        when(context.getProxy()).thenReturn(proxy);
 
         doAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
@@ -109,6 +108,7 @@ class ToolSetCredentialsControllerTest {
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
         when(context.getRequest()).thenReturn(request);
+        when(context.getProxy()).thenReturn(proxy);
 
         ToolSet mockToolSet = mock(ToolSet.class);
         when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
@@ -173,16 +173,10 @@ class ToolSetCredentialsControllerTest {
         when(context.getRequest()).thenReturn(request);
 
         ToolSet mockToolSet = mock(ToolSet.class);
-        when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
-
         String resourceId = "toolsets/encrypted-user-bucket/%s".formatted(resourceName);
         when(deploymentService.findDeployment(context, resourceId))
                 .thenReturn(mockToolSet);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
-        when(context.getUserSub()).thenReturn("userSub");
-
-        ApiKeyData apiKeyData = mock(ApiKeyData.class);
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
 
         ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
@@ -232,9 +226,7 @@ class ToolSetCredentialsControllerTest {
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
         when(context.getRequest()).thenReturn(request);
-
-        ToolSet mockToolSet = mock(ToolSet.class);
-        when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
+        when(context.getProxy()).thenReturn(proxy);
 
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserSub()).thenReturn("userSub");
@@ -292,18 +284,7 @@ class ToolSetCredentialsControllerTest {
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
         when(context.getRequest()).thenReturn(request);
-
-        ToolSet mockToolSet = mock(ToolSet.class);
-        when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
-
-        String resourceId = "toolsets/encrypted-user-bucket/%s".formatted(resourceName);
-        when(deploymentService.findDeployment(context, resourceId))
-                .thenReturn(mockToolSet);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
-        when(context.getUserSub()).thenReturn("userSub");
-
-        ApiKeyData apiKeyData = mock(ApiKeyData.class);
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
 
         ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
