@@ -52,6 +52,7 @@ public class ToolSetCredentialsController {
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
     }
 
+    // TODO: fix case with toolset from config
     public Future<?> signIn() {
         context.getRequest()
                 .body()
@@ -62,9 +63,10 @@ public class ToolSetCredentialsController {
                     return taskExecutor.submit(() -> {
                         Deployment deployment = deploymentService.findDeployment(context, toolsetId);
                         if (deployment instanceof ToolSet toolSet) {
-                            verifyAccess(toolsetId, resourceSignInRequest.getCredentialsLevel());
+                            String encodedResourceUrl = UrlUtil.encodePath(toolsetId);
+                            verifyAccess(encodedResourceUrl, resourceSignInRequest.getCredentialsLevel());
                             CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
-                                    toolsetId, resourceSignInRequest.getCredentialsLevel(), context);
+                                    encodedResourceUrl, resourceSignInRequest.getCredentialsLevel(), context);
                             resourceCredentialsService.addResourceCredentials(
                                     credentialsDescriptor,
                                     toolSet.getAuthSettings(),
@@ -82,15 +84,16 @@ public class ToolSetCredentialsController {
         return Future.succeededFuture();
     }
 
+    // TODO: fix case with toolset from config
     public Future<?> signOut() {
         context.getRequest()
                 .body()
                 .compose(body -> taskExecutor.submit(() -> {
                     ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
+                    String encodedResourceUrl = UrlUtil.encodePath(resourceSignOutRequest.getUrl());
                     ValidationUtil.validate(resourceSignOutRequest);
-                    verifyAccess(resourceSignOutRequest.getUrl(), resourceSignOutRequest.getCredentialsLevel());
-                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
-                            resourceSignOutRequest.getUrl(), context);
+                    verifyAccess(encodedResourceUrl, resourceSignOutRequest.getCredentialsLevel());
+                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context);
                     return resourceCredentialsService.deleteResourceCredentials(
                             credentialsLocator,
                             resourceSignOutRequest,
@@ -103,16 +106,8 @@ public class ToolSetCredentialsController {
         return Future.succeededFuture();
     }
 
-    private void verifyAccess(String toolSetId, CredentialsLevel credentialsLevel) {
-        ResourceDescriptor resourceDescriptor;
-        try {
-            String url = UrlUtil.encodePath(toolSetId);
-            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(url, encryptionService);
-        } catch (Throwable ignore) {
-            // toolset is from config
-            return;
-        }
-
+    private void verifyAccess(String encodedResourceUrl, CredentialsLevel credentialsLevel) {
+        ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
