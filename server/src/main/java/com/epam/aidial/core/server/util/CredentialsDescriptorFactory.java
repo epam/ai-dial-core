@@ -9,8 +9,6 @@ import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.experimental.UtilityClass;
 
-import java.util.Objects;
-
 @UtilityClass
 public class CredentialsDescriptorFactory {
 
@@ -27,7 +25,7 @@ public class CredentialsDescriptorFactory {
             // resource might be static, resourceDescriptor remains null
         }
 
-        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, resourceId, proxyContext);
+        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, proxyContext);
         return new CredentialsDescriptor(resourceId, bucketInfo.name(), bucketInfo.location());
     }
 
@@ -37,32 +35,24 @@ public class CredentialsDescriptorFactory {
             ProxyContext proxyContext
     ) {
         String resourceId = resourceDescriptor.getUrl();
-        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, resourceId, proxyContext);
+        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, proxyContext);
         return new CredentialsDescriptor(resourceId, bucketInfo.name(), bucketInfo.location());
     }
 
     private BucketInfo resolveBucketInfo(
             CredentialsLevel credentialsLevel,
             ResourceDescriptor resourceDescriptor,
-            String resourceId,
             ProxyContext proxyContext
     ) {
-        BucketInfo globalLocation = getPublicBucketInfo();
-        BucketInfo userLocation = getUserBucketInfo(proxyContext);
-
         switch (credentialsLevel) {
             case GLOBAL -> {
                 if (resourceDescriptor == null || resourceDescriptor.isPublic()) {
-                    return globalLocation;
+                    return getPublicBucketInfo();
                 }
-                if (Objects.equals(resourceDescriptor.getBucketLocation(), userLocation.location())) {
-                    return userLocation;
-                }
-                throw new IllegalArgumentException(
-                        "Cannot modify global credentials of other users: " + resourceId);
+                return new BucketInfo(resourceDescriptor.getBucketName(), resourceDescriptor.getBucketLocation());
             }
             case USER -> {
-                return userLocation;
+                return getUserBucketInfo(proxyContext);
             }
             default -> throw new IllegalArgumentException("Invalid credentials level: " + credentialsLevel);
         }

@@ -73,6 +73,8 @@ public class ResourceCredentialsService {
             return false;
         }
 
+        resourceCredentials.setResourceId(to.getResourceId());
+
         byte[] encryptedBody = encrypt(to, resourceCredentials);
         resourceService.putResourceBytes(to.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
         log.debug("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",

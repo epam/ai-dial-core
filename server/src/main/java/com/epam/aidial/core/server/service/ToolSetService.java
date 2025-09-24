@@ -64,7 +64,7 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        resourceAuthSettingsEncryptionService.decrypt(toolSet.getName(),
+        resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
                 new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
                 toolSet.getAuthSettings());
 
@@ -84,7 +84,7 @@ public class ToolSetService {
                 //TODO we don't support auth settings update yet
                 toolSet.setAuthSettings(existing.getAuthSettings());
             }
-            resourceAuthSettingsEncryptionService.encrypt(toolSet.getName(),
+            resourceAuthSettingsEncryptionService.encrypt(resource.getUrl(),
                     new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
                     toolSet.getAuthSettings());
             return ProxyUtil.convertToString(toolSet);
@@ -107,6 +107,11 @@ public class ToolSetService {
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
         toolSet.setName(destination.getUrl());
         toolSet.setReference(ProxyUtil.generateReference());
+
+        resourceAuthSettingsEncryptionService.encrypt(destination.getUrl(),
+                new BucketInfo(destination.getBucketName(), destination.getBucketLocation()),
+                toolSet.getAuthSettings());
+
         String json = ProxyUtil.convertToString(toolSet);
         resourceService.putResource(destination, json, etag, author);
 
@@ -122,7 +127,12 @@ public class ToolSetService {
                 CredentialsDescriptorFactory.fromResourceDescriptor(source, CredentialsLevel.GLOBAL, context);
         CredentialsDescriptor destinationCredentialDescriptor =
                 CredentialsDescriptorFactory.fromResourceDescriptor(destination, CredentialsLevel.GLOBAL, context);
-        resourceCredentialsService.copyResourceCredentials(sourceCredentialDescriptor, destinationCredentialDescriptor, CredentialsLevel.GLOBAL);
+        boolean copied = resourceCredentialsService.copyResourceCredentials(
+                sourceCredentialDescriptor, destinationCredentialDescriptor, CredentialsLevel.GLOBAL);
+        if (!copied) {
+            throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
+                    .formatted(source.getUrl()));
+        }
     }
 
     public boolean deleteToolset(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
