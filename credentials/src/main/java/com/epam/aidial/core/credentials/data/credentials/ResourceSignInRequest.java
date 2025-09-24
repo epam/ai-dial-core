@@ -5,9 +5,13 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
 import lombok.Data;
+import lombok.extern.jackson.Jacksonized;
 
 @Data
+@Builder
+@Jacksonized
 public class ResourceSignInRequest {
 
     @NotBlank(message = "resource url should be specified")
