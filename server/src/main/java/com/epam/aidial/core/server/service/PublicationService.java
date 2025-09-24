@@ -162,7 +162,7 @@ public class PublicationService {
                 .filter(resource -> resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
 
-        copySourceToReviewResources(resourcesToAdd);
+        copySourceToReviewResources(context, resourcesToAdd);
 
         resourceService.computeResource(publications(bucket, bucketLocation), body -> {
             Map<String, Publication> publications = decodePublications(body);
@@ -187,7 +187,7 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication deletePublication(ResourceDescriptor resource) {
+    public Publication deletePublication(ProxyContext context, ResourceDescriptor resource) {
         validatePublicationResourceDescriptor(resource);
 
         resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
@@ -215,12 +215,13 @@ public class PublicationService {
             List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                     .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                     .toList();
-            deleteReviewResources(resourcesToAdd);
+            deleteReviewResources(context, resourcesToAdd);
         }
 
         return publication;
     }
 
+    // TODO: should be able to update toolsets
     public Publication updatePublication(ProxyContext context, Publication publication) {
         validatePublicationRequest(publication);
 
@@ -306,7 +307,7 @@ public class PublicationService {
             }
 
             // copy new resources to the review bucket
-            copySourceToReviewResources(reviewResourcesToAdd);
+            copySourceToReviewResources(context, reviewResourcesToAdd);
 
             // replace internal links in the resources
             for (Publication.Resource resource : publication.getResources()) {
@@ -353,7 +354,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication approvePublication(ResourceDescriptor resource) {
+    public Publication approvePublication(ProxyContext context, ResourceDescriptor resource) {
         Publication publication = getPublication(resource);
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
@@ -391,9 +392,9 @@ public class PublicationService {
 
         ruleService.storeRules(publication);
 
-        copyReviewToTargetResources(publication, resourcesToAdd);
-        deleteReviewResources(resourcesToAdd);
-        deletePublicResources(resourcesToDelete);
+        copyReviewToTargetResources(context, publication, resourcesToAdd);
+        deleteReviewResources(context, resourcesToAdd);
+        deletePublicResources(context, resourcesToDelete);
 
         String notificationMessage = "Your request has been approved by admin";
         Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
@@ -403,7 +404,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication rejectPublication(ResourceDescriptor resource, RejectPublicationRequest request) {
+    public Publication rejectPublication(ProxyContext context, ResourceDescriptor resource, RejectPublicationRequest request) {
         validatePublicationResourceDescriptor(resource);
 
         MutableObject<Publication> reference = new MutableObject<>();
@@ -434,7 +435,7 @@ public class PublicationService {
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                 .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
-        deleteReviewResources(resourcesToAdd);
+        deleteReviewResources(context, resourcesToAdd);
 
         String rejectReason = request.comment();
         String notificationMessage = "Your request has been rejected by admin";
@@ -654,7 +655,7 @@ public class PublicationService {
         }
     }
 
-    private void copySourceToReviewResources(List<Publication.Resource> resources) {
+    private void copySourceToReviewResources(ProxyContext context, List<Publication.Resource> resources) {
         Map<String, String> replacementLinks = new HashMap<>();
 
         for (Publication.Resource resource : resources) {
@@ -685,7 +686,7 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
-                toolSetService.copyToolSet(from, to, null, false);
+                toolSetService.copyToolSet(context, from, to, null, false, resource.isPublishCredentials());
             } else if (!resourceService.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
@@ -697,7 +698,7 @@ public class PublicationService {
     }
 
 
-    private void copyReviewToTargetResources(Publication publication, List<Publication.Resource> resources) {
+    private void copyReviewToTargetResources(ProxyContext context, Publication publication, List<Publication.Resource> resources) {
         Map<String, String> replacementLinks = new HashMap<>();
 
         for (Publication.Resource resource : resources) {
@@ -728,7 +729,8 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
-                toolSetService.copyToolSet(from, to, publication.getDisplayAuthor(), false);
+                toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
+                        resource.isPublishCredentials());
             } else {
                 UserMetadata userMetadata = new UserMetadata();
                 ResourceItemMetadata metadata = resourceService.getResourceMetadata(from);
@@ -756,21 +758,21 @@ public class PublicationService {
         }
     }
 
-    private void deleteReviewResources(List<Publication.Resource> resources) {
+    private void deleteReviewResources(ProxyContext context, List<Publication.Resource> resources) {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
-            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(context, descriptor, EtagHeader.ANY);
         }
     }
 
-    private void deletePublicResources(List<Publication.Resource> resources) {
+    private void deletePublicResources(ProxyContext context, List<Publication.Resource> resources) {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
-            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(context, descriptor, EtagHeader.ANY);
         }
     }
 

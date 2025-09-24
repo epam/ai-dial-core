@@ -31,6 +31,16 @@ public class CredentialsDescriptorFactory {
         return new CredentialsDescriptor(resourceId, bucketInfo.name(), bucketInfo.location());
     }
 
+    public static CredentialsDescriptor fromResourceDescriptor(
+            ResourceDescriptor resourceDescriptor,
+            CredentialsLevel credentialsLevel,
+            ProxyContext proxyContext
+    ) {
+        String resourceId = resourceDescriptor.getUrl();
+        BucketInfo bucketInfo = resolveBucketInfo(credentialsLevel, resourceDescriptor, resourceId, proxyContext);
+        return new CredentialsDescriptor(resourceId, bucketInfo.name(), bucketInfo.location());
+    }
+
     private BucketInfo resolveBucketInfo(
             CredentialsLevel credentialsLevel,
             ResourceDescriptor resourceDescriptor,

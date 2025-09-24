@@ -54,6 +54,8 @@ public class Publication {
          * Review resource url to review: files/review-bucket/folder/file.txt
          */
         String reviewUrl;
+
+        boolean publishCredentials;
     }
 
     public enum ResourceAction {

@@ -310,7 +310,7 @@ public class ResourceController extends AccessControlBaseController {
 
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        taskExecutor.submit(() -> proxy.getResourceOperationService().deleteResource(descriptor, etag))
+        taskExecutor.submit(() -> proxy.getResourceOperationService().deleteResource(context, descriptor, etag))
                 .onSuccess(deleted -> {
                     if (deleted) {
                         context.respond(HttpStatus.OK);
