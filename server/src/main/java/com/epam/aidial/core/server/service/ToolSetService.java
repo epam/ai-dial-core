@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
@@ -94,9 +95,20 @@ public class ToolSetService {
     }
 
     public void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                            String author, boolean overwrite) {
+        copyToolSet(context, source, destination, author, overwrite, true, false);
+    }
+
+    public void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                             String author, boolean overwrite, boolean copyCredentials) {
+        copyToolSet(context, source, destination, author, overwrite, copyCredentials, true);
+    }
+
+    private void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                             String author, boolean overwrite, boolean copyCredentials, boolean throwIfCredentialsNotFound) {
         verifyToolSet(source);
         verifyToolSet(destination);
+        verifyCredentials(context, source, copyCredentials, throwIfCredentialsNotFound);
 
         Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, EtagHeader.ANY);
         ToolSet toolSet = result.getValue();
@@ -118,21 +130,21 @@ public class ToolSetService {
         // Copy the toolset first. If toolset copying fails, credentials won't be copied.
         // If the dataset is copied but credentials are not, it's not a critical issue.
         if (copyCredentials) {
-            copyCredentials(context, source, destination);
+            boolean copied = copyCredentials(context, source, destination);
+            if (!copied && throwIfCredentialsNotFound) {
+                throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
+                        .formatted(source.getUrl()));
+            }
         }
     }
 
-    private void copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination) {
+    private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination) {
         CredentialsDescriptor sourceCredentialDescriptor =
                 CredentialsDescriptorFactory.fromResourceDescriptor(source, CredentialsLevel.GLOBAL, context);
         CredentialsDescriptor destinationCredentialDescriptor =
                 CredentialsDescriptorFactory.fromResourceDescriptor(destination, CredentialsLevel.GLOBAL, context);
-        boolean copied = resourceCredentialsService.copyResourceCredentials(
+        return resourceCredentialsService.copyResourceCredentials(
                 sourceCredentialDescriptor, destinationCredentialDescriptor, CredentialsLevel.GLOBAL);
-        if (!copied) {
-            throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
-                    .formatted(source.getUrl()));
-        }
     }
 
     public boolean deleteToolset(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
@@ -156,4 +168,18 @@ public class ToolSetService {
                 || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())
                 || !existing.getEndpoint().equals(toolSet.getEndpoint());
     }
+
+    private void verifyCredentials(ProxyContext context, ResourceDescriptor resource, boolean copyCredentials,
+                                   boolean throwIfCredentialsNotFound) {
+        if (copyCredentials && throwIfCredentialsNotFound) {
+            CredentialsDescriptor credentialsDescriptor =
+                    CredentialsDescriptorFactory.fromResourceDescriptor(resource, CredentialsLevel.GLOBAL, context);
+            ResourceCredentials resourceCredentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
+            if (resourceCredentials == null || resourceCredentials.getCredentialsLevel() != CredentialsLevel.GLOBAL) {
+                throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
+                        .formatted(resource.getUrl()));
+            }
+        }
+    }
+
 }

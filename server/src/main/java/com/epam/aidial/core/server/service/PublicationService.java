@@ -221,7 +221,6 @@ public class PublicationService {
         return publication;
     }
 
-    // TODO: should be able to update toolsets
     public Publication updatePublication(ProxyContext context, Publication publication) {
         validatePublicationRequest(publication);
 
@@ -297,13 +296,17 @@ public class PublicationService {
             for (Pair<String, String> pair : reviewResourcesToMove) {
                 ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(pair.getLeft(), encryption);
                 ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(pair.getRight(), encryption);
-                resourceOperationService.moveResource(from, to, false);
+                resourceOperationService.moveResource(context, from, to, false);
             }
 
             // delete removed resources from the review bucket
             for (Publication.Resource reviewResource : reviewResourcesToDelete) {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromPrivateUrl(reviewResource.getReviewUrl(), encryption);
-                resourceService.deleteResource(resource, EtagHeader.ANY);
+                if (resource.getType() == ResourceTypes.TOOL_SET) {
+                    toolSetService.deleteToolset(context, resource, EtagHeader.ANY);
+                } else {
+                    resourceService.deleteResource(resource, EtagHeader.ANY);
+                }
             }
 
             // copy new resources to the review bucket
