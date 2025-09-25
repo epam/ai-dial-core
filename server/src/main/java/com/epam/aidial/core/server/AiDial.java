@@ -263,7 +263,8 @@ public class AiDial {
         KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
         ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
                 resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
-        ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
+        ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(
+                contentEncryptionKeyManager, location -> encryptionService.encrypt(location));
         DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
     }
