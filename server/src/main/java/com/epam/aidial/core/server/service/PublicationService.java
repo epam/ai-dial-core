@@ -187,7 +187,7 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication deletePublication(ResourceDescriptor resource) {
+    public Publication deletePublication(ProxyContext context, ResourceDescriptor resource) {
         validatePublicationResourceDescriptor(resource);
 
         resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
@@ -215,7 +215,7 @@ public class PublicationService {
             List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                     .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                     .toList();
-            deleteReviewResources(resourcesToAdd);
+            deleteReviewResources(context, resourcesToAdd);
         }
 
         return publication;
@@ -353,7 +353,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication approvePublication(ResourceDescriptor resource) {
+    public Publication approvePublication(ProxyContext context, ResourceDescriptor resource) {
         Publication publication = getPublication(resource);
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
@@ -392,8 +392,8 @@ public class PublicationService {
         ruleService.storeRules(publication);
 
         copyReviewToTargetResources(publication, resourcesToAdd);
-        deleteReviewResources(resourcesToAdd);
-        deletePublicResources(resourcesToDelete);
+        deleteReviewResources(context, resourcesToAdd);
+        deletePublicResources(context, resourcesToDelete);
 
         String notificationMessage = "Your request has been approved by admin";
         Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
@@ -403,7 +403,7 @@ public class PublicationService {
     }
 
     @Nullable
-    public Publication rejectPublication(ResourceDescriptor resource, RejectPublicationRequest request) {
+    public Publication rejectPublication(ProxyContext context, ResourceDescriptor resource, RejectPublicationRequest request) {
         validatePublicationResourceDescriptor(resource);
 
         MutableObject<Publication> reference = new MutableObject<>();
@@ -434,7 +434,7 @@ public class PublicationService {
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                 .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                 .toList();
-        deleteReviewResources(resourcesToAdd);
+        deleteReviewResources(context, resourcesToAdd);
 
         String rejectReason = request.comment();
         String notificationMessage = "Your request has been rejected by admin";
@@ -756,21 +756,21 @@ public class PublicationService {
         }
     }
 
-    private void deleteReviewResources(List<Publication.Resource> resources) {
+    private void deleteReviewResources(ProxyContext context, List<Publication.Resource> resources) {
         for (Publication.Resource resource : resources) {
             String url = resource.getReviewUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
-            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(context, descriptor, EtagHeader.ANY);
         }
     }
 
-    private void deletePublicResources(List<Publication.Resource> resources) {
+    private void deletePublicResources(ProxyContext context, List<Publication.Resource> resources) {
         for (Publication.Resource resource : resources) {
             String url = resource.getTargetUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
-            resourceOperationService.deleteResource(descriptor, EtagHeader.ANY);
+            resourceOperationService.deleteResource(context, descriptor, EtagHeader.ANY);
         }
     }
 

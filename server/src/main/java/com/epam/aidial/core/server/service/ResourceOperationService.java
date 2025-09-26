@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -36,6 +37,7 @@ public class ResourceOperationService {
     private final InvitationService invitationService;
     private final ShareService shareService;
     private final LockService lockService;
+    private final ToolSetService toolSetService;
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
@@ -127,7 +129,7 @@ public class ResourceOperationService {
         }
     }
 
-    public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag) {
+    public boolean deleteResource(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
         verifyResourceToDelete(resource);
         MutableObject<Boolean> deleted = new MutableObject<>();
         if (resource.isPrivate()) {
@@ -137,11 +139,11 @@ public class ResourceOperationService {
             lockService.underBucketLock(bucketLocation, () -> {
                 invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                 shareService.revokeSharedResource(bucketName, bucketLocation, resource);
-                deleted.setValue(deleteResourceInternally(resource, etag));
+                deleted.setValue(deleteResourceInternally(context, resource, etag));
                 return null;
             });
         } else {
-            deleted.setValue(deleteResourceInternally(resource, etag));
+            deleted.setValue(deleteResourceInternally(context, resource, etag));
         }
         return deleted.getValue();
     }
@@ -154,7 +156,7 @@ public class ResourceOperationService {
         }
     }
 
-    private boolean deleteResourceInternally(ResourceDescriptor resource, EtagHeader etag) {
+    private boolean deleteResourceInternally(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
         if (resource.getType() == APPLICATION) {
             try {
                 applicationService.deleteApplication(resource, etag);
@@ -162,6 +164,8 @@ public class ResourceOperationService {
                 return false;
             }
             return true;
+        } else if (resource.getType() == TOOL_SET) {
+            return toolSetService.deleteToolSet(context, resource, etag);
         } else {
             return resourceService.deleteResource(resource, etag);
         }

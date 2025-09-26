@@ -181,8 +181,6 @@ public class AiDial {
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
-            ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
-                    resourceService, invitationService, shareService, lockService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
@@ -209,6 +207,8 @@ public class AiDial {
 
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService);
+            ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
+                    resourceService, invitationService, shareService, lockService, toolSetService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService, generator, clock);
 

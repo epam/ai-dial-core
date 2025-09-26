@@ -1,18 +1,23 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,11 +31,13 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
+import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Answers.RETURNS_DEEP_STUBS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -238,6 +245,49 @@ class ToolSetServiceTest {
         assertEquals("plainClientSecret", actualToolSet.getAuthSettings().getClientSecret());
 
         proxyUtil.close();
+    }
+
+    @Test
+    void testDeleteToolSet_Success() {
+        // Given
+        EtagHeader etag = EtagHeader.ANY;
+
+        ResourceDescriptor resource = mock(ResourceDescriptor.class);
+        when(resource.getUrl()).thenReturn("url");
+        when(resource.isFolder()).thenReturn(false);
+        when(resource.getType()).thenReturn(ResourceTypes.TOOL_SET);
+        when(resource.getBucketName()).thenReturn("bucket");
+        when(resource.getBucketLocation()).thenReturn("location");
+
+        ProxyContext context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
+        when(context.getUserSub()).thenReturn("userSub");
+
+        CredentialsLocator credentialsLocator = mock(CredentialsLocator.class);
+        CredentialsDescriptor credentialsDescriptor = mock(CredentialsDescriptor.class);
+        Map<CredentialsLevel, CredentialsDescriptor> credentialsDescriptorsMap = Map.of(
+                CredentialsLevel.USER, credentialsDescriptor);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resource);
+        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(credentialsDescriptorsMap);
+
+        MockedStatic<CredentialsLocatorFactory> credentialsLocatorFactory = Mockito.mockStatic(CredentialsLocatorFactory.class);
+        credentialsLocatorFactory.when(() -> CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(), context))
+                .thenReturn(credentialsLocator);
+
+        MutableObject<Boolean> computeResult = new MutableObject<>(false);
+        doAnswer(invocation -> {
+            Function<String, String> function = invocation.getArgument(2);
+            function.apply("existingToolsetJson");
+            computeResult.setValue(true);
+            return null;
+        }).when(resourceService).computeResource(any(), any(), any());
+
+        // When
+        boolean result = toolSetService.deleteToolSet(context, resource, etag);
+
+        // Then
+        assertTrue(result);
+        verify(resourceService).deleteResource(resource, etag);
+        credentialsLocatorFactory.close();
     }
 
     private static ToolSet createToolSet(String endpoint, AuthenticationType authenticationType) {

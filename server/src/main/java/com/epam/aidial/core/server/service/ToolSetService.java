@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -15,7 +17,10 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
+import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.commons.lang3.tuple.Pair;
+
+import java.util.Map;
 
 @AllArgsConstructor
 public class ToolSetService {
@@ -101,6 +106,27 @@ public class ToolSetService {
         toolSet.setReference(ProxyUtil.generateReference());
         String json = ProxyUtil.convertToString(toolSet);
         resourceService.putResource(destination, json, etag, author);
+    }
+
+    public boolean deleteToolSet(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
+        verifyToolSet(resource);
+
+        MutableObject<Boolean> result = new MutableObject<>(false);
+        resourceService.computeResource(resource, etag, json -> {
+            if (json == null) {
+                throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
+            }
+
+            CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(), context);
+            Map<CredentialsLevel, CredentialsDescriptor> credentialsDescriptorsMap = credentialsLocator.getCredentialsDescriptors();
+            credentialsDescriptorsMap.forEach((credentialsLevel, credentialsDescriptor) ->
+                    resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), etag));
+
+            result.setValue(true);
+            return null;
+        });
+
+        return result.get();
     }
 
     private static void verifyToolSet(ResourceDescriptor resource) {
