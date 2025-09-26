@@ -96,32 +96,20 @@ public class ToolSetService {
 
     public void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                             String author, boolean overwrite) {
-        copyToolSet(context, source, destination, author, overwrite, true, false);
+        copyToolSet(context, source, destination, author, overwrite, CredentialCopyingStrategy.IF_PRESENT);
     }
 
     public void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                             String author, boolean overwrite, boolean copyCredentials) {
-        copyToolSet(context, source, destination, author, overwrite, copyCredentials, true);
+        CredentialCopyingStrategy copyingStrategy = copyCredentials ? CredentialCopyingStrategy.REQUIRE : CredentialCopyingStrategy.NEVER;
+        copyToolSet(context, source, destination, author, overwrite, copyingStrategy);
     }
 
-    /**
-     * Copies a toolset from a source to a destination, with options for overwriting,
-     * copying credentials, and handling missing credentials.
-     *
-     * @param throwIfCredentialsNotFound If true and {@code copyCredentials} is also true,
-     *        this method will throw a {@link ResourceNotFoundException} if the source credentials
-     *        are not found. If false, the toolset will be copied, but the credentials will be
-     *        skipped without throwing an exception. This allows for copying toolsets where
-     *        credentials are not present or not essential for the new copy.
-     * @throws ResourceNotFoundException if the source toolset doesn't exist, or if credentials
-     *         are not found when {@code copyCredentials} and {@code throwIfCredentialsNotFound} are both true.
-     * @throws IllegalArgumentException if the source or destination descriptors are not valid toolset resources.
-     */
     private void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                             String author, boolean overwrite, boolean copyCredentials, boolean throwIfCredentialsNotFound) {
+                             String author, boolean overwrite, CredentialCopyingStrategy copyingStrategy) {
         verifyToolSet(source);
         verifyToolSet(destination);
-        verifyCredentials(context, source, copyCredentials, throwIfCredentialsNotFound);
+        verifyCredentials(context, source, copyingStrategy);
 
         Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, EtagHeader.ANY);
         ToolSet toolSet = result.getValue();
@@ -142,9 +130,9 @@ public class ToolSetService {
 
         // Copy the toolset first. If toolset copying fails, credentials won't be copied.
         // If the dataset is copied but credentials are not, it's not a critical issue.
-        if (copyCredentials) {
+        if (copyingStrategy.shouldCopy()) {
             boolean copied = copyCredentials(context, source, destination);
-            if (!copied && throwIfCredentialsNotFound) {
+            if (!copied && copyingStrategy.isRequired()) {
                 throw new ResourceNotFoundException("Toolset was copied, but credentials are not. ResourceId: %s"
                         .formatted(source.getUrl()));
             }
@@ -182,9 +170,8 @@ public class ToolSetService {
                 || !existing.getEndpoint().equals(toolSet.getEndpoint());
     }
 
-    private void verifyCredentials(ProxyContext context, ResourceDescriptor resource, boolean copyCredentials,
-                                   boolean throwIfCredentialsNotFound) {
-        if (copyCredentials && throwIfCredentialsNotFound) {
+    private void verifyCredentials(ProxyContext context, ResourceDescriptor resource, CredentialCopyingStrategy copyingStrategy) {
+        if (copyingStrategy.isRequired()) {
             CredentialsDescriptor credentialsDescriptor =
                     CredentialsDescriptorFactory.fromResourceDescriptor(resource, CredentialsLevel.GLOBAL, context);
             ResourceCredentials resourceCredentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
@@ -192,6 +179,28 @@ public class ToolSetService {
                 throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
                         .formatted(resource.getUrl()));
             }
+        }
+    }
+
+    private enum CredentialCopyingStrategy {
+        IF_PRESENT(true, false),
+        REQUIRE(true, true),
+        NEVER(false, false);
+
+        private final boolean shouldCopy;
+        private final boolean require;
+
+        CredentialCopyingStrategy(boolean shouldCopy, boolean require) {
+            this.shouldCopy = shouldCopy;
+            this.require = require;
+        }
+
+        public boolean shouldCopy() {
+            return shouldCopy;
+        }
+
+        public boolean isRequired() {
+            return require;
         }
     }
 
