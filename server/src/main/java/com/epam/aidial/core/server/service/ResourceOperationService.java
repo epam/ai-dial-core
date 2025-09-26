@@ -101,7 +101,8 @@ public class ResourceOperationService {
         }
     }
 
-    public void copyResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
+    public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                             boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Copying folders is not supported");
         }
@@ -125,6 +126,8 @@ public class ResourceOperationService {
             applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
                 // do nothing
             });
+        } else if (destination.getType() == TOOL_SET) {
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists);
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {

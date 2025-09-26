@@ -160,7 +160,7 @@ public class ResourceOperationController {
                     }
 
                     return taskExecutor.submit(() -> {
-                        resourceOperationService.copyResource(source, destination, request.isOverwrite());
+                        resourceOperationService.copyResource(context, source, destination, request.isOverwrite());
                         return null;
                     });
                 })
