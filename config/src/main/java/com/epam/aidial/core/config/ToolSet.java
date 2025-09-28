@@ -34,7 +34,6 @@ public class ToolSet extends SecuredResource {
     public void clearAuthSettings() {
         if (authSettings != null && authSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
             authSettings.setClientSecret(null);
-            authSettings.setTokenEndpoint(null);
             authSettings.setCodeVerifier(null);
         }
     }
