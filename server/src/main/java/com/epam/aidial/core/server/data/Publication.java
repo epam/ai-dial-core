@@ -55,6 +55,16 @@ public class Publication {
          */
         String reviewUrl;
 
+        /**
+         * Publishes credentials linked to a resource.
+         *
+         * <p>Resources can have credentials associated with them. When publishing, these
+         * credentials may also be published, but only if they are defined at the
+         * {@code Global} level.
+         *
+         * <p>If {@code publishCredentials} is set to {@code true} and no global credentials
+         * are available, an error will be raised.
+         */
         boolean publishCredentials;
     }
 
