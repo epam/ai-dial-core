@@ -45,16 +45,19 @@ public class AuthorizationHeaderProvider {
         if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
             return null;
         }
-        String resourceId = credentialsLocator.getResourceId();
 
-        ResourceCredentials userCredentials = resourceCredentialsService.getAndRefreshCredentials(
-                credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER),
-                authSettings
-        );
-        if (userCredentials != null
-                && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                && userCredentials.getUserSub().equals(userSub)) {
-            return userCredentials;
+        try {
+            ResourceCredentials userCredentials = resourceCredentialsService.getAndRefreshCredentials(
+                    credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER),
+                    authSettings
+            );
+            if (userCredentials != null
+                    && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
+                    && userCredentials.getUserSub().equals(userSub)) {
+                return userCredentials;
+            }
+        } catch (ResourceNotFoundException e) {
+            log.error(e.getMessage(), e); // if User credentials are not found - let's look for Global one
         }
 
         ResourceCredentials globalCredentials = resourceCredentialsService.getAndRefreshCredentials(
@@ -66,7 +69,7 @@ public class AuthorizationHeaderProvider {
             return globalCredentials;
         }
 
-        throw new ResourceNotFoundException("Credentials (Global or Personal) for Resource %s not found".formatted(resourceId));
+        throw new ResourceNotFoundException("Credentials (Global or Personal) for Resource %s not found".formatted(credentialsLocator.getResourceId()));
     }
 
 }
