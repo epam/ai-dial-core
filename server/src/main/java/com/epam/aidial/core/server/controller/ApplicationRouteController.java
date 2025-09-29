@@ -74,6 +74,14 @@ public class ApplicationRouteController extends BaseRouteController {
     }
 
     @Override
+    protected void setupProxyApiKeyData() {
+        Deployment deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
+        context.setDeployment(deployment);
+
+        super.setupProxyApiKeyData();
+    }
+
+    @Override
     protected void injectAdditionalHeaders(HttpClientRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_APPLICATION_ID, deploymentId);
         if ((context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId())) {

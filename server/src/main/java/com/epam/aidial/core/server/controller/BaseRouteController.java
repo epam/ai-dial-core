@@ -183,7 +183,7 @@ public abstract class BaseRouteController implements Controller {
         // do nothing by default
     }
 
-    private void setupProxyApiKeyData() {
+    protected void setupProxyApiKeyData() {
         Upstream upstream = context.getUpstreamRoute().get();
         if (upstream != null && upstream.getKey() != null) {
             return;
