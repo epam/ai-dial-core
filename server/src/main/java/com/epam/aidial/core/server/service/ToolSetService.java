@@ -20,8 +20,12 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
+
+import java.util.Map;
+import javax.annotation.Nullable;
 
 @Slf4j
 @AllArgsConstructor
@@ -94,22 +98,16 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
-    public void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                            String author, boolean overwrite) {
-        copyToolSet(context, source, destination, author, overwrite, CredentialCopyingStrategy.IF_PRESENT);
-    }
+    public void copyToolSet(ProxyContext context,
+                            ResourceDescriptor source,
+                            ResourceDescriptor destination,
+                            @Nullable String author,
+                            boolean overwrite,
+                            Map<CredentialsLevel, CredentialCopyingStrategy> credentialsToCopy) {
 
-    public void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                            String author, boolean overwrite, boolean copyCredentials) {
-        CredentialCopyingStrategy copyingStrategy = copyCredentials ? CredentialCopyingStrategy.REQUIRE : CredentialCopyingStrategy.NEVER;
-        copyToolSet(context, source, destination, author, overwrite, copyingStrategy);
-    }
-
-    private void copyToolSet(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                             String author, boolean overwrite, CredentialCopyingStrategy copyingStrategy) {
         verifyToolSet(source);
         verifyToolSet(destination);
-        verifyCredentials(context, source, copyingStrategy);
+        verifyCredentials(context, source, credentialsToCopy);
 
         Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, EtagHeader.ANY);
         ToolSet toolSet = result.getValue();
@@ -128,24 +126,27 @@ public class ToolSetService {
         String json = ProxyUtil.convertToString(toolSet);
         resourceService.putResource(destination, json, etag, author);
 
-        // Copy the toolset first. If toolset copying fails, credentials won't be copied.
-        // If the dataset is copied but credentials are not, it's not a critical issue.
-        if (copyingStrategy.shouldCopy()) {
-            boolean copied = copyCredentials(context, source, destination);
-            if (!copied && copyingStrategy.isRequired()) {
+        for (Map.Entry<CredentialsLevel, CredentialCopyingStrategy> entry : credentialsToCopy.entrySet()) {
+            // Copy the toolset first. If toolset copying fails, credentials won't be copied.
+            // If the dataset is copied but credentials are not, it's not a critical issue.
+            CredentialsLevel credentialsLevel = entry.getKey();
+            CredentialCopyingStrategy credentialCopyingStrategy = entry.getValue();
+            boolean copied = copyCredentials(context, source, destination, credentialsLevel);
+            if (!copied && credentialCopyingStrategy.isRequired()) {
                 throw new ResourceNotFoundException("Toolset was copied, but credentials are not. ResourceId: %s"
                         .formatted(source.getUrl()));
             }
         }
     }
 
-    private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination) {
+    private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                                    CredentialsLevel credentialsLevel) {
         CredentialsDescriptor sourceCredentialDescriptor =
-                CredentialsDescriptorFactory.fromResourceDescriptor(source, CredentialsLevel.GLOBAL, context);
+                CredentialsDescriptorFactory.fromResourceDescriptor(source, credentialsLevel, context);
         CredentialsDescriptor destinationCredentialDescriptor =
-                CredentialsDescriptorFactory.fromResourceDescriptor(destination, CredentialsLevel.GLOBAL, context);
+                CredentialsDescriptorFactory.fromResourceDescriptor(destination, credentialsLevel, context);
         return resourceCredentialsService.copyResourceCredentials(
-                sourceCredentialDescriptor, destinationCredentialDescriptor, CredentialsLevel.GLOBAL);
+                sourceCredentialDescriptor, destinationCredentialDescriptor, credentialsLevel);
     }
 
     public boolean deleteToolset(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
@@ -170,34 +171,30 @@ public class ToolSetService {
                 || !existing.getEndpoint().equals(toolSet.getEndpoint());
     }
 
-    private void verifyCredentials(ProxyContext context, ResourceDescriptor resource, CredentialCopyingStrategy copyingStrategy) {
-        if (copyingStrategy.isRequired()) {
-            CredentialsDescriptor credentialsDescriptor =
-                    CredentialsDescriptorFactory.fromResourceDescriptor(resource, CredentialsLevel.GLOBAL, context);
-            ResourceCredentials resourceCredentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
-            if (resourceCredentials == null || resourceCredentials.getCredentialsLevel() != CredentialsLevel.GLOBAL) {
-                throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
-                        .formatted(resource.getUrl()));
+    private void verifyCredentials(ProxyContext context, ResourceDescriptor resource,
+                                   Map<CredentialsLevel, CredentialCopyingStrategy> copyingStrategy) {
+        for (Map.Entry<CredentialsLevel, CredentialCopyingStrategy> entry : copyingStrategy.entrySet()) {
+            CredentialsLevel credentialsLevel = entry.getKey();
+            CredentialCopyingStrategy credentialCopyingStrategy = entry.getValue();
+
+            if (credentialCopyingStrategy.isRequired()) {
+                CredentialsDescriptor credentialsDescriptor =
+                        CredentialsDescriptorFactory.fromResourceDescriptor(resource, credentialsLevel, context);
+                ResourceCredentials resourceCredentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
+                if (resourceCredentials == null || resourceCredentials.getCredentialsLevel() != credentialsLevel) {
+                    throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
+                            .formatted(resource.getUrl()));
+                }
             }
         }
     }
 
-    private enum CredentialCopyingStrategy {
-        IF_PRESENT(true, false),
-        REQUIRE(true, true),
-        NEVER(false, false);
+    @RequiredArgsConstructor
+    public enum CredentialCopyingStrategy {
+        IF_PRESENT(false),
+        REQUIRE(true);
 
-        private final boolean shouldCopy;
         private final boolean require;
-
-        CredentialCopyingStrategy(boolean shouldCopy, boolean require) {
-            this.shouldCopy = shouldCopy;
-            this.require = require;
-        }
-
-        public boolean shouldCopy() {
-            return shouldCopy;
-        }
 
         public boolean isRequired() {
             return require;

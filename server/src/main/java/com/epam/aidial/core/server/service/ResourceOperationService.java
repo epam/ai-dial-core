@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -68,7 +69,13 @@ public class ResourceOperationService {
                 }
             });
         } else if (destination.getType() == TOOL_SET) {
-            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists);
+            Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = Map.of(
+                    CredentialsLevel.USER, ToolSetService.CredentialCopyingStrategy.IF_PRESENT,
+                    CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.IF_PRESENT
+            );
+            // TODO: support move for USER and APP credentials for public toolsets
+            // TODO: support move for USER and APP credentials for shared toolsets (?)
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {
@@ -102,7 +109,7 @@ public class ResourceOperationService {
     }
 
     public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                             boolean overwriteIfExists) {
+                             boolean overwriteIfExists, boolean copyCredentials) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Copying folders is not supported");
         }
@@ -127,7 +134,10 @@ public class ResourceOperationService {
                 // do nothing
             });
         } else if (destination.getType() == TOOL_SET) {
-            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists);
+            Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = copyCredentials
+                    ? Map.of(CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.IF_PRESENT)
+                    : Map.of();
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {

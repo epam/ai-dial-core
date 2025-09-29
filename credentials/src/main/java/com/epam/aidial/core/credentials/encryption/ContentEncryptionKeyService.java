@@ -3,6 +3,7 @@ package com.epam.aidial.core.credentials.encryption;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceUtil;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -32,16 +33,10 @@ public class ContentEncryptionKeyService {
      * @return A ResourceDescriptor for the CEK.
      */
     private ResourceDescriptor getContentEncryptionKeyDescriptor(BucketInfo bucketInfo) {
-        String[] elements = bucketInfo.location().split(ResourceDescriptor.PATH_SEPARATOR);
-
-        String bucketLocation = bucketInfo.location();
-        String bucketName = bucketInfo.name();
-
-        if (elements.length > 2) {
-            bucketLocation = elements[0] + ResourceDescriptor.PATH_SEPARATOR
-                    + elements[1] + ResourceDescriptor.PATH_SEPARATOR;
-            bucketName = bucketNameEncoder.apply(bucketLocation);
-        }
+        String bucketLocation = ResourceUtil.getRootLocation(bucketInfo.location());
+        String bucketName = bucketInfo.location().equals(bucketLocation)
+                ? bucketInfo.name()
+                : bucketNameEncoder.apply(bucketLocation);
 
         return new ResourceDescriptor(
                 ResourceTypes.ENCRYPTION_KEYS,

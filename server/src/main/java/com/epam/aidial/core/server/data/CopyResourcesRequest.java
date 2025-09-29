@@ -11,4 +11,5 @@ public class CopyResourcesRequest {
     String sourceUrl;
     String destinationUrl;
     boolean overwrite;
+    boolean copyCredentials;
 }

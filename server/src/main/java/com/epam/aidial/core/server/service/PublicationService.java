@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.server.data.Notification;
@@ -689,7 +690,10 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
-                toolSetService.copyToolSet(context, from, to, null, false, resource.isPublishCredentials());
+                Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = resource.isPublishCredentials()
+                        ? Map.of(CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.REQUIRE)
+                        : Map.of();
+                toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy);
             } else if (!resourceService.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
@@ -732,8 +736,11 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
+                Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = resource.isPublishCredentials()
+                        ? Map.of(CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.REQUIRE)
+                        : Map.of();
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
-                        resource.isPublishCredentials());
+                        credentialsToCopy);
             } else {
                 UserMetadata userMetadata = new UserMetadata();
                 ResourceItemMetadata metadata = resourceService.getResourceMetadata(from);
