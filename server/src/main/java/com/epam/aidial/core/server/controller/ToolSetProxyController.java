@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
+import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -59,7 +60,7 @@ public class ToolSetProxyController implements Controller {
 
     private final LogStore logStore;
 
-    private final ResourceCredentialsManager resourceCredentialsManager;
+    private final AuthorizationHeaderProvider authorizationHeaderProvider;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         this.taskExecutor = proxy.getTaskExecutor();
@@ -69,9 +70,9 @@ public class ToolSetProxyController implements Controller {
         this.upstreamRouteProvider = proxy.getUpstreamRouteProvider();
         this.logStore = proxy.getLogStore();
         this.context = context;
-        this.resourceCredentialsManager = proxy.getResourceCredentialsManager();
+        this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.toolSetId = toolSetId;
-        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId, context);
+        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
     }
 
     @Override
@@ -141,7 +142,7 @@ public class ToolSetProxyController implements Controller {
     private void setToolsetCredentials(HttpClientRequest proxyRequest) {
         try {
             ToolSet toolSet = (ToolSet) context.getDeployment();
-            AuthorizationHeader authorizationHeader = resourceCredentialsManager.createAuthorizationHeader(
+            AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(
                     credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
             if (authorizationHeader != null) {
                 proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());

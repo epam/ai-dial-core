@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
@@ -81,9 +82,14 @@ public class ToolSetController {
             @SuppressWarnings("unchecked")
             @Override
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
-                ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
-                toolSet.clearAuthSettings();
-                return toolSet;
+                try {
+                    ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
+                    toolSet.clearAuthSettings();
+                    return toolSet;
+                } catch (EncryptionException ex) {
+                    // If a toolset can't be decrypted, it means the encryption method has changed. Let's assume for now that the toolset was not found.
+                    throw new ResourceNotFoundException("Failed to decrypt toolset: " + resource.getUrl(), ex);
+                }
             }
         });
     }
