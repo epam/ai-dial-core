@@ -17,10 +17,8 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
-import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -140,15 +138,5 @@ public class ApplicationRouteController extends BaseRouteController {
         if (!route.getAttachmentPaths().getRequestBody().isEmpty()) {
             enhancementFunctions.add(new CollectRequestCustomAttachmentsFn(proxy, context));
         }
-    }
-
-    @Override
-    protected MultiMap excludeHeaders() {
-        Deployment deployment = context.getDeployment();
-        MultiMap excludeHeaders = super.excludeHeaders();
-        if (!deployment.isForwardAuthToken()) {
-            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
-        }
-        return excludeHeaders;
     }
 }
