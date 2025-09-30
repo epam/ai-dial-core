@@ -18,7 +18,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
-import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -210,8 +209,7 @@ public abstract class BaseRouteController implements Controller {
         context.setProxyRequest(proxyRequest);
 
         Upstream upstream = context.getUpstreamRoute().get();
-        MultiMap excludeHeaders = excludeHeaders();
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
         if (upstream != null && upstream.getKey() != null) {
             proxyRequest.putHeader(Proxy.HEADER_API_KEY, upstream.getKey());
         } else {
@@ -227,10 +225,6 @@ public abstract class BaseRouteController implements Controller {
         proxyRequest.send(proxyRequestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
-    }
-
-    protected MultiMap excludeHeaders() {
-        return MultiMap.caseInsensitiveMultiMap();
     }
 
     protected abstract void injectAdditionalHeaders(HttpClientRequest proxyRequest);
