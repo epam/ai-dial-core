@@ -140,8 +140,8 @@ public class ApplicationRouteController extends BaseRouteController {
         Route route = context.getRoute();
         if (!route.getAttachmentPaths().getRequestBody().isEmpty()) {
             enhancementFunctions.add(new CollectRequestCustomAttachmentsFn(proxy, context));
-            enhancementFunctions.add(new CollectRequestApplicationFilesFn(proxy, context));
         }
+        enhancementFunctions.add(new CollectRequestApplicationFilesFn(proxy, context));
     }
 
     @Override
