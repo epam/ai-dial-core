@@ -39,6 +39,7 @@ allprojects {
         resolutionStrategy {
             force 'com.google.code.gson:gson:2.11.0'
             force 'net.minidev:json-smart:2.5.2'
+            force 'io.grpc:grpc-netty-shaded:1.75.0'
         }
     }
 
