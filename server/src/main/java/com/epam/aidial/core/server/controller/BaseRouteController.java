@@ -159,8 +159,14 @@ public abstract class BaseRouteController implements Controller {
         setupEnhancementFunctions();
 
         if (!enhancementFunctions.isEmpty()) {
+            ObjectNode tree;
             try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+            } catch (Exception e) {
+                // request body is not JSON or malformed
+                tree = ProxyUtil.MAPPER.createObjectNode();
+            }
+            try {
                 if (ProxyUtil.processChain(tree, enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
                 }
