@@ -37,6 +37,8 @@ Build the project with Gradle and Java 21:
 ./gradlew build
 ```
 
+
+
 ## Run
 
 Run the project with Gradle:
@@ -49,7 +51,7 @@ Or run `com.epam.aidial.core.AIDial` class from your favorite IDE.
 
 ## Helm Deployment
 
-You have the option to deploy the DIAL Core on the Kubernetes cluster by utilizing an _umbrella_ [dial](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/README.md) Helm chart, which also deploys other DIAL components. Alternatively, you can use [dial-core](https://github.com/epam/ai-dial-helm/blob/main/charts/dial-core/README.md) Helm chart to deploy just Core. 
+You have the option to deploy the DIAL Core on the Kubernetes cluster by utilizing an _umbrella_ [dial](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/README.md) Helm chart, which also deploys other DIAL components. Alternatively, you can use [dial-core](https://github.com/epam/ai-dial-helm/blob/main/charts/dial-core/README.md) Helm chart to deploy just Core.
 
 > Refer to [Examples](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/examples/README.md) for guidelines.
 
@@ -62,7 +64,7 @@ In any case, in your Helm values file, it is necessary to provide application's 
 
 ### Static settings
 
-Static settings are used on startup and cannot be changed while application is running. Refer to [example](sample/aidial.settings.json) to view the example configuration file. 
+Static settings are used on startup and cannot be changed while application is running. Refer to [example](sample/aidial.settings.json) to view the example configuration file.
 
 Priority order:
 
@@ -77,7 +79,7 @@ Priority order:
 | config.jsonMergeStrategy.overwriteArrays      |       false        |    No    |Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.
 | identityProviders                             |         -          |   Yes    |Map of identity providers. **Note**: At least one identity provider must be provided. Refer to [examples](sample/aidial.settings.json) to view available providers. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view guidelines for configuring supported providers.
 | identityProviders.*.jwksUrl                   |         -          | Optional |Url to jwks provider. **Required** if `disabledVerifyJwt` is set to `false`. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided.
-| identityProviders.*.userInfoEndpoint          |         -          | Optional |Url to user info endpoint. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided or `disableJwtVerification` is unset. Refer to [Google example](sample/aidial.settings.json). 
+| identityProviders.*.userInfoEndpoint          |         -          | Optional |Url to user info endpoint. **Note**: Either `jwksUrl` or `userInfoEndpoint` must be provided or `disableJwtVerification` is unset. Refer to [Google example](sample/aidial.settings.json).
 | identityProviders.*.rolePath                  |         -          |   Yes    |Path(s) to the claim user roles in JWT token or user info response, e.g. `resource_access.chatbot-ui.roles` or just `roles`. Can be single String or Array of Strings. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view guidelines for configuring supported providers.
 | identityProviders.*.projectPath               |         -          |    No    |Path(s) to the claim in JWT token or user info response, e.g. `azp`, `aud` or `some.path.client` from which project name can be taken. Can be single String. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view guidelines for configuring supported providers.
 | identityProviders.*.rolesDelimiter            |         -          |    No    |Delimiter to split roles into array in case when list of roles presented as single String. e.g. `"rolesDelimiter": " "`
@@ -113,7 +115,7 @@ Priority order:
 | storage.identity                              |         -          | Optional |Blob storage access key. Can be optional for filesystem, aws-s3, google-cloud-storage providers. Refer to [sections in this document](#aws-s3-blob-store) dedicated to specific storage providers.
 | storage.credential                            |         -          | Optional |Blob storage secret key. Can be optional for filesystem, aws-s3, google-cloud-storage providers.
 | storage.bucket                                |         -          |    No    |Blob storage bucket.
-| storage.overrides.*                           |         -          |    No    |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. Refer to [examples](#temporary-credentials-1) in the sections below. 
+| storage.overrides.*                           |         -          |    No    |Key-value pairs to override storage settings. `*` might be any specific blob storage setting to be overridden. Refer to [examples](#temporary-credentials-1) in the sections below.
 | storage.createBucket                          |       false        |    No    |Indicates whether bucket should be created on start-up.
 | storage.prefix                                |         -          |    No    |Base prefix for all stored resources. The purpose to use the same bucket for different environments, e.g. dev, prod, pre-prod. Must not contain path separators or any invalid chars.
 | storage.maxUploadedFileSize                   |     536870912      |    No    |Maximum size in bytes of uploaded file. If a size of uploaded file exceeds the limit the server returns HTTP code 413
@@ -126,20 +128,20 @@ Priority order:
 | resources.syncBatch                           |        4096        |    No    |How many resources to sync in one go.
 | resources.cacheExpiration                     |       300000       |    No    |Expiration in milliseconds for synced resources in Redis.
 | resources.compressionMinSize                  |        256         |    No    |Compress a resource with gzip if its size in bytes more or equal to this value.
-| redis.singleServerConfig.address              |         -          |   Yes    |Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided. 
+| redis.singleServerConfig.address              |         -          |   Yes    |Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided.
 | redis.clusterServersConfig.nodeAddresses      |         -          |   Yes    |Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.
 | redis.provider.*                              |         -          |    No    |Provider specific settings
 | redis.provider.name                           |         -          |   Yes    |Provider name. The valid values are `aws-elasti-cache`(see [instructions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html)), `gcp-memory-store`(see [instructions](https://cloud.google.com/memorystore/docs/cluster/access-control)), `azure-redis-cache`(see [instructions](https://learn.microsoft.com/en-us/azure/azure-cache-for-redis/cache-managed-identity).
 | redis.provider.userId                         |         -          |   Yes    | IAM-enabled user ID. **Note**. It's applied to `aws-elasti-cache`
 | redis.provider.accountName                    |         -          |   Yes    | The resource name of the service account for which the credentials are requested, in the following format: `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard character is required; replacing it with a project ID is invalid. **Note**. It's applied to `gcp-memory-store`
-| redis.provider.region                         |         -          |   Yes    | Geo region where the cache is located. **Note**. It's applied to `aws-elasti-cache` 
+| redis.provider.region                         |         -          |   Yes    | Geo region where the cache is located. **Note**. It's applied to `aws-elasti-cache`
 | redis.provider.clusterName                    |         -          |   Yes    | Redis cluster name. **Note**. It's applied to `aws-elasti-cache`
 | redis.provider.serverless                     |         -          |   Yes    | The flag indicates if the cache is serverless. **Note**. It's applied to `aws-elasti-cache`
 | invitations.ttlInSeconds                      |       259200       |    No    |Invitation time to live in seconds.
 | access.admin.rules                            |         -          |    No    |Matches claims from identity providers with the rules to figure out whether a user is allowed to perform admin actions (READ and WRITE access to any resource, approving publication requests from DIAL users. <br /> **Configuration example for DIAL Core**:<br /> "access": {"admin": {"rules": [{"function": "EQUAL","source": "roles","targets": ["admin"]}]}} <br /> **Where**, <br /> `function` - a matching function one of TRUE (any user is admin), FALSE (noone is admin), EQUAL, CONTAIN, REGEX <br /> `source` - the path to the claim in the JWT token payload that should be evaluated against the targets. <br /> `targets` - is an array of values that the system checks for in the source claim.
 | access.createCodeAppRoles                     |         -          |    No    |The list of user roles to be allowed to create custom code applications or run code interpreter. **Note**. Calls by per request key are permitted even if the originator doesn't have permissions.
 | applications.includeCustomApps                |       false        |    No    |The flag indicates whether applications should be included into openai listing (required for Code Apps, Custom Apps, Quick Apps, etc)
-| applications.controllerEndpoint               |         -          |    No    |The endpoint to Application Controller Web Service that manages deployments for applications with functions 
+| applications.controllerEndpoint               |         -          |    No    |The endpoint to Application Controller Web Service that manages deployments for applications with functions
 | applications.controllerTimeout                |       240000       |    No    |The timeout of operations to Application Controller Web Service
 | codeInterpreter.sessionImage                  |         -          |    No    |The code interpreter session image to use
 | codeInterpreter.sessionProxyUrl               |         -          |    No    |The code interpreter will be deployed as a pod instead of knative deployment and all requests will be proxied through nginx proxy
