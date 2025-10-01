@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -11,6 +12,7 @@ import java.util.Map;
 @EqualsAndHashCode(callSuper = true)
 public abstract class Deployment extends RoleBasedEntity {
     private String endpoint;
+    @NotBlank(message = "displayName must not be blank")
     @JsonAlias({"displayName", "display_name"})
     private String displayName;
     @JsonAlias({"displayVersion", "display_version"})
