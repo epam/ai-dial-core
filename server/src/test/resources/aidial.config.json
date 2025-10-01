@@ -49,10 +49,12 @@
       "description": "Some description of the addon for testing"
     },
     "forecast": {
-      "endpoint": "http://localhost:7010/forecast"
+      "endpoint": "http://localhost:7010/forecast",
+      "displayName": "Forecast"
     },
     "calculator": {
-      "endpoint": "http://localhost:7010/calculator"
+      "endpoint": "http://localhost:7010/calculator",
+      "displayName": "Calculator"
     }
   },
   "assistant": {
@@ -145,6 +147,7 @@
     },
     "embedding-ada": {
       "type": "embedding",
+      "displayName": "Embedding Ada",
       "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
@@ -152,6 +155,7 @@
     },
     "gpt-4": {
       "type": "chat",
+      "displayName": "GPT-4",
       "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
@@ -160,6 +164,7 @@
     },
     "gpt-3-turbo": {
       "type": "chat",
+      "displayName": "GPT-3 Turbo",
       "endpoint" : "http://localhost:4848/chat/completions",
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey"}
@@ -171,7 +176,8 @@
       "transport": "http",
       "endpoint": "http://localhost:9876",
       "allowed_tools": ["branch", "remote"],
-      "description": "Git remote tool set"
+      "description": "Git remote tool set",
+      "displayName": "Git"
     }
   },
   "keys": {

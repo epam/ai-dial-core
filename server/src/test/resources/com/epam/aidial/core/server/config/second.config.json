@@ -1,6 +1,7 @@
 {
   "models": {
     "testModel": {
+      "displayName": "Test Model",
       "userRoles": [
         "second_role1"
       ]
