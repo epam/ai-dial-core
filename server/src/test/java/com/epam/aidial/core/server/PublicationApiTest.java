@@ -3033,4 +3033,94 @@ class PublicationApiTest extends ResourceBaseTest {
         assertEquals(count, files.size(), "Application files are missed");
     }
 
+    @Test
+    void testRepublishAfterUnpublish() {
+
+        ApiKeyData adminAppKey = createAdminAppKey();
+        apiKeyStore.assignPerRequestApiKey(adminAppKey);
+
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/test/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                      "targetUrl": "conversations/public/test/conversation"
+                    }
+                  ],
+                  "rules": []
+                }
+                """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve",
+                """
+                        {
+                          "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123"
+                        }
+                        """, "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/conversations/public/test/conversation",
+                null, null, "authorization", "user");
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/test/",
+                  "resources": [
+                    {
+                      "action": "DELETE",
+                      "targetUrl": "conversations/public/test/conversation"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve",
+                """
+                        {
+                          "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0124"
+                        }
+                        """, "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/conversations/public/test/conversation",
+                null, null, "authorization", "user");
+        verify(response, 404); // Should be gone!
+
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                  "targetFolder": "public/test/",
+                  "resources": [
+                    {
+                      "action": "ADD",
+                      "sourceUrl": "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
+                      "targetUrl": "conversations/public/test/conversation"
+                    }
+                  ],
+                  "rules": []
+                }
+                """);
+        verify(response, 200);
+
+        response = operationRequest("/v1/ops/publication/approve",
+                """
+                        {
+                          "url": "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0125"
+                        }
+                        """, "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/conversations/public/test/conversation",
+                null, null, "authorization", "user");
+        verify(response, 200);
+    }
+
 }

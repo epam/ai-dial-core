@@ -216,6 +216,12 @@ public class PublicationService {
                     .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
                     .toList();
             deleteReviewResources(resourcesToAdd);
+        }  else if (publication.getStatus() == Publication.Status.APPROVED) {
+            // Delete target (public) resources for approved publications to allow republishing
+            List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
+                    .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
+                    .toList();
+            deletePublicResources(resourcesToAdd);
         }
 
         return publication;
