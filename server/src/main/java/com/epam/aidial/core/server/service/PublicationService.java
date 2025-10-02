@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListPublishedResourcesRequest;
 import com.epam.aidial.core.server.data.Notification;
@@ -37,6 +38,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -66,6 +68,7 @@ public class PublicationService {
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
     private final ResourceOperationService resourceOperationService;
+    private final ApplicationSchemaService applicationSchemaService;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -683,6 +686,7 @@ public class PublicationService {
                 applicationService.copyApplication(from, to, null, false, app -> {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
+                    copyAppFilesFromSourceToReview(app, from, to);
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
                 toolSetService.copyToolSet(from, to, null, false);
@@ -696,6 +700,30 @@ public class PublicationService {
         }
     }
 
+    private void copyAppFilesFromSourceToReview(Application application, ResourceDescriptor source, ResourceDescriptor review) {
+        CopyAppBucketOptions options = applicationSchemaService.getCopyAppBucketOptions(application);
+        if (options == CopyAppBucketOptions.DISABLED) {
+            return;
+        }
+        ResourceDescriptor to = getAppReviewBucket(source, review);
+        ResourceDescriptor from = getAppBucket(source);
+        resourceService.copyFolder(from, to, false);
+    }
+
+    private ResourceDescriptor getAppBucket(ResourceDescriptor appResource) {
+        String bucketLocation = BucketBuilder.API_KEY_BUCKET_PATTERN.formatted(appResource.getUrl());
+        String bucket = Objects.requireNonNull(encryption.encrypt(bucketLocation));
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, bucket, bucketLocation, ResourceDescriptor.PATH_SEPARATOR);
+    }
+
+    private ResourceDescriptor getAppReviewBucket(ResourceDescriptor appSourceResource, ResourceDescriptor appReviewResource) {
+        String location = appReviewResource.getBucketLocation();
+        String id = location.substring(location.lastIndexOf(ResourceDescriptor.PATH_SEPARATOR, location.length() - 2) + 1, location.length() - 1);
+        String bucketLocation = BucketBuilder.API_KEY_BUCKET_PATTERN.formatted(appSourceResource.getUrl());
+        String reviewBucket = encodeReviewBucket(bucketLocation, id);
+        String reviewBucketLocation = Objects.requireNonNull(encryption.decrypt(reviewBucket));
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, reviewBucket, reviewBucketLocation, ResourceDescriptor.PATH_SEPARATOR);
+    }
 
     private void copyReviewToTargetResources(Publication publication, List<Publication.Resource> resources) {
         Map<String, String> replacementLinks = new HashMap<>();
@@ -726,6 +754,8 @@ public class PublicationService {
                 applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, app -> {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
+                    ResourceDescriptor source = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
+                    copyAppFilesFromReviewToTarget(app, source, from, to);
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
                 toolSetService.copyToolSet(from, to, publication.getDisplayAuthor(), false);
@@ -754,6 +784,16 @@ public class PublicationService {
                 resourceService.computeResource(to, body -> PublicationUtil.replacePromptIdentity(body, to));
             }
         }
+    }
+
+    private void copyAppFilesFromReviewToTarget(Application application, ResourceDescriptor source, ResourceDescriptor review, ResourceDescriptor target) {
+        CopyAppBucketOptions options = applicationSchemaService.getCopyAppBucketOptions(application);
+        if (options == CopyAppBucketOptions.DISABLED) {
+            return;
+        }
+        ResourceDescriptor from = getAppReviewBucket(source, review);
+        ResourceDescriptor to = getAppBucket(target);
+        resourceService.copyFolder(from, to, false);
     }
 
     private void deleteReviewResources(List<Publication.Resource> resources) {

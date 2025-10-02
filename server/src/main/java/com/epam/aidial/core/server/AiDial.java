@@ -210,7 +210,7 @@ public class AiDial {
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, applicationService, toolSetService, resourceOperationService, generator, clock);
+                    ruleService, notificationService, applicationService, toolSetService, resourceOperationService, applicationSchemaService, generator, clock);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService);

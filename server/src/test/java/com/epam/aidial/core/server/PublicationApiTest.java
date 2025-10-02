@@ -11,7 +11,14 @@ import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
@@ -3031,6 +3038,90 @@ class PublicationApiTest extends ResourceBaseTest {
             }
         }
         assertEquals(count, files.size(), "Application files are missed");
+    }
+
+    @Test
+    void testApplicationWithTypeSchemaPublish_WhenCopyAppBucket() throws IOException {
+
+        var response = send(HttpMethod.PUT, "/v1/applications/%s/test_app2".formatted(bucket), null, """
+                  {
+                      "displayName": "test_app2",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2"
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        // simulate application's work
+        // put file to app bucket
+        String appFileFolder = testDir + "/test/test-2/Keys/applications/%s/test_app2/files/folder".formatted(bucket);
+        List<String> lines = Arrays.asList("The first line", "The second line");
+        Path path = Paths.get(appFileFolder + "/app_file1.txt");
+        Files.createDirectories(Paths.get(appFileFolder));
+        Files.write(path, lines, StandardCharsets.UTF_8);
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/%s/test_app2",
+                          "targetUrl": "applications/public/folder/with_apps/test_app2"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        String correctResponse = """
+                {
+                  "url" : "publications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/0123",
+                  "name" : "Publication of my application",
+                  "targetFolder" : "public/folder/",
+                  "status" : "PENDING",
+                  "createdAt" : 0,
+                  "resources" : [ {
+                            "action" : "ADD",
+                            "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app2",
+                            "targetUrl" : "applications/public/folder/with_apps/test_app2",
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2"
+                          }
+                  ],
+                  "resourceTypes" : [ "APPLICATION" ],
+                  "rules" : [ {
+                    "function" : "TRUE",
+                    "source" : "roles",
+                    "targets" : null
+                  } ],
+                  "author" : "EPM-RTC-GPT"
+                }""";
+
+        verifyJsonNotExact(response, 200, correctResponse);
+
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        // check app files are copied to public app folder
+        var appPublicFiles = new File(testDir + "/test/test-2/Keys/applications/public/folder/with_apps/test_app2/files/folder").listFiles();
+        assertNotNull(appPublicFiles);
+        assertEquals(1, appPublicFiles.length);
+        assertEquals("app_file1.txt", appPublicFiles[0].getName());
+
     }
 
 }
