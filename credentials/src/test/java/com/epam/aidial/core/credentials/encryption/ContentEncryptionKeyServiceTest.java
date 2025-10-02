@@ -29,13 +29,13 @@ class ContentEncryptionKeyServiceTest {
     private ContentEncryptionKeyManager mockContentEncryptionKeyManager;
 
     @Mock
-    private Function<String, String> mockBucketNameEncoder;
+    private Function<BucketInfo, BucketInfo> rootBucketExtractor;
 
     private ContentEncryptionKeyService contentEncryptionKeyService;
 
     @BeforeEach
     void setUp() {
-        contentEncryptionKeyService = new ContentEncryptionKeyService(mockContentEncryptionKeyManager, mockBucketNameEncoder);
+        contentEncryptionKeyService = new ContentEncryptionKeyService(mockContentEncryptionKeyManager, rootBucketExtractor);
     }
 
     @Test
@@ -52,33 +52,7 @@ class ContentEncryptionKeyServiceTest {
                 bucketLocation,
                 false
         );
-        when(mockContentEncryptionKeyManager.getOrCreateKey(any(ResourceDescriptor.class))).thenReturn(EXPECTED_KEY);
-
-        // When
-        byte[] result = contentEncryptionKeyService.getOrCreateKey(bucketInfo);
-
-        // Then
-        assertArrayEquals(EXPECTED_KEY, result);
-
-        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
-        verify(mockContentEncryptionKeyManager).getOrCreateKey(descriptorCaptor.capture());
-        assertEquals(expectedDescriptor, descriptorCaptor.getValue());
-    }
-
-    @Test
-    void getOrCreateKey_forPublicBucket() {
-        // Given
-        String bucketLocation = "public/";
-        String bucketName = "public";
-        BucketInfo bucketInfo = new BucketInfo(bucketName, bucketLocation);
-        ResourceDescriptor expectedDescriptor = new ResourceDescriptor(
-                ResourceTypes.ENCRYPTION_KEYS,
-                CEK_FILENAME,
-                List.of(),
-                bucketName,
-                bucketLocation,
-                false
-        );
+        when(rootBucketExtractor.apply(bucketInfo)).thenReturn(bucketInfo);
         when(mockContentEncryptionKeyManager.getOrCreateKey(any(ResourceDescriptor.class))).thenReturn(EXPECTED_KEY);
 
         // When
@@ -95,16 +69,15 @@ class ContentEncryptionKeyServiceTest {
     @Test
     void getOrCreateKey_forDeeplyNestedPublicationBucket() {
         // Given
-        String bucketLocation = "Users/user/publication-id/sub-folder/";
-        BucketInfo bucketInfo = new BucketInfo("deeply-nested-bucket", bucketLocation);
-        String rootBucketName = "root-bucket-name";
-        when(mockBucketNameEncoder.apply("Users/user/")).thenReturn(rootBucketName);
+        BucketInfo bucketInfo = new BucketInfo("deeply-nested-bucket", "Users/user/publication-id/sub-folder/");
+        BucketInfo rootBucket = new BucketInfo("user-bucket-name", "Users/user");
+        when(rootBucketExtractor.apply(bucketInfo)).thenReturn(rootBucket);
         ResourceDescriptor expectedDescriptor = new ResourceDescriptor(
                 ResourceTypes.ENCRYPTION_KEYS,
                 CEK_FILENAME,
                 List.of(),
-                rootBucketName,
-                "Users/user/",
+                rootBucket.name(),
+                rootBucket.location(),
                 false
         );
         when(mockContentEncryptionKeyManager.getOrCreateKey(any(ResourceDescriptor.class))).thenReturn(EXPECTED_KEY);
