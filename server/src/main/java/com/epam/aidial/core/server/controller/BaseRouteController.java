@@ -18,6 +18,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -158,8 +159,14 @@ public abstract class BaseRouteController implements Controller {
         setupEnhancementFunctions();
 
         if (!enhancementFunctions.isEmpty()) {
+            ObjectNode tree;
             try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+            } catch (Exception e) {
+                // request body is not JSON or malformed
+                tree = ProxyUtil.MAPPER.createObjectNode();
+            }
+            try {
                 if (ProxyUtil.processChain(tree, enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
                 }
@@ -203,7 +210,8 @@ public abstract class BaseRouteController implements Controller {
         context.setProxyRequest(proxyRequest);
 
         Upstream upstream = context.getUpstreamRoute().get();
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        MultiMap excludeHeaders = excludeHeaders();
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
         if (upstream != null && upstream.getKey() != null) {
             proxyRequest.putHeader(Proxy.HEADER_API_KEY, upstream.getKey());
         } else {
@@ -219,6 +227,10 @@ public abstract class BaseRouteController implements Controller {
         proxyRequest.send(proxyRequestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
+    }
+
+    protected MultiMap excludeHeaders() {
+        return MultiMap.caseInsensitiveMultiMap();
     }
 
     protected abstract void injectAdditionalHeaders(HttpClientRequest proxyRequest);
