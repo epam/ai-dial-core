@@ -55,17 +55,16 @@ public class TokenRateLimit {
                 limits.add("daily");
             }
             if (minuteTotal >= limit.getMinute()) {
-                limits.add("minutely");
+                limits.add("minute");
             }
             for (int i = 0; i < limits.size(); i++) {
-                if (i > 0) {
-                    if (i == limits.size() - 1) {
-                        displayError.append(" and ");
-                    } else {
-                        displayError.append(',');
-                    }
+                if (i == 0) {
+                    displayError.append(' ');
+                } else if (i == limits.size() - 1) {
+                    displayError.append(" and ");
+                } else {
+                    displayError.append(", ");
                 }
-                displayError.append(' ');
                 displayError.append(limits.get(i));
             }
             displayError.append(" token limit");
