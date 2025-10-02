@@ -209,7 +209,11 @@ public class ApplicationController {
         data.setInvalid(application.getInvalid());
         data.setId(application.getName());
         data.setApplication(application.getName());
-        data.setDisplayName(application.getDisplayName());
+        if (application.getDisplayName() != null) {
+            data.setDisplayName(application.getDisplayName());
+        } else {
+            data.setDisplayName(application.getName());
+        }
         data.setDisplayVersion(application.getDisplayVersion());
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
