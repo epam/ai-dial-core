@@ -60,7 +60,11 @@ public class ModelController {
         ModelData data = new ModelData();
         data.setId(model.getName());
         data.setModel(model.getName());
-        data.setDisplayName(model.getDisplayName());
+        if (model.getDisplayName() != null) {
+            data.setDisplayName(model.getDisplayName());
+        } else {
+            data.setDisplayName(model.getName());
+        }
         data.setDisplayVersion(model.getDisplayVersion());
         data.setIconUrl(model.getIconUrl());
         data.setDescription(model.getDescription());
