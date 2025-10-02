@@ -26,22 +26,18 @@
     },
     "interceptors": {
         "interceptor1": {
-            "endpoint": "http://localhost:4088/api/v1/interceptor/handle",
-            "displayName": "Interceptor 1"
+            "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
         },
         "interceptor2": {
-            "endpoint": "http://localhost:4089/api/v1/interceptor/handle",
-            "displayName": "Interceptor 2"
+            "endpoint": "http://localhost:4089/api/v1/interceptor/handle"
         },
         "interceptor3": {
-            "endpoint": "http://localhost:4090/api/v1/interceptor/handle",
-            "displayName": "Interceptor 3"
+            "endpoint": "http://localhost:4090/api/v1/interceptor/handle"
         }
     },
     "addons": {
         "search": {
-            "endpoint": "http://localhost:7010/search",
-            "displayName": "Search"
+            "endpoint": "http://localhost:7010/search"
         },
         "forecast": {
             "endpoint": "http://localhost:7010/forecast",
@@ -69,8 +65,7 @@
             "inputAttachmentTypes": ["type1", "type2"]
         },
         "calculator": {
-            "endpoint": "http://localhost:7010/calculator",
-            "displayName": "Calculator"
+            "endpoint": "http://localhost:7010/calculator"
         }
     },
     "assistant": {
@@ -244,7 +239,6 @@
         },
         "embedding-ada": {
             "type": "embedding",
-            "displayName": "Embedding Ada",
             "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
             "upstreams": [
                 {
@@ -260,8 +254,7 @@
             "transport": "http",
             "endpoint": "http://git-mcp-server/call",
             "allowed_tools": ["branch", "remote"],
-            "description": "Git remote tool set",
-            "displayName": "Git"
+            "description": "Git remote tool set"
         }
     },
     "keys": {

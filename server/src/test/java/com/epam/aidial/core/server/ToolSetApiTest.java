@@ -81,7 +81,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                    "data" : [ {
                      "id" : "git",
                      "toolset" : "git",
-                     "display_name" : "Git",
                      "description" : "Git remote tool set",
                      "reference" : "git",
                      "owner" : "organization-owner",
@@ -191,7 +190,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "data" : [ {
                       "id" : "git",
                       "toolset" : "git",
-                      "display_name" : "Git",
                       "description" : "Git remote tool set",
                       "reference" : "git",
                       "owner" : "organization-owner",
