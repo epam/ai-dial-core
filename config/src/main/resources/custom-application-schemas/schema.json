@@ -69,7 +69,7 @@
           "type": "string",
           "enum": ["ENABLED", "DISABLED"],
           "default": "DISABLED",
-          "description": "If this flag is set to enabled, files are published from application's bucket"
+          "description": "If this flag is set to enabled, files are copied from source application bucket to destination bucket when the application is published"
         },
         "dial:applicationTypeRoutes": {
           "type": "object",
