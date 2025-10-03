@@ -138,7 +138,7 @@ public class ToolSetService {
             // If the dataset is copied but credentials are not, it's not a critical issue.
             CredentialsLevel credentialsLevel = entry.getKey();
             boolean isRequired = entry.getValue();
-            boolean copied = copyCredentials(context, source, destination, credentialsLevel, etag);
+            boolean copied = copyCredentials(context, source, destination, credentialsLevel, overwrite);
             if (!copied && isRequired) {
                 throw new ResourceNotFoundException("Toolset was copied, but credentials are not. ResourceId: %s"
                         .formatted(source.getUrl()));
