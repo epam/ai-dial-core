@@ -62,8 +62,9 @@ public class Publication {
          * credentials may also be published, but only if they are defined at the
          * {@code Global} level.
          *
-         * <p>If {@code publishCredentials} is set to {@code true} and no global credentials
-         * are available, an error will be raised.
+         * <p>If {@code publishCredentials} is set to {@code true} and global credentials
+         * are available, then they will be published. If global credentials are not available,
+         * then the credentials will not be published.
          */
         boolean publishCredentials;
     }
