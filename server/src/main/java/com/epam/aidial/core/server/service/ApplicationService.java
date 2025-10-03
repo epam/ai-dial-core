@@ -3,12 +3,14 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -228,6 +230,16 @@ public class ApplicationService {
                 }
             }
         }
+
+        // removes resources owned by the app itself
+        ResourceDescriptor appFileBucket = getAppFileBucket(resource);
+        resourceService.deleteFolder(appFileBucket);
+    }
+
+    private ResourceDescriptor getAppFileBucket(ResourceDescriptor app) {
+        String appBucketLocation = BucketBuilder.API_KEY_BUCKET_PATTERN.formatted(app.getUrl());
+        String appBucket = Objects.requireNonNull(encryptionService.encrypt(appBucketLocation));
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, appBucket, appBucketLocation, ResourceDescriptor.PATH_SEPARATOR);
     }
 
     public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite, Consumer<Application> consumer) {
@@ -322,7 +334,18 @@ public class ApplicationService {
                     }
                 }
             }
+            if (applicationSchemaService.getCopyAppBucketOptions(application) == CopyAppBucketOptions.ENABLED) {
+                copyAppFileBucket(source, destination);
+            }
+        } else {
+            copyAppFileBucket(source, destination);
         }
+    }
+
+    private void copyAppFileBucket(ResourceDescriptor source, ResourceDescriptor destination) {
+        ResourceDescriptor from = getAppFileBucket(source);
+        ResourceDescriptor to = getAppFileBucket(destination);
+        resourceService.copyFolder(from, to, false);
     }
 
     private static List<ResourceDescriptor> toDestAppFiles(ResourceDescriptor source, ResourceDescriptor dest, List<ResourceDescriptor> sourceAppFiles) {
