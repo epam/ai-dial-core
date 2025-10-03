@@ -57,7 +57,8 @@ public class ResourceCredentialsService {
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
     }
 
-    public boolean copyResourceCredentials(CredentialsDescriptor from, CredentialsDescriptor to, CredentialsLevel credentialsLevel) {
+    public boolean copyResourceCredentials(CredentialsDescriptor from, CredentialsDescriptor to,
+                                           CredentialsLevel credentialsLevel, EtagHeader etag) {
         log.debug("Copying resource credentials for resourceId={} from bucket={} to bucket={}",
                 from.getResourceId(), from.getBucketName(), to.getBucketName());
 
@@ -76,7 +77,7 @@ public class ResourceCredentialsService {
         resourceCredentials.setResourceId(to.getResourceId());
 
         byte[] encryptedBody = encrypt(to, resourceCredentials);
-        resourceService.putResourceBytes(to.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+        resourceService.putResourceBytes(to.toResourceDescriptor(), encryptedBody, etag);
         log.debug("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",
                 from.getResourceId(), from.getBucketName(), to.getBucketName());
         return true;

@@ -131,7 +131,7 @@ public class ToolSetService {
             // If the dataset is copied but credentials are not, it's not a critical issue.
             CredentialsLevel credentialsLevel = entry.getKey();
             CredentialCopyingStrategy credentialCopyingStrategy = entry.getValue();
-            boolean copied = copyCredentials(context, source, destination, credentialsLevel);
+            boolean copied = copyCredentials(context, source, destination, credentialsLevel, etag);
             if (!copied && credentialCopyingStrategy.isRequired()) {
                 throw new ResourceNotFoundException("Toolset was copied, but credentials are not. ResourceId: %s"
                         .formatted(source.getUrl()));
@@ -140,13 +140,13 @@ public class ToolSetService {
     }
 
     private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                                    CredentialsLevel credentialsLevel) {
+                                    CredentialsLevel credentialsLevel, EtagHeader etag) {
         CredentialsDescriptor sourceCredentialDescriptor =
                 CredentialsDescriptorFactory.fromResourceDescriptor(source, credentialsLevel, context);
         CredentialsDescriptor destinationCredentialDescriptor =
                 CredentialsDescriptorFactory.fromResourceDescriptor(destination, credentialsLevel, context);
         return resourceCredentialsService.copyResourceCredentials(
-                sourceCredentialDescriptor, destinationCredentialDescriptor, credentialsLevel);
+                sourceCredentialDescriptor, destinationCredentialDescriptor, credentialsLevel, etag);
     }
 
     public boolean deleteToolset(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
