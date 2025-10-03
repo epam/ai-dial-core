@@ -690,9 +690,7 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
-                Map<CredentialsLevel, Boolean> credentialsToCopy = resource.isPublishCredentials()
-                        ? Map.of(CredentialsLevel.GLOBAL, true)
-                        : Map.of();
+                Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy);
             } else if (!resourceService.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
@@ -736,9 +734,7 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
-                Map<CredentialsLevel, Boolean> credentialsToCopy = resource.isPublishCredentials()
-                        ? Map.of(CredentialsLevel.GLOBAL, true)
-                        : Map.of();
+                Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
                         credentialsToCopy);
             } else {
@@ -766,6 +762,12 @@ public class PublicationService {
                 resourceService.computeResource(to, body -> PublicationUtil.replacePromptIdentity(body, to));
             }
         }
+    }
+
+    private static Map<CredentialsLevel, Boolean> getCredentialsLevelsToCopy(Publication.Resource resource) {
+        return resource.isPublishCredentials()
+                ? Map.of(CredentialsLevel.GLOBAL, true)
+                : Map.of();
     }
 
     private void deleteReviewResources(ProxyContext context, List<Publication.Resource> resources) {
