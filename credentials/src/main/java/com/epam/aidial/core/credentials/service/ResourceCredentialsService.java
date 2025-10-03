@@ -58,7 +58,7 @@ public class ResourceCredentialsService {
     }
 
     public boolean copyResourceCredentials(CredentialsDescriptor from, CredentialsDescriptor to,
-                                           CredentialsLevel credentialsLevel, EtagHeader etag) {
+                                           CredentialsLevel credentialsLevel, boolean overwrite) {
         log.debug("Copying resource credentials for resourceId={} from bucket={} to bucket={}",
                 from.getResourceId(), from.getBucketName(), to.getBucketName());
 
@@ -77,6 +77,7 @@ public class ResourceCredentialsService {
         resourceCredentials.setResourceId(to.getResourceId());
 
         byte[] encryptedBody = encrypt(to, resourceCredentials);
+        EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
         resourceService.putResourceBytes(to.toResourceDescriptor(), encryptedBody, etag);
         log.debug("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",
                 from.getResourceId(), from.getBucketName(), to.getBucketName());

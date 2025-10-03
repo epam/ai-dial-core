@@ -147,13 +147,13 @@ public class ToolSetService {
     }
 
     private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                                    CredentialsLevel credentialsLevel, EtagHeader etag) {
+                                    CredentialsLevel credentialsLevel, boolean overwrite) {
         CredentialsDescriptor sourceCredentialDescriptor =
                 CredentialsDescriptorFactory.fromResourceDescriptor(source, credentialsLevel, context);
         CredentialsDescriptor destinationCredentialDescriptor =
                 CredentialsDescriptorFactory.fromResourceDescriptor(destination, credentialsLevel, context);
         return resourceCredentialsService.copyResourceCredentials(
-                sourceCredentialDescriptor, destinationCredentialDescriptor, credentialsLevel, etag);
+                sourceCredentialDescriptor, destinationCredentialDescriptor, credentialsLevel, overwrite);
     }
 
     public boolean deleteToolset(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
