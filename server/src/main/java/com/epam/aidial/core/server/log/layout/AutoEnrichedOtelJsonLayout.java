@@ -102,15 +102,35 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
     private void enrichExceptionAttributes(ILoggingEvent event, Map<String, Object> attributes) {
         IThrowableProxy throwableProxy = event.getThrowableProxy();
         if (throwableProxy != null) {
-            String stacktrace = Stream.of(throwableProxy.getStackTraceElementProxyArray())
-                    .map(String::valueOf)
-                    .collect(Collectors.joining("\n"));
+            String stacktrace = buildFullStacktrace(throwableProxy, true);
 
             attributes.put("error", true);
             attributes.put("exception.type", throwableProxy.getClassName());
             attributes.put("exception.message", throwableProxy.getMessage());
             attributes.put("exception.stacktrace", stacktrace);
         }
+    }
+
+    private String buildFullStacktrace(IThrowableProxy throwable, boolean isRoot) {
+        StringBuilder result = new StringBuilder();
+
+        if (!isRoot) {
+            result.append("Caused by: ")
+                    .append(throwable.getClassName())
+                    .append(": ")
+                    .append(throwable.getMessage())
+                    .append("\n");
+        }
+
+        result.append(Stream.of(throwable.getStackTraceElementProxyArray())
+                .map(String::valueOf)
+                .collect(Collectors.joining("\n")));
+
+        if (throwable.getCause() != null) {
+            result.append("\n").append(buildFullStacktrace(throwable.getCause(), false));
+        }
+
+        return result.toString();
     }
 
     private void enrichOpenTelemetrySpan(ILoggingEvent event, Map<String, Object> attributes) {
