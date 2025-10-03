@@ -69,9 +69,9 @@ public class ResourceOperationService {
                 }
             });
         } else if (destination.getType() == TOOL_SET) {
-            Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = Map.of(
-                    CredentialsLevel.USER, ToolSetService.CredentialCopyingStrategy.IF_PRESENT,
-                    CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.IF_PRESENT
+            Map<CredentialsLevel, Boolean> credentialsToCopy = Map.of(
+                    CredentialsLevel.USER, false,
+                    CredentialsLevel.GLOBAL, false
             );
             // TODO: support move for USER and APP credentials for public toolsets
             // TODO: support move for USER and APP credentials for shared toolsets (?)

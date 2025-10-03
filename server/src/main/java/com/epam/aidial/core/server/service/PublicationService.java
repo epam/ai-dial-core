@@ -690,8 +690,8 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
-                Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = resource.isPublishCredentials()
-                        ? Map.of(CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.REQUIRE)
+                Map<CredentialsLevel, Boolean> credentialsToCopy = resource.isPublishCredentials()
+                        ? Map.of(CredentialsLevel.GLOBAL, true)
                         : Map.of();
                 toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy);
             } else if (!resourceService.copyResource(from, to)) {
@@ -736,8 +736,8 @@ public class PublicationService {
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
-                Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = resource.isPublishCredentials()
-                        ? Map.of(CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.REQUIRE)
+                Map<CredentialsLevel, Boolean> credentialsToCopy = resource.isPublishCredentials()
+                        ? Map.of(CredentialsLevel.GLOBAL, true)
                         : Map.of();
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
                         credentialsToCopy);

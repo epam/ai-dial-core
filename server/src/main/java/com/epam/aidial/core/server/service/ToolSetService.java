@@ -20,7 +20,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -98,12 +97,20 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
+    /**
+     * @param credentialsToCopy a map defining which credential levels should be copied
+     *                          and whether they are required:
+     *                          <ul>
+     *                            <li>{@code true} — credentials at this level are required; if not found, an error is thrown.</li>
+     *                            <li>{@code false} — credentials at this level are optional; they are copied only if present.</li>
+     *                          </ul>
+     */
     public void copyToolSet(ProxyContext context,
                             ResourceDescriptor source,
                             ResourceDescriptor destination,
                             @Nullable String author,
                             boolean overwrite,
-                            Map<CredentialsLevel, CredentialCopyingStrategy> credentialsToCopy) {
+                            Map<CredentialsLevel, Boolean> credentialsToCopy) {
 
         verifyToolSet(source);
         verifyToolSet(destination);
@@ -126,13 +133,13 @@ public class ToolSetService {
         String json = ProxyUtil.convertToString(toolSet);
         resourceService.putResource(destination, json, etag, author);
 
-        for (Map.Entry<CredentialsLevel, CredentialCopyingStrategy> entry : credentialsToCopy.entrySet()) {
+        for (Map.Entry<CredentialsLevel, Boolean> entry : credentialsToCopy.entrySet()) {
             // Copy the toolset first. If toolset copying fails, credentials won't be copied.
             // If the dataset is copied but credentials are not, it's not a critical issue.
             CredentialsLevel credentialsLevel = entry.getKey();
-            CredentialCopyingStrategy credentialCopyingStrategy = entry.getValue();
+            boolean isRequired = entry.getValue();
             boolean copied = copyCredentials(context, source, destination, credentialsLevel, etag);
-            if (!copied && credentialCopyingStrategy.isRequired()) {
+            if (!copied && isRequired) {
                 throw new ResourceNotFoundException("Toolset was copied, but credentials are not. ResourceId: %s"
                         .formatted(source.getUrl()));
             }
@@ -172,12 +179,12 @@ public class ToolSetService {
     }
 
     private void verifyCredentials(ProxyContext context, ResourceDescriptor resource,
-                                   Map<CredentialsLevel, CredentialCopyingStrategy> copyingStrategy) {
-        for (Map.Entry<CredentialsLevel, CredentialCopyingStrategy> entry : copyingStrategy.entrySet()) {
+                                   Map<CredentialsLevel, Boolean> copyingStrategy) {
+        for (Map.Entry<CredentialsLevel, Boolean> entry : copyingStrategy.entrySet()) {
             CredentialsLevel credentialsLevel = entry.getKey();
-            CredentialCopyingStrategy credentialCopyingStrategy = entry.getValue();
+            boolean isRequired = entry.getValue();
 
-            if (credentialCopyingStrategy.isRequired()) {
+            if (isRequired) {
                 CredentialsDescriptor credentialsDescriptor =
                         CredentialsDescriptorFactory.fromResourceDescriptor(resource, credentialsLevel, context);
                 ResourceCredentials resourceCredentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
@@ -186,18 +193,6 @@ public class ToolSetService {
                             .formatted(resource.getUrl()));
                 }
             }
-        }
-    }
-
-    @RequiredArgsConstructor
-    public enum CredentialCopyingStrategy {
-        IF_PRESENT(false),
-        REQUIRE(true);
-
-        private final boolean require;
-
-        public boolean isRequired() {
-            return require;
         }
     }
 
