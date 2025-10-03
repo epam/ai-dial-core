@@ -54,7 +54,11 @@ public class AddonController {
         AddonData data = new AddonData();
         data.setId(addon.getName());
         data.setAddon(addon.getName());
-        data.setDisplayName(addon.getDisplayName());
+        if (addon.getDisplayName() != null) {
+            data.setDisplayName(addon.getDisplayName());
+        } else {
+            data.setDisplayName(addon.getName());
+        }
         data.setDisplayVersion(addon.getDisplayVersion());
         data.setIconUrl(addon.getIconUrl());
         data.setDescription(addon.getDescription());
