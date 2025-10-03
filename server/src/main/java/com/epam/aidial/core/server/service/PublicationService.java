@@ -766,7 +766,7 @@ public class PublicationService {
 
     private static Map<CredentialsLevel, Boolean> getCredentialsLevelsToCopy(Publication.Resource resource) {
         return resource.isPublishCredentials()
-                ? Map.of(CredentialsLevel.GLOBAL, true)
+                ? Map.of(CredentialsLevel.GLOBAL, false)
                 : Map.of();
     }
 
