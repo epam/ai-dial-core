@@ -109,7 +109,7 @@ public class ResourceOperationService {
     }
 
     public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
-                             boolean overwriteIfExists, boolean copyCredentials) {
+                             boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Copying folders is not supported");
         }
@@ -134,10 +134,7 @@ public class ResourceOperationService {
                 // do nothing
             });
         } else if (destination.getType() == TOOL_SET) {
-            Map<CredentialsLevel, ToolSetService.CredentialCopyingStrategy> credentialsToCopy = copyCredentials
-                    ? Map.of(CredentialsLevel.GLOBAL, ToolSetService.CredentialCopyingStrategy.IF_PRESENT)
-                    : Map.of();
-            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of());
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {
