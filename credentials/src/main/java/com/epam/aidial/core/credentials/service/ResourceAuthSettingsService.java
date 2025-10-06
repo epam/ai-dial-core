@@ -8,6 +8,7 @@ import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
+import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
@@ -24,7 +25,8 @@ public class ResourceAuthSettingsService {
 
     private final ResourceRegistrationService resourceRegistrationService;
     private final ResourceAuthSettingsValidator resourceAuthSettingsValidator;
-    private final ResourceCredentialsManager resourceCredentialsManager;
+    private final ResourceCredentialsService resourceCredentialsService;
+    private final TokenRefreshStrategyFactory tokenRefreshStrategyFactory;
 
     public void enrichResourceAuthSettings(String resourceId,
                                            String resourceEndpoint,
@@ -55,7 +57,7 @@ public class ResourceAuthSettingsService {
     public void setResourceAuthStatuses(CredentialsLocator credentialsLocator,
                                         ResourceAuthSettings resourceAuthSettings,
                                         String userSub) {
-        List<ResourceCredentials> allResourceCredentials = resourceCredentialsManager.getAllResourceCredentials(credentialsLocator);
+        List<ResourceCredentials> allResourceCredentials = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
         setUserAuthStatus(resourceAuthSettings, allResourceCredentials, userSub);
         setGlobalAuthStatus(resourceAuthSettings, allResourceCredentials);
     }
@@ -65,11 +67,10 @@ public class ResourceAuthSettingsService {
                                    String userSub) {
         Optional<ResourceCredentials> userResourceCredentials = resourceCredentialsList.stream()
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                    && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
-                    && userSub.equals(resourceCredentials.getUserSub())
-                    && resourceCredentials.hasUnexpiredToken())
+                    && tokenRefreshStrategyFactory.getTokenValidatorStrategy(resourceCredentials.getAuthenticationType())
+                        .hasUnexpiredToken(resourceCredentials)
+                        && userSub.equals(resourceCredentials.getUserSub()))
                 .findFirst();
-        // TODO: implement logic for API_KEY auth type
         if (userResourceCredentials.isPresent()) {
             resourceAuthSettings.setUserLevelAuthStatus(ResourceAuthStatus.SIGNED_IN);
         } else {
@@ -81,11 +82,9 @@ public class ResourceAuthSettingsService {
                                      List<ResourceCredentials> resourceCredentialsList) {
         Optional<ResourceCredentials> globalResourceCredentials = resourceCredentialsList.stream()
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)
-                    && resourceCredentials.getAuthenticationType().equals(AuthenticationType.OAUTH)
-                    && resourceCredentials.hasUnexpiredToken()
-                )
+                    && tokenRefreshStrategyFactory.getTokenValidatorStrategy(resourceCredentials.getAuthenticationType())
+                        .hasUnexpiredToken(resourceCredentials))
                 .findFirst();
-        // TODO: implement logic for API_KEY auth type
         if (globalResourceCredentials.isPresent()) {
             resourceAuthSettings.setGlobalAuthStatus(ResourceAuthStatus.SIGNED_IN);
         } else {

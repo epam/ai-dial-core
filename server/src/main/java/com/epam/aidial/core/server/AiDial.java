@@ -8,18 +8,21 @@ import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManagerFa
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.credentials.encryption.DataEncryptionService;
+import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementServiceFactory;
+import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsManager;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.credentials.service.TokenService;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
+import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
+import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
@@ -192,16 +195,15 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            TimeProvider timeProvider = new TimeProvider();
+            TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
-            TokenService tokenService = new TokenService(resourceAuthorizationClient);
-            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient);
-            ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
-            ResourceCredentialsService resourceCredentialsService = new ResourceCredentialsService(resourceService,
-                    credentialEncryptionService);
-            ResourceCredentialsManager resourceCredentialsManager = new ResourceCredentialsManager(resourceCredentialsService, tokenService);
-            ResourceAuthSettingsService resourceAuthSettingsService = new ResourceAuthSettingsService(resourceRegistrationService,
-                    resourceAuthSettingsValidator, resourceCredentialsManager);
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
+                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider);
+            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient);
+            AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
 
@@ -226,7 +228,8 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
-                    toolSetService, applicationSchemaService, resourceCredentialsManager, resourceAuthSettingsService, taskExecutor, version());
+                    toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
+                    taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -263,6 +266,25 @@ public class AiDial {
         ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
         DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
+    }
+
+    private ResourceCredentialsService getResourceCredentialsService(TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
+                                                                     ResourceAuthorizationClient resourceAuthorizationClient,
+                                                                     CredentialEncryptionService credentialEncryptionService,
+                                                                     TimeProvider timeProvider) {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient);
+        ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
+        return new ResourceCredentialsService(resourceService, credentialEncryptionService, resourceCredentialsFactoryProvider,
+                tokenService, tokenRefreshStrategyFactory, timeProvider);
+    }
+
+    private ResourceAuthSettingsService getResourceAuthSettingsService(ResourceCredentialsService resourceCredentialsService,
+                                                                       TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
+                                                                       ResourceAuthorizationClient resourceAuthorizationClient) {
+        ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient);
+        ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
+        return new ResourceAuthSettingsService(resourceRegistrationService, resourceAuthSettingsValidator,
+                resourceCredentialsService, tokenRefreshStrategyFactory);
     }
 
     @VisibleForTesting

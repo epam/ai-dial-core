@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +35,7 @@ public class FileMetadataController extends AccessControlBaseController {
     @Override
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
-        String token = context.getRequest().getParam("token");
+        String token = UrlUtil.encodePath(context.getRequest().getParam("token"));
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
         if (limit < 0 || limit > 1000) {
             return context.respond(HttpStatus.BAD_REQUEST, "Limit is out of allowed range: [0, 1000]");

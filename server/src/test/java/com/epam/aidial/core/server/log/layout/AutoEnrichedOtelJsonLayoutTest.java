@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -294,7 +295,8 @@ class AutoEnrichedOtelJsonLayoutTest {
         event.setLoggerContext(context);
         
         // Add exception
-        Exception testException = new RuntimeException("Test exception message");
+        var cause = new EncryptionException("Failed to decrypt auth setting", new Exception("BAD token"));
+        Exception testException = new RuntimeException("Test exception message", cause);
         event.setThrowableProxy(new ThrowableProxy(testException));
 
         String result = layout.doLayout(event);
@@ -305,6 +307,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals("java.lang.RuntimeException", attributes.get("exception.type").asText());
         assertEquals("Test exception message", attributes.get("exception.message").asText());
         assertNotNull(attributes.get("exception.stacktrace"));
+        assertTrue(attributes.get("exception.stacktrace").asText().contains("Caused by:"));
     }
 
     @Test
