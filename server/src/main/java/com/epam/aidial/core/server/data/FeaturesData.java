@@ -29,6 +29,7 @@ public class FeaturesData {
     private boolean cache = false;
     private boolean autoCaching = false;
     private boolean parallelToolCalls = true;
+    private boolean assistantAttachmentsInRequest = false;
 
     @JsonIgnore
     public static FeaturesData createFeatures(Features features) {
@@ -93,6 +94,10 @@ public class FeaturesData {
 
         if (features.getParallelToolCallsSupported() != null) {
             data.setParallelToolCalls(features.getParallelToolCallsSupported());
+        }
+
+        if (features.getAssistantAttachmentsInRequestSupported() != null) {
+            data.setAssistantAttachmentsInRequest(features.getAssistantAttachmentsInRequestSupported());
         }
 
         return data;

@@ -127,7 +127,7 @@ Parameters defining the token limits that apply to the model. Use to ensure that
 
 * `maxPromptTokens`: Maximum number of tokens in a completion request.
 * `maxCompletionTokens`: Maximum number of tokens in a completion response.
-* `maxTotalTokens`: Maximum number of tokens in completion request and response combined. Typically either `maxTotalTokens` is specified or `maxPromptTokens` and `maxCompletionTokens`.           
+* `maxTotalTokens`: Maximum number of tokens in completion request and response combined. Typically either `maxTotalTokens` is specified or `maxPromptTokens` and `maxCompletionTokens`.
 
 **Example**
 
@@ -143,11 +143,11 @@ Parameters defining the token limits that apply to the model. Use to ensure that
 }
 ```
 
-#### models.<model_name>.pricing 
+#### models.<model_name>.pricing
 
 Parameters defining the pricing for the model. Use to enables real-time cost estimation and quota enforcement.
 
-* `unit`: the pricing units 
+* `unit`: the pricing units
     * `token`: Every token sent or received by the model is counted towards your cost metrics.
     * `char_without_whitespace`: Tells DIAL to count only non-whitespace characters (letters, numbers, punctuation) in each request as the billing unit.
     * `none`: disables all cost tracking for this model.
@@ -174,9 +174,9 @@ In features you can specify optional capabilities of the model. You can use mode
 
 Some models adapters expose specialized HTTP endpoints for tokenization, rate estimation, prompt truncation, or live configuration. You can override the default Unified Protocol calls by specifying them in this section.
 
-* `rateEndpoint`: URL to invoke the model’s cost‐estimation or billing API. Exposed by DIAL Core as `<deployment name>/rate`. 
+* `rateEndpoint`: URL to invoke the model’s cost‐estimation or billing API. Exposed by DIAL Core as `<deployment name>/rate`.
 * `tokenizeEndpoint`: URL to invoke a standalone tokenization service. Exposed by DIAL Core as `<deployment name>/tokenize`. Use when you need precise token counts before truncation or batching. Models without built-in tokenization require this.
-* `truncatePromptEndpoint`: URL to invoke a prompt‐truncation API. Exposed by DIAL Core as `<deployment name>/truncate_prompt`. Ensures prompts are safely cut to max context length. Useful when working with very long user inputs. 
+* `truncatePromptEndpoint`: URL to invoke a prompt‐truncation API. Exposed by DIAL Core as `<deployment name>/truncate_prompt`. Ensures prompts are safely cut to max context length. Useful when working with very long user inputs.
 * `systemPromptSupported`: A boolean parameter to enable/disable a system‐level message (the "agent’s instructions") at the start of every chat. Disable for models that ignore or block system prompts. Default is `true`.
 * `toolsSupported`: A boolean parameter to enable/disable `tools` (a.k.a. functions) feature for safe external API calls. Enable if you plan to use DIAL Add-ons or function calling. Default is `false`.
 * `seedSupported`: A boolean parameter to enable/disable `seed` parameter for deterministic output. Use in testing or reproducible workflows. Default is `false`.
@@ -185,9 +185,9 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 * `accessibleByPerRequestKey`: A boolean parameter to enable/disable access to the model with a [per-request API key](https://docs.dialx.ai/platform/core/per-request-keys). Default is `true`.
 * `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts. Default is `false`.
 * `cacheSupported`: A boolean parameter that indicates whether the deployment supports [LLM caching](https://docs.dialx.ai/tutorials/developers/prompt-caching). Default is `false`.
-* `autoCachingSupported`: A boolean parameter that indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible. Default is `false`. 
-* `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.  
-
+* `autoCachingSupported`: A boolean parameter that indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible. Default is `false`.
+* `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.
+* `assistantAttachmentsInRequestSupported`: A boolean parameter that indicates whether the deployment supports DIAL attachments in the assistant messages. Default is `false`. When set to `true`, DIAL Chat must preserve attachments in the assistant messages, instead of removing them. The feature is especially useful for models that can generate attachments as well as take attachments in its input. A typical example of such a model is an image-editing model.
 
 **Example**
 
@@ -205,7 +205,8 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
                 "urlAttachmentsSupported": false,
                 "folderAttachmentsSupported": false,
                 "accessibleByPerRequestKey": true,
-                "contentPartsSupported": false
+                "contentPartsSupported": false,
+                "assistantAttachmentsInRequestSupported": false
             },
         }
 }
@@ -216,7 +217,7 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 Upstreams configurations. Use to configure [load balancing](https://docs.dialx.ai/platform/core/load-balancer).
 
 * `endpoint`: One or more backend URLs to send requests to. Enables round-robin load balancing or fallback among multiple hosts.
-* `key`: API key, token, or credential passed to the upstream. 
+* `key`: API key, token, or credential passed to the upstream.
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
 * `extraData`: Additional metadata containing any information that is passed to the upstream's endpoint. It can be a JSON or String.
