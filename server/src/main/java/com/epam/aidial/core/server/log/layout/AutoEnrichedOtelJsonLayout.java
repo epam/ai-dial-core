@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.log.layout;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.IThrowableProxy;
+import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.LayoutBase;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
@@ -11,13 +12,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
@@ -102,9 +103,12 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
     private void enrichExceptionAttributes(ILoggingEvent event, Map<String, Object> attributes) {
         IThrowableProxy throwableProxy = event.getThrowableProxy();
         if (throwableProxy != null) {
-            String stacktrace = Stream.of(throwableProxy.getStackTraceElementProxyArray())
-                    .map(String::valueOf)
-                    .collect(Collectors.joining("\n"));
+            ThrowableProxy throwableProxyImpl = (ThrowableProxy) throwableProxy;
+            Throwable throwable = throwableProxyImpl.getThrowable();
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            throwable.printStackTrace(pw);
+            String stacktrace = sw.toString();
 
             attributes.put("error", true);
             attributes.put("exception.type", throwableProxy.getClassName());
