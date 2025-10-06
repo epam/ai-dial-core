@@ -81,7 +81,8 @@ class AuthorizationHeaderProviderTest {
         ResourceAuthSettings authSettings = arguments.authSettings;
 
         when(resourceCredentialsService.getAndRefreshCredentials(userCredentialsDescriptor, authSettings))
-                .thenReturn(null);
+                .thenThrow(new ResourceNotFoundException("Credentials not found"));
+
         when(resourceCredentialsService.getAndRefreshCredentials(globalCredentialsDescriptor, authSettings))
                 .thenReturn(arguments.resourceCredentials);
 
