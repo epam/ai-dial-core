@@ -31,7 +31,11 @@ public class ToolSetData extends SecuredResourceData {
 
         data.setToolset(toolSet.getName());
         data.setId(toolSet.getName());
-        data.setDisplayName(toolSet.getDisplayName());
+        if (toolSet.getDisplayName() != null) {
+            data.setDisplayName(toolSet.getDisplayName());
+        } else {
+            data.setDisplayName(toolSet.getName());
+        }
         data.setIconUrl(toolSet.getIconUrl());
         data.setDisplayVersion(toolSet.getDisplayVersion());
         data.setDescription(toolSet.getDescription());
