@@ -53,7 +53,8 @@ public class ListingTest extends ResourceBaseTest {
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
                     "content_parts": false, "temperature" : true, "addons" : true, "cache" : false,
-                     "auto_caching" : false, "parallel_tool_calls": true
+                    "auto_caching" : false, "parallel_tool_calls": true,
+                    "assistant_attachments_in_request": false
                     }
                 """));
     }
@@ -66,7 +67,8 @@ public class ListingTest extends ResourceBaseTest {
                     , "url_attachments": true, "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
                     "content_parts": false, "temperature" : true, "addons" : true, "cache" : false,
-                      "auto_caching" : false, "parallel_tool_calls": true
+                    "auto_caching" : false, "parallel_tool_calls": true,
+                    "assistant_attachments_in_request": false
                     }
                 """));
     }
@@ -79,7 +81,8 @@ public class ListingTest extends ResourceBaseTest {
                     , "url_attachments": false, "folder_attachments": false
                     , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true,
                     "content_parts": false, "temperature" : true, "addons" : true, "cache" : false,
-                      "auto_caching" : false, "parallel_tool_calls": true
+                    "auto_caching" : false, "parallel_tool_calls": true,
+                    "assistant_attachments_in_request": false
                     }
                 """));
     }
@@ -92,7 +95,8 @@ public class ListingTest extends ResourceBaseTest {
                     , "url_attachments": false,  "folder_attachments": false
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
                     "content_parts": false, "temperature" : true, "addons" : true, "cache" : false,
-                      "auto_caching" : false, "parallel_tool_calls": true
+                    "auto_caching" : false, "parallel_tool_calls": true,
+                    "assistant_attachments_in_request": false
                     }
                 """));
     }

@@ -81,6 +81,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                    "data" : [ {
                      "id" : "git",
                      "toolset" : "git",
+                     "display_name" : "git",
                      "description" : "Git remote tool set",
                      "reference" : "git",
                      "owner" : "organization-owner",
@@ -105,7 +106,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "addons" : true,
                            "cache" : false,
                            "auto_caching" : false,
-                           "parallel_tool_calls" : true
+                           "parallel_tool_calls" : true,
+                           "assistant_attachments_in_request": false
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -167,7 +169,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                         "addons" : true,
                         "cache" : false,
                         "auto_caching" : false,
-                        "parallel_tool_calls" : true
+                        "parallel_tool_calls" : true,
+                        "assistant_attachments_in_request": false
                   },
                   "description_keywords": [],
                   "max_retry_attempts": 1,
@@ -190,6 +193,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "data" : [ {
                       "id" : "git",
                       "toolset" : "git",
+                      "display_name" : "git",
                       "description" : "Git remote tool set",
                       "reference" : "git",
                       "owner" : "organization-owner",
@@ -214,7 +218,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "addons" : true,
                             "cache" : false,
                             "auto_caching" : false,
-                            "parallel_tool_calls" : true
+                            "parallel_tool_calls" : true,
+                            "assistant_attachments_in_request": false
                           },
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
@@ -253,7 +258,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "addons" : true,
                             "cache" : false,
                             "auto_caching" : false,
-                            "parallel_tool_calls" : true
+                            "parallel_tool_calls" : true,
+                            "assistant_attachments_in_request": false
                           },
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,

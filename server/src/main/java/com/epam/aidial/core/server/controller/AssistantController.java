@@ -57,7 +57,11 @@ public class AssistantController {
         AssistantData data = new AssistantData();
         data.setId(assistant.getName());
         data.setAssistant(assistant.getName());
-        data.setDisplayName(assistant.getDisplayName());
+        if (assistant.getDisplayName() != null) {
+            data.setDisplayName(assistant.getDisplayName());
+        } else {
+            data.setDisplayName(assistant.getName());
+        }
         data.setDisplayVersion(assistant.getDisplayVersion());
         data.setIconUrl(assistant.getIconUrl());
         data.setDescription(assistant.getDescription());
