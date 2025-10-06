@@ -57,7 +57,7 @@ public class AuthorizationHeaderProvider {
                 return userCredentials;
             }
         } catch (ResourceNotFoundException e) {
-            log.error(e.getMessage(), e); // if User credentials are not found - let's look for Global one
+            log.debug(e.getMessage(), e); // if User credentials are not found - let's look for Global one
         }
 
         ResourceCredentials globalCredentials = resourceCredentialsService.getAndRefreshCredentials(
