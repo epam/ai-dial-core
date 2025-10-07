@@ -102,7 +102,7 @@ public class PublicationController {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodePublication(url, false);
                     checkAccess(resource, true);
-                    return taskExecutor.submit(() -> publicationService.deletePublication(resource));
+                    return taskExecutor.submit(() -> publicationService.deletePublication(context, resource));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK))
                 .onFailure(error -> respondError("Can't delete publication", error));
@@ -135,7 +135,7 @@ public class PublicationController {
                     checkAccess(resource, false);
                     return taskExecutor.submit(() ->
                             lockService.underBucketLock(ResourceDescriptor.PUBLIC_LOCATION,
-                                    () -> publicationService.approvePublication(resource)));
+                                    () -> publicationService.approvePublication(context, resource)));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't approve publication", error));
@@ -151,7 +151,7 @@ public class PublicationController {
                     String url = request.url();
                     ResourceDescriptor resource = decodePublication(url, false);
                     checkAccess(resource, false);
-                    return taskExecutor.submit(() -> publicationService.rejectPublication(resource, request));
+                    return taskExecutor.submit(() -> publicationService.rejectPublication(context, resource, request));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))
                 .onFailure(error -> respondError("Can't reject publication", error));

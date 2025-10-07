@@ -15,6 +15,7 @@ import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
@@ -218,8 +219,10 @@ public class ResourceService implements AutoCloseable {
                 // blob store never returns folder however local FS provider may return
                 .filter(meta -> !recursive || meta.getType() == StorageType.BLOB)
                 .map(meta -> storageToResourceMetadata(meta, descriptor)).toList();
-
-        return new ResourceFolderMetadata(descriptor, resources, set.getNextMarker());
+        // marker can be a percent encoded or decoded string
+        // we should encode the marker any way to get back the original string from a query parameter
+        String nextMarker = UrlUtil.encodePath(set.getNextMarker());
+        return new ResourceFolderMetadata(descriptor, resources, nextMarker);
     }
 
     private static MetadataBase storageToResourceMetadata(StorageMetadata meta, ResourceDescriptor folder) {

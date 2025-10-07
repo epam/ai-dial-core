@@ -31,6 +31,9 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Object
         ObjectNode customFields = (ObjectNode) tree.get("custom_fields");
         if (customFields != null) {
             customFields.remove("interceptor_configuration");
+            if (customFields.isEmpty()) {
+                tree.remove("custom_fields");
+            }
         }
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Interceptor) {
