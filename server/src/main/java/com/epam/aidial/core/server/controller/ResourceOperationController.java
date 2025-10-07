@@ -23,7 +23,6 @@ import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceTopic;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
@@ -106,7 +105,7 @@ public class ResourceOperationController {
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
-                        resourceOperationService.moveResource(source, destination, request.isOverwrite());
+                        resourceOperationService.moveResource(context, source, destination, request.isOverwrite());
                         return null;
                     }));
                 })
@@ -161,7 +160,7 @@ public class ResourceOperationController {
                     }
 
                     return taskExecutor.submit(() -> {
-                        resourceOperationService.copyResource(source, destination, request.isOverwrite());
+                        resourceOperationService.copyResource(context, source, destination, request.isOverwrite());
                         return null;
                     });
                 })

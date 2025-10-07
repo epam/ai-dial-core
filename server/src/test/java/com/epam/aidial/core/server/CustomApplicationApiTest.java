@@ -413,7 +413,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                     "targetUrl" : "applications/public/folder/my-custom-application",
-                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/my-custom-application"
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/my-custom-application",
+                    "publishCredentials" : false
                    } ],
                    "resourceTypes" : [ "APPLICATION" ],
                    "rules" : [ {

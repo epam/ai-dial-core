@@ -2,6 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.credentials.data.configuration.EncryptionSettings;
 import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyGenerator;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManager;
 import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyManagerFactory;
@@ -48,6 +49,7 @@ import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.PublicationService;
+import com.epam.aidial.core.server.service.PublicationUtil;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -110,6 +112,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -181,8 +184,6 @@ public class AiDial {
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
-            ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
-                    resourceService, invitationService, shareService, lockService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
@@ -208,7 +209,9 @@ public class AiDial {
                     credentialEncryptionService);
 
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
-                    resourceAuthSettingsEncryptionService);
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService);
+            ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
+                    toolSetService, resourceService, invitationService, shareService, lockService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService, generator, clock);
 
@@ -263,9 +266,21 @@ public class AiDial {
         KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings);
         ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
                 resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
-        ContentEncryptionKeyService contentEncryptionKeyService = new ContentEncryptionKeyService(contentEncryptionKeyManager);
+        ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
         DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
+    }
+
+    private ContentEncryptionKeyService getContentEncryptionKeyService(ContentEncryptionKeyManager contentEncryptionKeyManager) {
+        Function<BucketInfo, BucketInfo> rootBucketExtractor = bucketInfo -> {
+            String rootLocation = PublicationUtil.getRootLocation(bucketInfo.location());
+            if (bucketInfo.location().equals(rootLocation)) {
+                return bucketInfo;
+            }
+            String rootName = encryptionService.encrypt(rootLocation);
+            return new BucketInfo(rootName, rootLocation);
+        };
+        return new ContentEncryptionKeyService(contentEncryptionKeyManager, rootBucketExtractor);
     }
 
     private ResourceCredentialsService getResourceCredentialsService(TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
