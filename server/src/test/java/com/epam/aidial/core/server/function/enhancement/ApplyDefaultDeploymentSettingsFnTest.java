@@ -190,7 +190,6 @@ public class ApplyDefaultDeploymentSettingsFnTest {
                 """);
 
         assertTrue(fn.apply((ObjectNode) result));
-        assertEquals("""
-                {"custom_fields":{}}""", result.toString());
+        assertEquals("{}", result.toString());
     }
 }
