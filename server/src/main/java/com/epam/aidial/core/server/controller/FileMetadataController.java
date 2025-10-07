@@ -35,7 +35,7 @@ public class FileMetadataController extends AccessControlBaseController {
     @Override
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
-        String token = UrlUtil.encodePath(context.getRequest().getParam("token"));
+        String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
         if (limit < 0 || limit > 1000) {
             return context.respond(HttpStatus.BAD_REQUEST, "Limit is out of allowed range: [0, 1000]");
