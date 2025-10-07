@@ -43,7 +43,7 @@ public class Conversation {
                         @JsonProperty(value = "temperature", required = true) int temperature,
                         @JsonProperty(value = "lastActivityDate") long lastActivityDate,
                         @JsonProperty(value = "model", required = true) ModelId model,
-                        @JsonProperty(value = "selectedAddons", required = true) Set<String> selectedAddons,
+                        @JsonProperty(value = "selectedAddons") Set<String> selectedAddons,
                         @JsonProperty(value = "messages", required = true) List<Message> messages,
                         @JsonProperty(value = "customViewState") Map<String, Object> customViewState) {
         this.id = id;
