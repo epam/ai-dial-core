@@ -471,7 +471,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "addons" : true,
                                 "cache" : false,
                                 "auto_caching" : false,
-                                "parallel_tool_calls" : true
+                                "parallel_tool_calls" : true,
+                                "assistant_attachments_in_request": false
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -506,7 +507,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "addons" : true,
                                "cache" : false,
                                "auto_caching" : false,
-                               "parallel_tool_calls" : true
+                               "parallel_tool_calls" : true,
+                               "assistant_attachments_in_request": false
                              },
                              "defaults" : { },
                              "description_keywords" : [ ],
@@ -586,7 +588,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "addons" : true,
                         "cache" : false,
                         "auto_caching" : false,
-                        "parallel_tool_calls" : true
+                        "parallel_tool_calls" : true,
+                        "assistant_attachments_in_request": false
                     },
                     "defaults":{},
                     "description_keywords":[],
@@ -632,7 +635,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "addons" : true,
                                 "cache" : false,
                                 "auto_caching" : false,
-                                "parallel_tool_calls" : true
+                                "parallel_tool_calls" : true,
+                                "assistant_attachments_in_request": false
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -668,7 +672,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "addons" : true,
                               "cache" : false,
                               "auto_caching" : false,
-                              "parallel_tool_calls" : true
+                              "parallel_tool_calls" : true,
+                              "assistant_attachments_in_request": false
                             },
                             "defaults" : { },
                             "description_keywords" : [ ],
@@ -724,7 +729,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "addons" : true,
                               "cache" : false,
                               "auto_caching" : false,
-                              "parallel_tool_calls" : true
+                              "parallel_tool_calls" : true,
+                              "assistant_attachments_in_request": false
                             },
                             "defaults" : { },
                             "description_keywords":[],
@@ -1219,14 +1225,15 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "addons" : true,
                        "cache" : false,
                        "auto_caching" : false,
-                       "parallel_tool_calls" : true
+                       "parallel_tool_calls" : true,
+                       "assistant_attachments_in_request": false
                      },
                      "defaults" : { },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
                      "invalid" : true,
                      "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                     "routes" : { }                  
+                     "routes" : { }
                 }
                 """);
     }
