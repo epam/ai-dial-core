@@ -74,14 +74,24 @@ public class ResourceCredentialsService {
             return false;
         }
 
-        resourceCredentials.setResourceId(to.getResourceId());
+        boolean copied = resourceService.copyResource(from.toResourceDescriptor(), to.toResourceDescriptor(), null, overwrite);
+        if (copied) {
+            resourceService.computeResourceBytes(to.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
+                if (existingCredentialsBytesEncrypted == null) {
+                    throw new ResourceNotFoundException("Credentials for %s not found".formatted(to.getResourceId()));
+                }
 
-        byte[] encryptedBody = encrypt(to, resourceCredentials);
-        EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
-        resourceService.putResourceBytes(to.toResourceDescriptor(), encryptedBody, etag);
-        log.debug("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",
-                from.getResourceId(), from.getBucketName(), to.getBucketName());
-        return true;
+                ResourceCredentials existingResourceCredentials = decrypt(to, existingCredentialsBytesEncrypted);
+                existingResourceCredentials.setResourceId(to.getResourceId());
+                return encrypt(to, existingResourceCredentials);
+            });
+            log.debug("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",
+                    from.getResourceId(), from.getBucketName(), to.getBucketName());
+        } else {
+            log.debug("Resource credentials for resourceId={} was not copied from bucket={} to bucket={}",
+                    from.getResourceId(), from.getBucketName(), to.getBucketName());
+        }
+        return copied;
     }
 
     public List<ResourceCredentials> getAllResourceCredentials(CredentialsLocator credentialsLocator) {
