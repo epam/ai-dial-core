@@ -54,6 +54,19 @@ public class Publication {
          * Review resource url to review: files/review-bucket/folder/file.txt
          */
         String reviewUrl;
+
+        /**
+         * Publishes credentials linked to a resource.
+         *
+         * <p>Resources can have credentials associated with them. When publishing, these
+         * credentials may also be published, but only if they are defined at the
+         * {@code Global} level.
+         *
+         * <p>If {@code publishCredentials} is set to {@code true} and global credentials
+         * are available, then they will be published. If global credentials are not available,
+         * then the credentials will not be published.
+         */
+        boolean publishCredentials;
     }
 
     public enum ResourceAction {

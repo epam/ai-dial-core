@@ -750,7 +750,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "action" : "ADD",
                     "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
                     "targetUrl" : "applications/public/my-app",
-                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhG9cWs5cubLjt6DVqa4wmnj/my-app"
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhG9cWs5cubLjt6DVqa4wmnj/my-app",
+                    "publishCredentials": false
                   } ],
                   "resourceTypes" : [ "APPLICATION" ],
                   "author" : "EPM-RTC-GPT"
