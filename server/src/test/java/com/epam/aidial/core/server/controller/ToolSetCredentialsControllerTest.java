@@ -43,14 +43,22 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ToolSetCredentialsControllerTest {
 
-    @Mock private ProxyContext context;
-    @Mock private AsyncTaskExecutor taskExecutor;
-    @Mock private ResourceCredentialsService resourceCredentialsService;
-    @Mock private AccessService accessService;
-    @Mock private EncryptionService encryptionService;
-    @Mock private DeploymentService deploymentService;
-    @Mock private Proxy proxy;
-    @Mock private HttpServerRequest request;
+    @Mock
+    private ProxyContext context;
+    @Mock
+    private AsyncTaskExecutor taskExecutor;
+    @Mock
+    private ResourceCredentialsService resourceCredentialsService;
+    @Mock
+    private AccessService accessService;
+    @Mock
+    private EncryptionService encryptionService;
+    @Mock
+    private DeploymentService deploymentService;
+    @Mock
+    private Proxy proxy;
+    @Mock
+    private HttpServerRequest request;
 
     private ToolSetCredentialsController controller;
 
@@ -98,12 +106,12 @@ class ToolSetCredentialsControllerTest {
                     HttpStatus expectedResponseStatus) {
         // Given
         byte[] requestBody = """
-                        {
-                            "url": "toolsets/encrypted-user-bucket/%s",
-                            "credentialsLevel": "%s",
-                            "authenticationType": "OAUTH"
-                        }
-                        """
+                {
+                    "url": "toolsets/encrypted-user-bucket/%s",
+                    "credentialsLevel": "%s",
+                    "authenticationType": "OAUTH"
+                }
+                """
                 .formatted(resourceName, credentialsLevel)
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
@@ -118,9 +126,6 @@ class ToolSetCredentialsControllerTest {
                 .thenReturn(mockToolSet);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserSub()).thenReturn("userSub");
-
-        ApiKeyData apiKeyData = mock(ApiKeyData.class);
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
 
         ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
@@ -161,12 +166,12 @@ class ToolSetCredentialsControllerTest {
                                      String expectedResponseBody) {
         // Given
         byte[] requestBody = """
-                        {
-                            "url": "toolsets/encrypted-user-bucket/%s",
-                            "credentialsLevel": "%s",
-                            "authenticationType": "OAUTH"
-                        }
-                        """
+                {
+                    "url": "toolsets/encrypted-user-bucket/%s",
+                    "credentialsLevel": "%s",
+                    "authenticationType": "OAUTH"
+                }
+                """
                 .formatted(resourceName, credentialsLevel)
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
@@ -216,12 +221,12 @@ class ToolSetCredentialsControllerTest {
                      boolean expextedResonse) {
         // Given
         byte[] requestBody = """
-                        {
-                            "url": "toolsets/encrypted-user-bucket/%s",
-                            "credentialsLevel": "%s",
-                            "authenticationType": "OAUTH"
-                        }
-                        """
+                {
+                    "url": "toolsets/encrypted-user-bucket/%s",
+                    "credentialsLevel": "%s",
+                    "authenticationType": "OAUTH"
+                }
+                """
                 .formatted(resourceName, credentialsLevel)
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
@@ -274,12 +279,12 @@ class ToolSetCredentialsControllerTest {
                                       String expectedResponseBody) {
         // Given
         byte[] requestBody = """
-                        {
-                            "url": "toolsets/encrypted-user-bucket/%s",
-                            "credentialsLevel": "%s",
-                            "authenticationType": "OAUTH"
-                        }
-                        """
+                {
+                    "url": "toolsets/encrypted-user-bucket/%s",
+                    "credentialsLevel": "%s",
+                    "authenticationType": "OAUTH"
+                }
+                """
                 .formatted(resourceName, credentialsLevel)
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));

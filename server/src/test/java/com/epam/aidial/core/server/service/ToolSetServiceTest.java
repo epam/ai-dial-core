@@ -212,7 +212,7 @@ class ToolSetServiceTest {
 
         // Then
         if (shouldEnrichAuthSettings) {
-            verify(resourceAuthSettingsService).enrichResourceAuthSettings(updatedToolSet.getName(), updatedToolSet.getEndpoint(), updatedToolSet.getAuthSettings());
+            verify(resourceAuthSettingsService).enrichResourceAuthSettings(resource.getUrl(), updatedToolSet.getEndpoint(), updatedToolSet.getAuthSettings());
         } else {
             verifyNoInteractions(resourceAuthSettingsService);
         }
@@ -261,7 +261,7 @@ class ToolSetServiceTest {
 
         // THEN
         verify(resourceAuthSettingsEncryptionService).encrypt(
-                eq(toolSet.getName()),
+                eq(resource.getUrl()),
                 eq(new BucketInfo("bucket", "location")),
                 eq(toolSet.getAuthSettings())
         );
@@ -313,7 +313,7 @@ class ToolSetServiceTest {
 
         // Then
         verify(resourceAuthSettingsEncryptionService).decrypt(
-                eq(toolSet.getName()),
+                eq(resource.getUrl()),
                 eq(new BucketInfo("bucket", "location")),
                 eq(toolSet.getAuthSettings())
         );

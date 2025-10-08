@@ -1,14 +1,22 @@
 package com.epam.aidial.core.server.service;
 
+<<<<<<< HEAD
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+=======
+import com.epam.aidial.core.config.CredentialsLevel;
+>>>>>>> development
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -17,16 +25,25 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+<<<<<<< HEAD
 import java.util.Objects;
 
+=======
+import java.util.Map;
+import javax.annotation.Nullable;
+
+@Slf4j
+>>>>>>> development
 @AllArgsConstructor
 public class ToolSetService {
 
     private final ResourceService resourceService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
+    private final ResourceCredentialsService resourceCredentialsService;
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource) {
         return getToolSet(context, resource, EtagHeader.ANY);
@@ -61,7 +78,7 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        resourceAuthSettingsEncryptionService.decrypt(toolSet.getName(),
+        resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
                 new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
                 toolSet.getAuthSettings());
 
@@ -86,7 +103,7 @@ public class ToolSetService {
                 toolSet.setAuthSettings(existing.getAuthSettings());
             }
 
-            resourceAuthSettingsEncryptionService.encrypt(toolSet.getName(),
+            resourceAuthSettingsEncryptionService.encrypt(resource.getUrl(),
                     new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
                     toolSet.getAuthSettings());
             return ProxyUtil.convertToString(toolSet);
@@ -95,9 +112,24 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
-    public void copyToolSet(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite) {
+    /**
+     * @param credentialsToCopy a map defining which credential levels should be copied
+     *                          and whether they are required:
+     *                          <ul>
+     *                            <li>{@code true} — credentials at this level are required; if not found, an error is thrown.</li>
+     *                            <li>{@code false} — credentials at this level are optional; they are copied only if present.</li>
+     *                          </ul>
+     */
+    public void copyToolSet(ProxyContext context,
+                            ResourceDescriptor source,
+                            ResourceDescriptor destination,
+                            @Nullable String author,
+                            boolean overwrite,
+                            Map<CredentialsLevel, Boolean> credentialsToCopy) {
+
         verifyToolSet(source);
         verifyToolSet(destination);
+        verifyCredentials(context, source, credentialsToCopy);
 
         Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, EtagHeader.ANY);
         ToolSet toolSet = result.getValue();
@@ -108,8 +140,45 @@ public class ToolSetService {
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
         toolSet.setName(destination.getUrl());
         toolSet.setReference(ProxyUtil.generateReference());
+
+        resourceAuthSettingsEncryptionService.encrypt(destination.getUrl(),
+                new BucketInfo(destination.getBucketName(), destination.getBucketLocation()),
+                toolSet.getAuthSettings());
+
         String json = ProxyUtil.convertToString(toolSet);
         resourceService.putResource(destination, json, etag, author);
+
+        for (Map.Entry<CredentialsLevel, Boolean> entry : credentialsToCopy.entrySet()) {
+            // Copy the toolset first. If toolset copying fails, credentials won't be copied.
+            // If the dataset is copied but credentials are not, it's not a critical issue.
+            CredentialsLevel credentialsLevel = entry.getKey();
+            boolean isRequired = entry.getValue();
+            boolean copied = copyCredentials(context, source, destination, credentialsLevel, overwrite);
+            if (!copied && isRequired) {
+                throw new ResourceNotFoundException("Toolset was copied, but credentials are not. ResourceId: %s"
+                        .formatted(source.getUrl()));
+            }
+        }
+    }
+
+    private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                                    CredentialsLevel credentialsLevel, boolean overwrite) {
+        CredentialsDescriptor sourceCredentialDescriptor =
+                CredentialsDescriptorFactory.fromResourceDescriptor(source, credentialsLevel, context);
+        CredentialsDescriptor destinationCredentialDescriptor =
+                CredentialsDescriptorFactory.fromResourceDescriptor(destination, credentialsLevel, context);
+        return resourceCredentialsService.copyResourceCredentials(
+                sourceCredentialDescriptor, destinationCredentialDescriptor, credentialsLevel, overwrite);
+    }
+
+    public boolean deleteToolset(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
+
+        // TODO: support removal all USER and APP credentials for public toolsets
+        // TODO: support removal all USER and APP credentials for shared toolsets (?)
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(), context);
+        resourceCredentialsService.deleteResourceCredentials(credentialsLocator);
+
+        return resourceService.deleteResource(resource, etag);
     }
 
     private static void verifyToolSet(ResourceDescriptor resource) {
@@ -215,4 +284,23 @@ public class ToolSetService {
                 || !Objects.equals(existingResourceAuthSettings.getScopesSupported(), newResourceAuthSettings.getScopesSupported()
         );
     }
+
+    private void verifyCredentials(ProxyContext context, ResourceDescriptor resource,
+                                   Map<CredentialsLevel, Boolean> copyingStrategy) {
+        for (Map.Entry<CredentialsLevel, Boolean> entry : copyingStrategy.entrySet()) {
+            CredentialsLevel credentialsLevel = entry.getKey();
+            boolean isRequired = entry.getValue();
+
+            if (isRequired) {
+                CredentialsDescriptor credentialsDescriptor =
+                        CredentialsDescriptorFactory.fromResourceDescriptor(resource, credentialsLevel, context);
+                ResourceCredentials resourceCredentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
+                if (resourceCredentials == null || resourceCredentials.getCredentialsLevel() != credentialsLevel) {
+                    throw new ResourceNotFoundException("Global toolset credentials are not found. ResourceId: %s"
+                            .formatted(resource.getUrl()));
+                }
+            }
+        }
+    }
+
 }

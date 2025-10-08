@@ -350,7 +350,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "action" : "ADD",
                     "sourceUrl" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
                     "targetUrl" : "toolsets/public/my-toolset",
-                    "reviewUrl" : "toolsets/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/my-toolset"
+                    "reviewUrl" : "toolsets/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/my-toolset",
+                    "publishCredentials": false
                   } ],
                   "resourceTypes" : [ "TOOL_SET" ],
                   "author" : "EPM-RTC-GPT"

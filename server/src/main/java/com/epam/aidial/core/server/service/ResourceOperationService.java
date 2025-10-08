@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -32,6 +34,7 @@ public class ResourceOperationService {
             PROMPT, APPLICATION, TOOL_SET);
 
     private final ApplicationService applicationService;
+    private final ToolSetService toolSetService;
     private final ResourceService resourceService;
     private final InvitationService invitationService;
     private final ShareService shareService;
@@ -42,7 +45,8 @@ public class ResourceOperationService {
         return resourceService.subscribeResources(resources, subscriber);
     }
 
-    public void moveResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
+    public void moveResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                             boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Moving folders is not supported");
         }
@@ -64,6 +68,14 @@ public class ResourceOperationService {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
                 }
             });
+        } else if (destination.getType() == TOOL_SET) {
+            Map<CredentialsLevel, Boolean> credentialsToCopy = Map.of(
+                    CredentialsLevel.USER, false,
+                    CredentialsLevel.GLOBAL, false
+            );
+            // TODO: support move for USER and APP credentials for public toolsets
+            // TODO: support move for USER and APP credentials for shared toolsets (?)
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {
@@ -89,12 +101,15 @@ public class ResourceOperationService {
 
         if (destination.getType() == APPLICATION) {
             applicationService.deleteApplication(source, EtagHeader.ANY);
+        } else if (destination.getType() == TOOL_SET) {
+            toolSetService.deleteToolset(context, source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);
         }
     }
 
-    public void copyResource(ResourceDescriptor source, ResourceDescriptor destination, boolean overwriteIfExists) {
+    public void copyResource(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
+                             boolean overwriteIfExists) {
         if (source.isFolder() || destination.isFolder()) {
             throw new IllegalArgumentException("Copying folders is not supported");
         }
@@ -118,6 +133,8 @@ public class ResourceOperationService {
             applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
                 // do nothing
             });
+        } else if (destination.getType() == TOOL_SET) {
+            toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of());
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {
@@ -127,7 +144,7 @@ public class ResourceOperationService {
         }
     }
 
-    public boolean deleteResource(ResourceDescriptor resource, EtagHeader etag) {
+    public boolean deleteResource(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
         verifyResourceToDelete(resource);
         MutableObject<Boolean> deleted = new MutableObject<>();
         if (resource.isPrivate()) {
@@ -137,11 +154,11 @@ public class ResourceOperationService {
             lockService.underBucketLock(bucketLocation, () -> {
                 invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
                 shareService.revokeSharedResource(bucketName, bucketLocation, resource);
-                deleted.setValue(deleteResourceInternally(resource, etag));
+                deleted.setValue(deleteResourceInternally(context, resource, etag));
                 return null;
             });
         } else {
-            deleted.setValue(deleteResourceInternally(resource, etag));
+            deleted.setValue(deleteResourceInternally(context, resource, etag));
         }
         return deleted.getValue();
     }
@@ -154,7 +171,7 @@ public class ResourceOperationService {
         }
     }
 
-    private boolean deleteResourceInternally(ResourceDescriptor resource, EtagHeader etag) {
+    private boolean deleteResourceInternally(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
         if (resource.getType() == APPLICATION) {
             try {
                 applicationService.deleteApplication(resource, etag);
@@ -162,6 +179,9 @@ public class ResourceOperationService {
                 return false;
             }
             return true;
+        }
+        if (resource.getType() == TOOL_SET) {
+            return toolSetService.deleteToolset(context, resource, etag);
         } else {
             return resourceService.deleteResource(resource, etag);
         }
