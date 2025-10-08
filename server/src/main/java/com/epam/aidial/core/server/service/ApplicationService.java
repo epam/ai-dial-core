@@ -230,10 +230,6 @@ public class ApplicationService {
                 }
             }
         }
-
-        // removes resources owned by the app itself
-        ResourceDescriptor appFileBucket = getAppFileBucket(resource);
-        resourceService.deleteFolder(appFileBucket);
     }
 
     private ResourceDescriptor getAppFileBucket(ResourceDescriptor app) {
