@@ -56,4 +56,6 @@ public class Features {
 
     @JsonAlias({"parallelToolCallsSupported", "parallel_tool_calls_supported"})
     private Boolean parallelToolCallsSupported;
+    @JsonAlias({"assistantAttachmentsInRequestSupported", "assistant_attachments_in_request_supported"})
+    private Boolean assistantAttachmentsInRequestSupported;
 }

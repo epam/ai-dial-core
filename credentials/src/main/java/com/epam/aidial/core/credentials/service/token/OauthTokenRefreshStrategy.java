@@ -13,8 +13,8 @@ public class OauthTokenRefreshStrategy implements TokenRefreshStrategy {
 
     @Override
     public boolean hasUnexpiredToken(ResourceCredentials credentials) {
-        return !supportsTokenRefreshFlow(credentials.getRefreshToken(), credentials.getExpiresInSeconds())
-                || isTokenUnexpired(credentials.getUpdatedAt(), credentials.getExpiresInSeconds());
+        return credentials.getAccessToken() != null
+                && isTokenUnexpired(credentials.getUpdatedAt(), credentials.getExpiresInSeconds());
     }
 
     @Override

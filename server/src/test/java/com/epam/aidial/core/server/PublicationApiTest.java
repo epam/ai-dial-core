@@ -99,7 +99,8 @@ class PublicationApiTest extends ResourceBaseTest {
                 "action": "ADD",
                 "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                 "targetUrl" : "conversations/public/folder/conversation",
-                "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                "publishCredentials" : false
                } ],
               "resourceTypes" : [ "CONVERSATION" ],
               "rules" : [ {
@@ -227,7 +228,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                    "publishCredentials" : false
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [],
@@ -438,7 +440,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                    "publishCredentials": false
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [],
@@ -680,13 +683,15 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation1",
                     "targetUrl" : "conversations/public/folder/conversation1",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation1"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation1",
+                    "publishCredentials" : false
                     },
                     {
                     "action": "ADD_IF_ABSENT",
                     "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/file",
                     "targetUrl" : "files/public/folder/file",
-                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/file"
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/file",
+                    "publishCredentials" : false
                     }
                    ],
                    "resourceTypes" : [ "@ignore", "@ignore" ],
@@ -718,13 +723,15 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation2",
                     "targetUrl" : "conversations/public/folder/conversation2",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhQHmtD7fN295EFSG4HiW8Zi/conversation2"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhQHmtD7fN295EFSG4HiW8Zi/conversation2",
+                    "publishCredentials" : false
                     },
                     {
                     "action": "ADD_IF_ABSENT",
                     "sourceUrl" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/file",
                     "targetUrl" : "files/public/folder/file",
-                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhQHmtD7fN295EFSG4HiW8Zi/file"
+                    "reviewUrl" : "files/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhQHmtD7fN295EFSG4HiW8Zi/file",
+                    "publishCredentials" : false
                     }
                    ],
                    "resourceTypes" : [ "@ignore", "@ignore" ],
@@ -765,7 +772,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                    "publishCredentials" : false
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [ {
@@ -843,7 +851,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                    "publishCredentials" : false
                   } ],
                   "resourceTypes" : [ "CONVERSATION" ],
                   "rules" : [ {
@@ -1208,7 +1217,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                    "publishCredentials" : false
                    } ],
                   "resourceTypes" : [ "CONVERSATION" ],
                   "rules" : [ {
@@ -1231,7 +1241,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation",
+                    "publishCredentials" : false
                    } ],
                    "resourceTypes" : [ "CONVERSATION" ],
                    "rules" : [ {
@@ -1688,7 +1699,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action" : "ADD",
                     "sourceUrl" : "applications/%s/test_app",
                     "targetUrl" : "applications/public/folder/with_apps/test_app",
-                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app"
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app",
+                    "publishCredentials" : false
                   }],
                   "resourceTypes" : [ "APPLICATION" ],
                   "rules" : [ {
@@ -1771,7 +1783,8 @@ class PublicationApiTest extends ResourceBaseTest {
                             "action" : "ADD",
                             "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app2",
                             "targetUrl" : "applications/public/folder/with_apps/test_app2",
-                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2"
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2",
+                            "publishCredentials" : false
                           }
                   ],
                   "resourceTypes" : [ "APPLICATION" ],
@@ -1935,7 +1948,8 @@ class PublicationApiTest extends ResourceBaseTest {
                             "action" : "ADD",
                             "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app3",
                             "targetUrl" : "applications/public/abc_app",
-                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/abc_app"
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/abc_app",
+                            "publishCredentials" : false
                           }
                   ],
                   "resourceTypes" : [ "APPLICATION" ],
@@ -2067,7 +2081,8 @@ class PublicationApiTest extends ResourceBaseTest {
                             "action" : "ADD",
                             "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test",
                             "targetUrl" : "applications/public/test",
-                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/test"
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/test",
+                            "publishCredentials" : false
                           }
                   ],
                   "resourceTypes" : [ "APPLICATION" ],
@@ -2227,7 +2242,8 @@ class PublicationApiTest extends ResourceBaseTest {
                        "action" : "ADD",
                        "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%%20app%%202",
                        "targetUrl" : "applications/public/xyz%%20app%%204",
-                       "reviewUrl" : "applications/%s/xyz%%20app%%204"
+                       "reviewUrl" : "applications/%s/xyz%%20app%%204",
+                       "publishCredentials" : false
                      }],
                   "resourceTypes" : [ "APPLICATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -2337,7 +2353,8 @@ class PublicationApiTest extends ResourceBaseTest {
                        "action" : "ADD",
                        "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test%20app%202",
                        "targetUrl" : "applications/public/xyz%20app%204",
-                       "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/xyz%20app%204"
+                       "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/xyz%20app%204",
+                       "publishCredentials" : false
                      }],
                   "resourceTypes" : [ "APPLICATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -2505,7 +2522,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation2",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2",
+                    "publishCredentials" : false
                    } ],
                   "resourceTypes" : [ "CONVERSATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -2585,7 +2603,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/new-folder/conversation2",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2",
+                    "publishCredentials" : false
                    } ],
                   "resourceTypes" : [ "CONVERSATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -2667,7 +2686,8 @@ class PublicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my/folder/conversation",
                     "targetUrl" : "conversations/public/folder/conversation2",
-                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2"
+                    "reviewUrl" : "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/conversation2",
+                    "publishCredentials" : false
                    } ],
                   "resourceTypes" : [ "CONVERSATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -2942,7 +2962,8 @@ class PublicationApiTest extends ResourceBaseTest {
                             "action" : "ADD",
                             "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app2",
                             "targetUrl" : "applications/public/folder/with_apps/test_app2",
-                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2"
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2",
+                            "publishCredentials" : false
                           }
                   ],
                   "resourceTypes" : [ "APPLICATION" ],

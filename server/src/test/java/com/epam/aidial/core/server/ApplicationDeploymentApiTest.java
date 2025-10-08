@@ -750,7 +750,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "action" : "ADD",
                     "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
                     "targetUrl" : "applications/public/my-app",
-                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhG9cWs5cubLjt6DVqa4wmnj/my-app"
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhG9cWs5cubLjt6DVqa4wmnj/my-app",
+                    "publishCredentials": false
                   } ],
                   "resourceTypes" : [ "APPLICATION" ],
                   "author" : "EPM-RTC-GPT"
@@ -932,7 +933,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "addons" : true,
                       "cache" : false,
                       "auto_caching" : false,
-                      "parallel_tool_calls" : true
+                      "parallel_tool_calls" : true,
+                      "assistant_attachments_in_request": false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -990,7 +992,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "addons" : true,
                       "cache" : false,
                       "auto_caching" : false,
-                      "parallel_tool_calls" : true
+                      "parallel_tool_calls" : true,
+                      "assistant_attachments_in_request": false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -1026,7 +1029,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                         "addons" : true,
                         "cache" : false,
                         "auto_caching" : false,
-                        "parallel_tool_calls" : true
+                        "parallel_tool_calls" : true,
+                      "assistant_attachments_in_request": false
                       },
                       "defaults" : { },
                       "description_keywords" : [ ],
@@ -1082,7 +1086,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "addons" : true,
                       "cache" : false,
                       "auto_caching" : false,
-                      "parallel_tool_calls" : true
+                      "parallel_tool_calls" : true,
+                      "assistant_attachments_in_request": false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],

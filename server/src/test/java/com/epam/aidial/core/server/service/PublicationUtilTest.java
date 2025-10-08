@@ -344,6 +344,34 @@ public class PublicationUtilTest {
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/", "files/public/attachments/")));
     }
 
+    @Test
+    void getRootLocation_withShortPath() {
+        String location = "Users/user/";
+
+        String result = PublicationUtil.getRootLocation(location);
+
+        assertEquals(location, result);
+    }
+
+    @Test
+    void getRootLocation_withOneElement() {
+        String location = "public/";
+
+        String result = PublicationUtil.getRootLocation(location);
+
+        assertEquals(location, result);
+    }
+
+    @Test
+    void getRootLocation_withDeeplyNestedPath() {
+        String location = "Users/user/publication-id/sub-folder/";
+        String expectedRootBucket = "Users/user/";
+
+        String result = PublicationUtil.getRootLocation(location);
+
+        assertEquals(expectedRootBucket, result);
+    }
+
     private static void verifyJson(String expected, String actual) {
         try {
             assertEquals(ProxyUtil.MAPPER.readTree(expected).toPrettyString(), ProxyUtil.MAPPER.readTree(actual).toPrettyString());

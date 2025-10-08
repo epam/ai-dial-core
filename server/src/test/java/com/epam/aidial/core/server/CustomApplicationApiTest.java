@@ -413,7 +413,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "action": "ADD",
                     "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application",
                     "targetUrl" : "applications/public/folder/my-custom-application",
-                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/my-custom-application"
+                    "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/my-custom-application",
+                    "publishCredentials" : false
                    } ],
                    "resourceTypes" : [ "APPLICATION" ],
                    "rules" : [ {
@@ -471,7 +472,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "addons" : true,
                                 "cache" : false,
                                 "auto_caching" : false,
-                                "parallel_tool_calls" : true
+                                "parallel_tool_calls" : true,
+                                "assistant_attachments_in_request": false
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -506,7 +508,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "addons" : true,
                                "cache" : false,
                                "auto_caching" : false,
-                               "parallel_tool_calls" : true
+                               "parallel_tool_calls" : true,
+                               "assistant_attachments_in_request": false
                              },
                              "defaults" : { },
                              "description_keywords" : [ ],
@@ -586,7 +589,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "addons" : true,
                         "cache" : false,
                         "auto_caching" : false,
-                        "parallel_tool_calls" : true
+                        "parallel_tool_calls" : true,
+                        "assistant_attachments_in_request": false
                     },
                     "defaults":{},
                     "description_keywords":[],
@@ -632,7 +636,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "addons" : true,
                                 "cache" : false,
                                 "auto_caching" : false,
-                                "parallel_tool_calls" : true
+                                "parallel_tool_calls" : true,
+                                "assistant_attachments_in_request": false
                                 },
                             "defaults":{},
                             "description_keywords":[],
@@ -668,7 +673,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "addons" : true,
                               "cache" : false,
                               "auto_caching" : false,
-                              "parallel_tool_calls" : true
+                              "parallel_tool_calls" : true,
+                              "assistant_attachments_in_request": false
                             },
                             "defaults" : { },
                             "description_keywords" : [ ],
@@ -724,7 +730,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "addons" : true,
                               "cache" : false,
                               "auto_caching" : false,
-                              "parallel_tool_calls" : true
+                              "parallel_tool_calls" : true,
+                              "assistant_attachments_in_request": false
                             },
                             "defaults" : { },
                             "description_keywords":[],
@@ -1219,14 +1226,15 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "addons" : true,
                        "cache" : false,
                        "auto_caching" : false,
-                       "parallel_tool_calls" : true
+                       "parallel_tool_calls" : true,
+                       "assistant_attachments_in_request": false
                      },
                      "defaults" : { },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
                      "invalid" : true,
                      "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                     "routes" : { }                  
+                     "routes" : { }
                 }
                 """);
     }
