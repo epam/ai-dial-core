@@ -102,7 +102,7 @@ public class Conversation {
         @JsonCreator
         public MessageSettings(@JsonProperty(value = "prompt", required = true) String prompt,
                                @JsonProperty(value = "temperature", required = true) int temperature,
-                               @JsonProperty(value = "selectedAddons", required = true) Set<String> selectedAddons) {
+                               @JsonProperty(value = "selectedAddons") Set<String> selectedAddons) {
             this.prompt = prompt;
             this.temperature = temperature;
             this.selectedAddons = selectedAddons;
