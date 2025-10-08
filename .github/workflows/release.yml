@@ -4,6 +4,10 @@ on:
   push:
     branches: [development, release-*]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     uses: epam/ai-dial-ci/.github/workflows/java_release.yml@2.4.1
