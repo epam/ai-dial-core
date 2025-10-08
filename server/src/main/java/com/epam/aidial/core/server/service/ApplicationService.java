@@ -334,10 +334,9 @@ public class ApplicationService {
                     }
                 }
             }
-            if (applicationSchemaService.getCopyAppBucketOptions(application) == CopyAppBucketOptions.ENABLED) {
-                copyAppFileBucket(source, destination);
-            }
-        } else {
+        }
+
+        if (applicationSchemaService.getCopyAppBucketOptions(application) == CopyAppBucketOptions.ENABLED) {
             copyAppFileBucket(source, destination);
         }
     }

@@ -3120,7 +3120,8 @@ class PublicationApiTest extends ResourceBaseTest {
                             "action" : "ADD",
                             "sourceUrl" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app2",
                             "targetUrl" : "applications/public/folder/with_apps/test_app2",
-                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2"
+                            "reviewUrl" : "applications/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo/with_apps/test_app2",
+                            "publishCredentials" : false
                           }
                   ],
                   "resourceTypes" : [ "APPLICATION" ],

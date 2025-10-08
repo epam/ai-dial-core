@@ -159,6 +159,12 @@ public class ResourceOperationController {
                         throw new PermissionDeniedException("no write access to destination resource");
                     }
 
+                    if (source.getType() == ResourceTypes.APPLICATION || source.getType() == ResourceTypes.TOOL_SET) {
+                        if (!permissions.get(source).contains(ResourceAccessType.WRITE)) {
+                            throw new PermissionDeniedException("no write access to source resource");
+                        }
+                    }
+
                     return taskExecutor.submit(() -> {
                         resourceOperationService.copyResource(context, source, destination, request.isOverwrite());
                         return null;
