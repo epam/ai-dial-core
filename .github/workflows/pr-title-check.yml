@@ -13,6 +13,6 @@ concurrency:
 
 jobs:
   pr-title-check:
-    uses: epam/ai-dial-ci/.github/workflows/pr-title-check.yml@2.6.0
+    uses: epam/ai-dial-ci/.github/workflows/pr-title-check.yml@2.6.2
     secrets:
       ACTIONS_BOT_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}
