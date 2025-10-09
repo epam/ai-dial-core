@@ -522,5 +522,8 @@ public class ApplicationSchemaServiceTest {
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         List<ResourceDescriptor> result = service.getToolSets(application);
         Assertions.assertTrue(result.isEmpty());
+        when(resourceService.hasResource(any(ResourceDescriptor.class))).thenReturn(true);
+        List<ResourceDescriptor> files = service.getFiles(application);
+        Assertions.assertEquals(2, files.size());
     }
 }
