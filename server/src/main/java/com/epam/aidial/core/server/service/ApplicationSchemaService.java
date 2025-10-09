@@ -42,7 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
 
-import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_BUCKET_PUBLICATION;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_COMPLETION_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_CONFIGURATION_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_RATE_ENDPOINT;
@@ -356,7 +356,7 @@ public class ApplicationSchemaService {
             return CopyAppBucketOptions.DISABLED;
         }
         JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-        JsonNode options = schemaNode.get(APPLICATION_TYPE_BUCKET_PUBLICATION);
+        JsonNode options = schemaNode.get(DIAL_APPLICATION_TYPE_BUCKET_COPY);
         if (options == null) {
             return null;
         }

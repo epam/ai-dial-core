@@ -112,8 +112,8 @@ public class ApplicationTypeSchemaController {
                 if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_PLAYBACK_SUPPORT)) {
                     filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_PLAYBACK_SUPPORT, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_PLAYBACK_SUPPORT));
                 }
-                if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_BUCKET_PUBLICATION)) {
-                    filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_BUCKET_PUBLICATION, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_BUCKET_PUBLICATION));
+                if (schemaNode.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY)) {
+                    filteredNode.set(MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY, schemaNode.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY));
                 }
 
                 filteredSchemas.add(filteredNode);
