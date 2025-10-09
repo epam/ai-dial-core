@@ -308,7 +308,7 @@ class ResourceApiTest extends ResourceBaseTest {
                  }
                 """, "api-key", "proxyKey2");
 
-        verify(response, 403, "resource is not allowed: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
+        verify(response, 403, "Resource is not allowed: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation");
     }
 
     @Test
