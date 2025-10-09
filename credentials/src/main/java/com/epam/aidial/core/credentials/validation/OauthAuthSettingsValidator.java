@@ -53,7 +53,7 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
      *
      * <p><strong>Use Cases:</strong></p>
      * <ul>
-     *     <li>Creating a new ToolSet with static client registration.</li>
+     *     <li>Creating a new secured resource with static client registration.</li>
      *     <li>Updating authentication type from `NONE` or `API_KEY` to `OAUTH` with explicit static client settings.</li>
      * </ul>
      *
@@ -82,7 +82,7 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
      *
      * <p><strong>Use Cases:</strong></p>
      * <ul>
-     *     <li>Creating a new ToolSet with dynamic client registration.</li>
+     *     <li>Creating a new secured resource with dynamic client registration.</li>
      *     <li>Updating authentication type from `NONE` or `API_KEY` to `OAUTH` with dynamic client registration.</li>
      * </ul>
      *
@@ -105,7 +105,7 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
     }
 
     /**
-     * Defines validation fields for ToolSet updates where authentication type remains unchanged as `OAUTH`.
+     * Defines validation fields for secured resource updates where authentication type remains unchanged as `OAUTH`.
      *
      * <p>In this scenario, required fields like `CLIENT_ID`, `AUTHORIZATION_ENDPOINT`, and `TOKEN_ENDPOINT`
      * must still be provided, but forbidden fields (like `API_KEY_HEADER`) must not be included.</p>

@@ -3,7 +3,7 @@ package com.epam.aidial.core.credentials.service;
 /**
  * Enum defining the modes of changes to resource authentication settings.
  *
- * <p>This enum is used to determine how the authentication settings of a ToolSet
+ * <p>This enum is used to determine how the authentication settings of a secured resource
  * should be validated and processed based on the type of operation being performed.
  * It covers scenarios ranging from creating a new client to modifying existing settings
  * without requiring client registration.</p>
@@ -32,8 +32,8 @@ public enum ResourceAuthSettingsChangeMode {
      *
      * <p><strong>Use Cases:</strong></p>
      * <ul>
-     *   <li>Creating a new ToolSet with OAuth authentication and static client credentials.</li>
-     *   <li>Updating a ToolSet's authentication type to OAuth with pre-defined client credentials.</li>
+     *   <li>Creating a new secured resource with OAuth authentication and static client credentials.</li>
+     *   <li>Updating a secured resource's authentication type to OAuth with pre-defined client credentials.</li>
      * </ul>
      */
     CREATE_STATIC_CLIENT,
@@ -47,9 +47,9 @@ public enum ResourceAuthSettingsChangeMode {
      *
      * <p><strong>Use Cases:</strong></p>
      * <ul>
-     *   <li>Creating a new ToolSet with OAuth authentication where client details
+     *   <li>Creating a new secured resource with OAuth authentication where client details
      *   are not pre-configured.</li>
-     *   <li>Changing a ToolSet's authentication type from a non-OAuth type (e.g., API_KEY, NONE)
+     *   <li>Changing a secured resource's authentication type from a non-OAuth type (e.g., API_KEY, NONE)
      *   to OAuth using dynamic registration.</li>
      * </ul>
      */
