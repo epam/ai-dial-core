@@ -24,9 +24,9 @@ import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetada
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.util.TimeProvider;
+import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
-import com.epam.aidial.core.credentials.validation.ResourceAuthSettingsValidator;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -297,9 +297,9 @@ public class AiDial {
                                                                        TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
                                                                        ResourceAuthorizationClient resourceAuthorizationClient) {
         ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient);
-        ResourceAuthSettingsValidator resourceAuthSettingsValidator = new ResourceAuthSettingsValidator();
-        return new ResourceAuthSettingsService(resourceRegistrationService, resourceAuthSettingsValidator,
-                resourceCredentialsService, tokenRefreshStrategyFactory);
+        AuthSettingsValidatorFactory authSettingsValidatorFactory = new AuthSettingsValidatorFactory();
+        return new ResourceAuthSettingsService(resourceRegistrationService, resourceCredentialsService,
+                tokenRefreshStrategyFactory, authSettingsValidatorFactory);
     }
 
     @VisibleForTesting
