@@ -7,7 +7,7 @@ import java.util.Set;
 public class NoneAuthSettingsValidator extends BaseAuthSettingsValidator {
 
     @Override
-    protected ResourceAuthSettingsValidationFields getValidationRules(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
+    protected ResourceAuthSettingsValidationFields getValidationFields(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
         return new ResourceAuthSettingsValidationFields(
                 Set.of(),
                 Set.of(

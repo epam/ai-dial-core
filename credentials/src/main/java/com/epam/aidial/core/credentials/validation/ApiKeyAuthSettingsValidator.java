@@ -7,7 +7,7 @@ import java.util.Set;
 public class ApiKeyAuthSettingsValidator extends BaseAuthSettingsValidator {
 
     @Override
-    public ResourceAuthSettingsValidationFields getValidationRules(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
+    public ResourceAuthSettingsValidationFields getValidationFields(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
         return ResourceAuthSettingsValidationFields.builder()
                 .requiredFields(Set.of(
                         ResourceAuthSettingsField.API_KEY_HEADER))

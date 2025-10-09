@@ -3,46 +3,68 @@ package com.epam.aidial.core.credentials.validation;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.EnumSet;
+import java.util.Set;
 
 public abstract class BaseAuthSettingsValidator implements AuthSettingsValidator {
 
     public void validate(ResourceAuthSettings resourceAuthSettings,
                          ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
-        ResourceAuthSettingsValidationFields validationFields = getValidationRules(resourceAuthSettingsChangeMode);
-        Map<ResourceAuthSettingsField, Object> providedFields = extractFields(resourceAuthSettings);
+        ResourceAuthSettingsValidationFields validationFields = getValidationFields(resourceAuthSettingsChangeMode);
+        Set<ResourceAuthSettingsField> fieldsWithValues = extractFields(resourceAuthSettings);
 
         for (ResourceAuthSettingsField requiredField : validationFields.getRequiredFields()) {
-            if (!providedFields.containsKey(requiredField) || providedFields.get(requiredField) == null) {
+            if (!fieldsWithValues.contains(requiredField)) {
                 throw new IllegalArgumentException("Field '%s' is required for %s authentication."
                         .formatted(requiredField, resourceAuthSettings.getAuthenticationType()));
             }
         }
 
         for (ResourceAuthSettingsField forbiddenField : validationFields.getForbiddenFields()) {
-            if (providedFields.containsKey(forbiddenField) && providedFields.get(forbiddenField) != null) {
+            if (fieldsWithValues.contains(forbiddenField)) {
                 throw new IllegalArgumentException("Field '%s' is forbidden for %s authentication."
                         .formatted(forbiddenField, resourceAuthSettings.getAuthenticationType()));
             }
         }
     }
 
-    private Map<ResourceAuthSettingsField, Object> extractFields(ResourceAuthSettings resourceAuthSettings) {
-        Map<ResourceAuthSettingsField, Object> fields = new EnumMap<>(ResourceAuthSettingsField.class);
-        fields.put(ResourceAuthSettingsField.CLIENT_ID, resourceAuthSettings.getClientId());
-        fields.put(ResourceAuthSettingsField.CLIENT_SECRET, resourceAuthSettings.getClientSecret());
-        fields.put(ResourceAuthSettingsField.REDIRECT_URI, resourceAuthSettings.getRedirectUri());
-        fields.put(ResourceAuthSettingsField.AUTHORIZATION_ENDPOINT, resourceAuthSettings.getAuthorizationEndpoint());
-        fields.put(ResourceAuthSettingsField.TOKEN_ENDPOINT, resourceAuthSettings.getTokenEndpoint());
-        fields.put(ResourceAuthSettingsField.CODE_CHALLENGE, resourceAuthSettings.getCodeChallenge());
-        fields.put(ResourceAuthSettingsField.CODE_VERIFIER, resourceAuthSettings.getCodeVerifier());
-        fields.put(ResourceAuthSettingsField.CODE_CHALLENGE_METHOD, resourceAuthSettings.getCodeChallengeMethod());
-        fields.put(ResourceAuthSettingsField.SCOPES_SUPPORTED, resourceAuthSettings.getScopesSupported());
-        fields.put(ResourceAuthSettingsField.API_KEY_HEADER, resourceAuthSettings.getApiKeyHeader());
-        return fields;
+    private Set<ResourceAuthSettingsField> extractFields(ResourceAuthSettings resourceAuthSettings) {
+        Set<ResourceAuthSettingsField> fieldsWithValues = EnumSet.noneOf(ResourceAuthSettingsField.class);
+
+        if (resourceAuthSettings.getClientId() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.CLIENT_ID);
+        }
+        if (resourceAuthSettings.getClientSecret() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.CLIENT_SECRET);
+        }
+        if (resourceAuthSettings.getRedirectUri() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.REDIRECT_URI);
+        }
+        if (resourceAuthSettings.getAuthorizationEndpoint() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.AUTHORIZATION_ENDPOINT);
+        }
+        if (resourceAuthSettings.getTokenEndpoint() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.TOKEN_ENDPOINT);
+        }
+        if (resourceAuthSettings.getCodeChallenge() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.CODE_CHALLENGE);
+        }
+        if (resourceAuthSettings.getCodeVerifier() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.CODE_VERIFIER);
+        }
+        if (resourceAuthSettings.getCodeChallengeMethod() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.CODE_CHALLENGE_METHOD);
+        }
+        if (resourceAuthSettings.getScopesSupported() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.SCOPES_SUPPORTED);
+        }
+        if (resourceAuthSettings.getApiKeyHeader() != null) {
+            fieldsWithValues.add(ResourceAuthSettingsField.API_KEY_HEADER);
+        }
+
+        return fieldsWithValues;
     }
 
-    protected abstract ResourceAuthSettingsValidationFields getValidationRules(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode);
+    protected abstract ResourceAuthSettingsValidationFields getValidationFields(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode);
 
 }

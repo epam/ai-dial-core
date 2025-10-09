@@ -22,9 +22,9 @@ import java.util.Set;
 public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
 
     /**
-     * Determines validation rules for `ResourceAuthSettings` based on the mode of authentication configuration change.
+     * Determines validation fields for `ResourceAuthSettings` based on the mode of authentication configuration change.
      *
-     * <p>This method dynamically selects the validation rules depending on the change mode:
+     * <p>This method dynamically selects the validation fields depending on the change mode:
      * <ul>
      *     <li>`CREATE_DYNAMIC_CLIENT`: For dynamic client registration.</li>
      *     <li>`CREATE_STATIC_CLIENT`: For static client registration.</li>
@@ -33,20 +33,20 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
      * </p>
      *
      * @param resourceAuthSettingsChangeMode The mode indicating whether new or updated OAuth settings are being processed.
-     * @return Validation rules encapsulated as {@link ResourceAuthSettingsValidationFields}.
-     *         These rules define required and forbidden fields based on the given change mode.
+     * @return Validation fields encapsulated as {@link ResourceAuthSettingsValidationFields}.
+     *         These fields define required and forbidden fields based on the given change mode.
      */
     @Override
-    protected ResourceAuthSettingsValidationFields getValidationRules(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
+    protected ResourceAuthSettingsValidationFields getValidationFields(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
         return switch (resourceAuthSettingsChangeMode) {
-            case CREATE_DYNAMIC_CLIENT -> getOauthWithDynamicRegistrationValidationRules();
-            case CREATE_STATIC_CLIENT -> getOauthWithStaticRegistrationValidationRules();
-            case NO_CLIENT_CHANGES -> getOauthWithNoAuthTypeChangeValidationRules();
+            case CREATE_DYNAMIC_CLIENT -> getOauthWithDynamicRegistrationValidationFields();
+            case CREATE_STATIC_CLIENT -> getOauthWithStaticRegistrationValidationFields();
+            case NO_CLIENT_CHANGES -> getOauthWithNoAuthTypeChangeValidationFields();
         };
     }
 
     /**
-     * Defines validation rules for static client registration with OAuth settings.
+     * Defines validation fields for static client registration with OAuth settings.
      *
      * <p>Static registration requires the client explicitly provide details like `CLIENT_ID`
      * and `CLIENT_SECRET` as well as endpoints (authorization, token).</p>
@@ -57,9 +57,9 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
      *     <li>Updating authentication type from `NONE` or `API_KEY` to `OAUTH` with explicit static client settings.</li>
      * </ul>
      *
-     * @return Validation rules for static client registration, including required and forbidden fields.
+     * @return Validation fields for static client registration, including required and forbidden fields.
      */
-    private ResourceAuthSettingsValidationFields getOauthWithStaticRegistrationValidationRules() {
+    private ResourceAuthSettingsValidationFields getOauthWithStaticRegistrationValidationFields() {
         return ResourceAuthSettingsValidationFields.builder()
                 .requiredFields(Set.of(
                         ResourceAuthSettingsField.REDIRECT_URI,
@@ -75,7 +75,7 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
     }
 
     /**
-     * Defines validation rules for dynamic client registration with OAuth settings.
+     * Defines validation fields for dynamic client registration with OAuth settings.
      *
      * <p>Dynamic registration simplifies the process of client registration, requiring only the `REDIRECT_URI` field.
      * All other fields, like `CLIENT_ID` and `CLIENT_SECRET`, are forbidden as they will be generated dynamically.</p>
@@ -86,9 +86,9 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
      *     <li>Updating authentication type from `NONE` or `API_KEY` to `OAUTH` with dynamic client registration.</li>
      * </ul>
      *
-     * @return Validation rules for dynamic client registration, including required and forbidden fields.
+     * @return Validation fields for dynamic client registration, including required and forbidden fields.
      */
-    private ResourceAuthSettingsValidationFields getOauthWithDynamicRegistrationValidationRules() {
+    private ResourceAuthSettingsValidationFields getOauthWithDynamicRegistrationValidationFields() {
         return ResourceAuthSettingsValidationFields.builder()
                 .requiredFields(Set.of(ResourceAuthSettingsField.REDIRECT_URI))
                 .forbiddenFields(Set.of(
@@ -105,7 +105,7 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
     }
 
     /**
-     * Defines validation rules for ToolSet updates where authentication type remains unchanged as `OAUTH`.
+     * Defines validation fields for ToolSet updates where authentication type remains unchanged as `OAUTH`.
      *
      * <p>In this scenario, required fields like `CLIENT_ID`, `AUTHORIZATION_ENDPOINT`, and `TOKEN_ENDPOINT`
      * must still be provided, but forbidden fields (like `API_KEY_HEADER`) must not be included.</p>
@@ -115,9 +115,9 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
      *     <li>Ensures consistency for updates where OAuth-specific settings (endpoints) are validated.</li>
      * </ul>
      *
-     * @return Validation rules ensuring no changes to the authentication type (`OAUTH` remains unchanged).
+     * @return Validation fields ensuring no changes to the authentication type (`OAUTH` remains unchanged).
      */
-    private ResourceAuthSettingsValidationFields getOauthWithNoAuthTypeChangeValidationRules() {
+    private ResourceAuthSettingsValidationFields getOauthWithNoAuthTypeChangeValidationFields() {
         return ResourceAuthSettingsValidationFields.builder()
                 .requiredFields(Set.of(
                         ResourceAuthSettingsField.REDIRECT_URI,
