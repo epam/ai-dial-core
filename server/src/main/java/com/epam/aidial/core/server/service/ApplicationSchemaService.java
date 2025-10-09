@@ -261,7 +261,7 @@ public class ApplicationSchemaService {
                     }
                     result.add(descriptor);
                 } catch (IllegalArgumentException e) {
-                    throw new ApplicationTypeResourceException("Failed to get resource descriptor for url", item, e);
+                    // ignore resource to be defined in DIAL config
                 }
             }
             return result;
@@ -292,7 +292,7 @@ public class ApplicationSchemaService {
                     }
                     result.add(descriptor);
                 } catch (IllegalArgumentException e) {
-                    // ignored
+                    // ignore resource to be defined in DIAL config
                 }
             }
             return result;
