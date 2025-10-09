@@ -22,6 +22,7 @@ public class MetaSchemaHolder {
     public static final String APPLICATION_TYPE_TOKENIZE_ENDPOINT = "dial:applicationTypeTokenizeEndpointEndpoint";
     public static final String APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT = "dial:applicationTypeTruncatePromptEndpoint";
     public static final String APPLICATION_TYPE_PLAYBACK_SUPPORT = "dial:applicationTypePlaybackSupport";
+    public static final String DIAL_APPLICATION_TYPE_BUCKET_COPY = "dial:applicationTypeBucketCopy";
 
     public static final String APPLICATION_TYPE_ROUTES = "dial:applicationTypeRoutes";
 
@@ -54,6 +55,7 @@ public class MetaSchemaHolder {
                 .keyword(new NonValidationKeyword(PROPERTY_ORDER))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_ROUTES))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_PLAYBACK_SUPPORT))
+                .keyword(new NonValidationKeyword(DIAL_APPLICATION_TYPE_BUCKET_COPY))
                 .keyword(new NonValidationKeyword("$defs"))
                 .format(new DialFileFormat());
     }
