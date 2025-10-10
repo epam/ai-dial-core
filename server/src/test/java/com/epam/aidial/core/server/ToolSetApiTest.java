@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
@@ -291,13 +294,60 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     """;
         TestWebServer.Handler handler = request -> {
             assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
-            return new MockResponse().setBody(mcpResponse);
+            return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
         };
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
             Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null, mcpRequest);
 
             assertEquals(200, resp.status());
             assertEquals(mcpResponse, resp.body());
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_ListTools() throws JsonProcessingException {
+        String mcpRequest = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "method": "tools/list",
+                   "params": {
+                     "cursor": "optional-cursor-value"
+                   }
+                 }
+                """;
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {
+                         "name": "branch",
+                         "title": "Manage branches"
+                       },
+                       {
+                         "name": "tag",
+                         "title": "Manage tags"
+                       }
+                     ],
+                     "nextCursor": "next-page-cursor"
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request -> {
+            assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
+            return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null,
+                    mcpRequest, "Content-Type", "application/json");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = (ArrayNode) json.get("result").get("tools");
+            assertEquals(1, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
         }
     }
 

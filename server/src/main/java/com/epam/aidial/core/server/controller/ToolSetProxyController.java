@@ -24,6 +24,10 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -36,11 +40,16 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.InputStream;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 @Slf4j
 public class ToolSetProxyController implements Controller {
+
+    private static final ArrayNode EMPTY_JSON_ARRAY = ProxyUtil.MAPPER.createArrayNode();
 
     private final String toolSetId;
 
@@ -61,6 +70,8 @@ public class ToolSetProxyController implements Controller {
     private final LogStore logStore;
 
     private final AuthorizationHeaderProvider authorizationHeaderProvider;
+
+    private String mcpMethodName;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         this.taskExecutor = proxy.getTaskExecutor();
@@ -116,6 +127,22 @@ public class ToolSetProxyController implements Controller {
 
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
+        String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+        if (Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(contentType)) {
+
+            try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                mcpMethodName = tree.get("method").asText();
+            } catch (Throwable e) {
+                if (e instanceof HttpException httpException) {
+                    respond(httpException.getStatus(), httpException.getMessage());
+                } else {
+                    respond(HttpStatus.BAD_REQUEST, "Invalid JSON request body");
+                }
+                log.warn("Can't process JSON request body. Error:", e);
+                return;
+            }
+        }
         sendRequest();
     }
 
@@ -174,6 +201,15 @@ public class ToolSetProxyController implements Controller {
             context.getUpstreamRoute().succeed();
         }
 
+        if (Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE))) {
+            proxyResponse.body().onSuccess(body -> handleResponse(responseStatusCode, body))
+                    .onFailure(this::handleResponseError);
+        } else {
+            handleSseProxyResponse(proxyResponse);
+        }
+    }
+
+    private void handleSseProxyResponse(HttpClientResponse proxyResponse) {
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024));
 
@@ -182,7 +218,7 @@ public class ToolSetProxyController implements Controller {
 
         HttpServerResponse response = context.getResponse();
         response.setChunked(true);
-        response.setStatusCode(responseStatusCode);
+        response.setStatusCode(proxyResponse.statusCode());
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
 
         proxyResponseStream.pipe()
@@ -209,6 +245,44 @@ public class ToolSetProxyController implements Controller {
         Buffer proxyResponseBody = context.getResponseStream().getContent();
         context.setResponseBody(proxyResponseBody);
         logStore.save(context);
+    }
+
+    private void handleResponse(int responseStatus, Buffer proxyResponseBody) {
+        if ("tools/list".equalsIgnoreCase(mcpMethodName)) {
+            try (InputStream stream = new ByteBufInputStream(proxyResponseBody.getByteBuf())) {
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+                if (filterToolList(tree)) {
+                    proxyResponseBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+                }
+            } catch (Throwable e) {
+                if (e instanceof HttpException httpException) {
+                    respond(httpException.getStatus(), httpException.getMessage());
+                } else {
+                    respond(HttpStatus.BAD_REQUEST, "Invalid response body from MCP server");
+                }
+                log.warn("Can't process JSON response body. Error:", e);
+                return;
+            }
+        }
+        context.setResponseBody(proxyResponseBody);
+        context.respond(responseStatus, proxyResponseBody);
+        logStore.save(context);
+    }
+
+    private boolean filterToolList(ObjectNode body) {
+        ArrayNode tools = (ArrayNode) Optional.ofNullable(body.get("result")).map(result -> result.get("tools"))
+                .filter(JsonNode::isArray).orElse(EMPTY_JSON_ARRAY);
+        ToolSet toolSet = (ToolSet) context.getDeployment();
+        boolean modified = false;
+        for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext();) {
+            JsonNode tool = iter.next();
+            String name = tool.get("name").asText();
+            if (!toolSet.getAllowedTools().contains(name)) {
+                iter.remove();
+                modified = true;
+            }
+        }
+        return modified;
     }
 
     private void handleRateLimitSuccess(ToolSet toolSet) {

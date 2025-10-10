@@ -173,6 +173,20 @@ public class ProxyContext {
         return Future.succeededFuture();
     }
 
+    public Future<?> respond(int status, Buffer body) {
+        if (body == null) {
+            body = Buffer.buffer();
+        }
+
+        response.setStatusCode(status).end(body);
+
+        if (status != HttpStatus.OK.getCode()) {
+            log.warn("Responding with error. Body: {}", body);
+        }
+
+        return Future.succeededFuture();
+    }
+
     public Future<?> respond(Throwable error, String fallbackError) {
         return error instanceof HttpException exception
                 ? respond(exception)
