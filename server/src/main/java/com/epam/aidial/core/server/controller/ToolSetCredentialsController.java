@@ -112,11 +112,11 @@ public class ToolSetCredentialsController {
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
                 && !permissions.get(resourceDescriptor).containsAll(ResourceAccessType.ALL)) {
-            throw new PermissionDeniedException("no read and write access to ToolSet resource");
+            throw new PermissionDeniedException("No read and write access to ToolSet resource");
         }
 
         if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
-            throw new PermissionDeniedException("no read access to ToolSet resource");
+            throw new PermissionDeniedException("No read access to ToolSet resource");
         }
     }
 

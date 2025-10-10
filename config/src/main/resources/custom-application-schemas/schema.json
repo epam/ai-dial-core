@@ -65,6 +65,12 @@
           "type": "boolean",
           "description": "The flag is an indicator that the viewer supports playback."
         },
+        "dial:applicationTypeBucketCopy": {
+          "type": "string",
+          "enum": ["ENABLED", "DISABLED"],
+          "default": "DISABLED",
+          "description": "If this flag is set to enabled, files are copied from source to destination of the application's bucket"
+        },
         "dial:applicationTypeRoutes": {
           "type": "object",
           "patternProperties": {

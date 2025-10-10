@@ -96,11 +96,11 @@ public class ResourceOperationController {
                             accessService.lookupPermissions(resources, context);
 
                     if (!permissions.get(source).containsAll(ResourceAccessType.ALL)) {
-                        throw new PermissionDeniedException("no read and write access to source resource");
+                        throw new PermissionDeniedException("No read and write access to source resource");
                     }
 
                     if (!permissions.get(destination).contains(ResourceAccessType.WRITE)) {
-                        throw new PermissionDeniedException("no write access to destination resource");
+                        throw new PermissionDeniedException("No write access to destination resource");
                     }
 
                     List<String> buckets = List.of(source.getBucketLocation(), destination.getBucketLocation());
@@ -152,11 +152,17 @@ public class ResourceOperationController {
                             accessService.lookupPermissions(resources, context);
 
                     if (!permissions.get(source).contains(ResourceAccessType.READ)) {
-                        throw new PermissionDeniedException("no read access to source resource");
+                        throw new PermissionDeniedException("No read access to source resource");
                     }
 
                     if (!permissions.get(destination).contains(ResourceAccessType.WRITE)) {
-                        throw new PermissionDeniedException("no write access to destination resource");
+                        throw new PermissionDeniedException("No write access to destination resource");
+                    }
+
+                    if (source.getType() == ResourceTypes.APPLICATION || source.getType() == ResourceTypes.TOOL_SET) {
+                        if (!permissions.get(source).contains(ResourceAccessType.WRITE)) {
+                            throw new PermissionDeniedException("No write access to source resource");
+                        }
                     }
 
                     return taskExecutor.submit(() -> {
@@ -228,7 +234,7 @@ public class ResourceOperationController {
 
         accessService.lookupPermissions(resources, context).forEach((resource, permissions) -> {
             if (!permissions.contains(ResourceAccessType.READ)) {
-                throw new PermissionDeniedException("resource is not allowed: " + resource.getUrl());
+                throw new PermissionDeniedException("Resource is not allowed: " + resource.getUrl());
             }
         });
 

@@ -13,7 +13,7 @@ public class BucketBuilder {
 
     public static final String APPDATA_PATTERN = "appdata/%s";
     public static final String USER_BUCKET_PATTERN = "Users/%s/";
-    private static final String API_KEY_BUCKET_PATTERN = "Keys/%s/";
+    public static final String API_KEY_BUCKET_PATTERN = "Keys/%s/";
 
     public String buildUserBucket(ProxyContext context) {
         if (context.getApiKeyData().getPerRequestKey() == null) {

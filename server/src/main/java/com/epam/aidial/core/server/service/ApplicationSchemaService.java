@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ResourceTypes;
@@ -47,6 +48,7 @@ import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_ROUTES;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TOKENIZE_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.getMetaschemaBuilder;
 
 @Slf4j
@@ -65,6 +67,13 @@ public class ApplicationSchemaService {
             .build();
 
     private static final TypeReference<Map<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
+        @Override
+        public Type getType() {
+            return super.getType();
+        }
+    };
+
+    private static final TypeReference<CopyAppBucketOptions> COPY_APP_BUCKET_OPTIONS_TYPE_REF = new TypeReference<>() {
         @Override
         public Type getType() {
             return super.getType();
@@ -339,4 +348,20 @@ public class ApplicationSchemaService {
         }
         return ProxyUtil.MAPPER.treeToValue(appRoutes, APP_ROUTE_TYPE_REF);
     }
+
+    @SneakyThrows
+    public CopyAppBucketOptions getCopyAppBucketOptions(Application application) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
+        if (customApplicationSchema == null) {
+            return CopyAppBucketOptions.DISABLED;
+        }
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode options = schemaNode.get(DIAL_APPLICATION_TYPE_BUCKET_COPY);
+        if (options == null) {
+            return null;
+        }
+        return ProxyUtil.MAPPER.treeToValue(options, COPY_APP_BUCKET_OPTIONS_TYPE_REF);
+    }
+
+
 }

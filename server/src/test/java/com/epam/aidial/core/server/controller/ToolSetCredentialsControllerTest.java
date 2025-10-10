@@ -146,14 +146,14 @@ class ToolSetCredentialsControllerTest {
                         CredentialsLevel.GLOBAL,
                         Set.of(ResourceAccessType.READ),
                         HttpStatus.FORBIDDEN,
-                        "no read and write access to ToolSet resource"),
+                        "No read and write access to ToolSet resource"),
 
                 Arguments.of(
                         "toolset-1",
                         CredentialsLevel.USER,
                         Set.of(),
                         HttpStatus.FORBIDDEN,
-                        "no read access to ToolSet resource")
+                        "No read access to ToolSet resource")
         );
     }
 
@@ -259,14 +259,14 @@ class ToolSetCredentialsControllerTest {
                         CredentialsLevel.GLOBAL,
                         Set.of(ResourceAccessType.READ),
                         HttpStatus.FORBIDDEN,
-                        "no read and write access to ToolSet resource"),
+                        "No read and write access to ToolSet resource"),
 
                 Arguments.of(
                         "toolset-1",
                         CredentialsLevel.USER,
                         Set.of(),
                         HttpStatus.FORBIDDEN,
-                        "no read access to ToolSet resource")
+                        "No read access to ToolSet resource")
         );
     }
 
