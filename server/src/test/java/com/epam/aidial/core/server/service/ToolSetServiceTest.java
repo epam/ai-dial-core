@@ -14,20 +14,16 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import org.apache.commons.lang3.tuple.Pair;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.function.Function;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -37,9 +33,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class ToolSetServiceTest {
 
     @Mock
@@ -52,95 +48,13 @@ class ToolSetServiceTest {
     @InjectMocks
     private ToolSetService toolSetService;
 
-    @BeforeEach
-    void setup() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-
-    private static Stream<Arguments> provideToolSetScenariosForEnrichment() {
-        return Stream.of(
-                // Endpoint changed
-                Arguments.of(
-                        createToolSet("updatedEndpoint", AuthenticationType.OAUTH),
-                        createToolSet("existingEndpoint", AuthenticationType.OAUTH),
-                        true
-                ),
-
-                // Auth type changed
-                Arguments.of(
-                        createToolSet("existingEndpoint", AuthenticationType.OAUTH),
-                        createToolSet("existingEndpoint", AuthenticationType.NONE),
-                        true
-                ),
-
-                // New ToolSet
-                Arguments.of(
-                        createToolSet("existingEndpoint", AuthenticationType.OAUTH),
-                        null,
-                        true
-                ),
-
-                // Neither endpoint nor auth type changed
-                Arguments.of(
-                        createToolSet("existingEndpoint", AuthenticationType.OAUTH),
-                        createToolSet("existingEndpoint", AuthenticationType.OAUTH),
-                        false
-                )
-        );
-    }
-
-    @ParameterizedTest
-    @MethodSource("provideToolSetScenariosForEnrichment")
-    void testPutToolSet_WhenEnrichmentRequired(
-            ToolSet updatedToolSet,
-            ToolSet existingToolSet,
-            boolean shouldEnrichAuthSettings
-    ) {
-        // Given
-        String expectedOutputJson = "expectedOutputJson";
-
-        MockedStatic<ProxyUtil> proxyUtil = Mockito.mockStatic(ProxyUtil.class);
-        proxyUtil.when(() -> ProxyUtil.convertToObject(any(String.class), eq(ToolSet.class)))
-                .thenReturn(existingToolSet);
-        proxyUtil.when(() -> ProxyUtil.convertToString(any()))
-                .thenReturn(expectedOutputJson);
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Function<String, String>> lambdaCaptor = ArgumentCaptor.forClass(Function.class);
-
-        EtagHeader etag = EtagHeader.ANY;
-        String author = "author";
-
-        ResourceDescriptor resource = mock(ResourceDescriptor.class);
-        when(resource.getUrl()).thenReturn("url");
-        when(resource.getType()).thenReturn(ResourceTypes.TOOL_SET);
-
-        when(resourceService.computeResource(
-                eq(resource), eq(etag), eq(author), lambdaCaptor.capture())
-        ).thenReturn(mock(ResourceItemMetadata.class));
-
-        // When
-        toolSetService.putToolSet(resource, etag, author, updatedToolSet);
-        String result = lambdaCaptor.getValue().apply("inputJson");
-
-        // Then
-        if (shouldEnrichAuthSettings) {
-            verify(resourceAuthSettingsService).enrichResourceAuthSettings(resource.getUrl(), updatedToolSet.getEndpoint(), updatedToolSet.getAuthSettings());
-        } else {
-            verifyNoInteractions(resourceAuthSettingsService);
-        }
-
-        assertEquals(expectedOutputJson, result);
-        proxyUtil.close();
-    }
-
     @Test
     void testPutToolSet_ShouldEncryptAuthSettings() {
         String expectedOutputJson = "expectedOutputJson";
         ResourceAuthSettings resourceAuthSettings = new ResourceAuthSettings();
         resourceAuthSettings.setClientSecret("plainClientSecret");
-        ToolSet toolSet = createToolSet("endpoint", AuthenticationType.OAUTH);
+        resourceAuthSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        ToolSet toolSet = createToolSet();
         toolSet.setAuthSettings(resourceAuthSettings);
 
         MockedStatic<ProxyUtil> proxyUtil = Mockito.mockStatic(ProxyUtil.class);
@@ -159,10 +73,8 @@ class ToolSetServiceTest {
 
         EtagHeader etag = EtagHeader.ANY;
         String author = "author";
-
         ResourceDescriptor resource = mock(ResourceDescriptor.class);
         when(resource.getUrl()).thenReturn("url");
-        when(resource.getType()).thenReturn(ResourceTypes.TOOL_SET);
         when(resource.getBucketName()).thenReturn("bucket");
         when(resource.getBucketLocation()).thenReturn("location");
 
@@ -196,7 +108,8 @@ class ToolSetServiceTest {
         // Given
         ResourceAuthSettings resourceAuthSettings = new ResourceAuthSettings();
         resourceAuthSettings.setClientSecret("ENCRYPTED_CLIENT_SECRET");
-        ToolSet toolSet = createToolSet("endpoint", AuthenticationType.OAUTH);
+        resourceAuthSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        ToolSet toolSet = createToolSet();
         toolSet.setAuthSettings(resourceAuthSettings);
 
         MockedStatic<ProxyUtil> proxyUtil = Mockito.mockStatic(ProxyUtil.class);
@@ -240,14 +153,10 @@ class ToolSetServiceTest {
         proxyUtil.close();
     }
 
-    private static ToolSet createToolSet(String endpoint, AuthenticationType authenticationType) {
+    private static ToolSet createToolSet() {
         ToolSet toolSet = new ToolSet();
-        toolSet.setEndpoint(endpoint);
-
-        ResourceAuthSettings updatedToolSetResourceAuthSettings = mock(ResourceAuthSettings.class);
-        when(updatedToolSetResourceAuthSettings.getAuthenticationType()).thenReturn(authenticationType);
-        toolSet.setAuthSettings(updatedToolSetResourceAuthSettings);
-
+        toolSet.setEndpoint("endpoint");
         return toolSet;
     }
+
 }

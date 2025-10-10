@@ -82,12 +82,12 @@ public class ToolSetService {
         }
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
-            if (shouldEnrichResourceAuthSettings(toolSet, existing)) {
-                resourceAuthSettingsService.enrichResourceAuthSettings(toolSet.getName(), toolSet.getEndpoint(), toolSet.getAuthSettings());
-            } else {
-                //TODO we don't support auth settings update yet
-                toolSet.setAuthSettings(existing.getAuthSettings());
+            if (existing != null) {
+                resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
+                        new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
+                        existing.getAuthSettings());
             }
+            resourceAuthSettingsService.processResourceAuthSettings(toolSet, existing);
             resourceAuthSettingsEncryptionService.encrypt(resource.getUrl(),
                     new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
                     toolSet.getAuthSettings());
@@ -170,12 +170,6 @@ public class ToolSetService {
         if (resource.isFolder() || resource.getType() != ResourceTypes.TOOL_SET) {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
         }
-    }
-
-    private boolean shouldEnrichResourceAuthSettings(ToolSet toolSet, ToolSet existing) {
-        return existing == null
-                || !existing.getAuthSettings().getAuthenticationType().equals(toolSet.getAuthSettings().getAuthenticationType())
-                || !existing.getEndpoint().equals(toolSet.getEndpoint());
     }
 
     private void verifyCredentials(ProxyContext context, ResourceDescriptor resource,

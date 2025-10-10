@@ -1,6 +1,5 @@
 package com.epam.aidial.core.credentials.service.registration;
 
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
@@ -19,8 +18,9 @@ public class ResourceRegistrationService {
 
     public ClientRegistration register(String resourceId,
                                        String resourceEndpoint,
-                                       ResourceAuthSettings resourceAuthSettings) {
-        ResourceRegistrationStrategy strategy = shouldRegisterResourceDynamically(resourceAuthSettings)
+                                       ResourceAuthSettings resourceAuthSettings,
+                                       boolean oauthDynamicClientRegistrationRequired) {
+        ResourceRegistrationStrategy strategy = oauthDynamicClientRegistrationRequired
                 ? new DynamicResourceRegistrationStrategy(
                         authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService)
                 : new StaticResourceRegistrationStrategy(
@@ -29,9 +29,5 @@ public class ResourceRegistrationService {
         return strategy.register(resourceId, resourceEndpoint, resourceAuthSettings);
     }
 
-    private boolean shouldRegisterResourceDynamically(ResourceAuthSettings resourceAuthSettings) {
-        return AuthenticationType.OAUTH.equals(resourceAuthSettings.getAuthenticationType())
-                && resourceAuthSettings.getClientId() == null
-                && resourceAuthSettings.getClientSecret() == null;
-    }
+
 }
