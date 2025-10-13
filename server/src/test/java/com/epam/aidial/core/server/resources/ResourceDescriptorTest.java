@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.resources;
 
-import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;

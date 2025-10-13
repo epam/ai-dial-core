@@ -1,9 +1,9 @@
 package com.epam.aidial.core.server.util;
 
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.resource.ResourceUtil;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import org.apache.commons.lang3.StringUtils;
@@ -25,7 +25,7 @@ public class ResourceDescriptorFactory {
      * @param bucketLocation bucket location on blob storage; bucket location must end with /
      * @param path           url encoded relative path; if url path is null or empty we treat it as user home
      */
-    public static ResourceDescriptor fromEncoded(ResourceTypes type, String bucketName, String bucketLocation, String path) {
+    public static ResourceDescriptor fromEncoded(ResourceType type, String bucketName, String bucketLocation, String path) {
         // in case empty path - treat it as a home folder
         String urlEncodedRelativePath = StringUtils.isBlank(path) ? ResourceDescriptor.PATH_SEPARATOR : path;
         verify(bucketLocation.endsWith(ResourceDescriptor.PATH_SEPARATOR), "Bucket location must end with /");

@@ -1,8 +1,8 @@
 package com.epam.aidial.core.credentials.encryption;
 
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
-import com.epam.aidial.core.credentials.data.credentials.ResourceTypes;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

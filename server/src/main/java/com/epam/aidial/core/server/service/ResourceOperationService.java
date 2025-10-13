@@ -3,13 +3,13 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.ResourceTopic;
@@ -22,11 +22,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
-import static com.epam.aidial.core.server.data.ResourceTypes.APPLICATION;
-import static com.epam.aidial.core.server.data.ResourceTypes.CONVERSATION;
-import static com.epam.aidial.core.server.data.ResourceTypes.FILE;
-import static com.epam.aidial.core.server.data.ResourceTypes.PROMPT;
-import static com.epam.aidial.core.server.data.ResourceTypes.TOOL_SET;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.CONVERSATION;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.FILE;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.PROMPT;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 
 @AllArgsConstructor
 public class ResourceOperationService {

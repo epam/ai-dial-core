@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.util;
 
-import com.epam.aidial.core.server.data.ResourceTypes;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.json.JsonObject;
