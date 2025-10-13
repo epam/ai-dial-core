@@ -42,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -273,11 +274,12 @@ public class ToolSetProxyController implements Controller {
         ArrayNode tools = (ArrayNode) Optional.ofNullable(body.get("result")).map(result -> result.get("tools"))
                 .filter(JsonNode::isArray).orElse(EMPTY_JSON_ARRAY);
         ToolSet toolSet = (ToolSet) context.getDeployment();
+        List<String> allowedTools = toolSet.getAllowedTools();
         boolean modified = false;
         for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext();) {
             JsonNode tool = iter.next();
             String name = tool.get("name").asText();
-            if (!toolSet.getAllowedTools().contains(name)) {
+            if (!allowedTools.contains(name)) {
                 iter.remove();
                 modified = true;
             }
