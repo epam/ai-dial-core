@@ -8,10 +8,12 @@ import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -72,6 +74,8 @@ public class ToolSetProxyController implements Controller {
 
     private final AuthorizationHeaderProvider authorizationHeaderProvider;
 
+    private final ApiKeyStore apiKeyStore;
+
     private String mcpMethodName;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
@@ -83,6 +87,7 @@ public class ToolSetProxyController implements Controller {
         this.logStore = proxy.getLogStore();
         this.context = context;
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
+        this.apiKeyStore = proxy.getApiKeyStore();
         this.toolSetId = toolSetId;
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
     }
@@ -122,7 +127,10 @@ public class ToolSetProxyController implements Controller {
                 .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
                 .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
         httpClient.request(options)
-                .onSuccess(this::handleProxyRequest)
+                .onSuccess(proxyRequest -> taskExecutor.submit(() -> {
+                    handleProxyRequest(proxyRequest);
+                    return null;
+                }))
                 .onFailure(this::handleProxyConnectionError);
     }
 
@@ -175,9 +183,21 @@ public class ToolSetProxyController implements Controller {
             if (authorizationHeader != null) {
                 proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
             }
+            if (toolSet.isForwardPerRequestKey()) {
+                String perRequestKey = assignPerRequestKey();
+                proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
+            }
         } catch (ResourceNotFoundException e) {
             log.error(e.getMessage(), e);
         }
+    }
+
+    private String assignPerRequestKey() {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        apiKeyStore.assignPerRequestApiKey(proxyApiKeyData);
+        return proxyApiKeyData.getPerRequestKey();
     }
 
     /**
