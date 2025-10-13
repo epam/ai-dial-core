@@ -37,8 +37,8 @@ public class ResourceAuthSettingsService {
      * clients dynamically or statically, and ensures proper handling of fields like `clientSecret`,
      * `codeChallenge`, and `codeVerifier` during updates.</p>
      *
-     * @param updatedResource The new `ToolSet` configuration being saved
-     * @param existingResource The existing `ToolSet` configuration, or null if creating a new `ToolSet`
+     * @param updatedResource The new `SecuredResource` configuration being saved
+     * @param existingResource The existing `SecuredResource` configuration, or null if creating a new `ToolSet`
      * @throws IllegalArgumentException if `ResourceAuthSettings` is not defined
      */
     public void processResourceAuthSettings(SecuredResource updatedResource,
@@ -176,12 +176,12 @@ public class ResourceAuthSettingsService {
      *     <li>If the authentication type changes from non-OAUTH to OAUTH</li>
      * </ul>
      *
-     * @param toolSet The new `ToolSet` configuration being saved
-     * @param existing The existing `ToolSet` configuration, or null if creating a new ToolSet
+     * @param securedResource The new `SecuredResource` configuration being saved
+     * @param existing The existing `SecuredResource` configuration, or null if creating a new ToolSet
      * @return true if client registration is required, false otherwise
      */
-    private boolean requiresClientRegistration(SecuredResource toolSet, SecuredResource existing) {
-        ResourceAuthSettings newResourceAuthSettings = toolSet.getAuthSettings();
+    private boolean requiresClientRegistration(SecuredResource securedResource, SecuredResource existing) {
+        ResourceAuthSettings newResourceAuthSettings = securedResource.getAuthSettings();
 
         // Do not register client for non-OAUTH auth types
         if (!AuthenticationType.OAUTH.equals(newResourceAuthSettings.getAuthenticationType())) {
