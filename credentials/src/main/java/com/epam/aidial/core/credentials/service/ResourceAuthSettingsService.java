@@ -31,14 +31,14 @@ public class ResourceAuthSettingsService {
     private final AuthSettingsValidatorFactory validatorFactory;
 
     /**
-     * Processes the resource authentication settings for a given `ToolSet`.
+     * Processes the resource authentication settings for a given `SecuredResource`.
      *
      * <p>This method validates the new `SecuredResource` authentication settings, optionally registers
      * clients dynamically or statically, and ensures proper handling of fields like `clientSecret`,
      * `codeChallenge`, and `codeVerifier` during updates.</p>
      *
      * @param updatedResource The new `SecuredResource` configuration being saved
-     * @param existingResource The existing `SecuredResource` configuration, or null if creating a new `ToolSet`
+     * @param existingResource The existing `SecuredResource` configuration, or null if creating a new `SecuredResource`
      * @throws IllegalArgumentException if `ResourceAuthSettings` is not defined
      */
     public void processResourceAuthSettings(SecuredResource updatedResource,
@@ -168,16 +168,16 @@ public class ResourceAuthSettingsService {
     }
 
     /**
-     * Determines whether client registration is required for the given ToolSet.
+     * Determines whether client registration is required for the given SecuredResource.
      *
      * <p>Client registration is required in the following cases:
      * <ul>
-     *     <li>If the authentication type is `OAUTH` and no ToolSet exists</li>
+     *     <li>If the authentication type is `OAUTH` and no SecuredResource exists</li>
      *     <li>If the authentication type changes from non-OAUTH to OAUTH</li>
      * </ul>
      *
      * @param securedResource The new `SecuredResource` configuration being saved
-     * @param existing The existing `SecuredResource` configuration, or null if creating a new ToolSet
+     * @param existing The existing `SecuredResource` configuration, or null if creating a new SecuredResource
      * @return true if client registration is required, false otherwise
      */
     private boolean requiresClientRegistration(SecuredResource securedResource, SecuredResource existing) {
@@ -188,7 +188,7 @@ public class ResourceAuthSettingsService {
             return false;
         }
 
-        // Always register client when creating a new ToolSet with OAUTH auth type
+        // Always register client when creating a new SecuredResource with OAUTH auth type
         if (existing == null) {
             return true;
         }
