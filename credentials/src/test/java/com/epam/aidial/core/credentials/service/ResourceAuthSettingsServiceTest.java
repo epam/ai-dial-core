@@ -15,6 +15,7 @@ import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactor
 import com.epam.aidial.core.credentials.validation.ApiKeyAuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.OauthAuthSettingsValidator;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -161,6 +162,16 @@ class ResourceAuthSettingsServiceTest {
         // Then
         assertEquals(expectedUserLevelStatus, toolSet.getAuthSettings().getUserLevelAuthStatus());
         assertEquals(expectedGlobalLevelStatus, toolSet.getAuthSettings().getGlobalAuthStatus());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_ForwardPerRequestKeyAndAuthType() {
+        // Given
+        ToolSet newToolSet = createApiKeyToolSet("apiKeyHeader");
+        newToolSet.setForwardPerRequestKey(true);
+
+        // When
+        Assertions.assertThrows(IllegalArgumentException.class, () -> resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null));
     }
 
     @Test

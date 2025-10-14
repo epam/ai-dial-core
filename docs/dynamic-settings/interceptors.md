@@ -2,7 +2,7 @@
 
 You can add an additional logic into the processing of every request and response for models and apps, enabling PII obfuscation, guardrails, safety checks, and beyond. This is achieved through the integration of pluggable components known as Interceptors.
 
-> * Refer to [Interceptors](https://docs.dialx.ai/platform/core/interceptors) to learn more.
+> * Refer to [DIAL Interceptors SDK](https://github.com/epam/ai-dial-interceptors-sdk/blob/development/README.md) for a comprehensive information about interceptors as well as configuration examples.
 > * Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-interceptors) to learn how to manage interceptors in DIAL Admin UI.
 
 ## interceptors
@@ -47,6 +47,8 @@ An object containing parameters for each [interceptor](#interceptors).
 
 
 ## Configuration Example
+
+> Refer to [DIAL Interceptors SDK](https://github.com/epam/ai-dial-interceptors-sdk/blob/development/README.md#dial-core-configuration) for more DIAL Core configuration examples.
 
 ```json
 {

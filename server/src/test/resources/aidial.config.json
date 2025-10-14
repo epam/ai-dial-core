@@ -171,7 +171,8 @@
       "transport": "http",
       "endpoint": "http://localhost:9876",
       "allowed_tools": ["branch", "remote"],
-      "description": "Git remote tool set"
+      "description": "Git remote tool set",
+      "forwardPerRequestKey": true
     }
   },
   "keys": {

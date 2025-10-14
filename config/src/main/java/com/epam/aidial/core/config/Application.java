@@ -30,8 +30,10 @@ public class Application extends Deployment {
     @JsonAlias({"applicationTypeSchemaId", "application_type_schema_id"})
     private URI applicationTypeSchemaId;
 
+    @JsonAlias({"viewerUrl", "viewer_url"})
     private String viewerUrl;
 
+    @JsonAlias({"editorUrl", "editor_url"})
     private String editorUrl;
 
     // maintain the order of routes defined in the app config
