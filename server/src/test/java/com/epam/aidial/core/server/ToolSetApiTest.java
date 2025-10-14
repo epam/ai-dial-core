@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ToolSetApiTest extends ResourceBaseTest {
 
@@ -63,13 +64,14 @@ public class ToolSetApiTest extends ResourceBaseTest {
                    "created_at" : "@ignore",
                    "updated_at" : "@ignore",
                    "dependencies" : [ ],
-                   "transport" : "HTTP",
-                   "allowed_tools" : [ "tool1", "tool2" ],
+                   "forward_per_request_key" : false,
                    "auth_settings" : {
                     "authentication_type" : "NONE",
                     "global_auth_status" : "SIGNED_OUT",
                     "user_level_auth_status" : "SIGNED_OUT"
-                  }
+                  },
+                  "transport" : "HTTP",
+                  "allowed_tools" : [ "tool1", "tool2" ]
                 }
                  }
                 """);
@@ -294,6 +296,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     """;
         TestWebServer.Handler handler = request -> {
             assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
+            assertNotNull(request.getHeader(Proxy.HEADER_API_KEY));
             return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
         };
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
@@ -428,6 +431,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "created_at" : "@ignore",
                     "updated_at" : "@ignore",
                     "dependencies" : [ ],
+                    "forward_per_request_key" : false,
                     "auth_settings" : {
                         "authentication_type" : "NONE",
                         "global_auth_status" : "SIGNED_OUT",
