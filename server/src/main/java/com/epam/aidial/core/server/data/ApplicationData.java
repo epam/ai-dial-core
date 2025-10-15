@@ -43,4 +43,8 @@ public class ApplicationData extends DeploymentData {
     private Application.Function function;
 
     private Map<String, Route> routes;
+
+    private String viewerUrl;
+
+    private String editorUrl;
 }
