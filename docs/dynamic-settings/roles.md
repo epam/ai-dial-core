@@ -64,6 +64,8 @@ Use to define token usage limits for resources. **IMPORTANT:** Unlimited if not 
 
 Available values:
 
+* `requestHour`: Total requests per hour that can be sent to a specific resource. Default: If it's not set the default value is unlimited
+* `requestDay`: Total requests per day that can be sent to a specific resource. Default: If it's not set the default value is unlimited
 * `minute`: Total tokens per minute that can be sent to a specific resource, managed via floating window approach for well-distributed rate limiting. **Default**: If it's not set the default value is unlimited
 * `day`: Total tokens per day that can be sent to a specific resource, managed via floating window approach for balanced rate limiting. **Default**: If it's not set the default value is unlimited
 * `week`: Total tokens per week that can be sent to a specific resource, managed via floating window approach for balanced rate limiting. **Default**: If it's not set the default value is unlimited
@@ -74,6 +76,8 @@ Available values:
 ```json
 "limits": {
     "chat-gpt-35-turbo": {
+        "requestHour": "20",
+        "requestDay": "300",
         "minute": "200000",
         "day": "10000000",
         "week": "10000000",
@@ -85,9 +89,18 @@ Available values:
 
 Use to define cost limits for a role applied across all models. Cost limits work additively with existing token/request limits. Use to implement cost-conscious resource allocation policies.
 
+Available values:
+
+* `minute`: Total cost limits per minute in USD applied for a specific role across all models.
+* `day`: Total cost limits per day in USD applied for a specific role across all models.
+* `week`: Total cost limits per week in USD applied for a specific role across all models.
+* `month`: Total cost limits per month in USD applied for a specific role across all models.
+
 **IMPORTANT:** Unlimited if not defined.
 
 **Example**:
+
+*Provided values are for example purposes only.*
 
 ```json
 "limits": {
@@ -99,7 +112,10 @@ Use to define cost limits for a role applied across all models. Cost limits work
     }
 },
 "costLimit": {
-    "day": 100.00
+    "minute": 0.069,
+    "day": 100.00,
+    "week": 500.00,
+    "month": 2000.00,
 }
 ```
 
