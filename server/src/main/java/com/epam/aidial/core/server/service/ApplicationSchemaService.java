@@ -358,7 +358,7 @@ public class ApplicationSchemaService {
         JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
         JsonNode options = schemaNode.get(DIAL_APPLICATION_TYPE_BUCKET_COPY);
         if (options == null) {
-            return null;
+            return CopyAppBucketOptions.DISABLED;
         }
         return ProxyUtil.MAPPER.treeToValue(options, COPY_APP_BUCKET_OPTIONS_TYPE_REF);
     }

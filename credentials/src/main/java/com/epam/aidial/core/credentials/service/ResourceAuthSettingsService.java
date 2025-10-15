@@ -4,7 +4,7 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ResourceAuthStatus;
-import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.config.SecuredResource;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
@@ -31,60 +31,65 @@ public class ResourceAuthSettingsService {
     private final AuthSettingsValidatorFactory validatorFactory;
 
     /**
-     * Processes the resource authentication settings for a given `ToolSet`.
+     * Processes the resource authentication settings for a given `SecuredResource`.
      *
-     * <p>This method validates the new `ToolSet` authentication settings, optionally registers
+     * <p>This method validates the new `SecuredResource` authentication settings, optionally registers
      * clients dynamically or statically, and ensures proper handling of fields like `clientSecret`,
      * `codeChallenge`, and `codeVerifier` during updates.</p>
      *
-     * @param updatedToolSet The new `ToolSet` configuration being saved
-     * @param existingToolSet The existing `ToolSet` configuration, or null if creating a new `ToolSet`
+     * @param updatedResource The new `SecuredResource` configuration being saved
+     * @param existingResource The existing `SecuredResource` configuration, or null if creating a new `SecuredResource`
      * @throws IllegalArgumentException if `ResourceAuthSettings` is not defined
      */
-    public void processResourceAuthSettings(ToolSet updatedToolSet,
-                                            ToolSet existingToolSet) {
-        ResourceAuthSettings toolSetAuthSettings = updatedToolSet.getAuthSettings();
+    public void processResourceAuthSettings(SecuredResource updatedResource,
+                                            SecuredResource existingResource) {
+        ResourceAuthSettings resourceAuthSettings = updatedResource.getAuthSettings();
 
-        if (toolSetAuthSettings == null) {
-            throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + updatedToolSet.getName());
+        if (resourceAuthSettings == null) {
+            throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + updatedResource.getName());
         }
 
-        boolean requiresClientRegistration = requiresClientRegistration(updatedToolSet, existingToolSet);
-        boolean requiresDynamicClientRegistration = requiresDynamicClientRegistration(toolSetAuthSettings);
+        if (updatedResource.isForwardPerRequestKey() && resourceAuthSettings.getAuthenticationType() == AuthenticationType.API_KEY) {
+            throw new IllegalArgumentException("Forward per request API key can't be along with authentication type %s"
+                    .formatted(AuthenticationType.API_KEY.name()));
+        }
+
+        boolean requiresClientRegistration = requiresClientRegistration(updatedResource, existingResource);
+        boolean requiresDynamicClientRegistration = requiresDynamicClientRegistration(resourceAuthSettings);
 
         ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode = getResourceAuthSettingsChangeMode(
                 requiresClientRegistration, requiresDynamicClientRegistration);
-        validateResourceAuthSettings(toolSetAuthSettings, resourceAuthSettingsChangeMode);
+        validateResourceAuthSettings(resourceAuthSettings, resourceAuthSettingsChangeMode);
 
         if (resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
                 || resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT) {
-            enrichResourceAuthSettings(updatedToolSet.getName(), updatedToolSet.getEndpoint(), toolSetAuthSettings, requiresDynamicClientRegistration);
-        } else if (AuthenticationType.OAUTH.equals(toolSetAuthSettings.getAuthenticationType())
-                && existingToolSet != null
-                && existingToolSet.getAuthSettings() != null) {
-            ResourceAuthSettings existingResourceAuthSettings = existingToolSet.getAuthSettings();
+            enrichResourceAuthSettings(updatedResource.getName(), updatedResource.getEndpoint(), resourceAuthSettings, requiresDynamicClientRegistration);
+        } else if (AuthenticationType.OAUTH.equals(resourceAuthSettings.getAuthenticationType())
+                && existingResource != null
+                && existingResource.getAuthSettings() != null) {
+            ResourceAuthSettings existingResourceAuthSettings = existingResource.getAuthSettings();
 
             // do not re-write clientSecret with null values
-            if (toolSetAuthSettings.getClientSecret() == null) {
-                toolSetAuthSettings.setClientSecret(existingResourceAuthSettings.getClientSecret());
+            if (resourceAuthSettings.getClientSecret() == null) {
+                resourceAuthSettings.setClientSecret(existingResourceAuthSettings.getClientSecret());
             }
 
             // do not re-write auto-generated codeChallenge/codeVerifier fields
-            toolSetAuthSettings.setCodeChallenge(existingResourceAuthSettings.getCodeChallenge());
-            toolSetAuthSettings.setCodeVerifier(existingResourceAuthSettings.getCodeVerifier());
+            resourceAuthSettings.setCodeChallenge(existingResourceAuthSettings.getCodeChallenge());
+            resourceAuthSettings.setCodeVerifier(existingResourceAuthSettings.getCodeVerifier());
         }
     }
 
     /**
      * Validates the resource authentication settings using the appropriate validator.
      *
-     * @param toolSetAuthSettings The `ResourceAuthSettings` to validate
+     * @param resourceAuthSettings The `ResourceAuthSettings` to validate
      * @param resourceAuthSettingsChangeMode The mode of authentication changes (e.g., CREATE_DYNAMIC_CLIENT)
      */
-    private void validateResourceAuthSettings(ResourceAuthSettings toolSetAuthSettings,
+    private void validateResourceAuthSettings(ResourceAuthSettings resourceAuthSettings,
                                               ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
-        AuthSettingsValidator authSettingsValidator = validatorFactory.getValidator(toolSetAuthSettings.getAuthenticationType());
-        authSettingsValidator.validate(toolSetAuthSettings, resourceAuthSettingsChangeMode);
+        AuthSettingsValidator authSettingsValidator = validatorFactory.getValidator(resourceAuthSettings.getAuthenticationType());
+        authSettingsValidator.validate(resourceAuthSettings, resourceAuthSettingsChangeMode);
     }
 
     /**
@@ -163,27 +168,27 @@ public class ResourceAuthSettingsService {
     }
 
     /**
-     * Determines whether client registration is required for the given ToolSet.
+     * Determines whether client registration is required for the given SecuredResource.
      *
      * <p>Client registration is required in the following cases:
      * <ul>
-     *     <li>If the authentication type is `OAUTH` and no ToolSet exists</li>
+     *     <li>If the authentication type is `OAUTH` and no SecuredResource exists</li>
      *     <li>If the authentication type changes from non-OAUTH to OAUTH</li>
      * </ul>
      *
-     * @param toolSet The new `ToolSet` configuration being saved
-     * @param existing The existing `ToolSet` configuration, or null if creating a new ToolSet
+     * @param securedResource The new `SecuredResource` configuration being saved
+     * @param existing The existing `SecuredResource` configuration, or null if creating a new SecuredResource
      * @return true if client registration is required, false otherwise
      */
-    private boolean requiresClientRegistration(ToolSet toolSet, ToolSet existing) {
-        ResourceAuthSettings newResourceAuthSettings = toolSet.getAuthSettings();
+    private boolean requiresClientRegistration(SecuredResource securedResource, SecuredResource existing) {
+        ResourceAuthSettings newResourceAuthSettings = securedResource.getAuthSettings();
 
         // Do not register client for non-OAUTH auth types
         if (!AuthenticationType.OAUTH.equals(newResourceAuthSettings.getAuthenticationType())) {
             return false;
         }
 
-        // Always register client when creating a new ToolSet with OAUTH auth type
+        // Always register client when creating a new SecuredResource with OAUTH auth type
         if (existing == null) {
             return true;
         }
