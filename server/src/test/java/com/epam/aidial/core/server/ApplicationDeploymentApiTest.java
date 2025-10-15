@@ -999,8 +999,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,
                     "routes" : { },
-                    "viewer_url" : "http://google.com",
-                     "editor_url" : "http://google.com"
+                    "viewer_url" : "http://some-host",
+                     "editor_url" : "http://some-host"
                   },
                   {
                       "id" : "app-route",
