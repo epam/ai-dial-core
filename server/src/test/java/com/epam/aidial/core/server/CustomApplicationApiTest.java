@@ -478,7 +478,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "defaults":{},
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
-                            "routes" : { }
+                            "routes" : { },
+                            "viewer_url" : "http://google.com",
+                             "editor_url" : "http://google.com"
                         }, {
                              "id" : "app-route",
                              "application" : "app-route",
@@ -642,7 +644,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "defaults":{},
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
-                            "routes" : { }
+                            "routes" : { },
+                            "viewer_url" : "http://google.com",
+                            "editor_url" : "http://google.com"
                         },
                         {
                             "id" : "app-route",

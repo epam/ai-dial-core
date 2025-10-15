@@ -241,6 +241,8 @@ public class ApplicationController {
         }
 
         data.setRoutes(application.getRoutes());
+        data.setViewerUrl(application.getViewerUrl());
+        data.setEditorUrl(application.getEditorUrl());
 
         return data;
     }
