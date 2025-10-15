@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.service.codeinterpreter;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AuthBucket;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
@@ -26,6 +25,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;

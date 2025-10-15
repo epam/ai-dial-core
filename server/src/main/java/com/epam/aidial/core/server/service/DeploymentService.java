@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -15,6 +14,8 @@ import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+
+import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 
 @Slf4j
 public class DeploymentService {
@@ -57,7 +61,7 @@ public class DeploymentService {
             return deployment;
         }
         ResourceDescriptor deploymentDescriptor = toResourceDescriptor(context, id);
-        ResourceTypes resourceType = (ResourceTypes) deploymentDescriptor.getType();
+        ResourceType resourceType = deploymentDescriptor.getType();
         return switch (resourceType) {
             case APPLICATION -> applicationService.getApplication(deploymentDescriptor).getValue();
             case TOOL_SET -> toolSetService.getToolSet(context, deploymentDescriptor).getValue();

@@ -1,6 +1,4 @@
-package com.epam.aidial.core.server.data;
-
-import com.epam.aidial.core.storage.resource.ResourceType;
+package com.epam.aidial.core.storage.resource;
 
 public enum ResourceTypes implements ResourceType {
     FILE("files", false), CONVERSATION("conversations", true),
@@ -9,7 +7,9 @@ public enum ResourceTypes implements ResourceType {
     PUBLICATION("publications", true), RULES("rules", true), API_KEY_DATA("api_key_data", true), NOTIFICATION("notifications", true),
     APPLICATION("applications", true), DEPLOYMENT_COST_STATS("deployment_cost_stats", true),
     CODE_INTERPRETER_SESSION("code_interpreter_session", true), USER_CONSENT("user_consent", true),
-    TOOL_SET("toolsets", true);
+    TOOL_SET("toolsets", true),
+    CREDENTIALS("credentials", true),
+    ENCRYPTION_KEYS("encryption_keys", true);
 
     private final String group;
     private final boolean requireCompression;
@@ -29,6 +29,8 @@ public enum ResourceTypes implements ResourceType {
             case "applications" -> APPLICATION;
             case "code_interpreter_session" -> CODE_INTERPRETER_SESSION;
             case "toolsets" -> TOOL_SET;
+            case "credentials" -> CREDENTIALS;
+            case "encryption_keys" -> ENCRYPTION_KEYS;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }

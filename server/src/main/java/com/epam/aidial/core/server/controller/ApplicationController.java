@@ -8,7 +8,6 @@ import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -25,6 +24,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 

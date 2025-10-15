@@ -10,13 +10,13 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionSe
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.AllArgsConstructor;
