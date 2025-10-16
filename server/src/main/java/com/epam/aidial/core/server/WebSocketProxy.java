@@ -234,25 +234,46 @@ public class WebSocketProxy {
 
     private void forwardFrames(WebSocketBase source, WebSocketBase target) {
         source.frameHandler(frame -> {
-            if (target.writeQueueFull()) {
-                source.pause();
-                target.drainHandler(v -> {
-                    target.drainHandler(null);
-                    source.resume();
-                });
+            if (target.isClosed()) {
+                closeQuietly(source);
+                return;
             }
 
-            WebSocketFrameType type = frame.type();
-            switch (type) {
-                case TEXT -> target.writeFrame(WebSocketFrame.textFrame(frame.textData(), frame.isFinal()));
-                case BINARY -> target.writeFrame(WebSocketFrame.binaryFrame(frame.binaryData().copy(), frame.isFinal()));
-                case CONTINUATION -> target.writeFrame(WebSocketFrame.continuationFrame(frame.binaryData().copy(), frame.isFinal()));
-                case PING -> target.writePing(frame.binaryData().copy());
-                case PONG -> target.writePong(frame.binaryData().copy());
-                case CLOSE -> target.close(frame.closeStatusCode(), frame.closeReason());
-                default -> target.writeFrame(frame);
+            try {
+                if (target.writeQueueFull()) {
+                    source.pause();
+                    target.drainHandler(v -> {
+                        target.drainHandler(null);
+                        source.resume();
+                    });
+                }
+
+                WebSocketFrameType type = frame.type();
+                switch (type) {
+                    case TEXT -> target.writeFrame(WebSocketFrame.textFrame(frame.textData(), frame.isFinal()));
+                    case BINARY -> target.writeFrame(WebSocketFrame.binaryFrame(frame.binaryData().copy(), frame.isFinal()));
+                    case CONTINUATION -> target.writeFrame(WebSocketFrame.continuationFrame(frame.binaryData().copy(), frame.isFinal()));
+                    case PING -> target.writePing(frame.binaryData().copy());
+                    case PONG -> target.writePong(frame.binaryData().copy());
+                    case CLOSE -> target.close(frame.closeStatusCode(), frame.closeReason());
+                    default -> target.writeFrame(frame);
+                }
+            } catch (IllegalStateException e) {
+                log.debug("WebSocket target closed while forwarding frame: {}", e.getMessage());
+                closeQuietly(source);
             }
         });
+    }
+
+    private void closeQuietly(WebSocketBase socket) {
+        if (socket == null || socket.isClosed()) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (IllegalStateException e) {
+            log.debug("WebSocket already closed: {}", e.getMessage());
+        }
     }
 
     private Future<Void> setupProxyApiKeyIfNeeded(ProxyContext context) {
