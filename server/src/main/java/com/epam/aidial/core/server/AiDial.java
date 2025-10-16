@@ -27,6 +27,7 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
+import com.epam.aidial.core.server.WebSocketProxy;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -234,7 +235,10 @@ public class AiDial {
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
                     taskExecutor, version());
 
-            server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
+            WebSocketProxy webSocketProxy = new WebSocketProxy(proxy);
+            proxy.setWebSocketProxy(webSocketProxy);
+            server = vertx.createHttpServer(new HttpServerOptions(settings("server")))
+                    .requestHandler(proxy);
             open(server, HttpServer::listen);
             log.info("Proxy started on {}", server.actualPort());
         } catch (Throwable e) {

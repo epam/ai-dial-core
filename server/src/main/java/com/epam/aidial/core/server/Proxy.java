@@ -134,6 +134,12 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
 
+    private WebSocketProxy webSocketProxy;
+
+    void setWebSocketProxy(WebSocketProxy webSocketProxy) {
+        this.webSocketProxy = webSocketProxy;
+    }
+
     @Override
     public void handle(HttpServerRequest request) {
         try {
@@ -229,8 +235,28 @@ public class Proxy implements Handler<HttpServerRequest> {
         String traceFlags = spanContext.getTraceFlags().asHex();
 
         request.pause();
-        Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId, traceFlags))
+        Future<AuthorizationResult> authorizationResultFuture = authorize(request);
+        String upgradeHeader = request.getHeader(HttpHeaders.UPGRADE);
+        boolean isWebSocketUpgrade = upgradeHeader != null && "websocket".equalsIgnoreCase(upgradeHeader);
+
+        if (isWebSocketUpgrade) {
+            Future<?> future = authorizationResultFuture.compose(result -> {
+                if (webSocketProxy == null) {
+                    return Future.failedFuture(new IllegalStateException("WebSocket proxy is not configured"));
+                }
+                return webSocketProxy.handle(request, config, result, traceId, spanId, traceFlags);
+            });
+            future
+                    .onFailure(error -> {
+                        if (!(error instanceof WebSocketProxy.HandledException)) {
+                            handleError(error, request);
+                        }
+                    })
+                    .onComplete(ignore -> request.resume());
+            return;
+        }
+
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result, config, request, traceId, spanId, traceFlags))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
@@ -261,7 +287,7 @@ public class Proxy implements Handler<HttpServerRequest> {
      * @param request HTTP request
      * @return the future of {@link AuthorizationResult}
      */
-    private Future<AuthorizationResult> authorizeRequest(HttpServerRequest request) {
+    Future<AuthorizationResult> authorize(HttpServerRequest request) {
         String apiKey = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.debug("Authorization header: {}", authorization);
@@ -329,20 +355,25 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private record AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
+    record AuthorizationResult(ApiKeyData apiKeyData, ExtractedClaims extractedClaims) {
 
     }
 
-    @SneakyThrows
-    private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims, Config config,
-                                                 HttpServerRequest request, ApiKeyData apiKeyData,
-                                                 String traceId, String spanId, String traceFlags) {
-        // Clear context when the response is actually closed, not when controller completes
+    ProxyContext createContext(Config config, HttpServerRequest request, AuthorizationResult result,
+                               String traceId, String spanId, String traceFlags) {
         request.response().closeHandler(v -> ContextManager.clearContext());
+        ProxyContext context = new ProxyContext(this, config, request, result.apiKeyData(), result.extractedClaims(), traceId, spanId, traceFlags);
+        ContextManager.setProxyContext(context);
+        return context;
+    }
+
+    @SneakyThrows
+    private Future<?> processAuthorizationResult(AuthorizationResult result, Config config,
+                                                 HttpServerRequest request, String traceId, String spanId, String traceFlags) {
+        // Clear context when the response is actually closed, not when controller completes
         Future<?> future;
         try {
-            ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
-            ContextManager.setProxyContext(context);
+            ProxyContext context = createContext(config, request, result, traceId, spanId, traceFlags);
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);
             future = controller.handle();
