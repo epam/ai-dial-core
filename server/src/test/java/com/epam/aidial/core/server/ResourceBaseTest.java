@@ -94,6 +94,18 @@ public class ResourceBaseTest {
             }
             """;
 
+    public static final String TOOLSET_CREATE_REQEUST_BODY = """
+            {
+                "endpoint": "https://some_server/mcp/",
+                "transport": "HTTP",
+                "allowedTools": [],
+                "auth_settings": {
+                    "authentication_type": "API_KEY",
+                    "api_key_header": "Authorization"
+                }
+            }
+            """;
+
     RedisServer redis;
     AiDial dial;
     Path testDir;
@@ -291,6 +303,10 @@ public class ResourceBaseTest {
 
     Response resourceRequest(HttpMethod method, String resource, String body, String... headers) {
         return send(method, "/v1/conversations/" + bucket + resource, null, body, headers);
+    }
+
+    Response toolsetRequest(HttpMethod method, String resource, String body, String... headers) {
+        return send(method, "/v1/toolsets/" + bucket + resource, null, body, headers);
     }
 
     Response operationRequest(String path, String body, String... headers) {

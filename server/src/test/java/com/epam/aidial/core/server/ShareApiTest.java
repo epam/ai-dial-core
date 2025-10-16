@@ -508,6 +508,159 @@ public class ShareApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testToolSetRevokeSharedAccess() {
+        // check no toolsets or credentials shared with me
+        Response response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // check no toolsets or credentials shared by me
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // create ToolSet
+        response = toolsetRequest(HttpMethod.PUT, "/toolset@", TOOLSET_CREATE_REQEUST_BODY);
+        verifyNotExact(response, 200, "\"url\":\"toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@\"");
+
+
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """);
+        verify(response, 200, "true");
+
+
+        // initialize share request
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@",
+                      "shareCredentials": "true"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@\"");
+        verifyNotExact(response, 200, "\"url\":\"credentials/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@\"");
+        verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
+
+        // verify user2 do not have access to the toolset
+        response = toolsetRequest(HttpMethod.GET, "/toolset@", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // accept invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // verify user2 has access to the toolset
+        response = toolsetRequest(HttpMethod.GET, "/toolset@", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // revoke share access
+        response = operationRequest("/v1/ops/resource/share/revoke", """
+                {
+                  "resources": [
+                    {
+                      "url": "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset%40"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/invitations");
+        verifyJson(response, 200, """
+                {
+                  "invitations" : [ ]
+                }
+                """);
+
+        // verify user2 do not have access to the toolset
+        response = toolsetRequest(HttpMethod.GET, "/toolset@", null, "Api-key", "proxyKey2");
+        verify(response, 403);
+
+        // verify user1 has no shared_with_me resources
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // verify user2 has no shared_with_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "me"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources" : []
+                }
+                """);
+
+        // verify user1 has no shared_by_me resource
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources" : []
+                }
+                """);
+
+        // verify user2 has no shared_by_me resources
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "others"
+                }
+                """, "Api-key", "proxyKey2");
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+    }
+
+    @Test
     public void testPartiallyRevokeSharedAccess() {
         // check no conversations shared with me
         Response response = operationRequest("/v1/ops/resource/share/list", """
