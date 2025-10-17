@@ -23,7 +23,8 @@ An object containing parameters for each [toolset](#toolsets).
 * `createdAt`: The date of the toolset creation. 
 * `updatedAt`: The date of the last toolset update. 
 * `transport`: A transport supported by MCP server. The available options are: `HTTP` or `SSE`.
-* `allowedTools`: A list of available tools in the MCP server.              |
+* `allowedTools`: A list of available tools in the MCP server.
+* `forwardPerRequestKey`: Set this flag to `true` if you want a [per request API key](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/3.per-request-keys.md) to be forwarded to the toolset endpoint allowing a toolset to access files in the DIAL storage.
 
 **Example:**
 
