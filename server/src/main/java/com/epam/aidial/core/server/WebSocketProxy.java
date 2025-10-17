@@ -184,20 +184,10 @@ public class WebSocketProxy {
         ProxyUtil.copyHeaders(context.getRequest().headers(), headers);
         if (upstream.getKey() != null) {
             headers.set(Proxy.HEADER_API_KEY, upstream.getKey());
-        } else if (context.getProxyApiKeyData() != null) {
-            headers.set(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
+        } else {
+            ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+            headers.set(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
         }
-
-        if (context.getUserDisplayName() != null) {
-            headers.set(Proxy.HEADER_JOB_TITLE, context.getUserDisplayName());
-        }
-        headers.set(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
-
-        String extraData = upstream.getExtraData();
-        if (extraData != null) {
-            headers.set(Proxy.HEADER_UPSTREAM_EXTRA_DATA, extraData);
-        }
-        headers.set(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
 
         options.setHeaders(headers);
         return options;
