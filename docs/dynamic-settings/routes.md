@@ -77,7 +77,8 @@ Routes can also proxy WebSocket connections. Configure the upstream endpoint wit
       "rewritePath": true,
       "upstreams": [
         {
-          "endpoint": "wss://echo.websocket.org"
+          "endpoint": "wss://echo.websocket.org",
+          "key": "optional-key"
         }
       ]
     }
@@ -86,3 +87,5 @@ Routes can also proxy WebSocket connections. Configure the upstream endpoint wit
 ```
 
 This configuration exposes `wss://<dial-host>/v1/echo` and transparently forwards all frames to `wss://echo.websocket.org` and back to the caller.
+
+The `key` field is passed in `api-key` header to the upstream endpoint.
