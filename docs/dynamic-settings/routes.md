@@ -4,7 +4,9 @@ Routes in DIAL are used for communication through registered endpoints in the DI
 
 ## routes
 
-A list of registered routes in AI DIAL Core. A route is used to proxy request through AI DIAL Core to upstream server.<br />AI DIAL Core provides capabilities: rate limiting, role based authorization, request balancing and access to AI DIAL Core resources such as LLMs, applications, file storage.
+A list of registered routes in AI DIAL Core. A route is used to proxy request through AI DIAL Core to upstream server.
+
+AI DIAL Core provides capabilities: rate limiting, role based authorization, request balancing and access to AI DIAL Core resources such as LLMs, applications, file storage.
 
 * `<route_name>`: A unique route name.
 
@@ -14,8 +16,8 @@ An object containing parameters for each [route](#routes).
 
 * `userRoles`: A list of user roles that can access this route. If the list is empty, the route is accessible by all users.
 * `response`: Pre-configured route's response. If the `response` is set then AI DIAL Core returns the response immediately. Available parameters:
-    - `status` - http status code
-    - `body` - http response body.
+  * `status` - http status code
+  * `body` - http response body.
 * `rewritePath`: A boolean flag that indicates that the path to the upstream server will be replaced with the path of the original request, if this flag is set to `true`.
 * `paths`: A list of paths to be matched request's path. If any path is matched, the request will be processed by this route. **Note**. A path can be a plain string or a regular expression.
 * `methods`: A list of HTTP methods supported by this route.
