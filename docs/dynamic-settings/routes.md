@@ -12,7 +12,7 @@ A list of registered routes in AI DIAL Core. A route is used to proxy request th
 
 An object containing parameters for each [route](#routes).
 
-* `userRoles`: A list of user roles that can access this route. If the list is empty, the route is accessible by all users. 
+* `userRoles`: A list of specific claim values provided by IDP in JWT. Refer to [IDP configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) for details.
 * `response`: Pre-configured route's response. If the `response` is set then AI DIAL Core returns the response immediately. Available parameters:
     - `status` - http status code
     - `body` - http response body.
