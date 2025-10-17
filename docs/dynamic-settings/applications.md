@@ -30,7 +30,7 @@ An object containing parameters for each [application](#applications).
 * `inputAttachmentTypes`: A list of allowed [MIME types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types) for the input attachments.
 * `maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity).
 * `forwardAuthToken`: A boolean parameter to determine whether the Auth Token should be forwarded from the caller's session to the upstream API call. This enables multi-tenant scenarios or pass-through authentication for downstream services. If flag is set to `true` forward Http header with authorization token to chat completion endpoint of the application.
-* `userRoles`: A specific claim value provided by a specific IDP in JWT. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
+* `userRoles`: A specific claim value provided by a specific IDP in JWT. If not defined, the application is available to all users. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
 * `descriptionKeywords`: A list of keywords describes the application, e.g. `code-gen`, `text2image`.
 * `maxRetryAttempts`: The number of times DIAL Core will [retry](https://docs.dialx.ai/platform/core/load-balancer#fallbacks) a connection in case of upstream errors.
 * `author`: The application's developer.
