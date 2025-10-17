@@ -114,7 +114,7 @@ public class WebSocketProxy {
 
     private boolean isWebSocketUpgrade(HttpServerRequest request) {
         String upgradeHeader = request.getHeader(HttpHeaders.UPGRADE);
-        return upgradeHeader != null && "websocket".equalsIgnoreCase(upgradeHeader);
+        return "websocket".equalsIgnoreCase(upgradeHeader);
     }
 
     private Future<Void> handleRateLimit(RateLimitResult result, ProxyContext context) {

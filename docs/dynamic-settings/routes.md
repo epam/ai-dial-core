@@ -74,6 +74,7 @@ Routes can also proxy WebSocket connections. Configure the upstream endpoint wit
   "routes": {
     "echo": {
       "paths": ["/v1/echo"],
+      "rewritePath": true,
       "upstreams": [
         {
           "endpoint": "wss://echo.websocket.org"
