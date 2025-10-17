@@ -72,13 +72,21 @@ Routes can also proxy WebSocket connections. Configure the upstream endpoint wit
 ```json
 {
   "routes": {
-    "echo": {
+    "websocket-echo": {
       "paths": ["/v1/echo"],
+      "upstreams": [
+        {
+          "endpoint": "wss://echo.websocket.org"
+        }
+      ]
+    },
+    "websocket-realtime-openai": {
+      "paths": ["/openai/realtime"],
       "rewritePath": true,
       "upstreams": [
         {
-          "endpoint": "wss://echo.websocket.org",
-          "key": "optional-key"
+          "endpoint": "wss://${AZURE_FOUNDRY_PROJECT_NAME}.cognitiveservices.azure.com/openai/realtime",
+          "key": "${AZURE_FOUNDRY_API_KEY}"
         }
       ]
     }
@@ -86,6 +94,19 @@ Routes can also proxy WebSocket connections. Configure the upstream endpoint wit
 }
 ```
 
-This configuration exposes `wss://<dial-host>/v1/echo` and transparently forwards all frames to `wss://echo.websocket.org` and back to the caller.
+This configuration exposes the following WebSocket endpoints:
 
-The `key` field is passed in `api-key` header to the upstream endpoint.
+1. `ws://${DIAL_HOST}/v1/echo` - requests to the endpoint are transparently forwarded to `wss://echo.websocket.org` and back to the DIAL client.
+2. `ws://${DIAL_HOST}/openai/realtime` - the endpoint could be used to access Azure Realtime API.
+  The Realtime API could be set accessed using `openai` library in the following way:
+
+  ```python
+  client = AsyncAzureOpenAI(
+      websocket_base_url="ws://${DIAL_HOST}/openai",
+      api_key="${DIAL_API_KEY}",
+      api_version="2025-04-01-preview"
+  )
+
+  async with client.beta.realtime.connect(model="gpt-realtime") as conn:
+      ...
+  ```
