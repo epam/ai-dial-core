@@ -16,7 +16,7 @@ An object containing parameters for each [toolset](#toolsets).
 * `iconUrl`: A string with the URL with the icon location to display for the toolset on UI.
 * `description`: A brief DIAL toolset description.
 * `displayName`: A string with the toolset's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the toolset.
-* `userRoles`: A specific claim value provided by a specific IDP in JWT. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.
+* `userRoles`: A specific claim value provided by a specific IDP in JWT. If not defined, the toolset is available to all users. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.
 * `descriptionKeywords`: A list of keywords describes the toolset, e.g. `code-gen`, `text2image`. 
 * `maxRetryAttempts`: A max retry attempts to route a single user request to the toolset's endpoint.
 * `author`: The toolset's developer.
