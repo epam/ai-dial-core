@@ -31,6 +31,13 @@ An object containing properties an each [API key](#keys).
         "role": "basic" // the name of the role
     }
 },
+"models": {
+    "chat-gpt-35-turbo": {
+        "userRoles": [
+            "basic"
+            ]
+    }
+},
 "roles": {
     "basic": { // the name of the role
         "limits": {
