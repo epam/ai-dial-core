@@ -143,10 +143,10 @@ public class ShareController {
                             .collect(Collectors.toUnmodifiableMap(
                                     resource -> ShareService.resourceFromUrl(resource.getUrl(), encryptionService),
                                     SharedResource::getPermissions));
-                    Map<ResourceDescriptor, Set<ResourceAccessType>> updatedPermissionsToRevoke =
-                            shareService.addSharedCredentialsToRevoke(permissionsToRevoke, context);
                     return proxy.getTaskExecutor()
                             .submit(() -> lockService.underBucketLock(bucketLocation, () -> {
+                                Map<ResourceDescriptor, Set<ResourceAccessType>> updatedPermissionsToRevoke =
+                                        shareService.addSharedCredentialsToRevoke(permissionsToRevoke, context);
                                 invitationService.cleanUpPermissions(bucket, bucketLocation, updatedPermissionsToRevoke);
                                 shareService.revokeSharedAccess(bucket, bucketLocation, updatedPermissionsToRevoke);
                                 return null;

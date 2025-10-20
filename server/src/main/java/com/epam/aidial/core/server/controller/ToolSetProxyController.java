@@ -197,15 +197,14 @@ public class ToolSetProxyController implements Controller {
                 ResourceDescriptor resourceDescriptor = credentialsLocator.getCredentialsDescriptors()
                         .get(CredentialsLevel.GLOBAL)
                         .toResourceDescriptor();
-                if (!accessService.hasReadAccess(resourceDescriptor, context)) {
-                    return;
+                if (accessService.hasReadAccess(resourceDescriptor, context)) {
+                    AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
+                    if (authorizationHeader != null) {
+                        proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
+                    }
                 }
             }
 
-            AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
-            if (authorizationHeader != null) {
-                proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
-            }
             if (toolSet.isForwardPerRequestKey()) {
                 String perRequestKey = assignPerRequestKey();
                 proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);

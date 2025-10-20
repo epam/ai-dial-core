@@ -29,6 +29,11 @@ public class SharedResource {
     @JsonDeserialize(using = SharedByDeserializer.class) // For backward compatibility with string value (action: ignore)
     List<ShareMetadata> sharedBy;
     Set<ResourceAccessType> permissions;
+
+    /**
+     * Indicates whether global resource credentials should be shared with the resource.
+     * Personal credentials cannot be shared.
+     */
     boolean shareCredentials;
 
     public SharedResource() {
