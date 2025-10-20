@@ -1,6 +1,7 @@
 package com.epam.aidial.core.credentials.data.credentials;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import lombok.Data;
 
 import java.util.Arrays;

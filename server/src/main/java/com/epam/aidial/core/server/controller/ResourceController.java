@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -24,6 +23,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
@@ -39,6 +39,8 @@ import java.util.List;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.storage.http.HttpStatus.INTERNAL_SERVER_ERROR;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.CONVERSATION;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.PROMPT;
 
 @Slf4j
 @SuppressWarnings("checkstyle:Indentation")
@@ -339,7 +341,7 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private static void validateRequestBody(ResourceDescriptor descriptor, String body) {
-        switch ((ResourceTypes) descriptor.getType()) {
+        switch (descriptor.getType()) {
             case PROMPT -> ProxyUtil.convertToObject(body, Prompt.class);
             case CONVERSATION -> ProxyUtil.convertToObject(body, Conversation.class);
             default -> throw new IllegalArgumentException("Unsupported resource type " + descriptor.getType());

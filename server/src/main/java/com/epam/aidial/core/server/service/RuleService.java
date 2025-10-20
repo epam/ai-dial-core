@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Publication;
-import com.epam.aidial.core.server.data.ResourceTypes;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.RuleMatcher;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -11,6 +10,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.type.TypeReference;
