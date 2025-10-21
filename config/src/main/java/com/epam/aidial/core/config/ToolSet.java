@@ -21,7 +21,7 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ToolSet extends SecuredResource {
 
-    private Transport transport;
+    private Transport transport = Transport.HTTP;
 
     @JsonAlias({"allowedTools", "allowed_tools"})
     private List<String> allowedTools = List.of();
