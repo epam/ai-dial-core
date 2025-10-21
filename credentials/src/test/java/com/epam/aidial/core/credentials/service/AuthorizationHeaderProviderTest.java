@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -17,7 +16,6 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,7 +34,7 @@ class AuthorizationHeaderProviderTest {
     @InjectMocks
     private AuthorizationHeaderProvider authorizationHeaderProvider;
 
-    private static Stream<TestArguments> provideAuthorizationHeaderGlobalTestArgs() {
+    private static Stream<TestArguments> provideAuthorizationHeaderTestArgs() {
         return Stream.of(
                 new TestArguments(
                         createResourceAuthSettings(AuthenticationType.OAUTH),
@@ -61,44 +59,8 @@ class AuthorizationHeaderProviderTest {
                                 "userSub"),
                         "apiKeyValue",
                         "x-api-key"
-                )
-        );
-    }
+                ),
 
-    @ParameterizedTest
-    @MethodSource("provideAuthorizationHeaderGlobalTestArgs")
-    void testCreateAuthorizationHeader_GlobalCredentials(TestArguments arguments) {
-        // Given
-        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
-        CredentialsDescriptor userCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-        CredentialsDescriptor globalCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-
-        Map<CredentialsLevel, CredentialsDescriptor> credentialsDescriptors = Map.of(
-                CredentialsLevel.USER, userCredentialsDescriptor,
-                CredentialsLevel.GLOBAL, globalCredentialsDescriptor);
-
-        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(credentialsDescriptors);
-        ResourceAuthSettings authSettings = arguments.authSettings;
-
-        when(resourceCredentialsService.getAndRefreshCredentials(userCredentialsDescriptor, authSettings))
-                .thenThrow(new ResourceNotFoundException("Credentials not found"));
-
-        when(resourceCredentialsService.getAndRefreshCredentials(globalCredentialsDescriptor, authSettings))
-                .thenReturn(arguments.resourceCredentials);
-
-        // When
-        AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(
-                credentialsLocator, authSettings, "userSub"
-        );
-
-        // Then
-        assertNotNull(header);
-        assertEquals(arguments.expectedHeaderName, header.getHeaderName());
-        assertEquals(arguments.expectedHeaderValue, header.getHeaderValue());
-    }
-
-    private static Stream<TestArguments> provideAuthorizationHeaderUserTestArgs() {
-        return Stream.of(
                 new TestArguments(
                         createResourceAuthSettings(AuthenticationType.OAUTH),
                         createCredentials(
@@ -127,21 +89,13 @@ class AuthorizationHeaderProviderTest {
     }
 
     @ParameterizedTest
-    @MethodSource("provideAuthorizationHeaderUserTestArgs")
-    void testCreateAuthorizationHeader_UserCredentials(TestArguments arguments) {
+    @MethodSource("provideAuthorizationHeaderTestArgs")
+    void testCreateAuthorizationHeader(TestArguments arguments) {
         // Given
         CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
-        CredentialsDescriptor userCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-        CredentialsDescriptor globalCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-
-        Map<CredentialsLevel, CredentialsDescriptor> credentialsDescriptors = Map.of(
-                CredentialsLevel.USER, userCredentialsDescriptor,
-                CredentialsLevel.GLOBAL, globalCredentialsDescriptor);
-
-        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(credentialsDescriptors);
         ResourceAuthSettings authSettings = arguments.authSettings;
 
-        when(resourceCredentialsService.getAndRefreshCredentials(userCredentialsDescriptor, authSettings))
+        when(resourceCredentialsService.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub"))
                 .thenReturn(arguments.resourceCredentials);
 
         // When
@@ -160,16 +114,13 @@ class AuthorizationHeaderProviderTest {
         // Given
         CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
         ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
-        String userSub = "userSub";
 
-        when(credentialsLocator.getResourceId()).thenReturn("testResource");
-        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.OAUTH);
-        when(resourceCredentialsService.getAndRefreshCredentials(any(), any()))
-                .thenReturn(null);
+        when(resourceCredentialsService.getRefreshedResourceCredentials(any(), any(), any()))
+                .thenThrow(new ResourceNotFoundException());
 
         // When & Then
         assertThrows(ResourceNotFoundException.class, () -> {
-            authorizationHeaderProvider.createAuthorizationHeader(credentialsLocator, authSettings, userSub);
+            authorizationHeaderProvider.createAuthorizationHeader(credentialsLocator, authSettings, "userSub");
         });
     }
 
@@ -178,13 +129,13 @@ class AuthorizationHeaderProviderTest {
         // Given
         CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
         ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
-        String userSub = "userSub";
 
-        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.NONE);
+        when(resourceCredentialsService.getRefreshedResourceCredentials(any(), any(), any()))
+                .thenReturn(null);
 
         // When
         AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(
-                credentialsLocator, authSettings, userSub
+                credentialsLocator, authSettings, "userSub"
         );
 
         // Then
