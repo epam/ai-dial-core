@@ -270,4 +270,8 @@ public class ProxyContext {
                 .map(h -> h.get(name))
                 .orElse(null);
     }
+
+    public ProxyContext copyWith(ApiKeyData newApiKeyData) {
+        return new ProxyContext(proxy, config, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+    }
 }
