@@ -30,12 +30,6 @@ public class SharedResource {
     List<ShareMetadata> sharedBy;
     Set<ResourceAccessType> permissions;
 
-    /**
-     * Indicates whether global resource credentials should be shared with the resource.
-     * Personal credentials cannot be shared.
-     */
-    boolean shareCredentials;
-
     public SharedResource() {
     }
 
@@ -47,29 +41,16 @@ public class SharedResource {
         this.permissions = permissions;
     }
 
-    public SharedResource(String url, String author, List<ShareMetadata> sharedBy,
-                          Set<ResourceAccessType> permissions, boolean shareCredentials) {
-        this.url = url;
-        this.author = author;
-        this.sharedBy = sharedBy;
-        this.permissions = permissions;
-        this.shareCredentials = shareCredentials;
-    }
-
     public SharedResource withUrl(String url) {
-        return new SharedResource(url, author, sharedBy, permissions, shareCredentials);
+        return new SharedResource(url, author, sharedBy, permissions);
     }
 
     public SharedResource withAuthor(String name) {
-        return new SharedResource(url, name, sharedBy, permissions, shareCredentials);
+        return new SharedResource(url, name, sharedBy, permissions);
     }
 
     private SharedResource withPermissions(Set<ResourceAccessType> permissions) {
-        return new SharedResource(url, author, sharedBy, permissions, shareCredentials);
-    }
-
-    public SharedResource withShareCredentials(boolean shareCredentials) {
-        return new SharedResource(url, author, sharedBy, permissions, shareCredentials);
+        return new SharedResource(url, author, sharedBy, permissions);
     }
 
     public SharedResource withReadIfNoPermissions() {

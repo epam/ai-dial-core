@@ -178,25 +178,9 @@ public class AiDial {
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService);
-
-            TimeProvider timeProvider = new TimeProvider();
-            TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
-            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
-            ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
-                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider);
-            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
-                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient);
-            AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
-            ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
-                    credentialEncryptionService);
-            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
-                    resourceAuthSettingsEncryptionService, resourceCredentialsService);
-
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     resourceService, lockService, operatorService, applicationSchemaService, generator, settings("applications"));
-            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
-                    lockService, applicationSchemaService, clock, resourceCredentialsService);
+            ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService, lockService, applicationSchemaService, clock);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
@@ -212,6 +196,20 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
+            TimeProvider timeProvider = new TimeProvider();
+            TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
+            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
+                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider);
+            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient);
+            AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
+            ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
+                    credentialEncryptionService);
+
+            ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService);
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
                     toolSetService, resourceService, invitationService, shareService, lockService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,

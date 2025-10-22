@@ -1,6 +1,5 @@
 package com.epam.aidial.core.credentials.service;
 
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
@@ -164,41 +163,8 @@ public class ResourceCredentialsService {
         }
     }
 
-    public ResourceCredentials getRefreshedResourceCredentials(CredentialsLocator credentialsLocator,
-                                                               ResourceAuthSettings authSettings,
-                                                               String userSub) {
-        if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
-            return null;
-        }
-
-        try {
-            ResourceCredentials userCredentials = getAndRefreshCredentials(
-                    credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER),
-                    authSettings
-            );
-            if (userCredentials != null
-                    && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                    && userCredentials.getUserSub().equals(userSub)) {
-                return userCredentials;
-            }
-        } catch (ResourceNotFoundException e) {
-            log.debug(e.getMessage(), e); // if User credentials are not found - let's look for Global one
-        }
-
-        ResourceCredentials globalCredentials = getAndRefreshCredentials(
-                credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.GLOBAL),
-                authSettings
-        );
-        if (globalCredentials != null
-                && globalCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
-            return globalCredentials;
-        }
-
-        throw new ResourceNotFoundException("Credentials (Global or Personal) for Resource %s not found".formatted(credentialsLocator.getResourceId()));
-    }
-
-    private ResourceCredentials getAndRefreshCredentials(CredentialsDescriptor credentialsDescriptor,
-                                                         ResourceAuthSettings authSettings) {
+    public ResourceCredentials getAndRefreshCredentials(CredentialsDescriptor credentialsDescriptor,
+                                                        ResourceAuthSettings authSettings) {
         String resourceId = credentialsDescriptor.getResourceId();
         String bucketName = credentialsDescriptor.getBucketName();
         log.debug("Updating resource credentials for resourceId={}, bucket={}", resourceId, bucketName);

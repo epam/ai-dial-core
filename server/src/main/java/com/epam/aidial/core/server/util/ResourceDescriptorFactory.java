@@ -101,7 +101,7 @@ public class ResourceDescriptorFactory {
             throw new IllegalArgumentException("Url must start with resource/bucket/, but: " + url);
         }
 
-        ResourceType resourceType = ResourceTypes.of(UrlUtil.decodePath(parts[0]));
+        ResourceTypes resourceType = ResourceTypes.of(UrlUtil.decodePath(parts[0]));
         String bucket = UrlUtil.decodePath(parts[1]);
         String location = null;
 
