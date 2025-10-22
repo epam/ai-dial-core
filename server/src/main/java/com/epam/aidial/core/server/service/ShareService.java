@@ -1,14 +1,9 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.ShareResourceLimit;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Invitation;
 import com.epam.aidial.core.server.data.InvitationLink;
@@ -22,7 +17,6 @@ import com.epam.aidial.core.server.data.SharedResources;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
-import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -68,17 +62,12 @@ public class ShareService {
     private final LockService lockService;
     private final ApplicationSchemaService applicationSchemaService;
     private final LongSupplier clock;
-    private final ResourceCredentialsService resourceCredentialsService;
 
     private static final Map<ResourceType, ShareResourceLimit> DEFAULT_LIMITS = Map.of(
             ResourceTypes.APPLICATION, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)),
             ResourceTypes.CONVERSATION, new ShareResourceLimit(TimeUnit.HOURS.toSeconds(72)),
             ResourceTypes.FILE, new ShareResourceLimit(TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.PROMPT, new ShareResourceLimit(TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.TOOL_SET, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.CREDENTIALS, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)));
-
-    private static final Set<ResourceType> CREDS_SHARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.TOOL_SET);
+            ResourceTypes.PROMPT, new ShareResourceLimit(TimeUnit.HOURS.toSeconds(72)));
 
     /**
      * Returns a list of resources shared with user.
@@ -92,7 +81,7 @@ public class ShareService {
         Set<ResourceTypes> requestedResourceType = request.getResourceTypes();
 
         Set<ResourceDescriptor> shareResources = new HashSet<>();
-        for (ResourceType resourceType : requestedResourceType) {
+        for (ResourceTypes resourceType : requestedResourceType) {
             ResourceDescriptor sharedResource = getShareResource(ResourceTypes.SHARED_WITH_ME, resourceType, bucket, location);
             shareResources.add(sharedResource);
         }
@@ -134,7 +123,7 @@ public class ShareService {
         Set<ResourceTypes> requestedResourceTypes = request.getResourceTypes();
 
         Set<ResourceDescriptor> shareResources = new HashSet<>();
-        for (ResourceType resourceType : requestedResourceTypes) {
+        for (ResourceTypes resourceType : requestedResourceTypes) {
             ResourceDescriptor shareResource = getShareResource(ResourceTypes.SHARED_BY_ME, resourceType, bucket, location);
             shareResources.add(shareResource);
         }
@@ -184,11 +173,8 @@ public class ShareService {
         validateShareResourcesRequest(request);
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         String bucket = encryptionService.encrypt(bucketLocation);
-
         // validate resources - owner must be current user
         addCustomApplicationRelatedFiles(bucket, request);
-        addCredentialsSharing(context, request);
-
         Set<SharedResource> sharedResources = request.getResources();
         Set<String> uniqueLinks = new HashSet<>();
         List<SharedResource> normalizedResourceLinks = new ArrayList<>(sharedResources.size());
@@ -315,27 +301,6 @@ public class ShareService {
         return defaultLimit;
     }
 
-    private void addCredentialsSharing(ProxyContext context,
-                                            ShareResourcesRequest request) {
-        Set<SharedResource> newSharedResources = new HashSet<>(request.getResources());
-        for (SharedResource sharedResource : request.getResources()) {
-            ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
-            if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType()) && sharedResource.isShareCredentials()) {
-                CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context);
-                ResourceCredentials globalResourceCredentials =
-                        resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
-
-                if (globalResourceCredentials != null) {
-                    ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
-                    SharedResource sharedCredentials = new SharedResource(
-                            resourceDescriptor.getUrl(), null, null, ResourceAccessType.READ_ONLY);
-                    newSharedResources.add(sharedCredentials);
-                }
-            }
-        }
-        request.setResources(newSharedResources);
-    }
-
     /**
      * Accept an invitation to grand share access for provided resources
      *
@@ -364,7 +329,7 @@ public class ShareService {
         }
 
         // group resources with the same type to reduce resource transformations
-        Map<ResourceType, List<SharedResource>> resourceGroups = resourceLinks.stream()
+        Map<ResourceTypes, List<SharedResource>> resourceGroups = resourceLinks.stream()
                 .collect(Collectors.groupingBy(sharedResource -> getResourceType(sharedResource.getUrl())));
         lockService.underBucketLock(resourceOwnerLocation, () -> {
             List<Pair<ResourceDescriptor, SharedByMeDto>> resourcesToBeUpdated = new ArrayList<>();
@@ -482,8 +447,8 @@ public class ShareService {
      * @param location            - storage location
      * @param permissionsToRevoke - collection of resources and permissions to revoke access
      */
-    public void revokeSharedAccess(String bucket, String location,
-                                   Map<ResourceDescriptor, Set<ResourceAccessType>> permissionsToRevoke) {
+    public void revokeSharedAccess(
+            String bucket, String location, Map<ResourceDescriptor, Set<ResourceAccessType>> permissionsToRevoke) {
         if (permissionsToRevoke.isEmpty()) {
             throw new IllegalArgumentException("No resources provided");
         }
@@ -524,30 +489,6 @@ public class ShareService {
                 });
             }
         });
-    }
-
-    public Map<ResourceDescriptor, Set<ResourceAccessType>> addSharedCredentialsToRevoke(Map<ResourceDescriptor, Set<ResourceAccessType>> permissionsToRevoke,
-                                                                                         ProxyContext context) {
-        Map<ResourceDescriptor, Set<ResourceAccessType>> newPermissionsToRevoke = new HashMap<>(permissionsToRevoke);
-        permissionsToRevoke.forEach((resource, permissionsToRemove) -> {
-            if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType())
-                    && permissionsToRemove.contains(ResourceAccessType.READ)) {
-                CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context);
-                ResourceCredentials globalResourceCredentials = resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
-                if (globalResourceCredentials != null) {
-                    ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
-                    newPermissionsToRevoke.put(resourceDescriptor, ResourceAccessType.ALL);
-                }
-            }
-        });
-
-        return newPermissionsToRevoke;
-    }
-
-    private CredentialsDescriptor getGlobalCredentialsDescriptor(ResourceDescriptor resourceDescriptor,
-                                                                 ProxyContext context) {
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceDescriptor.getUrl(), context);
-        return credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.GLOBAL);
     }
 
     public void discardSharedAccess(String bucket, String location, ResourceLinkCollection request) {
@@ -743,7 +684,7 @@ public class ShareService {
                 requestedResourceType.group() + ResourceDescriptor.PATH_SEPARATOR + SHARE_RESOURCE_FILENAME);
     }
 
-    private ResourceType getResourceType(String url) {
+    private ResourceTypes getResourceType(String url) {
         if (url == null) {
             throw new IllegalStateException("Resource link can not be null");
         }

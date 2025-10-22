@@ -145,10 +145,8 @@ public class ShareController {
                                     SharedResource::getPermissions));
                     return proxy.getTaskExecutor()
                             .submit(() -> lockService.underBucketLock(bucketLocation, () -> {
-                                Map<ResourceDescriptor, Set<ResourceAccessType>> updatedPermissionsToRevoke =
-                                        shareService.addSharedCredentialsToRevoke(permissionsToRevoke, context);
-                                invitationService.cleanUpPermissions(bucket, bucketLocation, updatedPermissionsToRevoke);
-                                shareService.revokeSharedAccess(bucket, bucketLocation, updatedPermissionsToRevoke);
+                                invitationService.cleanUpPermissions(bucket, bucketLocation, permissionsToRevoke);
+                                shareService.revokeSharedAccess(bucket, bucketLocation, permissionsToRevoke);
                                 return null;
                             }));
                 })

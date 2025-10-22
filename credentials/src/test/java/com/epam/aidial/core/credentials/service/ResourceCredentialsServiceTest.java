@@ -34,7 +34,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -78,7 +78,6 @@ class ResourceCredentialsServiceTest {
 
     @Test
     void testAddResourceCredentials_putsResource() {
-        // Given
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         CredentialsDescriptor descriptor = createCredentialsDescriptor();
         ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder().build();
@@ -96,10 +95,8 @@ class ResourceCredentialsServiceTest {
                 resourceSignInRequest))
                 .thenReturn(creds);
 
-        // When
         service.addResourceCredentials(descriptor, resourceAuthSettings, resourceSignInRequest, "userSub");
 
-        // Then
         ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         ArgumentCaptor<byte[]> bodyCaptor = ArgumentCaptor.forClass(byte[].class);
         ArgumentCaptor<EtagHeader> etagCaptor = ArgumentCaptor.forClass(EtagHeader.class);
@@ -121,7 +118,6 @@ class ResourceCredentialsServiceTest {
 
     @Test
     void testGetAllResourceCredentials_returnsOne() {
-        // Given
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
         CredentialsLocator credentialsLocator = createCredentialsLocator();
@@ -129,10 +125,8 @@ class ResourceCredentialsServiceTest {
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
         when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
 
-        // When
         List<ResourceCredentials> list = service.getAllResourceCredentials(credentialsLocator);
 
-        // Then
         assertNotNull(list);
         assertEquals(1, list.size());
         ResourceCredentials c = list.getFirst();
@@ -163,7 +157,6 @@ class ResourceCredentialsServiceTest {
 
     @Test
     void getResourceCredentials() {
-        // Given
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
         CredentialsDescriptor credentialsDescriptor = createCredentialsDescriptor();
@@ -171,11 +164,8 @@ class ResourceCredentialsServiceTest {
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
         when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
 
-        // When
         ResourceCredentials resourceCredentials = service.getResourceCredentials(credentialsDescriptor);
 
-        // Then
-        assertNotNull(resourceCredentials);
         assertEquals(CredentialsLevel.USER, resourceCredentials.getCredentialsLevel());
         assertEquals(TOOL_SET_NAME, resourceCredentials.getResourceId());
 
@@ -198,7 +188,7 @@ class ResourceCredentialsServiceTest {
 
         CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
         when(resourceSignOutRequest.getCredentialsLevel()).thenReturn(CredentialsLevel.USER);
-        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
+        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new HashMap<>();
         descriptors.put(CredentialsLevel.USER, credentialsDescriptor);
         when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
 
@@ -234,7 +224,7 @@ class ResourceCredentialsServiceTest {
 
         CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
         when(resourceSignOutRequest.getCredentialsLevel()).thenReturn(CredentialsLevel.USER);
-        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
+        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new HashMap<>();
         descriptors.put(CredentialsLevel.USER, credentialsDescriptor);
         when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
 
@@ -262,44 +252,19 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
-    void testGetRefreshedResourceCredentials_SuccessForNoneAuth() {
+    void testGetAndRefreshCredentials_SuccessWithoutTokenRefresh() {
         // Given
-        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
-        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
-        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.NONE);
-
-        // When
-        ResourceCredentials result = service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
-
-        // Then
-        Assertions.assertNull(result);
-    }
-
-    @Test
-    void testGetRefreshedResourceCredentials_SuccessWithoutTokenRefresh() {
-        // Given
-        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
         CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
-        descriptors.put(CredentialsLevel.USER, credentialsDescriptor);
-        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
-
         ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
         when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.API_KEY);
+
 
         Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
         Mockito.when(credentialsDescriptor.getBucketName()).thenReturn("testBucket");
         Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
         byte[] encryptedBytes = "mockEncryptedData".getBytes(StandardCharsets.UTF_8);
-        byte[] decryptedBytes = """
-                {
-                    "resourceId": "testResourceId",
-                    "credentialsLevel": "USER",
-                    "userSub": "userSub",
-                    "authenticationType": "API_KEY"
-                }
-                """.getBytes(StandardCharsets.UTF_8);
+        byte[] decryptedBytes = "{\"authenticationType\": \"API_KEY\"}".getBytes(StandardCharsets.UTF_8);
 
         ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
         when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
@@ -316,7 +281,7 @@ class ResourceCredentialsServiceTest {
                 .thenReturn(apiKeyRefreshStrategy);
 
         // When
-        ResourceCredentials result = service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
+        ResourceCredentials result = service.getAndRefreshCredentials(credentialsDescriptor, authSettings);
 
         // Then
         Assertions.assertNotNull(result);
@@ -326,11 +291,7 @@ class ResourceCredentialsServiceTest {
     @Test
     void testGetAndRefreshCredentials_SuccessWithTokenRefresh() {
         // Given
-        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
         CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
-        descriptors.put(CredentialsLevel.USER, credentialsDescriptor);
-        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
         ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
         when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.OAUTH);
 
@@ -342,8 +303,6 @@ class ResourceCredentialsServiceTest {
         byte[] decryptedBytes = """
                 {
                     "resourceId": "testResourceId",
-                    "credentialsLevel": "USER",
-                    "userSub": "userSub",
                     "authenticationType": "OAUTH",
                     "accessToken": "expiredAccessToken",
                     "refreshToken": "refreshTokenValue",
@@ -372,7 +331,7 @@ class ResourceCredentialsServiceTest {
         }).when(resourceService).computeResourceBytes(any(), any());
 
         // When
-        ResourceCredentials result = service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
+        ResourceCredentials result = service.getAndRefreshCredentials(credentialsDescriptor, authSettings);
 
         // Then
         Assertions.assertNotNull(result);
@@ -384,21 +343,11 @@ class ResourceCredentialsServiceTest {
     @Test
     void testGetAndRefreshCredentials_CredentialsNotFound() {
         // Given
-        CredentialsDescriptor globalCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-        Mockito.when(globalCredentialsDescriptor.getResourceId()).thenReturn("testResourceId");
-        Mockito.when(globalCredentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
-
-        CredentialsDescriptor userCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
-        Mockito.when(userCredentialsDescriptor.getResourceId()).thenReturn("testResourceId");
-        Mockito.when(userCredentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
-
-        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
-        descriptors.put(CredentialsLevel.USER, userCredentialsDescriptor);
-        descriptors.put(CredentialsLevel.GLOBAL, globalCredentialsDescriptor);
-
-        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
-        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
         ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+
+        Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
+        Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
         Mockito.doAnswer(invocation -> {
             Function<byte[], byte[]> callbackFunction = invocation.getArgument(1);
@@ -407,8 +356,9 @@ class ResourceCredentialsServiceTest {
 
         // When & Then
         Assertions.assertThrows(ResourceNotFoundException.class, () -> {
-            service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
+            service.getAndRefreshCredentials(credentialsDescriptor, authSettings);
         });
+        Mockito.verify(resourceService).computeResourceBytes(any(), any());
     }
 
     private CredentialsDescriptor createCredentialsDescriptor() {
