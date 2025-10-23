@@ -300,6 +300,9 @@ public class ToolSetProxyController implements Controller {
                 .filter(JsonNode::isArray).orElse(EMPTY_JSON_ARRAY);
         ToolSet toolSet = (ToolSet) context.getDeployment();
         List<String> allowedTools = toolSet.getAllowedTools();
+        if (allowedTools.isEmpty()) {
+            return false;
+        }
         boolean modified = false;
         for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext();) {
             JsonNode tool = iter.next();
