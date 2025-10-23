@@ -44,7 +44,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
 import java.util.List;
@@ -78,7 +78,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
-        if (!StringUtils.containsIgnoreCase(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
+        if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         // handle a special deployment `interceptor`

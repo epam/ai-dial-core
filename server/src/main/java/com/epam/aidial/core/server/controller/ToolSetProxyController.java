@@ -41,6 +41,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
 import java.util.Iterator;
@@ -48,6 +49,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+
+import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 
 @Slf4j
 public class ToolSetProxyController implements Controller {
@@ -137,7 +140,7 @@ public class ToolSetProxyController implements Controller {
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
-        if (Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(contentType)) {
+        if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
 
             try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
@@ -224,7 +227,8 @@ public class ToolSetProxyController implements Controller {
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
 
-        if (Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE))) {
+        String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
+        if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             proxyResponse.body().onSuccess(body -> handleResponse(responseStatusCode, body))
                     .onFailure(this::handleResponseError);
         } else {
