@@ -221,6 +221,8 @@ public class ToolSetProxyController implements Controller {
         if (responseStatusCode == 200) {
             context.getUpstreamRoute().succeed();
         }
+        HttpServerResponse response = context.getResponse();
+        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
 
         if (Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE))) {
             proxyResponse.body().onSuccess(body -> handleResponse(responseStatusCode, body))
@@ -240,7 +242,6 @@ public class ToolSetProxyController implements Controller {
         HttpServerResponse response = context.getResponse();
         response.setChunked(true);
         response.setStatusCode(proxyResponse.statusCode());
-        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)
