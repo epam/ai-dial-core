@@ -17,6 +17,8 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
 
@@ -29,7 +31,7 @@ public class BaseDeploymentPostController {
 
     protected BufferingReadStream createResponseStream(HttpClientResponse proxyResponse) {
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
-        boolean isEventStreamResponse = "text/event-stream".equalsIgnoreCase(contentType) && context.isStreamingRequest();
+        boolean isEventStreamResponse = Strings.CI.contains(contentType, "text/event-stream") && context.isStreamingRequest();
         CollectResponseAttachmentsFn handler = isEventStreamResponse ? new CollectResponseChatCompletionAttachmentsFn(proxy, context) : null;
         return new BufferingReadStream(proxyResponse, ProxyUtil.contentLength(proxyResponse, 1024), handler);
     }
