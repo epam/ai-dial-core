@@ -213,6 +213,11 @@ public class AccessService {
                 result.put(resource, autoSharedData.accessTypes());
                 continue;
             }
+            autoSharedData = apiKeyData.getAttachedToolSetCredentials().get(resourceUrl);
+            if (autoSharedData != null) {
+                result.put(resource, autoSharedData.accessTypes());
+                continue;
+            }
             Set<Map.Entry<String, AutoSharedData>> attachedFolders = apiKeyData
                     .getAttachedFolders().entrySet();
             for (var entry : attachedFolders) {

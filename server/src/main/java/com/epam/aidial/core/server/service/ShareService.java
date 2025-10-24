@@ -316,21 +316,26 @@ public class ShareService {
     }
 
     private void addCredentialsSharing(ProxyContext context,
-                                            ShareResourcesRequest request) {
+                                       ShareResourcesRequest request) {
         Set<SharedResource> newSharedResources = new HashSet<>(request.getResources());
         for (SharedResource sharedResource : request.getResources()) {
             ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
             if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType()) && sharedResource.isShareCredentials()) {
+                log.debug("Credential sharing started - User: {}, Resource: {}.", context.getUserSub(), sharedResource.getUrl());
                 CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context);
                 ResourceCredentials globalResourceCredentials =
                         resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
 
-                if (globalResourceCredentials != null) {
+                if (globalResourceCredentials != null
+                        && globalResourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
                     ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
                     SharedResource sharedCredentials = new SharedResource(
                             resourceDescriptor.getUrl(), null, null, ResourceAccessType.READ_ONLY);
                     newSharedResources.add(sharedCredentials);
+                } else {
+                    throw new IllegalArgumentException("Global credentials for resource: %s not found".formatted(sharedResource.getUrl()));
                 }
+                log.debug("Credential sharing finished - User: {}, Resource: {}.", context.getUserSub(), sharedResource.getUrl());
             }
         }
         request.setResources(newSharedResources);
@@ -532,12 +537,14 @@ public class ShareService {
         permissionsToRevoke.forEach((resource, permissionsToRemove) -> {
             if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType())
                     && permissionsToRemove.contains(ResourceAccessType.READ)) {
+                log.debug("Credential revocation started - User: {}, Resource: {}", context.getUserSub(), resource.getUrl());
                 CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context);
                 ResourceCredentials globalResourceCredentials = resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
                 if (globalResourceCredentials != null) {
                     ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
                     newPermissionsToRevoke.put(resourceDescriptor, ResourceAccessType.ALL);
                 }
+                log.debug("Credential revocation finished - User: {}, Resource: {}", context.getUserSub(), resource.getUrl());
             }
         });
 

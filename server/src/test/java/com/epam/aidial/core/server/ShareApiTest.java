@@ -661,6 +661,65 @@ public class ShareApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testToolSetShareWithUserCredentials() {
+        // check no toolsets or credentials shared with me
+        Response response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "me"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // check no toolsets or credentials shared by me
+        response = operationRequest("/v1/ops/resource/share/list", """
+                {
+                  "resourceTypes": ["TOOL_SET", "CREDENTIALS"],
+                  "with": "others"
+                }
+                """);
+        verifyJson(response, 200, """
+                {
+                  "resources": []
+                }
+                """);
+
+        // create ToolSet
+        response = toolsetRequest(HttpMethod.PUT, "/toolset@", TOOLSET_CREATE_REQEUST_BODY);
+        verifyNotExact(response, 200, "\"url\":\"toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@\"");
+
+
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@",
+                    "credentialsLevel": "USER",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """);
+        verify(response, 200, "true");
+
+
+        // initialize share request with personal credentials
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@",
+                      "shareCredentials": "true"
+                    }
+                  ]
+                }
+                """);
+        verify(response, 400);
+    }
+
+    @Test
     public void testPartiallyRevokeSharedAccess() {
         // check no conversations shared with me
         Response response = operationRequest("/v1/ops/resource/share/list", """

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -96,7 +97,7 @@ public class ResourceBaseTest {
 
     public static final String TOOLSET_CREATE_REQEUST_BODY = """
             {
-                "endpoint": "https://some_server/mcp/",
+                "endpoint": "http://localhost:9876",
                 "transport": "HTTP",
                 "allowedTools": [],
                 "auth_settings": {
@@ -226,6 +227,15 @@ public class ResourceBaseTest {
         return perRequestKey;
     }
 
+    static ApiKeyData createAppKey(String user,
+                                   Map<String, AutoSharedData> attachedToolSets) {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims(user));
+        perRequestKey.setSourceDeployment("testapp");
+        perRequestKey.setAttachedToolSets(attachedToolSets);
+        return perRequestKey;
+    }
+
     @AfterEach
     void destroy() throws Exception {
         try {
@@ -306,6 +316,8 @@ public class ResourceBaseTest {
     }
 
     Response toolsetRequest(HttpMethod method, String resource, String body, String... headers) {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", headers);
+        bucket = new JsonObject(response.body).getString("bucket");
         return send(method, "/v1/toolsets/" + bucket + resource, null, body, headers);
     }
 
@@ -429,7 +441,7 @@ public class ResourceBaseTest {
         return stream;
     }
 
-    record Response(int status, String body, Map<String, String> headers) {
+    protected record Response(int status, String body, Map<String, String> headers) {
         public boolean ok() {
             return status() == 200;
         }

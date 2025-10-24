@@ -192,17 +192,19 @@ public class ToolSetProxyController implements Controller {
                     credentialsLocator, toolSet.getAuthSettings(), context.getUserSub()
             );
 
-            if (resourceCredentials != null
-                    && resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
-                ResourceDescriptor resourceDescriptor = credentialsLocator.getCredentialsDescriptors()
-                        .get(CredentialsLevel.GLOBAL)
-                        .toResourceDescriptor();
-                if (accessService.hasReadAccess(resourceDescriptor, context)) {
-                    AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
-                    if (authorizationHeader != null) {
-                        proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
+            if (resourceCredentials != null) {
+                CredentialsLevel level = resourceCredentials.getCredentialsLevel();
+                if (level.equals(CredentialsLevel.USER)) {
+                    addAuthorizationHeader(proxyRequest, resourceCredentials);
+                } else if (level.equals(CredentialsLevel.GLOBAL)) {
+                    ResourceDescriptor resourceDescriptor = credentialsLocator.getCredentialsDescriptors()
+                            .get(CredentialsLevel.GLOBAL)
+                            .toResourceDescriptor();
+                    if (accessService.hasReadAccess(resourceDescriptor, context)) {
+                        addAuthorizationHeader(proxyRequest, resourceCredentials);
                     }
                 }
+                log.debug("Credential not found - User: {}, Resource: {}", context.getUserSub(), toolSetId);
             }
 
             if (toolSet.isForwardPerRequestKey()) {
@@ -211,6 +213,14 @@ public class ToolSetProxyController implements Controller {
             }
         } catch (ResourceNotFoundException e) {
             log.error(e.getMessage(), e);
+        }
+    }
+
+    private void addAuthorizationHeader(HttpClientRequest proxyRequest,
+                                        ResourceCredentials resourceCredentials) {
+        AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
+        if (authorizationHeader != null) {
+            proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
         }
     }
 
