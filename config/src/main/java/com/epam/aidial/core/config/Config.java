@@ -14,6 +14,7 @@ import lombok.Data;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -40,6 +41,8 @@ public class Config {
     @JsonSerialize(using = MapToJsonArraySerializer.class)
     @ConformToMetaSchema(message = "All custom application type schemas should conform to meta schema")
     private Map<String, String> applicationTypeSchemas = Map.of();
+
+    private List<String> globalInterceptors = List.of();
 
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {

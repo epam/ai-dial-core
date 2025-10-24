@@ -1,7 +1,10 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
@@ -43,13 +46,17 @@ public class DeploymentService {
 
     private final AccessService accessService;
 
+    private final ApplicationSchemaService applicationSchemaService;
+
     public DeploymentService(EncryptionService encryptionService, ApplicationService applicationService,
-                             AccessService accessService, ToolSetService toolSetService, ResourceService resourceService) {
+                             AccessService accessService, ToolSetService toolSetService, ResourceService resourceService,
+                             ApplicationSchemaService applicationSchemaService) {
         this.encryptionService = encryptionService;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
         this.accessService = accessService;
         this.resourceService = resourceService;
+        this.applicationSchemaService = applicationSchemaService;
     }
 
     public Deployment findDeployment(ProxyContext context, String id) {
@@ -194,6 +201,25 @@ public class DeploymentService {
     public interface DeploymentExtractor {
         <T extends Deployment> T extract(ResourceDescriptor resource, ProxyContext context);
 
+    }
+
+    public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
+        List<String> result = new ArrayList<>(context.getConfig().getGlobalInterceptors());
+        if (deployment instanceof Application application) {
+            List<String> appTypeInterceptors = applicationSchemaService.getInterceptors(application);
+            mergeInterceptors(appTypeInterceptors, result);
+        }
+        List<String> localInterceptors = deployment.getInterceptors();
+        mergeInterceptors(localInterceptors, result);
+        return result;
+    }
+
+    private static void mergeInterceptors(List<String> source, List<String> destination) {
+        for (String interceptor : source) {
+            if (!destination.contains(interceptor)) {
+                destination.add(interceptor);
+            }
+        }
     }
 
 }

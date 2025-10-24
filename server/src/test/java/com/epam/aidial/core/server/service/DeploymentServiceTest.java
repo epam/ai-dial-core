@@ -17,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +43,9 @@ public class DeploymentServiceTest {
 
     @Mock
     private Config config;
+
+    @Mock
+    private ApplicationSchemaService applicationSchemaService;
 
     @InjectMocks
     private DeploymentService service;
@@ -102,5 +106,17 @@ public class DeploymentServiceTest {
         Deployment deployment = service.findDeployment(context, "applications/public/my-app");
 
         assertEquals(application, deployment);
+    }
+
+    @Test
+    public void testGetInterceptors() {
+        when(config.getGlobalInterceptors()).thenReturn(List.of("i1", "i2"));
+        Application application = new Application();
+        when(applicationSchemaService.getInterceptors(application)).thenReturn(List.of("i3", "i2"));
+        application.setInterceptors(List.of("i4", "i3"));
+
+        List<String> result = service.getInterceptors(context, application);
+
+        assertEquals(List.of("i1", "i2", "i3", "i4"), result);
     }
 }
