@@ -1,18 +1,55 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ToolSetApiTest extends ResourceBaseTest {
+
+    private static final String MCP_TOOL_CALL_REQUEST = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_weather",
+                        "arguments": {
+                            "location": "San Francisco"
+                        }
+                    }
+                }
+                """;
+
+    private static final String MCP_TOOL_CALL_RESPONSE = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "content": [
+                            {
+                               "type": "text",
+                                "text": "The weather in San Francisco is 72°F and sunny"
+                            }
+                        ]
+                    }
+                }
+                """;
 
     @Test
     void testToolsetCreation() {
@@ -441,6 +478,134 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "allowed_tools" : [ "tool1", "tool2" ]
                 }
                 """);
+    }
+
+    @Test
+    void testProxyMcpCallWithUserConsentRequiredButNotProvided() throws JsonProcessingException {
+        // create ToolSet with required user's consent
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, """
+            {
+                "endpoint": "http://localhost:9876",
+                "transport": "HTTP",
+                "allowedTools": [],
+                "auth_settings": {
+                    "authentication_type": "API_KEY",
+                    "api_key_header": "Authorization"
+                },
+                "features": {
+                    "consentRequired": "true"
+                }
+            }
+                """, "authorization", "admin");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
+
+        // signin into toolset
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """, "authorization", "admin");
+        verify(response, 200, "true");
+
+        // verify user consent is not provided
+        response = send(HttpMethod.GET, "/v1/consent/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "admin");
+        verify(response, 200);
+        ObjectNode node = (ObjectNode) ProxyUtil.MAPPER.readTree(response.body());
+        assertFalse(node.get("accepted").asBoolean());
+
+        // use mcp
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(MCP_TOOL_CALL_RESPONSE)
+                .setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            ApiKeyData adminAppKey = createAppKey("user", Map.of(
+                    "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    new AutoSharedData(Set.of(ResourceAccessType.READ))));
+            apiKeyStore.assignPerRequestApiKey(adminAppKey);
+
+            Response resp = send(HttpMethod.POST, "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/toolset@/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "authorization", "admin");
+
+            assertEquals(403, resp.status());
+        }
+    }
+
+    @Test
+    void testProxyMcpCallWithUserConsentRequiredAndProvided() throws JsonProcessingException {
+        // create ToolSet with required user's consent
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null,
+                """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "Authorization"
+                    },
+                    "features": {
+                        "consentRequired": "true"
+                    }
+                }
+                """,
+                "authorization", "admin");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
+
+        // signin into toolset
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """, "authorization", "admin");
+        verify(response, 200, "true");
+
+        // verify user consent is not provided
+        response = send(HttpMethod.GET, "/v1/consent/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "admin");
+        verify(response, 200);
+        ObjectNode node = (ObjectNode) ProxyUtil.MAPPER.readTree(response.body());
+        assertFalse(node.get("accepted").asBoolean());
+
+        // provide consent to use toolset
+        node.remove("accepted");
+        response = send(HttpMethod.POST, "/v1/consent/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, node.toString(), "authorization", "admin");
+        verify(response, 200);
+
+        // verify user consent is provided
+        response = send(HttpMethod.GET, "/v1/consent/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "admin");
+        verify(response, 200);
+        node = (ObjectNode) ProxyUtil.MAPPER.readTree(response.body());
+        assertTrue(node.get("accepted").asBoolean());
+
+        // use mcp with user's per request api key
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(MCP_TOOL_CALL_RESPONSE)
+                .setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            ApiKeyData adminAppKey = createAppKey("admin", Map.of(
+                    "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    new AutoSharedData(Set.of(ResourceAccessType.READ))));
+            apiKeyStore.assignPerRequestApiKey(adminAppKey);
+
+            Response resp = send(HttpMethod.POST, "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/toolset@/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", adminAppKey.getPerRequestKey());
+
+            assertEquals(200, resp.status());
+        }
+    }
+
+    static ApiKeyData createAppKey(String user,
+                                   Map<String, AutoSharedData> attachedToolSets) {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims(user));
+        perRequestKey.setSourceDeployment("testapp");
+        perRequestKey.setAttachedToolSets(attachedToolSets);
+        return perRequestKey;
     }
 
 }
