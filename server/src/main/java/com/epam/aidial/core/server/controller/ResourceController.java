@@ -220,7 +220,7 @@ public class ResourceController extends AccessControlBaseController {
                         });
             }
             if (!application.getInterceptors().isEmpty() && !accessService.hasAdminAccess(context)) {
-                throw new HttpException(FORBIDDEN, "Admins are allowed to set interceptors only");
+                throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
             }
         } catch (IllegalArgumentException | ValidationException e) {
             throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.getMessage()), e);
