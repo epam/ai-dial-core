@@ -270,6 +270,7 @@ public class ToolSetProxyController implements Controller {
     private void handleResponse() {
         Buffer proxyResponseBody = context.getResponseStream().getContent();
         context.setResponseBody(proxyResponseBody);
+        finalizeRequest();
         logStore.save(context);
     }
 
@@ -291,7 +292,7 @@ public class ToolSetProxyController implements Controller {
             }
         }
         context.setResponseBody(proxyResponseBody);
-        context.respond(responseStatus, proxyResponseBody);
+        respond(responseStatus, proxyResponseBody);
         logStore.save(context);
     }
 
@@ -403,13 +404,33 @@ public class ToolSetProxyController implements Controller {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        finalizeRequest();
+    }
+
+    private void respond(int status, Buffer result) {
+        finalizeRequest();
+        context.respond(status, result);
     }
 
     private void respond(HttpStatus status, String result) {
+        finalizeRequest();
         context.respond(status, result);
     }
 
     private void respond(HttpException exception) {
+        finalizeRequest();
         context.respond(exception);
+    }
+
+    protected void finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            apiKeyStore.invalidatePerRequestApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
+        }
     }
 }
