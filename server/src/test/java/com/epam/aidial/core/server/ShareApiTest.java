@@ -536,7 +536,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create ToolSet
-        response = toolsetRequest(HttpMethod.PUT, "/toolset@", TOOLSET_CREATE_REQEUST_BODY);
+        response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@", null, TOOLSET_CREATE_REQEUST_BODY);
         verifyNotExact(response, 200, "\"url\":\"toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@\"");
 
 
@@ -573,7 +573,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
 
         // verify user2 do not have access to the toolset
-        response = toolsetRequest(HttpMethod.GET, "/toolset@", null, "Api-key", "proxyKey2");
+        response = send(HttpMethod.GET, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@", null, null,  "Api-key", "proxyKey2");
         verify(response, 403);
 
         // accept invitation
@@ -581,7 +581,7 @@ public class ShareApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // verify user2 has access to the toolset
-        response = toolsetRequest(HttpMethod.GET, "/toolset@", null, "Api-key", "proxyKey2");
+        response = send(HttpMethod.GET, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@", null, null,  "Api-key", "proxyKey2");
         verify(response, 200);
 
         // revoke share access
@@ -604,7 +604,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // verify user2 do not have access to the toolset
-        response = toolsetRequest(HttpMethod.GET, "/toolset@", null, "Api-key", "proxyKey2");
+        response = send(HttpMethod.GET, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@", null, null,  "Api-key", "proxyKey2");
         verify(response, 403);
 
         // verify user1 has no shared_with_me resources
@@ -689,7 +689,7 @@ public class ShareApiTest extends ResourceBaseTest {
                 """);
 
         // create ToolSet
-        response = toolsetRequest(HttpMethod.PUT, "/toolset@", TOOLSET_CREATE_REQEUST_BODY);
+        response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@", null,  TOOLSET_CREATE_REQEUST_BODY);
         verifyNotExact(response, 200, "\"url\":\"toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolset@\"");
 
 

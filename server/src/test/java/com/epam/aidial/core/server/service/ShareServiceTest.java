@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
@@ -118,8 +119,11 @@ class ShareServiceTest {
         when(proxyContext.getProxy()).thenReturn(proxy);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
 
+        ResourceCredentials resourceCredentials = mock(ResourceCredentials.class);
+        when(resourceCredentials.getCredentialsLevel()).thenReturn(CredentialsLevel.GLOBAL);
+
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(null);
-        when(resourceCredentialsService.getResourceCredentials(any(CredentialsDescriptor.class))).thenReturn(mock(ResourceCredentials.class));
+        when(resourceCredentialsService.getResourceCredentials(any(CredentialsDescriptor.class))).thenReturn(resourceCredentials);
 
         Invitation invitation = new Invitation();
         invitation.setId("invitationId");
