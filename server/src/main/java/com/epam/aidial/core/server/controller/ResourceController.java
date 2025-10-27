@@ -219,6 +219,9 @@ public class ResourceController extends AccessControlBaseController {
                             throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
                         });
             }
+            if (!application.getInterceptors().isEmpty() && !accessService.hasAdminAccess(context)) {
+                throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
+            }
         } catch (IllegalArgumentException | ValidationException e) {
             throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.getMessage()), e);
         } catch (ApplicationTypeSchemaValidationException e) {

@@ -216,7 +216,7 @@ public class AiDial {
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService, generator, clock);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
-                    toolSetService, resourceService);
+                    toolSetService, resourceService, applicationSchemaService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
 
