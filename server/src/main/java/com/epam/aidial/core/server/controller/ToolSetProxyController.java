@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -79,6 +80,8 @@ public class ToolSetProxyController implements Controller {
 
     private final ApiKeyStore apiKeyStore;
 
+    private final TokenStatsTracker tokenStatsTracker;
+
     private String mcpMethodName;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
@@ -91,6 +94,7 @@ public class ToolSetProxyController implements Controller {
         this.context = context;
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.apiKeyStore = proxy.getApiKeyStore();
+        this.tokenStatsTracker = proxy.getTokenStatsTracker();
         this.toolSetId = toolSetId;
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
     }
@@ -104,13 +108,15 @@ public class ToolSetProxyController implements Controller {
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
         }).compose(toolSet -> rateLimiter.limit(context, toolSet)
-                .map(rateLimitResult -> {
+                .compose(rateLimitResult -> {
+                    Future<?> future;
                     if (rateLimitResult.status() == HttpStatus.OK) {
-                        handleRateLimitSuccess(toolSet);
+                        future = handleRateLimitSuccess(toolSet);
                     } else {
                         handleRateLimitHit(rateLimitResult);
+                        future = Future.succeededFuture();
                     }
-                    return null;
+                    return future;
                 })).otherwise(error -> {
                     handleError(error);
                     return null;
@@ -316,17 +322,20 @@ public class ToolSetProxyController implements Controller {
         return modified;
     }
 
-    private void handleRateLimitSuccess(ToolSet toolSet) {
-        UpstreamRoute upstreamRoute = upstreamRouteProvider.get(toolSet, null);
-        if (!canRetry(upstreamRoute)) {
-            return;
-        }
-        context.setUpstreamRoute(upstreamRoute);
-        context.setDeployment(toolSet);
-        context.setTraceOperation("Send request to %s toolset".formatted(toolSet.getName()));
-        context.getRequest().body()
-                .onFailure(this::handleRequestBodyError)
-                .onSuccess(this::handleRequestBody);
+    private Future<?> handleRateLimitSuccess(ToolSet toolSet) {
+        return tokenStatsTracker.startSpan(context).map(ignore -> {
+            UpstreamRoute upstreamRoute = upstreamRouteProvider.get(toolSet, null);
+            if (!canRetry(upstreamRoute)) {
+                return null;
+            }
+            context.setUpstreamRoute(upstreamRoute);
+            context.setDeployment(toolSet);
+            context.setTraceOperation("Send request to %s toolset".formatted(toolSet.getName()));
+            context.getRequest().body()
+                    .onFailure(this::handleRequestBodyError)
+                    .onSuccess(this::handleRequestBody);
+            return null;
+        });
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
@@ -423,6 +432,7 @@ public class ToolSetProxyController implements Controller {
     }
 
     protected void finalizeRequest() {
+        tokenStatsTracker.endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             apiKeyStore.invalidatePerRequestApiKey(proxyApiKeyData)

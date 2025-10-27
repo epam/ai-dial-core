@@ -122,6 +122,10 @@ public class TokenStatsTracker {
             String parenSpanId = tokenStats.parentSpanId;
             while (parenSpanId != null) {
                 tokenStats = spans.get(parenSpanId);
+                if (tokenStats == null) {
+                    log.warn("Parent span {} was not added to the trace context.");
+                    break;
+                }
                 tokenStats.tokenUsage.increase(tokenUsage);
                 parenSpanId = tokenStats.parentSpanId;
             }
