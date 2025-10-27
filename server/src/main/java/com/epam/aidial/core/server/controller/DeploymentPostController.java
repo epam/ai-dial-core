@@ -44,7 +44,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
 import java.util.List;
@@ -78,7 +78,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     public Future<?> handle(String deploymentId, String deploymentApi) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
-        if (!StringUtils.containsIgnoreCase(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
+        if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         // handle a special deployment `interceptor`
@@ -113,6 +113,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
                     context.setTraceOperation("Send request to %s deployment".formatted(dep.getName()));
                     context.setDeployment(dep);
+                    List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, dep);
+                    context.setInterceptors(interceptors);
                     return dep;
                 })
                 .compose(dep -> {
@@ -128,7 +130,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(deploymentId);
                             context.setInitialDeploymentApi(deploymentApi);
-                            context.setInterceptors(context.getDeployment().getInterceptors());
                             future = handleInterceptor(0);
                         } else {
                             future = handleRateLimitSuccess();

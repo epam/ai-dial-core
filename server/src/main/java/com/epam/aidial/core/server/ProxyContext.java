@@ -94,7 +94,7 @@ public class ProxyContext {
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
-    // List of interceptors copied from the deployment config
+    // List of interceptors copied from the deployment config, global interceptors and application type interceptors
     private List<String> interceptors;
     private boolean isStreamingRequest;
     private String traceOperation;
@@ -224,7 +224,7 @@ public class ProxyContext {
     public boolean hasNextInterceptor() {
         // initial call to the deployment or the interceptor calls another deployment
         if (apiKeyData.getInterceptors() == null || !deployment.getName().equals(getInitialDeployment())) {
-            return !deployment.getInterceptors().isEmpty();
+            return !interceptors.isEmpty();
         } else { // make sure if a next interceptor is available from the list
             return apiKeyData.getInterceptorIndex() + 1 < apiKeyData.getInterceptors().size();
         }

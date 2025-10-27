@@ -46,6 +46,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
 import java.util.Iterator;
@@ -53,6 +54,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+
+import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 
 @Slf4j
 public class ToolSetProxyController implements Controller {
@@ -147,7 +150,7 @@ public class ToolSetProxyController implements Controller {
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
-        if (Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(contentType)) {
+        if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
 
             try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
@@ -253,8 +256,11 @@ public class ToolSetProxyController implements Controller {
         if (responseStatusCode == 200) {
             context.getUpstreamRoute().succeed();
         }
+        HttpServerResponse response = context.getResponse();
+        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
 
-        if (Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON.equalsIgnoreCase(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE))) {
+        String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
+        if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             proxyResponse.body().onSuccess(body -> handleResponse(responseStatusCode, body))
                     .onFailure(this::handleResponseError);
         } else {
@@ -272,7 +278,6 @@ public class ToolSetProxyController implements Controller {
         HttpServerResponse response = context.getResponse();
         response.setChunked(true);
         response.setStatusCode(proxyResponse.statusCode());
-        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)
@@ -297,6 +302,7 @@ public class ToolSetProxyController implements Controller {
     private void handleResponse() {
         Buffer proxyResponseBody = context.getResponseStream().getContent();
         context.setResponseBody(proxyResponseBody);
+        finalizeRequest();
         logStore.save(context);
     }
 
@@ -318,7 +324,7 @@ public class ToolSetProxyController implements Controller {
             }
         }
         context.setResponseBody(proxyResponseBody);
-        context.respond(responseStatus, proxyResponseBody);
+        respond(responseStatus, proxyResponseBody);
         logStore.save(context);
     }
 
@@ -327,6 +333,9 @@ public class ToolSetProxyController implements Controller {
                 .filter(JsonNode::isArray).orElse(EMPTY_JSON_ARRAY);
         ToolSet toolSet = (ToolSet) context.getDeployment();
         List<String> allowedTools = toolSet.getAllowedTools();
+        if (allowedTools.isEmpty()) {
+            return false;
+        }
         boolean modified = false;
         for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext();) {
             JsonNode tool = iter.next();
@@ -427,13 +436,33 @@ public class ToolSetProxyController implements Controller {
         log.warn("Can't send response to client: {}", error.getMessage());
         context.getProxyRequest().reset(); // drop connection to stop origin response
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        finalizeRequest();
+    }
+
+    private void respond(int status, Buffer result) {
+        finalizeRequest();
+        context.respond(status, result);
     }
 
     private void respond(HttpStatus status, String result) {
+        finalizeRequest();
         context.respond(status, result);
     }
 
     private void respond(HttpException exception) {
+        finalizeRequest();
         context.respond(exception);
+    }
+
+    protected void finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            apiKeyStore.invalidatePerRequestApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
+        }
     }
 }
