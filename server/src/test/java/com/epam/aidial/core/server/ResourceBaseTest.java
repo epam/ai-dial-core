@@ -315,12 +315,6 @@ public class ResourceBaseTest {
         return send(method, "/v1/conversations/" + bucket + resource, null, body, headers);
     }
 
-    Response toolsetRequest(HttpMethod method, String resource, String body, String... headers) {
-        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", headers);
-        bucket = new JsonObject(response.body).getString("bucket");
-        return send(method, "/v1/toolsets/" + bucket + resource, null, body, headers);
-    }
-
     Response operationRequest(String path, String body, String... headers) {
         return send(HttpMethod.POST, path, null, body, headers);
     }
