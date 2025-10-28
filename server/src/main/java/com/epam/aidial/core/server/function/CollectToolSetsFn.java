@@ -56,7 +56,7 @@ public class CollectToolSetsFn extends BaseRequestFunction<ObjectNode> {
                 .filter(credentialsDescriptor -> accessService.hasReadAccess(credentialsDescriptor, context))
                 .toList();
         for (ResourceDescriptor credentialsResourceDescriptor : credentialsResourceDescriptors) {
-            destApiKeyData.getAttachedToolSetCredentials().put(
+            destApiKeyData.getAttachedResourceCredentials().put(
                     credentialsResourceDescriptor.getUrl(),
                     new AutoSharedData(ResourceAccessType.READ_ONLY));
         }

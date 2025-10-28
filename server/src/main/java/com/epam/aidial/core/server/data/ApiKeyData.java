@@ -45,7 +45,7 @@ public class ApiKeyData {
     private Map<String, AutoSharedData> attachedFolders = new HashMap<>();
     // list of toolsets included into application properties
     private Map<String, AutoSharedData> attachedToolSets = new HashMap<>();
-    private Map<String, AutoSharedData> attachedToolSetCredentials = new HashMap<>();
+    private Map<String, AutoSharedData> attachedResourceCredentials = new HashMap<>();
     // deployment name of the source(application/assistant/model/interceptor) associated with the current request
     private String sourceDeployment;
     // Execution path of the root request

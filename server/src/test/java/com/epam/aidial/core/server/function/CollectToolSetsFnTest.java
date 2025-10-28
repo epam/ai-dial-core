@@ -130,8 +130,8 @@ public class CollectToolSetsFnTest {
         Assertions.assertEquals("tools/bucket/my-tool", toolsetId);
         Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedToolSets().get(toolsetId).accessTypes());
 
-        Assertions.assertEquals(2, dest.getAttachedToolSetCredentials().size());
-        List<AutoSharedData> autoSharedData = dest.getAttachedToolSetCredentials().values().stream().toList();
+        Assertions.assertEquals(2, dest.getAttachedResourceCredentials().size());
+        List<AutoSharedData> autoSharedData = dest.getAttachedResourceCredentials().values().stream().toList();
         Assertions.assertEquals(ResourceAccessType.READ_ONLY, autoSharedData.get(0).accessTypes());
         Assertions.assertEquals(ResourceAccessType.READ_ONLY, autoSharedData.get(1).accessTypes());
     }
