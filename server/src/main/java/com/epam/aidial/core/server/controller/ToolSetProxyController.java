@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -36,6 +37,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
@@ -84,6 +86,8 @@ public class ToolSetProxyController implements Controller {
 
     private final ApiKeyStore apiKeyStore;
 
+    private final TokenStatsTracker tokenStatsTracker;
+
     private String mcpMethodName;
     private final AccessService accessService;
 
@@ -99,6 +103,7 @@ public class ToolSetProxyController implements Controller {
         this.context = context;
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.apiKeyStore = proxy.getApiKeyStore();
+        this.tokenStatsTracker = proxy.getTokenStatsTracker();
         this.toolSetId = toolSetId;
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
         this.accessService = proxy.getAccessService();
@@ -114,13 +119,15 @@ public class ToolSetProxyController implements Controller {
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
         }).compose(toolSet -> rateLimiter.limit(context, toolSet)
-                .map(rateLimitResult -> {
+                .compose(rateLimitResult -> {
+                    Future<?> future;
                     if (rateLimitResult.status() == HttpStatus.OK) {
-                        handleRateLimitSuccess(toolSet);
+                        future = handleRateLimitSuccess(toolSet);
                     } else {
                         handleRateLimitHit(rateLimitResult);
+                        future = Future.succeededFuture();
                     }
-                    return null;
+                    return future;
                 })).otherwise(error -> {
                     handleError(error);
                     return null;
@@ -178,7 +185,13 @@ public class ToolSetProxyController implements Controller {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        Deployment deployment = context.getDeployment();
+        if (!deployment.isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+
         setToolsetCredentials(proxyRequest);
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
@@ -348,17 +361,20 @@ public class ToolSetProxyController implements Controller {
         return modified;
     }
 
-    private void handleRateLimitSuccess(ToolSet toolSet) {
-        UpstreamRoute upstreamRoute = upstreamRouteProvider.get(toolSet, null);
-        if (!canRetry(upstreamRoute)) {
-            return;
-        }
-        context.setUpstreamRoute(upstreamRoute);
-        context.setDeployment(toolSet);
-        context.setTraceOperation("Send request to %s toolset".formatted(toolSet.getName()));
-        context.getRequest().body()
-                .onFailure(this::handleRequestBodyError)
-                .onSuccess(this::handleRequestBody);
+    private Future<?> handleRateLimitSuccess(ToolSet toolSet) {
+        return tokenStatsTracker.startSpan(context).map(ignore -> {
+            UpstreamRoute upstreamRoute = upstreamRouteProvider.get(toolSet, null);
+            if (!canRetry(upstreamRoute)) {
+                return null;
+            }
+            context.setUpstreamRoute(upstreamRoute);
+            context.setDeployment(toolSet);
+            context.setTraceOperation("Send request to %s toolset".formatted(toolSet.getName()));
+            context.getRequest().body()
+                    .onFailure(this::handleRequestBodyError)
+                    .onSuccess(this::handleRequestBody);
+            return null;
+        });
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
@@ -455,6 +471,7 @@ public class ToolSetProxyController implements Controller {
     }
 
     protected void finalizeRequest() {
+        tokenStatsTracker.endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             apiKeyStore.invalidatePerRequestApiKey(proxyApiKeyData)

@@ -76,6 +76,7 @@ public class ToolSetService {
     }
 
     public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet) {
+        toolSet.setForwardAuthToken(false);
         toolSet.setName(resource.getUrl());
         if (toolSet.getReference() == null) {
             toolSet.setReference(ProxyUtil.generateReference());
