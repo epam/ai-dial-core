@@ -1,5 +1,9 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -8,6 +12,8 @@ import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -290,10 +296,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 }
                 """;
         String mcpResponse = """
-                    {
-                      "result": "success"
-                    }
-                    """;
+                {
+                  "result": "success"
+                }
+                """;
         TestWebServer.Handler handler = request -> {
             assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
             assertNotNull(request.getHeader(Proxy.HEADER_API_KEY));
@@ -357,10 +363,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @Test
     void testProxyMcpGetCall() {
         String mcpResponse = """
-                    {
-                      "result": "success"
-                    }
-                    """;
+                {
+                  "result": "success"
+                }
+                """;
         TestWebServer.Handler handler = request -> new MockResponse().setBody(mcpResponse);
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/mcp");
@@ -441,6 +447,102 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "allowed_tools" : [ "tool1", "tool2" ]
                 }
                 """);
+    }
+
+    @Test
+    void testProxyMcpCallWithSharedToolSet() {
+        // create ToolSet with admin JWT
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null,  TOOLSET_CREATE_REQEUST_BODY,
+                "authorization", "admin");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
+
+        // signin into toolset with admin JWT
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """, "authorization", "admin");
+        verify(response, 200, "true");
+
+        // initialize share request
+        response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                      "shareCredentials": "true"
+                    }
+                  ]
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        response = send(HttpMethod.GET, "/v1/invitations", null, null, "authorization", "admin");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
+        verifyNotExact(response, 200, "\"url\":\"credentials/4X25dj1mja51jykqxsXnCH/toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
+        verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
+
+        // verify user do not have access to the toolset
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "user");
+        verify(response, 403);
+
+        // user accepts invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "authorization", "user");
+        verify(response, 200);
+
+        // verify user has access to the toolset
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "user");
+        verify(response, 200);
+
+        String mcpRequest = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_weather",
+                        "arguments": {
+                            "location": "San Francisco"
+                        }
+                    }
+                }
+                """;
+
+        String mcpResponse = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "The weather in San Francisco is 72°F and sunny"
+                      }
+                    ]
+                  }
+                }
+                """;
+
+        // use mcp with user's per request api key
+        TestWebServer.Handler handler = request -> new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            ApiKeyData userAppKey = createAppKey("user", Map.of(
+                    "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    new AutoSharedData(Set.of(ResourceAccessType.READ))));
+            apiKeyStore.assignPerRequestApiKey(userAppKey);
+
+            Response resp = send(HttpMethod.POST, "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/toolset@/mcp", null,
+                    mcpRequest, "Content-Type", "application/json", "api-key", userAppKey.getPerRequestKey());
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
     }
 
 }

@@ -1,11 +1,14 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
+import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -13,6 +16,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -26,6 +30,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -84,6 +89,9 @@ public class ToolSetProxyController implements Controller {
     private final TokenStatsTracker tokenStatsTracker;
 
     private String mcpMethodName;
+    private final AccessService accessService;
+
+    private final ResourceCredentialsService resourceCredentialsService;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         this.taskExecutor = proxy.getTaskExecutor();
@@ -98,6 +106,8 @@ public class ToolSetProxyController implements Controller {
         this.tokenStatsTracker = proxy.getTokenStatsTracker();
         this.toolSetId = toolSetId;
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
+        this.accessService = proxy.getAccessService();
+        this.resourceCredentialsService = proxy.getResourceCredentialsService();
     }
 
     @Override
@@ -194,17 +204,39 @@ public class ToolSetProxyController implements Controller {
     private void setToolsetCredentials(HttpClientRequest proxyRequest) {
         try {
             ToolSet toolSet = (ToolSet) context.getDeployment();
-            AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(
-                    credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
-            if (authorizationHeader != null) {
-                proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
+            ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
+                    credentialsLocator, toolSet.getAuthSettings(), context.getUserSub()
+            );
+
+            if (resourceCredentials != null) {
+                CredentialsLevel level = resourceCredentials.getCredentialsLevel();
+                if (level.equals(CredentialsLevel.USER)) {
+                    addAuthorizationHeader(proxyRequest, resourceCredentials);
+                } else if (level.equals(CredentialsLevel.GLOBAL)) {
+                    ResourceDescriptor resourceDescriptor = credentialsLocator.getCredentialsDescriptors()
+                            .get(CredentialsLevel.GLOBAL)
+                            .toResourceDescriptor();
+                    if (accessService.hasReadAccess(resourceDescriptor, context)) {
+                        addAuthorizationHeader(proxyRequest, resourceCredentials);
+                    }
+                }
+                log.debug("Credential not found - User: {}, Resource: {}", context.getUserSub(), toolSetId);
             }
+
             if (toolSet.isForwardPerRequestKey()) {
                 String perRequestKey = assignPerRequestKey();
                 proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
             }
         } catch (ResourceNotFoundException e) {
             log.error(e.getMessage(), e);
+        }
+    }
+
+    private void addAuthorizationHeader(HttpClientRequest proxyRequest,
+                                        ResourceCredentials resourceCredentials) {
+        AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
+        if (authorizationHeader != null) {
+            proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
         }
     }
 
