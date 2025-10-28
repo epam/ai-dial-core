@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
@@ -174,7 +175,13 @@ public class ToolSetProxyController implements Controller {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers());
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        Deployment deployment = context.getDeployment();
+        if (!deployment.isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+
         setToolsetCredentials(proxyRequest);
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
