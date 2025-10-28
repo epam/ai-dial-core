@@ -52,8 +52,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
-import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 
 @Slf4j
