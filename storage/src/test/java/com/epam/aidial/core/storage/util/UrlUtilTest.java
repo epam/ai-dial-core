@@ -81,4 +81,12 @@ public class UrlUtilTest {
         assertTrue(UrlUtil.isFolder("files/1224/folder/"));
         assertFalse(UrlUtil.isFolder("files/1224/folder/file"));
     }
+
+    @Test
+    public void testTryDecodePath() {
+        // invalid encoding
+        assertEquals("z%azz", UrlUtil.tryDecodePath("z%azz"));
+        // valid encoding
+        assertEquals("#abc?", UrlUtil.tryDecodePath("%23abc%3F"));
+    }
 }

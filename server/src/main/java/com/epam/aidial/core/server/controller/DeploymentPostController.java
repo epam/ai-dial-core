@@ -113,6 +113,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
                     context.setTraceOperation("Send request to %s deployment".formatted(dep.getName()));
                     context.setDeployment(dep);
+                    List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, dep);
+                    context.setInterceptors(interceptors);
                     return dep;
                 })
                 .compose(dep -> {
@@ -128,7 +130,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         if (context.hasNextInterceptor()) {
                             context.setInitialDeployment(deploymentId);
                             context.setInitialDeploymentApi(deploymentApi);
-                            context.setInterceptors(context.getDeployment().getInterceptors());
                             future = handleInterceptor(0);
                         } else {
                             future = handleRateLimitSuccess();

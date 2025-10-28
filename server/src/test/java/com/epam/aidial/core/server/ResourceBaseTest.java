@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -91,6 +92,18 @@ public class ResourceBaseTest {
             "name": "prompt",
             "folderId": "folder",
             "content": "content"
+            }
+            """;
+
+    public static final String TOOLSET_CREATE_REQEUST_BODY = """
+            {
+                "endpoint": "http://localhost:9876",
+                "transport": "HTTP",
+                "allowedTools": [],
+                "auth_settings": {
+                    "authentication_type": "API_KEY",
+                    "api_key_header": "Authorization"
+                }
             }
             """;
 
@@ -211,6 +224,17 @@ public class ResourceBaseTest {
         ApiKeyData perRequestKey = new ApiKeyData();
         perRequestKey.setExtractedClaims(createClaims("admin"));
         perRequestKey.setSourceDeployment("testapp");
+        perRequestKey.setTraceId("trace-id");
+        return perRequestKey;
+    }
+
+    static ApiKeyData createAppKey(String user,
+                                   Map<String, AutoSharedData> attachedToolSets) {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims(user));
+        perRequestKey.setSourceDeployment("testapp");
+        perRequestKey.setAttachedToolSets(attachedToolSets);
+        perRequestKey.setTraceId("trace-id");
         return perRequestKey;
     }
 
@@ -413,7 +437,7 @@ public class ResourceBaseTest {
         return stream;
     }
 
-    record Response(int status, String body, Map<String, String> headers) {
+    protected record Response(int status, String body, Map<String, String> headers) {
         public boolean ok() {
             return status() == 200;
         }

@@ -6,7 +6,9 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -21,6 +23,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +40,9 @@ public class CollectToolSetsFnTest {
 
     @Mock
     private ApplicationSchemaService applicationSchemaService;
+
+    @Mock
+    private EncryptionService encryptionService;
 
     @Mock
     private AccessService accessService;
@@ -62,8 +70,12 @@ public class CollectToolSetsFnTest {
     @Test
     public void testApply_WithToolSets() {
         Application application = new Application();
+        when(context.getProxy()).thenReturn(proxy);
         when(context.getDeployment()).thenReturn(application);
+        when(context.getUserSub()).thenReturn("userSub");
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getEncryptionService()).thenReturn(encryptionService);
+        when(encryptionService.encrypt(anyString())).thenReturn("bucket/");
         ResourceDescriptor privateTool = mock(ResourceDescriptor.class);
         when(privateTool.isPublic()).thenReturn(false);
         when(privateTool.getUrl()).thenReturn("tools/bucket/my-tool");
@@ -85,5 +97,42 @@ public class CollectToolSetsFnTest {
         String toolsetId = dest.getAttachedToolSets().keySet().iterator().next();
         Assertions.assertEquals("tools/bucket/my-tool", toolsetId);
         Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedToolSets().get(toolsetId).accessTypes());
+    }
+
+    @Test
+    void testApply_WithToolSetWithCreds() {
+        Application application = new Application();
+        when(context.getProxy()).thenReturn(proxy);
+        when(context.getDeployment()).thenReturn(application);
+        when(context.getUserSub()).thenReturn("userSub");
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getEncryptionService()).thenReturn(encryptionService);
+        when(encryptionService.encrypt(anyString())).thenReturn("bucket");
+        ResourceDescriptor privateTool = mock(ResourceDescriptor.class);
+        when(privateTool.isPublic()).thenReturn(false);
+        when(privateTool.getUrl()).thenReturn("tools/bucket/my-tool");
+        ResourceDescriptor publicTool = mock(ResourceDescriptor.class);
+        when(publicTool.isPublic()).thenReturn(true);
+        when(applicationSchemaService.getToolSets(application)).thenReturn(List.of(privateTool, publicTool));
+
+        when(proxy.getAccessService()).thenReturn(accessService);
+        when(accessService.hasReadAccess(any(ResourceDescriptor.class), eq(context))).thenReturn(true);
+
+        ApiKeyData source = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(source);
+        ApiKeyData dest = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(dest);
+
+        assertFalse(fn.apply(EMPTY_OBJECT));
+
+        Assertions.assertEquals(1, dest.getAttachedToolSets().size());
+        String toolsetId = dest.getAttachedToolSets().keySet().iterator().next();
+        Assertions.assertEquals("tools/bucket/my-tool", toolsetId);
+        Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedToolSets().get(toolsetId).accessTypes());
+
+        Assertions.assertEquals(2, dest.getAttachedResourceCredentials().size());
+        List<AutoSharedData> autoSharedData = dest.getAttachedResourceCredentials().values().stream().toList();
+        Assertions.assertEquals(ResourceAccessType.READ_ONLY, autoSharedData.get(0).accessTypes());
+        Assertions.assertEquals(ResourceAccessType.READ_ONLY, autoSharedData.get(1).accessTypes());
     }
 }

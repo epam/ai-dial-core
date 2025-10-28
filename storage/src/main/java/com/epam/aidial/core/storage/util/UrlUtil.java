@@ -78,7 +78,7 @@ public class UrlUtil {
     public String tryDecodePath(@Nullable String path) {
         try {
             return decodePath(path, false);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             return path; // Return original path if decoding fails
         }
     }

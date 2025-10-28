@@ -71,6 +71,13 @@
           "default": "DISABLED",
           "description": "If this flag is set to enabled, files are copied from source to destination of the application's bucket"
         },
+        "dial:applicationTypeInterceptors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of application type interceptors"
+        },
         "dial:applicationTypeRoutes": {
           "type": "object",
           "patternProperties": {
