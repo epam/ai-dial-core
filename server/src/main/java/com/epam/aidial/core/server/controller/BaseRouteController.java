@@ -92,29 +92,35 @@ public abstract class BaseRouteController implements Controller {
                 context.setResponseBody(Buffer.buffer(response.getBody()));
             }
             return proxy.getRateLimiter().limit(context, context.getRoute())
-                    .map(rateLimitResult -> {
+                    .compose(rateLimitResult -> {
+                        Future<?> future;
                         if (rateLimitResult.status() == HttpStatus.OK) {
-                            handleRateLimitSuccess();
+                            future = handleRateLimitSuccess();
                         } else {
                             handleRateLimitHit(rateLimitResult);
+                            future = Future.succeededFuture();
                         }
-                        return null;
+                        return future;
                     });
         });
     }
 
-    private void handleRateLimitSuccess() {
+    private Future<?> handleRateLimitSuccess() {
         if (context.getResponseBody() == null) {
             setupProxyApiKeyData();
-            context.getRequest().body()
-                    .onFailure(this::handleRequestBodyError)
-                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
-                        handleRequestBody(body);
-                        return null;
-                    }));
+            return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
+                context.getRequest().body()
+                        .onFailure(this::handleRequestBodyError)
+                        .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
+                            handleRequestBody(body);
+                            return null;
+                        }));
+                return null;
+            });
         } else {
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(context);
+            return Future.succeededFuture();
         }
     }
 
@@ -442,6 +448,7 @@ public abstract class BaseRouteController implements Controller {
     }
 
     private void finalizeRequest() {
+        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
