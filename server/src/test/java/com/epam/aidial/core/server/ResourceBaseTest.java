@@ -224,6 +224,7 @@ public class ResourceBaseTest {
         ApiKeyData perRequestKey = new ApiKeyData();
         perRequestKey.setExtractedClaims(createClaims("admin"));
         perRequestKey.setSourceDeployment("testapp");
+        perRequestKey.setTraceId("trace-id");
         return perRequestKey;
     }
 
@@ -233,6 +234,7 @@ public class ResourceBaseTest {
         perRequestKey.setExtractedClaims(createClaims(user));
         perRequestKey.setSourceDeployment("testapp");
         perRequestKey.setAttachedToolSets(attachedToolSets);
+        perRequestKey.setTraceId("trace-id");
         return perRequestKey;
     }
 

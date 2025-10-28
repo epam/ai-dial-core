@@ -532,13 +532,13 @@ public class ToolSetApiTest extends ResourceBaseTest {
         // use mcp with user's per request api key
         TestWebServer.Handler handler = request -> new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
-            ApiKeyData adminAppKey = createAppKey("user", Map.of(
+            ApiKeyData userAppKey = createAppKey("user", Map.of(
                     "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
                     new AutoSharedData(Set.of(ResourceAccessType.READ))));
-            apiKeyStore.assignPerRequestApiKey(adminAppKey);
+            apiKeyStore.assignPerRequestApiKey(userAppKey);
 
             Response resp = send(HttpMethod.POST, "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/toolset@/mcp", null,
-                    mcpRequest, "Content-Type", "application/json", "api-key", adminAppKey.getPerRequestKey());
+                    mcpRequest, "Content-Type", "application/json", "api-key", userAppKey.getPerRequestKey());
 
             assertEquals(200, resp.status());
             assertEquals(mcpResponse, resp.body());
