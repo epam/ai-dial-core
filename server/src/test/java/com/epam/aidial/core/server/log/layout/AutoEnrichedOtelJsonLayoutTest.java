@@ -11,6 +11,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -36,6 +38,9 @@ class AutoEnrichedOtelJsonLayoutTest {
     private MockedStatic<Vertx> vertxMock;
     private MockedStatic<ContextManager> contextManagerMock;
     private MockedStatic<Span> spanMock;
+    private Span currentSpan;
+    private SpanContext spanContext;
+    private TraceFlags traceFlags;
 
     @BeforeEach
     void setUp() {
@@ -52,9 +57,13 @@ class AutoEnrichedOtelJsonLayoutTest {
         
         // Mock Span
         spanMock = mockStatic(Span.class);
-        Span mockSpan = mock(Span.class);
-        when(mockSpan.isRecording()).thenReturn(false);
-        spanMock.when(Span::current).thenReturn(mockSpan);
+        currentSpan = mock(Span.class);
+        when(currentSpan.isRecording()).thenReturn(false);
+        spanMock.when(Span::current).thenReturn(currentSpan);
+        spanContext = mock(SpanContext.class);
+        when(currentSpan.getSpanContext()).thenReturn(spanContext);
+        traceFlags = mock(TraceFlags.class);
+        when(spanContext.getTraceFlags()).thenReturn(traceFlags);
     }
     
     @AfterEach
@@ -257,9 +266,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         ProxyContext proxyContext = mock(ProxyContext.class);
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(response.ended()).thenReturn(false);
-        when(proxyContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
-        when(proxyContext.getSpanId()).thenReturn("8a46c76f1554b00a");
-        when(proxyContext.getTraceFlags()).thenReturn("01");
+        when(spanContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
+        when(spanContext.getSpanId()).thenReturn("8a46c76f1554b00a");
+        when(traceFlags.asHex()).thenReturn("01");
         when(proxyContext.getResponse()).thenReturn(response);
         
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
