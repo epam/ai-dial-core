@@ -696,12 +696,4 @@ public class ToolSetApiTest extends ResourceBaseTest {
         }
     }
 
-    static ApiKeyData createAppKey(String user,
-                                   Map<String, AutoSharedData> attachedToolSets) {
-        ApiKeyData perRequestKey = new ApiKeyData();
-        perRequestKey.setExtractedClaims(createClaims(user));
-        perRequestKey.setSourceDeployment("testapp");
-        perRequestKey.setAttachedToolSets(attachedToolSets);
-        return perRequestKey;
-    }
 }
