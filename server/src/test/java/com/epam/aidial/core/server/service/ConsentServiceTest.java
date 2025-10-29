@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -34,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -331,9 +333,50 @@ public class ConsentServiceTest {
         features.setConsentRequired(true);
         application.setFeatures(features);
 
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
         when(context.getUserSub()).thenReturn("sub");
 
         assertThrows(PermissionDeniedException.class, () -> service.verifyUserConsent(context, application));
+    }
+
+    @Test
+    public void testVerifyUserConsent_WhenRootDeploymentIsNotFound() {
+        Application application = new Application();
+        application.setName("C");
+        Features features = new Features();
+        features.setConsentRequired(true);
+        application.setFeatures(features);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        apiKeyData.setExecutionPath(List.of("A", "B"));
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        when(deploymentService.findDeployment(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Application is not found"));
+
+        assertThrows(ResourceNotFoundException.class, () -> service.verifyUserConsent(context, application));
+    }
+
+    @Test
+    public void testVerifyUserConsent_WhenRootDeploymentIsUnknown() {
+        Application application = new Application();
+        application.setName("C");
+        Features features = new Features();
+        features.setConsentRequired(true);
+        application.setFeatures(features);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        apiKeyData.setExecutionPath(List.of("A", "B"));
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        when(deploymentService.findDeployment(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Unknown deployment"));
+
+        assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
+
+        verifyNoInteractions(resourceService);
     }
 
     @Test
@@ -417,7 +460,7 @@ public class ConsentServiceTest {
     }
 
     @Test
-    public void testVerifyUserConsent_Success() {
+    public void testVerifyUserConsent_Success_RootIsCurrentDeployment() {
         Application application = new Application();
         application.setName("X");
         Features features = new Features();
@@ -452,6 +495,52 @@ public class ConsentServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setExecutionPath(List.of("A", "B"));
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
+    }
+
+    @Test
+    public void testVerifyUserConsent_Success_RootIsInPath() {
+        Application application = new Application();
+        application.setName("X");
+        Features features = new Features();
+        features.setConsentRequired(true);
+        application.setFeatures(features);
+
+        when(context.getUserSub()).thenReturn("sub");
+
+        String jsonConsent = """
+               {
+                   "deployments" : {
+                      "A" : {
+                        "consentRequired" : false
+                      },
+                      "B" : {
+                        "consentRequired" : false
+                      },
+                      "C" : {
+                        "consentRequired" : false
+                      },
+                      "X" : {
+                        "consentRequired" : true
+                      },
+                      "Y" : {
+                        "consentRequired" : true
+                      }
+                   }
+               }
+                """;
+
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(jsonConsent);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        apiKeyData.setExecutionPath(List.of("A", "B"));
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        Application root = new Application();
+        root.setName("A");
+        when(deploymentService.findDeployment(eq(context), eq("A"))).thenReturn(root);
 
         assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
     }

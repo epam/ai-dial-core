@@ -7,10 +7,12 @@ import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
 import java.util.HashSet;
@@ -18,6 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+@Slf4j
 public class ConsentService {
 
     private static final ReviewConsentResponse ACCEPTED_CONSENT_RESPONSE = new ReviewConsentResponse(null, true);
@@ -75,23 +78,50 @@ public class ConsentService {
         if (!isConsentRequired(deployment)) {
             return;
         }
-        String deploymentId = deployment.getName();
-        Consent consent = readConsent(context, deploymentId);
+        String currentDeploymentId = deployment.getName();
+        List<String> executionPath = context.getApiKeyData().getExecutionPath();
+        Deployment rootDeployment = getRootDeployment(context, deployment);
+        if (rootDeployment == null) {
+            log.debug("Root deployment is not found for the deployment {} in the execution path: {}", currentDeploymentId, executionPath);
+            return;
+        }
+        String rootDeploymentId = rootDeployment.getName();
+        Consent consent = readConsent(context, rootDeploymentId);
         if (consent == null) {
             // missing consent
-            fail(deploymentId);
+            fail(rootDeploymentId);
         }
-        List<String> executionPath = context.getApiKeyData().getExecutionPath();
         if (executionPath != null) {
             for (String dep : executionPath) {
                 if (!consent.getDeployments().containsKey(dep)) {
-                    fail(deploymentId);
+                    fail(currentDeploymentId);
                 }
             }
         }
-        Consent.Deployment consentDeployment = consent.getDeployments().get(deploymentId);
+        Consent.Deployment consentDeployment = consent.getDeployments().get(currentDeploymentId);
         if (consentDeployment == null || !consentDeployment.isConsentRequired()) {
-            fail(deploymentId);
+            fail(currentDeploymentId);
+        }
+    }
+
+    private Deployment getRootDeployment(ProxyContext context, Deployment current) {
+        if (context.getApiKeyData().getPerRequestKey() == null) {
+            return current;
+        }
+        List<String> executionPath = context.getApiKeyData().getExecutionPath();
+        if (executionPath == null || executionPath.isEmpty()) {
+            throw new IllegalStateException("Execution path is empty for per-request API key");
+        }
+        String rootDeploymentId = executionPath.getFirst();
+        try {
+            return deploymentService.findDeployment(context, rootDeploymentId);
+        } catch (ResourceNotFoundException e) {
+            if (e.getMessage().startsWith("Unknown deployment")) {
+                // the root deployment might be a route
+                // we don't have user consent for routes
+                return null;
+            }
+            throw e;
         }
     }
 
