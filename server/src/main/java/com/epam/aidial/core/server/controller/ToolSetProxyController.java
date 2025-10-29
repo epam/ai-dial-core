@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -74,6 +75,8 @@ public class ToolSetProxyController implements Controller {
 
     private final DeploymentService deploymentService;
 
+    private final ConsentService consentService;
+
     private final RateLimiter rateLimiter;
 
     private final HttpClient httpClient;
@@ -106,6 +109,7 @@ public class ToolSetProxyController implements Controller {
         this.tokenStatsTracker = proxy.getTokenStatsTracker();
         this.toolSetId = toolSetId;
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
+        this.consentService = proxy.getConsentService();
         this.accessService = proxy.getAccessService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
     }
@@ -115,6 +119,7 @@ public class ToolSetProxyController implements Controller {
         return taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
+                consentService.verifyUserConsent(context, deployment);
                 return toolSet;
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
