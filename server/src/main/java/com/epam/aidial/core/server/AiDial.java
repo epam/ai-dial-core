@@ -12,6 +12,7 @@ import com.epam.aidial.core.credentials.encryption.DataEncryptionService;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementServiceFactory;
+import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -180,11 +181,14 @@ public class AiDial {
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService);
 
             TimeProvider timeProvider = new TimeProvider();
+            CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper =
+                    new CredentialsDescriptorToResourceDescriptorMapper();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
             CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
-                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider);
+                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService,
+                    timeProvider, credentialsDescriptorToResourceDescriptorMapper);
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
                     resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
@@ -196,7 +200,7 @@ public class AiDial {
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     resourceService, lockService, operatorService, applicationSchemaService, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
-                    lockService, applicationSchemaService, clock, resourceCredentialsService);
+                    lockService, applicationSchemaService, clock, resourceCredentialsService, credentialsDescriptorToResourceDescriptorMapper);
             RuleService ruleService = new RuleService(resourceService);
             AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
@@ -234,7 +238,7 @@ public class AiDial {
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
-                    taskExecutor, version());
+                    taskExecutor, version(), credentialsDescriptorToResourceDescriptorMapper);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -288,11 +292,12 @@ public class AiDial {
     private ResourceCredentialsService getResourceCredentialsService(TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
                                                                      ResourceAuthorizationClient resourceAuthorizationClient,
                                                                      CredentialEncryptionService credentialEncryptionService,
-                                                                     TimeProvider timeProvider) {
+                                                                     TimeProvider timeProvider,
+                                                                     CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper) {
         TokenService tokenService = new TokenService(resourceAuthorizationClient);
         ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
         return new ResourceCredentialsService(resourceService, credentialEncryptionService, resourceCredentialsFactoryProvider,
-                tokenService, tokenRefreshStrategyFactory, timeProvider);
+                tokenService, tokenRefreshStrategyFactory, timeProvider, credentialsDescriptorToResourceDescriptorMapper);
     }
 
     private ResourceAuthSettingsService getResourceAuthSettingsService(ResourceCredentialsService resourceCredentialsService,

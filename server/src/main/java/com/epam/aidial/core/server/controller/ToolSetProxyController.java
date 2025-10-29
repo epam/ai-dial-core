@@ -5,8 +5,10 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
@@ -96,6 +98,8 @@ public class ToolSetProxyController implements Controller {
 
     private final ResourceCredentialsService resourceCredentialsService;
 
+    private final CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper;
+
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         this.taskExecutor = proxy.getTaskExecutor();
         this.deploymentService = proxy.getDeploymentService();
@@ -112,6 +116,7 @@ public class ToolSetProxyController implements Controller {
         this.consentService = proxy.getConsentService();
         this.accessService = proxy.getAccessService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
+        this.credentialsDescriptorToResourceDescriptorMapper = proxy.getCredentialsDescriptorToResourceDescriptorMapper();
     }
 
     @Override
@@ -218,9 +223,9 @@ public class ToolSetProxyController implements Controller {
                 if (level.equals(CredentialsLevel.USER)) {
                     addAuthorizationHeader(proxyRequest, resourceCredentials);
                 } else if (level.equals(CredentialsLevel.GLOBAL)) {
-                    ResourceDescriptor resourceDescriptor = credentialsLocator.getCredentialsDescriptors()
-                            .get(CredentialsLevel.GLOBAL)
-                            .toResourceDescriptor();
+                    CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors()
+                            .get(CredentialsLevel.GLOBAL);
+                    ResourceDescriptor resourceDescriptor = credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor);
                     if (accessService.hasReadAccess(resourceDescriptor, context)) {
                         addAuthorizationHeader(proxyRequest, resourceCredentials);
                     }

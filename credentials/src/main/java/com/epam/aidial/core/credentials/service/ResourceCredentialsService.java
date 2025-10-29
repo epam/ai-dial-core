@@ -13,6 +13,7 @@ import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactory;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
+import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.credentials.util.TimeProvider;
@@ -38,6 +39,7 @@ public class ResourceCredentialsService {
     private final TokenService tokenService;
     private final TokenRefreshStrategyFactory tokenRefreshStrategyFactory;
     private final TimeProvider timeProvider;
+    private final CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper;
 
     public void addResourceCredentials(CredentialsDescriptor credentialsDescriptor,
                                        ResourceAuthSettings resourceAuthSettings,
@@ -53,7 +55,8 @@ public class ResourceCredentialsService {
         }
 
         byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
-        resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+        resourceService.putResourceBytes(
+                credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor), encryptedBody, EtagHeader.ANY);
         log.debug("Resource credentials for resourceId={}, bucket={} stored successfully",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
     }
@@ -79,7 +82,8 @@ public class ResourceCredentialsService {
 
         byte[] encryptedBody = encrypt(to, resourceCredentials);
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
-        resourceService.putResourceBytes(to.toResourceDescriptor(), encryptedBody, etag);
+        resourceService.putResourceBytes(
+                credentialsDescriptorToResourceDescriptorMapper.map(to), encryptedBody, etag);
         log.debug("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",
                 from.getResourceId(), from.getBucketName(), to.getBucketName());
         return true;
@@ -97,7 +101,8 @@ public class ResourceCredentialsService {
     public ResourceCredentials getResourceCredentials(CredentialsDescriptor credentialsDescriptor) {
         log.debug("Fetching resource credentials for resourceId={}, bucket={}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
-        byte[] encryptedBody = resourceService.getResourceBytes(credentialsDescriptor.toResourceDescriptor());
+        byte[] encryptedBody = resourceService.getResourceBytes(
+                credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor));
         if (encryptedBody != null) {
             ResourceCredentials resourceCredentials = decrypt(credentialsDescriptor, encryptedBody);
             log.debug("Successfully decrypted credentials for resourceId={}, bucket={}",
@@ -117,7 +122,7 @@ public class ResourceCredentialsService {
         CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(signOutRequestCredentialsLevel);
         MutableObject<Boolean> result = new MutableObject<>(false);
 
-        resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
+        resourceService.computeResourceBytes(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor), existingCredentialsBytesEncrypted -> {
             if (existingCredentialsBytesEncrypted == null) {
                 throw new ResourceNotFoundException("Credentials for %s not found".formatted(credentialsDescriptor.getResourceId()));
             }
@@ -137,7 +142,8 @@ public class ResourceCredentialsService {
         log.debug("Deleting all resource credentials for resourceId={}.", credentialsLocator.getResourceId());
 
         credentialsLocator.getUniqueCredentialsDescriptors().forEach(credentialsDescriptor -> {
-            resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), EtagHeader.ANY);
+            resourceService.deleteResource(
+                    credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor), EtagHeader.ANY);
             log.debug("Deleting resource credentials for resourceId={}, bucket={}",
                     credentialsLocator.getResourceId(), credentialsDescriptor.getBucketName());
         });
@@ -204,7 +210,7 @@ public class ResourceCredentialsService {
         log.debug("Updating resource credentials for resourceId={}, bucket={}", resourceId, bucketName);
 
         MutableObject<ResourceCredentials> reference = new MutableObject<>();
-        resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
+        resourceService.computeResourceBytes(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor), existingCredentialsBytesEncrypted -> {
             if (existingCredentialsBytesEncrypted == null) {
                 throw new ResourceNotFoundException("Credentials for %s not found".formatted(credentialsDescriptor.getResourceId()));
             }
