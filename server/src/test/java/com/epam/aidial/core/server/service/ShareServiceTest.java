@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -60,9 +59,6 @@ class ShareServiceTest {
 
     @Mock
     private ResourceCredentialsService resourceCredentialsService;
-
-    @Mock
-    private CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper;
 
     @InjectMocks
     private ShareService shareService;
@@ -123,13 +119,10 @@ class ShareServiceTest {
         when(proxyContext.getProxy()).thenReturn(proxy);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
 
-        ResourceDescriptor credentialsResourceDescriptor = mock(ResourceDescriptor.class);
-        when(credentialsResourceDescriptor.getUrl())
-                .thenReturn("credentials/encryptedBucket/toolsets/encryptedBucket/toolset-1");
-        when(credentialsDescriptorToResourceDescriptorMapper.map(any())).thenReturn(credentialsResourceDescriptor);
-
         ResourceCredentials resourceCredentials = mock(ResourceCredentials.class);
         when(resourceCredentials.getCredentialsLevel()).thenReturn(CredentialsLevel.GLOBAL);
+
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(null);
         when(resourceCredentialsService.getResourceCredentials(any(CredentialsDescriptor.class))).thenReturn(resourceCredentials);
 
         Invitation invitation = new Invitation();
