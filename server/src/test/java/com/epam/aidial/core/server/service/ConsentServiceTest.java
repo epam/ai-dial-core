@@ -354,7 +354,7 @@ public class ConsentServiceTest {
         apiKeyData.setExecutionPath(List.of("A", "B"));
         when(context.getApiKeyData()).thenReturn(apiKeyData);
 
-        when(deploymentService.findDeployment(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Application is not found"));
+        when(deploymentService.findDeploymentBypassingAuthorization(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Application is not found"));
 
         assertThrows(ResourceNotFoundException.class, () -> service.verifyUserConsent(context, application));
     }
@@ -372,7 +372,7 @@ public class ConsentServiceTest {
         apiKeyData.setExecutionPath(List.of("A", "B"));
         when(context.getApiKeyData()).thenReturn(apiKeyData);
 
-        when(deploymentService.findDeployment(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Unknown deployment"));
+        when(deploymentService.findDeploymentBypassingAuthorization(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Unknown deployment"));
 
         assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
 
@@ -540,7 +540,7 @@ public class ConsentServiceTest {
 
         Application root = new Application();
         root.setName("A");
-        when(deploymentService.findDeployment(eq(context), eq("A"))).thenReturn(root);
+        when(deploymentService.findDeploymentBypassingAuthorization(eq(context), eq("A"))).thenReturn(root);
 
         assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
     }

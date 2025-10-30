@@ -42,13 +42,13 @@ public class ConsentService {
         Consent newConsent = new Consent();
         boolean noneConsentRequired = true;
         while (!queue.isEmpty()) {
-            deploymentId = queue.poll();
-            Deployment deployment = deploymentService.findDeployment(context, deploymentId);
+            String currentDeploymentId = queue.poll();
+            Deployment deployment = deploymentService.findDeployment(context, currentDeploymentId);
             boolean consentRequired = isConsentRequired(deployment);
             if (consentRequired) {
                 noneConsentRequired = false;
             }
-            Consent.Deployment current = newConsent.getDeployments().computeIfAbsent(deploymentId, key -> new Consent.Deployment());
+            Consent.Deployment current = newConsent.getDeployments().computeIfAbsent(currentDeploymentId, key -> new Consent.Deployment());
             current.setConsentRequired(consentRequired);
             for (String dependency : deployment.getDependencies()) {
                 if (seen.add(dependency)) {
@@ -114,7 +114,7 @@ public class ConsentService {
         }
         String rootDeploymentId = executionPath.getFirst();
         try {
-            return deploymentService.findDeployment(context, rootDeploymentId);
+            return deploymentService.findDeploymentBypassingAuthorization(context, rootDeploymentId);
         } catch (ResourceNotFoundException e) {
             if (e.getMessage().startsWith("Unknown deployment")) {
                 // the root deployment might be a route
