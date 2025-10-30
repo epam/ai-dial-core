@@ -13,7 +13,6 @@ import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactory;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
-import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.credentials.service.token.ApiKeyRefreshStrategy;
 import com.epam.aidial.core.credentials.service.token.OauthTokenRefreshStrategy;
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
@@ -73,8 +72,6 @@ class ResourceCredentialsServiceTest {
     private TokenService tokenService;
     @Mock
     private TimeProvider timeProvider;
-    @Mock
-    private CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper;
 
     @InjectMocks
     private ResourceCredentialsService service;
@@ -103,10 +100,19 @@ class ResourceCredentialsServiceTest {
         service.addResourceCredentials(descriptor, resourceAuthSettings, resourceSignInRequest, "userSub");
 
         // Then
+        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
         ArgumentCaptor<byte[]> bodyCaptor = ArgumentCaptor.forClass(byte[].class);
         ArgumentCaptor<EtagHeader> etagCaptor = ArgumentCaptor.forClass(EtagHeader.class);
 
-        verify(resourceService).putResourceBytes(any(), bodyCaptor.capture(), etagCaptor.capture());
+        verify(resourceService).putResourceBytes(descriptorCaptor.capture(), bodyCaptor.capture(), etagCaptor.capture());
+
+        ResourceDescriptor passed = descriptorCaptor.getValue();
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
+        assertEquals("my-toolset", passed.getName());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
+        assertEquals("bucket-name", passed.getBucketName());
+        assertEquals("bucket-location/", passed.getBucketLocation());
+
         assertEquals(EtagHeader.ANY, etagCaptor.getValue());
 
         byte[] actualBody = bodyCaptor.getValue();
@@ -119,7 +125,6 @@ class ResourceCredentialsServiceTest {
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
         CredentialsLocator credentialsLocator = createCredentialsLocator();
-        when(credentialsDescriptorToResourceDescriptorMapper.map(any())).thenReturn(mock(ResourceDescriptor.class));
 
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
         when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
@@ -133,12 +138,21 @@ class ResourceCredentialsServiceTest {
         ResourceCredentials c = list.getFirst();
         assertEquals(CredentialsLevel.USER, c.getCredentialsLevel());
         assertEquals(TOOL_SET_NAME, c.getResourceId());
+
+        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        verify(resourceService).getResourceBytes(descriptorCaptor.capture());
+
+        ResourceDescriptor passed = descriptorCaptor.getValue();
+        Assertions.assertEquals(ResourceTypes.CREDENTIALS, passed.getType());
+        assertEquals("my-toolset", passed.getName());
+        assertEquals(List.of("toolsets", "toolset-bucket-name", "folder1"), passed.getParentFolders());
+        assertEquals("bucket-name", passed.getBucketName());
+        assertEquals("bucket-location/", passed.getBucketLocation());
     }
 
     @Test
     void testGetAllResourceCredentials_returnsEmptyWhenNull() {
         CredentialsLocator credentialsLocator = createCredentialsLocator();
-        when(credentialsDescriptorToResourceDescriptorMapper.map(any())).thenReturn(mock(ResourceDescriptor.class));
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(null);
 
         List<ResourceCredentials> list = service.getAllResourceCredentials(credentialsLocator);
@@ -153,14 +167,6 @@ class ResourceCredentialsServiceTest {
         ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
         byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
         CredentialsDescriptor credentialsDescriptor = createCredentialsDescriptor();
-        ResourceDescriptor credentialsResourceDescriptor = mock(ResourceDescriptor.class);
-        when(credentialsResourceDescriptor.getType()).thenReturn(ResourceTypes.CREDENTIALS);
-        when(credentialsResourceDescriptor.getName()).thenReturn("my-toolset");
-        when(credentialsResourceDescriptor.getParentFolders()).thenReturn(List.of("toolsets", "toolset-bucket-name", "folder1"));
-        when(credentialsResourceDescriptor.getBucketName()).thenReturn("bucket-name");
-        when(credentialsResourceDescriptor.getBucketLocation()).thenReturn("bucket-location/");
-
-        when(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor)).thenReturn(credentialsResourceDescriptor);
 
         when(resourceService.getResourceBytes(any(ResourceDescriptor.class))).thenReturn(ENCRYPTED_BODY);
         when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(body);
@@ -201,7 +207,7 @@ class ResourceCredentialsServiceTest {
         byte[] resourceCredentialsBytes = JsonMapperUtil.convertToString(resourceCredentials).getBytes();
 
         ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
-        when(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor)).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
         when(credentialsDescriptor.getFullPath()).thenReturn("path");
         when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(resourceCredentialsBytes);
 
@@ -237,7 +243,7 @@ class ResourceCredentialsServiceTest {
         byte[] resourceCredentialsBytes = JsonMapperUtil.convertToString(resourceCredentials).getBytes();
 
         ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
-        when(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor)).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
         when(credentialsDescriptor.getFullPath()).thenReturn("path");
         when(credentialEncryptionService.decrypt(any(), any(), any())).thenReturn(resourceCredentialsBytes);
 
@@ -283,7 +289,7 @@ class ResourceCredentialsServiceTest {
 
         Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
         Mockito.when(credentialsDescriptor.getBucketName()).thenReturn("testBucket");
-        when(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor)).thenReturn(Mockito.mock(ResourceDescriptor.class));
+        Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
         byte[] encryptedBytes = "mockEncryptedData".getBytes(StandardCharsets.UTF_8);
         byte[] decryptedBytes = """
@@ -296,7 +302,7 @@ class ResourceCredentialsServiceTest {
                 """.getBytes(StandardCharsets.UTF_8);
 
         ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
-        when(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor)).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
         when(credentialsDescriptor.getFullPath()).thenReturn("path");
 
         Mockito.when(credentialEncryptionService.decrypt(any(), eq(encryptedBytes), any())).thenReturn(decryptedBytes);
@@ -330,7 +336,7 @@ class ResourceCredentialsServiceTest {
 
         Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
         Mockito.when(credentialsDescriptor.getBucketName()).thenReturn("testBucket");
-        when(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor)).thenReturn(Mockito.mock(ResourceDescriptor.class));
+        Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
         byte[] encryptedBytes = "mockEncryptedData".getBytes(StandardCharsets.UTF_8);
         byte[] decryptedBytes = """
@@ -347,7 +353,7 @@ class ResourceCredentialsServiceTest {
                 """.getBytes(StandardCharsets.UTF_8);
 
         ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
-        when(credentialsDescriptorToResourceDescriptorMapper.map(credentialsDescriptor)).thenReturn(resourceDescriptor);
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(resourceDescriptor);
         when(credentialsDescriptor.getFullPath()).thenReturn("path");
 
         Mockito.when(credentialEncryptionService.decrypt(any(), eq(encryptedBytes), any())).thenReturn(decryptedBytes);
@@ -380,11 +386,11 @@ class ResourceCredentialsServiceTest {
         // Given
         CredentialsDescriptor globalCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
         Mockito.when(globalCredentialsDescriptor.getResourceId()).thenReturn("testResourceId");
-        when(credentialsDescriptorToResourceDescriptorMapper.map(globalCredentialsDescriptor)).thenReturn(Mockito.mock(ResourceDescriptor.class));
+        Mockito.when(globalCredentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
         CredentialsDescriptor userCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
         Mockito.when(userCredentialsDescriptor.getResourceId()).thenReturn("testResourceId");
-        when(credentialsDescriptorToResourceDescriptorMapper.map(userCredentialsDescriptor)).thenReturn(Mockito.mock(ResourceDescriptor.class));
+        Mockito.when(userCredentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
 
         Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
         descriptors.put(CredentialsLevel.USER, userCredentialsDescriptor);

@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.ShareResourceLimit;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Invitation;
@@ -70,7 +69,6 @@ public class ShareService {
     private final ApplicationSchemaService applicationSchemaService;
     private final LongSupplier clock;
     private final ResourceCredentialsService resourceCredentialsService;
-    private final CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper;
 
     private static final Map<ResourceType, ShareResourceLimit> DEFAULT_LIMITS = Map.of(
             ResourceTypes.APPLICATION, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)),
@@ -330,7 +328,7 @@ public class ShareService {
 
                 if (globalResourceCredentials != null
                         && globalResourceCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
-                    ResourceDescriptor resourceDescriptor = credentialsDescriptorToResourceDescriptorMapper.map(globalCredentialsDescriptor);
+                    ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
                     SharedResource sharedCredentials = new SharedResource(
                             resourceDescriptor.getUrl(), null, null, ResourceAccessType.READ_ONLY);
                     newSharedResources.add(sharedCredentials);
@@ -543,7 +541,7 @@ public class ShareService {
                 CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context);
                 ResourceCredentials globalResourceCredentials = resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
                 if (globalResourceCredentials != null) {
-                    ResourceDescriptor resourceDescriptor = credentialsDescriptorToResourceDescriptorMapper.map(globalCredentialsDescriptor);
+                    ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
                     newPermissionsToRevoke.put(resourceDescriptor, ResourceAccessType.ALL);
                 }
                 log.debug("Credential revocation finished - User: {}, Resource: {}", context.getUserSub(), resource.getUrl());

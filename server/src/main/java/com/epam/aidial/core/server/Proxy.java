@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
@@ -134,7 +133,6 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ResourceCredentialsService resourceCredentialsService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
-    private final CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper;
 
     @Override
     public void handle(HttpServerRequest request) {

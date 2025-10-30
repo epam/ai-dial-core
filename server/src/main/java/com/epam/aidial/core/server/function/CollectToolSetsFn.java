@@ -2,8 +2,8 @@ package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.mapper.CredentialsDescriptorToResourceDescriptorMapper;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
@@ -37,7 +38,7 @@ public class CollectToolSetsFn extends BaseRequestFunction<ObjectNode> {
                 String resourceUrl = toolset.getUrl();
                 if (sourceApiKeyData.getAttachedToolSets().containsKey(resourceUrl) || accessService.hasReadAccess(toolset, context)) {
                     destApiKeyData.getAttachedToolSets().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
-                    attachResourceCredentials(accessService, destApiKeyData, resourceUrl);
+                    attachToolSetCredentials(accessService, destApiKeyData, resourceUrl);
                 } else {
                     throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the toolset %s".formatted(resourceUrl));
                 }
@@ -46,13 +47,12 @@ public class CollectToolSetsFn extends BaseRequestFunction<ObjectNode> {
         return false;
     }
 
-    private void attachResourceCredentials(AccessService accessService,
-                                           ApiKeyData destApiKeyData,
-                                           String resourceUrl) {
-        CredentialsDescriptorToResourceDescriptorMapper credentialsDescriptorToResourceDescriptorMapper = proxy.getCredentialsDescriptorToResourceDescriptorMapper();
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceUrl, context);
+    private void attachToolSetCredentials(AccessService accessService,
+                                          ApiKeyData destApiKeyData,
+                                          String toolSetUrl) {
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetUrl), context);
         List<ResourceDescriptor> credentialsResourceDescriptors = credentialsLocator.getUniqueCredentialsDescriptors().stream()
-                .map(credentialsDescriptorToResourceDescriptorMapper::map)
+                .map(CredentialsDescriptor::toResourceDescriptor)
                 .filter(credentialsDescriptor -> accessService.hasReadAccess(credentialsDescriptor, context))
                 .toList();
         for (ResourceDescriptor credentialsResourceDescriptor : credentialsResourceDescriptors) {
