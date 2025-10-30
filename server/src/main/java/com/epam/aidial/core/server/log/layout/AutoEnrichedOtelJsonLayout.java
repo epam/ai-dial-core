@@ -55,6 +55,10 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
         Map<String, Object> attributes = new LinkedHashMap<>();
 
+        attributes.put("instant", event.getInstant().toString());
+        attributes.put("loggerName", event.getLoggerName());
+        attributes.put("threadName", event.getThreadName());
+
         // Enrich attributes from context
         enrichAttributesFromContext(event, attributes);
         

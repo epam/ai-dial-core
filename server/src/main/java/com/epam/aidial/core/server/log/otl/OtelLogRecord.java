@@ -12,6 +12,22 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class OtelLogRecord {
 
+    @JsonProperty("Body")
+    private Object body;
+
+    @JsonProperty("Attributes")
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    private Map<String, Object> attributes;
+
+    @JsonProperty("TraceId")
+    private String traceId;
+
+    @JsonProperty("SpanId")
+    private String spanId;
+
+    @JsonProperty("TraceFlags")
+    private String traceFlags;
+
     @JsonProperty("Timestamp")
     private Long timestamp;
 
@@ -24,22 +40,7 @@ public class OtelLogRecord {
     @JsonProperty("SeverityNumber")
     private Integer severityNumber;
 
-    @JsonProperty("TraceId")
-    private String traceId;
-
-    @JsonProperty("SpanId")
-    private String spanId;
-
-    @JsonProperty("TraceFlags")
-    private String traceFlags;
-
     @JsonProperty("Resource")
     private Map<String, Object> resource;
 
-    @JsonProperty("Body")
-    private Object body;
-
-    @JsonProperty("Attributes")
-    @JsonInclude(JsonInclude.Include.ALWAYS)
-    private Map<String, Object> attributes;
 }
