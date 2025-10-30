@@ -205,7 +205,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         JsonNode attributes = jsonNode.get("Attributes");
         assertNotNull(attributes);
         assertTrue(attributes.isObject());
-        assertEquals(0, attributes.size());
+        assertEquals(3, attributes.size());
     }
 
     @Test
