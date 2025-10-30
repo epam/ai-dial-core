@@ -59,23 +59,15 @@ public class DeploymentService {
         this.applicationSchemaService = applicationSchemaService;
     }
 
-    Deployment findDeploymentBypassingAuthorization(ProxyContext context, String id) {
-        return findDeployment(context, id, false);
-    }
-
     public Deployment findDeployment(ProxyContext context, String id) {
-        return findDeployment(context, id, true);
-    }
-
-    private Deployment findDeployment(ProxyContext context, String id, boolean verifyAccess) {
         Deployment deployment = context.getConfig().selectDeployment(id);
         if (deployment != null) {
-            if (verifyAccess && !deployment.hasAccess(context.getUserRoles())) {
+            if (!deployment.hasAccess(context.getUserRoles())) {
                 throwForbiddenDeploymentError(id);
             }
             return deployment;
         }
-        ResourceDescriptor deploymentDescriptor = toResourceDescriptor(context, id, verifyAccess);
+        ResourceDescriptor deploymentDescriptor = toResourceDescriptor(context, id);
         ResourceType resourceType = deploymentDescriptor.getType();
         return switch (resourceType) {
             case APPLICATION -> applicationService.getApplication(deploymentDescriptor).getValue();
@@ -92,7 +84,7 @@ public class DeploymentService {
         return deployments;
     }
 
-    private ResourceDescriptor toResourceDescriptor(ProxyContext context, String resourceUrl, boolean verifyAccess) {
+    private ResourceDescriptor toResourceDescriptor(ProxyContext context, String resourceUrl) {
         String url;
         ResourceDescriptor resource;
 
@@ -107,7 +99,7 @@ public class DeploymentService {
             throw new ResourceNotFoundException("Invalid deployment url: " + url);
         }
 
-        if (verifyAccess && !accessService.hasReadAccess(resource, context)) {
+        if (!accessService.hasReadAccess(resource, context)) {
             throwForbiddenDeploymentError(resourceUrl);
         }
 

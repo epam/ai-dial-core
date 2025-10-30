@@ -80,12 +80,7 @@ public class ConsentService {
         }
         String currentDeploymentId = deployment.getName();
         List<String> executionPath = context.getApiKeyData().getExecutionPath();
-        Deployment rootDeployment = getRootDeployment(context, deployment);
-        if (rootDeployment == null) {
-            log.debug("Root deployment is not found for the deployment {} in the execution path: {}", currentDeploymentId, executionPath);
-            return;
-        }
-        String rootDeploymentId = rootDeployment.getName();
+        String rootDeploymentId = getRootDeploymentId(context, deployment);
         Consent consent = readConsent(context, rootDeploymentId);
         if (consent == null) {
             // missing consent
@@ -104,25 +99,15 @@ public class ConsentService {
         }
     }
 
-    private Deployment getRootDeployment(ProxyContext context, Deployment current) {
+    private String getRootDeploymentId(ProxyContext context, Deployment current) {
         if (context.getApiKeyData().getPerRequestKey() == null) {
-            return current;
+            return current.getName();
         }
         List<String> executionPath = context.getApiKeyData().getExecutionPath();
         if (executionPath == null || executionPath.isEmpty()) {
             throw new IllegalStateException("Execution path is empty for per-request API key");
         }
-        String rootDeploymentId = executionPath.getFirst();
-        try {
-            return deploymentService.findDeploymentBypassingAuthorization(context, rootDeploymentId);
-        } catch (ResourceNotFoundException e) {
-            if (e.getMessage().startsWith("Unknown deployment")) {
-                // the root deployment might be a route
-                // we don't have user consent for routes
-                return null;
-            }
-            throw e;
-        }
+        return executionPath.getFirst();
     }
 
     private static void fail(String deploymentId) {

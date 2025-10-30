@@ -8,7 +8,6 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.consent.Consent;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -35,7 +34,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -342,7 +340,7 @@ public class ConsentServiceTest {
     }
 
     @Test
-    public void testVerifyUserConsent_WhenRootDeploymentIsNotFound() {
+    public void testVerifyUserConsent_WhenConsentIsNotFound() {
         Application application = new Application();
         application.setName("C");
         Features features = new Features();
@@ -354,29 +352,9 @@ public class ConsentServiceTest {
         apiKeyData.setExecutionPath(List.of("A", "B"));
         when(context.getApiKeyData()).thenReturn(apiKeyData);
 
-        when(deploymentService.findDeploymentBypassingAuthorization(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Application is not found"));
+        when(context.getUserSub()).thenReturn("sub");
 
-        assertThrows(ResourceNotFoundException.class, () -> service.verifyUserConsent(context, application));
-    }
-
-    @Test
-    public void testVerifyUserConsent_WhenRootDeploymentIsUnknown() {
-        Application application = new Application();
-        application.setName("C");
-        Features features = new Features();
-        features.setConsentRequired(true);
-        application.setFeatures(features);
-
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setPerRequestKey("key");
-        apiKeyData.setExecutionPath(List.of("A", "B"));
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
-
-        when(deploymentService.findDeploymentBypassingAuthorization(eq(context), eq("A"))).thenThrow(new ResourceNotFoundException("Unknown deployment"));
-
-        assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
-
-        verifyNoInteractions(resourceService);
+        assertThrows(PermissionDeniedException.class, () -> service.verifyUserConsent(context, application));
     }
 
     @Test
@@ -540,7 +518,6 @@ public class ConsentServiceTest {
 
         Application root = new Application();
         root.setName("A");
-        when(deploymentService.findDeploymentBypassingAuthorization(eq(context), eq("A"))).thenReturn(root);
 
         assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
     }
