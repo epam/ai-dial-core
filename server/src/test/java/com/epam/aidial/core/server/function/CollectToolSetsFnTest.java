@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
@@ -107,10 +108,11 @@ public class CollectToolSetsFnTest {
         when(context.getUserSub()).thenReturn("userSub");
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
-        when(encryptionService.encrypt(anyString())).thenReturn("bucket");
+        when(encryptionService.encrypt("Users/userSub/")).thenReturn("encryptedBucket");
+        when(encryptionService.decrypt("encryptedBucket")).thenReturn("decryptedBucket/");
         ResourceDescriptor privateTool = mock(ResourceDescriptor.class);
         when(privateTool.isPublic()).thenReturn(false);
-        when(privateTool.getUrl()).thenReturn("tools/bucket/my-tool");
+        when(privateTool.getUrl()).thenReturn("toolsets/encryptedBucket/my%20tool");
         ResourceDescriptor publicTool = mock(ResourceDescriptor.class);
         when(publicTool.isPublic()).thenReturn(true);
         when(applicationSchemaService.getToolSets(application)).thenReturn(List.of(privateTool, publicTool));
@@ -127,12 +129,16 @@ public class CollectToolSetsFnTest {
 
         Assertions.assertEquals(1, dest.getAttachedToolSets().size());
         String toolsetId = dest.getAttachedToolSets().keySet().iterator().next();
-        Assertions.assertEquals("tools/bucket/my-tool", toolsetId);
+        Assertions.assertEquals("toolsets/encryptedBucket/my%20tool", toolsetId);
         Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedToolSets().get(toolsetId).accessTypes());
 
-        Assertions.assertEquals(2, dest.getAttachedResourceCredentials().size());
-        List<AutoSharedData> autoSharedData = dest.getAttachedResourceCredentials().values().stream().toList();
-        Assertions.assertEquals(ResourceAccessType.READ_ONLY, autoSharedData.get(0).accessTypes());
-        Assertions.assertEquals(ResourceAccessType.READ_ONLY, autoSharedData.get(1).accessTypes());
+        Map<String, AutoSharedData> attachedResourceCredentials = dest.getAttachedResourceCredentials();
+        Assertions.assertEquals(1, dest.getAttachedResourceCredentials().size());
+
+        List<AutoSharedData> autoSharedData = attachedResourceCredentials.values().stream().toList();
+        Assertions.assertEquals(ResourceAccessType.READ_ONLY, autoSharedData.getFirst().accessTypes());
+
+        List<String> autoSharedResources = attachedResourceCredentials.keySet().stream().toList();
+        Assertions.assertEquals("credentials/encryptedBucket/toolsets/encryptedBucket/my%20tool", autoSharedResources.getFirst());
     }
 }

@@ -484,14 +484,14 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @Test
     void testProxyMcpCallWithSharedToolSet() {
         // create ToolSet with admin JWT
-        Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null,  TOOLSET_CREATE_REQEUST_BODY,
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@", null,  TOOLSET_CREATE_REQEUST_BODY,
                 "authorization", "admin");
-        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@\"");
 
         // signin into toolset with admin JWT
         response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
                 {
-                    "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset 1@",
                     "credentialsLevel": "GLOBAL",
                     "authenticationType": "API_KEY",
                     "api_key": "Bearer api_key"
@@ -505,7 +505,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                   "invitationType": "link",
                   "resources": [
                     {
-                      "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                      "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@",
                       "shareCredentials": "true"
                     }
                   ]
@@ -516,12 +516,12 @@ public class ToolSetApiTest extends ResourceBaseTest {
         assertNotNull(invitationLink);
 
         response = send(HttpMethod.GET, "/v1/invitations", null, null, "authorization", "admin");
-        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
-        verifyNotExact(response, 200, "\"url\":\"credentials/4X25dj1mja51jykqxsXnCH/toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@\"");
+        verifyNotExact(response, 200, "\"url\":\"credentials/4X25dj1mja51jykqxsXnCH/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@\"");
         verifyNotExact(response, 200, "\"permissions\":[\"READ\"]");
 
         // verify user do not have access to the toolset
-        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "user");
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%20@", null, null, "authorization", "user");
         verify(response, 403);
 
         // user accepts invitation
@@ -529,7 +529,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
         verify(response, 200);
 
         // verify user has access to the toolset
-        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "user");
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@", null, null, "authorization", "user");
         verify(response, 200);
 
         String mcpRequest = """
@@ -565,11 +565,11 @@ public class ToolSetApiTest extends ResourceBaseTest {
         TestWebServer.Handler handler = request -> new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
             ApiKeyData userAppKey = createAppKey("user", Map.of(
-                    "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
+                    "toolsets/4X25dj1mja51jykqxsXnCH/toolset%20@",
                     new AutoSharedData(Set.of(ResourceAccessType.READ))));
             apiKeyStore.assignPerRequestApiKey(userAppKey);
 
-            Response resp = send(HttpMethod.POST, "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/toolset@/mcp", null,
+            Response resp = send(HttpMethod.POST, "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@/mcp", null,
                     mcpRequest, "Content-Type", "application/json", "api-key", userAppKey.getPerRequestKey());
 
             assertEquals(200, resp.status());
