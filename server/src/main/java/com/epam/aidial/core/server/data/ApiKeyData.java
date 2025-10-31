@@ -1,17 +1,22 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
+import com.epam.aidial.core.server.data.permission.ResourcePermission;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.vertx.core.MultiMap;
 import lombok.Data;
+import org.checkerframework.checker.optional.qual.Present;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The container keeps data associated with API key.
@@ -59,6 +64,10 @@ public class ApiKeyData {
     private String initialDeploymentApi;
     // Original HTTP headers to be stored during an interceptor invocation chain
     private Map<String, String> httpHeaders = new HashMap<>();
+    // Map of receivers with shared resources
+    private Map<String, Map<String, PerRequestSharedData>> receivers = new HashMap<>();
+    // Map of resources shared by per request
+    private Map<String, PerRequestSharedData> perRequestSharedResources = new HashMap<>();
 
     public ApiKeyData() {
     }
@@ -79,15 +88,39 @@ public class ApiKeyData {
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
             currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
+        String receiver = null;
         if (context.getDeployment() != null) {
-            currentPath.add(context.getDeployment().getName());
-            proxyApiKeyData.setSourceDeployment(context.getDeployment().getName());
+            receiver = context.getDeployment().getName();
+            currentPath.add(receiver);
+            proxyApiKeyData.setSourceDeployment(receiver);
         } else if (context.getRoute() != null) {
-            currentPath.add(context.getRoute().getName());
-            proxyApiKeyData.setSourceDeployment(context.getRoute().getName());
+            receiver = context.getRoute().getName();
+            currentPath.add(receiver);
+            proxyApiKeyData.setSourceDeployment(receiver);
+        }
+        if (apiKeyData.getPerRequestKey() != null) {
+            Map<String, Map<String, PerRequestSharedData>> receivers = apiKeyData.getReceivers();
+            if (receiver != null) {
+                sharePerRequestPermissions(proxyApiKeyData, receivers, receiver);
+            }
+            // per request permissions are always shared to interceptors if the initial deployment has them
+            if (context.getInitialDeployment() != null) {
+                sharePerRequestPermissions(proxyApiKeyData, receivers, context.getInitialDeployment());
+            }
         }
         proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
+    }
+
+    private static void sharePerRequestPermissions(ApiKeyData proxyApiKeyData, Map<String, Map<String, PerRequestSharedData>> receivers,
+                                                   String receiver) {
+        if (receiver == null) {
+            return;
+        }
+        Map<String, PerRequestSharedData> resources = receivers.get(receiver);
+        if (resources != null) {
+            proxyApiKeyData.getPerRequestSharedResources().putAll(resources);
+        }
     }
 
     @JsonIgnore

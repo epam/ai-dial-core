@@ -35,7 +35,10 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
                 return Future.succeededFuture();
             }
             String perRequestKey = context.getApiKeyData().getPerRequestKey();
-            return proxy.getApiKeyStore().updatePerRequestApiKey(perRequestKey, json -> updateAutoSharedAttachments(json, permittedAttachments, perRequestKey));
+            return proxy.getTaskExecutor().submit(() -> {
+                proxy.getApiKeyStore().updatePerRequestApiKey(perRequestKey, json -> updateAutoSharedAttachments(json, permittedAttachments, perRequestKey));
+                return null;
+            });
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }

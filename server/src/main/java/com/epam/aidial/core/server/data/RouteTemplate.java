@@ -191,7 +191,9 @@ public enum RouteTemplate {
     TOOL_SET_PROXY_METADATA(
             "^/\\.well-known/oauth-protected-resource/v1/toolset/(?<id>.+?)/mcp$",
             "/.well-known/oauth-protected-resource/v1/toolset/{id}/mcp"
-    );
+    ),
+    PER_REQUEST_PERMISSION("^/v1/ops/resource/per-request-permissions/(grant|revoke|list)",
+            "/v1/ops/resource/per-request-permissions/{operation}");
 
     private final Pattern pattern;
     private final String template;
