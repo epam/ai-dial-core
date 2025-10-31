@@ -13,6 +13,7 @@ import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -651,6 +652,33 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 "authorization", "admin");
         verifyNotExact(response, 200, "\"url\":\"toolsets/4X25dj1mja51jykqxsXnCH/toolset@\"");
 
+        response = send(HttpMethod.PUT, "/v1/applications/4X25dj1mja51jykqxsXnCH/my-app", null, """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "My Custom Application",
+                  "display_version": "1.0",
+                  "icon_url": "http://application1/icon.svg",
+                  "description": "My Custom Application Description",
+                  "dependencies": ["toolsets/4X25dj1mja51jykqxsXnCH/toolset@"]
+                }
+                """,
+                "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/consent/applications/4X25dj1mja51jykqxsXnCH/my-app", null, null, "authorization", "admin");
+        verify(response, 200);
+        ObjectNode node = (ObjectNode) ProxyUtil.MAPPER.readTree(response.body());
+        assertFalse(node.get("accepted").asBoolean());
+
+        node.remove("accepted");
+        response = send(HttpMethod.POST, "/v1/consent/applications/4X25dj1mja51jykqxsXnCH/my-app", null, node.toString(), "authorization", "admin");
+        verify(response, 200);
+
+        response = send(HttpMethod.GET, "/v1/consent/applications/4X25dj1mja51jykqxsXnCH/my-app", null, null, "authorization", "admin");
+        verify(response, 200);
+        node = (ObjectNode) ProxyUtil.MAPPER.readTree(response.body());
+        assertTrue(node.get("accepted").asBoolean());
+
         // signin into toolset
         response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
                 {
@@ -662,23 +690,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """, "authorization", "admin");
         verify(response, 200, "true");
 
-        // verify user consent is not provided
-        response = send(HttpMethod.GET, "/v1/consent/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "admin");
-        verify(response, 200);
-        ObjectNode node = (ObjectNode) ProxyUtil.MAPPER.readTree(response.body());
-        assertFalse(node.get("accepted").asBoolean());
-
-        // provide consent to use toolset
-        node.remove("accepted");
-        response = send(HttpMethod.POST, "/v1/consent/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, node.toString(), "authorization", "admin");
-        verify(response, 200);
-
-        // verify user consent is provided
-        response = send(HttpMethod.GET, "/v1/consent/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, null, "authorization", "admin");
-        verify(response, 200);
-        node = (ObjectNode) ProxyUtil.MAPPER.readTree(response.body());
-        assertTrue(node.get("accepted").asBoolean());
-
         // use mcp with user's per request api key
         TestWebServer.Handler handler = request -> new MockResponse()
                 .setBody(MCP_TOOL_CALL_RESPONSE)
@@ -687,6 +698,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
             ApiKeyData adminAppKey = createAppKey("admin", Map.of(
                     "toolsets/4X25dj1mja51jykqxsXnCH/toolset@",
                     new AutoSharedData(Set.of(ResourceAccessType.READ))));
+            adminAppKey.setExecutionPath(List.of("applications/4X25dj1mja51jykqxsXnCH/my-app"));
             apiKeyStore.assignPerRequestApiKey(adminAppKey);
 
             Response resp = send(HttpMethod.POST, "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/toolset@/mcp", null,
