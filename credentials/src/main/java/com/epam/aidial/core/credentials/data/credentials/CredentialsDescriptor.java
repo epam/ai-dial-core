@@ -2,6 +2,7 @@ package com.epam.aidial.core.credentials.data.credentials;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.Data;
 
 import java.util.Arrays;
@@ -24,7 +25,7 @@ public class CredentialsDescriptor {
 
     public ResourceDescriptor toResourceDescriptor() {
         String[] parts = resourceId.split(ResourceDescriptor.PATH_SEPARATOR);
-        String name = parts[parts.length - 1];
+        String name = UrlUtil.decodePath(parts[parts.length - 1]);
         List<String> parentFolders = Arrays.asList(Arrays.copyOf(parts, parts.length - 1));
 
         return new ResourceDescriptor(
