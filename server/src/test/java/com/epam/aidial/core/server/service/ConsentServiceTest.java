@@ -331,6 +331,27 @@ public class ConsentServiceTest {
         features.setConsentRequired(true);
         application.setFeatures(features);
 
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        when(context.getUserSub()).thenReturn("sub");
+
+        assertThrows(PermissionDeniedException.class, () -> service.verifyUserConsent(context, application));
+    }
+
+    @Test
+    public void testVerifyUserConsent_WhenConsentIsNotFound() {
+        Application application = new Application();
+        application.setName("C");
+        Features features = new Features();
+        features.setConsentRequired(true);
+        application.setFeatures(features);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        apiKeyData.setExecutionPath(List.of("A", "B"));
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
         when(context.getUserSub()).thenReturn("sub");
 
         assertThrows(PermissionDeniedException.class, () -> service.verifyUserConsent(context, application));
@@ -417,7 +438,7 @@ public class ConsentServiceTest {
     }
 
     @Test
-    public void testVerifyUserConsent_Success() {
+    public void testVerifyUserConsent_Success_RootIsCurrentDeployment() {
         Application application = new Application();
         application.setName("X");
         Features features = new Features();
@@ -452,6 +473,51 @@ public class ConsentServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setExecutionPath(List.of("A", "B"));
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
+    }
+
+    @Test
+    public void testVerifyUserConsent_Success_RootIsInPath() {
+        Application application = new Application();
+        application.setName("X");
+        Features features = new Features();
+        features.setConsentRequired(true);
+        application.setFeatures(features);
+
+        when(context.getUserSub()).thenReturn("sub");
+
+        String jsonConsent = """
+               {
+                   "deployments" : {
+                      "A" : {
+                        "consentRequired" : false
+                      },
+                      "B" : {
+                        "consentRequired" : false
+                      },
+                      "C" : {
+                        "consentRequired" : false
+                      },
+                      "X" : {
+                        "consentRequired" : true
+                      },
+                      "Y" : {
+                        "consentRequired" : true
+                      }
+                   }
+               }
+                """;
+
+        when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn(jsonConsent);
+
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("key");
+        apiKeyData.setExecutionPath(List.of("A", "B"));
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+
+        Application root = new Application();
+        root.setName("A");
 
         assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
     }
