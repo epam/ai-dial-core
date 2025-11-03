@@ -4,13 +4,17 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.ListPermissionRequest;
 import com.epam.aidial.core.server.data.permission.PerRequestReceiver;
+import com.epam.aidial.core.server.data.permission.ResourcePermission;
+import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -23,18 +27,20 @@ public class PerRequestPermissionController {
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
     private final PerRequestPermissionService service;
+    private final EncryptionService encryptionService;
 
     public PerRequestPermissionController(ProxyContext context) {
         this.context = context;
         Proxy proxy = context.getProxy();
         this.taskExecutor = proxy.getTaskExecutor();
         this.service = proxy.getPerRequestPermissionService();
+        this.encryptionService = proxy.getEncryptionService();
     }
 
     public Future<Void> handle(String operation) {
         Future<Void> result = Future.succeededFuture();
         if (context.getApiKeyData().getPerRequestKey() == null) {
-            context.respond(HttpStatus.UNAUTHORIZED, "Operation is only permitted by per request API key");
+            context.respond(HttpStatus.FORBIDDEN, "Operation is only permitted by per request API key");
             return result;
         }
         Function<Buffer, Future<Object>> bodyHandler;
@@ -63,6 +69,7 @@ public class PerRequestPermissionController {
 
     Future<Object> grant(Buffer body) {
         PerRequestReceiver data = convertJson(body, PerRequestReceiver.class);
+        validate(data);
         return taskExecutor.submit(() -> {
             service.grant(context, data);
             return null;
@@ -71,6 +78,7 @@ public class PerRequestPermissionController {
 
     Future<Object> revoke(Buffer body) {
         PerRequestReceiver data = convertJson(body, PerRequestReceiver.class);
+        validate(data);
         return taskExecutor.submit(() -> {
             service.revoke(context, data);
             return null;
@@ -86,6 +94,28 @@ public class PerRequestPermissionController {
                 return service.listReceivers(context);
             }
         });
+    }
+
+    private void validate(PerRequestReceiver request) {
+        if (request.getReceiver() == null) {
+            throw new IllegalArgumentException("Receiver is missed");
+        }
+        if (request.getResources() == null || request.getResources().isEmpty()) {
+            throw new IllegalArgumentException("Resources are missed");
+        }
+        for (ResourcePermission resourcePermission : request.getResources()) {
+            if (resourcePermission.getPermissions() == null || resourcePermission.getPermissions().isEmpty()) {
+                throw new IllegalArgumentException("List of permissions is empty for resource: " + resourcePermission.getUrl());
+            }
+            if (resourcePermission.getUrl() == null || resourcePermission.getUrl().isEmpty()) {
+                throw new IllegalArgumentException("Url to resource is empty");
+            }
+            try {
+                ResourceDescriptorFactory.fromAnyUrl(resourcePermission.getUrl(), encryptionService);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Invalid url to resource: " + resourcePermission.getUrl());
+            }
+        }
     }
 
     private static <T> T convertJson(Buffer body, Class<T> clazz) {
