@@ -8,8 +8,12 @@ import com.epam.aidial.core.server.data.permission.PerRequestReceiverList;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.data.permission.ResourcePermission;
 import com.epam.aidial.core.server.data.permission.ResourcePermissionList;
+import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
@@ -22,13 +26,26 @@ import java.util.Set;
 public class PerRequestPermissionService {
 
     private  final ApiKeyStore apiKeyStore;
+    private final AccessService accessService;
+    private final EncryptionService encryptionService;
 
-    public PerRequestPermissionService(ApiKeyStore apiKeyStore) {
+    public PerRequestPermissionService(ApiKeyStore apiKeyStore, AccessService accessService, EncryptionService encryptionService) {
         this.apiKeyStore = apiKeyStore;
+        this.accessService = accessService;
+        this.encryptionService = encryptionService;
     }
 
     public void grant(ProxyContext context, PerRequestReceiver request) {
         String key = context.getApiKeyData().getPerRequestKey();
+        for (ResourcePermission resourcePermission : request.getResources()) {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(resourcePermission.getUrl(), encryptionService);
+            Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.lookupPermissions(Set.of(resource), context);
+            Set<ResourceAccessType> actual = result.get(resource);
+            Set<ResourceAccessType> expected = resourcePermission.getPermissions();
+            if (!actual.containsAll(expected)) {
+                throw new PermissionDeniedException("Access to resource is forbidden: " + resourcePermission.getUrl());
+            }
+        }
         apiKeyStore.updatePerRequestApiKey(key, json -> {
             ApiKeyData apiKeyData = convert(json, key);
             addPermissions(apiKeyData, request);

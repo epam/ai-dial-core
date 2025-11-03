@@ -62,11 +62,11 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                     // get app1 bucket
                     Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "api-key", apiKey);
                     assertEquals(200, response.status());
-                    String bucket = new JsonObject(response.body()).getString("bucket");
-                    assertNotNull(bucket);
+                    String appBucket = new JsonObject(response.body()).getString("bucket");
+                    assertNotNull(appBucket);
 
-                    readFileUrl.setValue("files/%s/folder1/file1.txt".formatted(bucket));
-                    deleteFileUrl.setValue("files/%s/folder2/file2.txt".formatted(bucket));
+                    readFileUrl.setValue("files/%s/folder1/file1.txt".formatted(appBucket));
+                    deleteFileUrl.setValue("files/%s/folder2/file2.txt".formatted(appBucket));
 
                     // upload file1
                     response = upload(HttpMethod.PUT, "/v1/" + readFileUrl.get(), null, """
@@ -80,7 +80,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                             """, "api-key", apiKey);
                     verify(response, 200);
 
-                    // grant permissions to app1
+                    // grant permissions to app2
                     response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """
                             {
                              "resources": [
@@ -95,7 +95,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                              ],
                              "receiver": "applications/public/app2"
                             }
-                            """.formatted(bucket, bucket), "api-key", apiKey);
+                            """.formatted(appBucket, appBucket), "api-key", apiKey);
                     verify(response, 200);
 
                     // send request to app1
@@ -130,13 +130,27 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                              ],
                              "receiver": "applications/public/app2"
                             }
-                            """.formatted(bucket, bucket), "api-key", apiKey);
+                            """.formatted(appBucket, appBucket), "api-key", apiKey);
                     verify(response, 200);
 
                     // make sure app1 doesn't have access to those resources
                     response = send(HttpMethod.POST, "/openai/deployments/applications/public/app2/chat/completions",
                             null, requestBody, "api-key", apiKey,
                             "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+                    verify(response, 403);
+
+                    // grant permissions to app2 on resources that app1 doesn't have access
+                    response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """
+                            {
+                             "resources": [
+                               {
+                                 "url": "files/%s/myfiles/file.txt",
+                                 "permissions": ["READ"]
+                               }
+                             ],
+                             "receiver": "applications/public/app2"
+                            }
+                            """.formatted(bucket), "api-key", apiKey);
                     verify(response, 403);
 
                     MockResponse mockResponse = new MockResponse();
