@@ -30,24 +30,6 @@ public enum RouteTemplate {
             "/openai/models"
     ),
 
-    ADDON(
-            "^/+openai/addons/(?<id>.+?)$",
-            "/openai/addons/{id}"
-    ),
-    ADDONS(
-            "^/+openai/addons$",
-            "/openai/addons"
-    ),
-
-    ASSISTANT(
-            "^/+openai/assistants/(?<id>.+?)$",
-            "/openai/assistants/{id}"
-    ),
-    ASSISTANTS(
-            "^/+openai/assistants$",
-            "/openai/assistants"
-    ),
-
     APPLICATION(
             "^/+openai/applications/(?<id>.+?)$",
             "/openai/applications/{id}"

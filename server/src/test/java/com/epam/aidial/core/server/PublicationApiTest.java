@@ -162,7 +162,6 @@ class PublicationApiTest extends ResourceBaseTest {
                     "temperature": 1,
                     "folderId": "conversations/2CZ9i2bcBACFts8JbBu3MdTHfU5imDZBmDVomBuDCkbhEstv1KXNzCiw693js8BLmo",
                     "messages": [],
-                    "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
                     "lastActivityDate": 4848683153
                 }
@@ -657,7 +656,6 @@ class PublicationApiTest extends ResourceBaseTest {
                         ]
                     }
                 }],
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
@@ -2739,7 +2737,6 @@ class PublicationApiTest extends ResourceBaseTest {
                         ]
                     }
                 }],
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
@@ -2809,7 +2806,6 @@ class PublicationApiTest extends ResourceBaseTest {
                         ]
                     }
                 }],
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }

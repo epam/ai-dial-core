@@ -15,7 +15,6 @@ public class DeploymentData {
     private String id;
     private String model;
     private String addon;
-    private String assistant;
     private String application;
     private String toolset;
     private String displayName;

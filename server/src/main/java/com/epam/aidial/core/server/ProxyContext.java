@@ -66,7 +66,7 @@ public class ProxyContext {
     private final String parentSpanId;
     // OpenTelemetry trace flags
     private final String traceFlags;
-    // deployment name of the source(application/assistant/model) associated with the current request
+    // deployment name of the source(application/model) associated with the current request
     private final String sourceDeployment;
     private final String decodedSourceDeployment;
 

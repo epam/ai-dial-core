@@ -98,62 +98,6 @@ public class ControllerSelectorTest {
     }
 
     @Test
-    public void testSelectGetAddonController() {
-        when(request.path()).thenReturn("/openai/addons/addon1");
-        when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).build(proxy, context);
-        assertNotNull(controller);
-        SerializedLambda lambda = getSerializedLambda(controller);
-        assertNotNull(lambda);
-        Object arg1 = lambda.getCapturedArg(0);
-        Object arg2 = lambda.getCapturedArg(1);
-        assertInstanceOf(AddonController.class, arg1);
-        assertEquals("addon1", arg2);
-    }
-
-    @Test
-    public void testSelectGetAddonsController() {
-        when(request.path()).thenReturn("/openai/addons");
-        when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).build(proxy, context);
-        assertNotNull(controller);
-        SerializedLambda lambda = getSerializedLambda(controller);
-        assertNotNull(lambda);
-        assertEquals(1, lambda.getCapturedArgCount());
-        Object arg1 = lambda.getCapturedArg(0);
-        assertInstanceOf(AddonController.class, arg1);
-        assertEquals("getAddons", lambda.getImplMethodName());
-    }
-
-    @Test
-    public void testSelectGetAssistantController() {
-        when(request.path()).thenReturn("/openai/assistants/as1");
-        when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).build(proxy, context);
-        assertNotNull(controller);
-        SerializedLambda lambda = getSerializedLambda(controller);
-        assertNotNull(lambda);
-        Object arg1 = lambda.getCapturedArg(0);
-        Object arg2 = lambda.getCapturedArg(1);
-        assertInstanceOf(AssistantController.class, arg1);
-        assertEquals("as1", arg2);
-    }
-
-    @Test
-    public void testSelectGetAssistantsController() {
-        when(request.path()).thenReturn("/openai/assistants");
-        when(request.method()).thenReturn(HttpMethod.GET);
-        Controller controller = ControllerSelector.select(request).build(proxy, context);
-        assertNotNull(controller);
-        SerializedLambda lambda = getSerializedLambda(controller);
-        assertNotNull(lambda);
-        assertEquals(1, lambda.getCapturedArgCount());
-        Object arg1 = lambda.getCapturedArg(0);
-        assertInstanceOf(AssistantController.class, arg1);
-        assertEquals("getAssistants", lambda.getImplMethodName());
-    }
-
-    @Test
     public void testSelectGetApplicationController() {
         when(request.path()).thenReturn("/openai/applications/app1");
         when(request.method()).thenReturn(HttpMethod.GET);

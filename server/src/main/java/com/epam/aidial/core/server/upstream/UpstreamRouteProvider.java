@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.upstream;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Assistant;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
@@ -44,15 +43,12 @@ public class UpstreamRouteProvider {
 
     private final UpstreamCacheService upstreamCacheService;
 
-    private final Vertx vertx;
-
     private final AsyncTaskExecutor taskExecutor;
 
     public UpstreamRouteProvider(Vertx vertx, AsyncTaskExecutor taskExecutor, Supplier<Random> generatorFactory, UpstreamCacheService upstreamCacheService) {
         this.generatorFactory = generatorFactory;
         this.upstreamCacheService = upstreamCacheService;
         vertx.setPeriodic(0, TimeUnit.MINUTES.toMillis(1), event -> evictExpiredBalancers());
-        this.vertx = vertx;
         this.taskExecutor = taskExecutor;
     }
 
@@ -128,18 +124,13 @@ public class UpstreamRouteProvider {
 
     private String getKey(Deployment deployment) {
         Objects.requireNonNull(deployment);
-        String prefix;
-        if (deployment instanceof Model) {
-            prefix = "model";
-        } else if (deployment instanceof Application) {
-            prefix = "application";
-        } else if (deployment instanceof Assistant) {
-            prefix = "assistant";
-        } else if (deployment instanceof ToolSet) {
-            prefix = "toolset";
-        } else {
-            throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getClass().getName());
-        }
+        String prefix = switch (deployment) {
+            case Model ignored -> "model";
+            case Application ignored -> "application";
+            case ToolSet ignored -> "toolset";
+            default ->
+                    throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getClass().getName());
+        };
         return prefix + ":" + deployment.getName();
     }
 
