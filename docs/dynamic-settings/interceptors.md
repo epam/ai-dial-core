@@ -9,7 +9,7 @@ You can add an additional logic into the processing of every request and respons
 
 ### Global interceptors
 
-Apply to any application. You can specify them in the DIAL Core dynamic settings for the `globalInterceptors` parameter.
+Apply to any application in DIAL. You can specify them in the DIAL Core dynamic settings for the `globalInterceptors` parameter.
 
 Configuration example: 
 
@@ -55,7 +55,9 @@ Configuration example:
 ```
 ### Local interceptors
 
-Apply to an instance of the application. Refer to [Applications](/applications.md) to learn more and see examples.
+Apply to an instance of the application. Local interceptors can be set by [DIAL admin](https://docs.dialx.ai/tutorials/admin/entities-interceptors) when an application is published or modified or by the application author when creating application via [API](https://dialx.ai/dial_api#tag/Applications/operation/saveCustomApplication). 
+
+> Refer to [Applications](/applications.md) to learn more and see examples.
 
 Configuration example: 
 
