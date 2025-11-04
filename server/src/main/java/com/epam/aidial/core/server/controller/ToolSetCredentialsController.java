@@ -3,11 +3,15 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -42,6 +46,7 @@ public class ToolSetCredentialsController {
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final DeploymentService deploymentService;
+    private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
     public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -50,6 +55,7 @@ public class ToolSetCredentialsController {
         this.encryptionService = proxy.getEncryptionService();
         this.deploymentService = proxy.getDeploymentService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
+        this.resourceAuthSettingsEncryptionService = proxy.getResourceAuthSettingsEncryptionService();
     }
 
     // TODO: fix case with toolset from config
@@ -67,9 +73,13 @@ public class ToolSetCredentialsController {
                             verifyAccess(encodedResourceUrl, resourceSignInRequest.getCredentialsLevel());
                             CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
                                     encodedResourceUrl, resourceSignInRequest.getCredentialsLevel(), context);
+                            ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
+                            resourceAuthSettingsEncryptionService.decrypt(deployment.getName(),
+                                    new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation()),
+                                    resourceAuthSettings);
                             resourceCredentialsService.addResourceCredentials(
                                     credentialsDescriptor,
-                                    toolSet.getAuthSettings(),
+                                    resourceAuthSettings,
                                     resourceSignInRequest,
                                     context.getUserSub());
                             return true;
@@ -145,6 +155,7 @@ public class ToolSetCredentialsController {
                 status = HttpStatus.FORBIDDEN;
                 body = permissionDeniedException.getMessage();
             }
+            case EncryptionException encryptionException -> body = encryptionException.getMessage();
             case null, default -> log.warn(message, error);
         }
 

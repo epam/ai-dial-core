@@ -18,4 +18,13 @@ public interface ContentEncryptionKeyManager {
      * @return decrypted CEK bytes
      */
     byte[] getOrCreateKey(ResourceDescriptor cekDescriptor);
+
+    /**
+     * Generates a new Content Encryption Key (CEK) for the specified resource descriptor,
+     * stores the encrypted key, and returns the decrypted CEK bytes.
+     *
+     * @param cekDescriptor the descriptor identifying the CEK resource for which the key is to be created
+     * @return the decrypted CEK bytes
+     */
+    byte[] createKey(ResourceDescriptor cekDescriptor);
 }

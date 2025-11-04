@@ -40,4 +40,15 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
         return cekHolder.get();
     }
 
+    @Override
+    public byte[] createKey(ResourceDescriptor cekDescriptor) {
+        MutableObject<byte[]> cekHolder = new MutableObject<>();
+        resourceService.computeResourceBytes(cekDescriptor, encryptedCek -> {
+            byte[] cek = contentEncryptionKeyGenerator.generate();
+            cekHolder.setValue(cek);
+            return keyManagementService.encrypt(cek);
+        });
+        return cekHolder.get();
+    }
+
 }

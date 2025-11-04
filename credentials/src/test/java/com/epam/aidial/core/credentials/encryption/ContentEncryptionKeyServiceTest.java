@@ -93,4 +93,59 @@ class ContentEncryptionKeyServiceTest {
         assertEquals(expectedDescriptor, descriptorCaptor.getValue());
     }
 
+    @Test
+    void createKey_forRootBucket() {
+        // Given
+        String bucketName = "user-bucket-name";
+        String bucketLocation = "Users/user";
+        BucketInfo bucketInfo = new BucketInfo(bucketName, bucketLocation);
+        ResourceDescriptor expectedDescriptor = new ResourceDescriptor(
+                ResourceTypes.ENCRYPTION_KEYS,
+                CEK_FILENAME,
+                List.of(),
+                bucketName,
+                bucketLocation,
+                false
+        );
+        when(rootBucketExtractor.apply(bucketInfo)).thenReturn(bucketInfo);
+        when(mockContentEncryptionKeyManager.createKey(any(ResourceDescriptor.class))).thenReturn(EXPECTED_KEY);
+
+        // When
+        byte[] result = contentEncryptionKeyService.createKey(bucketInfo);
+
+        // Then
+        assertArrayEquals(EXPECTED_KEY, result);
+
+        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        verify(mockContentEncryptionKeyManager).createKey(descriptorCaptor.capture());
+        assertEquals(expectedDescriptor, descriptorCaptor.getValue());
+    }
+
+    @Test
+    void createKey_forDeeplyNestedPublicationBucket() {
+        // Given
+        BucketInfo bucketInfo = new BucketInfo("deeply-nested-bucket", "Users/user/publication-id/sub-folder/");
+        BucketInfo rootBucket = new BucketInfo("user-bucket-name", "Users/user");
+        when(rootBucketExtractor.apply(bucketInfo)).thenReturn(rootBucket);
+        ResourceDescriptor expectedDescriptor = new ResourceDescriptor(
+                ResourceTypes.ENCRYPTION_KEYS,
+                CEK_FILENAME,
+                List.of(),
+                rootBucket.name(),
+                rootBucket.location(),
+                false
+        );
+        when(mockContentEncryptionKeyManager.createKey(any(ResourceDescriptor.class))).thenReturn(EXPECTED_KEY);
+
+        // When
+        byte[] result = contentEncryptionKeyService.createKey(bucketInfo);
+
+        // Then
+        assertArrayEquals(EXPECTED_KEY, result);
+
+        ArgumentCaptor<ResourceDescriptor> descriptorCaptor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        verify(mockContentEncryptionKeyManager).createKey(descriptorCaptor.capture());
+        assertEquals(expectedDescriptor, descriptorCaptor.getValue());
+    }
+
 }
