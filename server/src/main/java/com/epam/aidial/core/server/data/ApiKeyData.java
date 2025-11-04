@@ -1,22 +1,18 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Key;
-import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
-import com.epam.aidial.core.server.data.permission.ResourcePermission;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.vertx.core.MultiMap;
 import lombok.Data;
-import org.checkerframework.checker.optional.qual.Present;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The container keeps data associated with API key.
@@ -64,9 +60,11 @@ public class ApiKeyData {
     private String initialDeploymentApi;
     // Original HTTP headers to be stored during an interceptor invocation chain
     private Map<String, String> httpHeaders = new HashMap<>();
-    // Map of receivers with shared resources
-    private Map<String, Map<String, PerRequestSharedData>> receivers = new HashMap<>();
-    // Map of resources shared by per request
+    // Map of receivers whom resources are shared to by per request API key.
+    // A key is a deployment ID, value is a map of resource IDs and per request shared data
+    private Map<String, Map<String, PerRequestSharedData>> perRequestReceivers = new HashMap<>();
+    // Map of resources are shared by per request API key.
+    // A key is a resource ID and value - per request shared data
     private Map<String, PerRequestSharedData> perRequestSharedResources = new HashMap<>();
 
     public ApiKeyData() {
@@ -99,7 +97,7 @@ public class ApiKeyData {
             proxyApiKeyData.setSourceDeployment(receiver);
         }
         if (apiKeyData.getPerRequestKey() != null) {
-            Map<String, Map<String, PerRequestSharedData>> receivers = apiKeyData.getReceivers();
+            Map<String, Map<String, PerRequestSharedData>> receivers = apiKeyData.getPerRequestReceivers();
             if (receiver != null) {
                 sharePerRequestPermissions(proxyApiKeyData, receivers, receiver);
             }

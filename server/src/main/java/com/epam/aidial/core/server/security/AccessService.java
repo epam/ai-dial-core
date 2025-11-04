@@ -36,6 +36,7 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 
 
 @Slf4j
@@ -246,15 +247,24 @@ public class AccessService {
                 result.put(resource, data.permissions());
                 continue;
             }
-            for (Map.Entry<String, PerRequestSharedData> entry : perRequestSharedResources.entrySet()) {
-                String permittedUrl = entry.getKey();
-                if (ResourceUtil.isFolder(permittedUrl) && resourceUrl.startsWith(permittedUrl)) {
-                    result.put(resource, entry.getValue().permissions());
-                    break;
-                }
+            Set<ResourceAccessType> folderPermissions = findFolderPermissions(perRequestSharedResources, resourceUrl);
+            if (folderPermissions != null) {
+                result.put(resource, folderPermissions);
             }
         }
         return result;
+    }
+
+    @Nullable
+    private static Set<ResourceAccessType> findFolderPermissions(Map<String, PerRequestSharedData> perRequestSharedResources,
+                                                                 String resourceUrl) {
+        for (Map.Entry<String, PerRequestSharedData> entry : perRequestSharedResources.entrySet()) {
+            String permittedUrl = entry.getKey();
+            if (ResourceUtil.isFolder(permittedUrl) && resourceUrl.startsWith(permittedUrl)) {
+                return entry.getValue().permissions();
+            }
+        }
+        return null;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(

@@ -83,7 +83,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                     // grant permissions to app2
                     response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """
                             {
-                             "resources": [
+                             "resourcePermissions": [
                                {
                                  "url": "files/%s/folder1/file1.txt",
                                  "permissions": ["READ"]
@@ -118,7 +118,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                     // revoke permissions granted by app1 to app2
                     response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/revoke", null, """
                             {
-                             "resources": [
+                             "resourcePermissions": [
                                {
                                  "url": "files/%s/folder1/file1.txt",
                                  "permissions": ["READ"]
@@ -142,7 +142,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                     // grant permissions to app2 on resources that app1 doesn't have access
                     response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """
                             {
-                             "resources": [
+                             "resourcePermissions": [
                                {
                                  "url": "files/%s/myfiles/file.txt",
                                  "permissions": ["READ"]
@@ -157,7 +157,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                     mockResponse.setResponseCode(200);
                     mockResponse.setChunkedBody(responseBody, 200);
                     return mockResponse;
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     return (new MockResponse()).setResponseCode(500);
                 }
             };
@@ -193,7 +193,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                     mockResponse.setResponseCode(200);
                     mockResponse.setChunkedBody(responseBody, 200);
                     return mockResponse;
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     return (new MockResponse()).setResponseCode(500);
                 }
             };

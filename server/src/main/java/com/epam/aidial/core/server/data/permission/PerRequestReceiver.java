@@ -6,6 +6,6 @@ import java.util.List;
 
 @Data
 public class PerRequestReceiver {
-    private List<ResourcePermission> resources;
+    private List<ResourcePermission> resourcePermissions;
     private String receiver;
 }

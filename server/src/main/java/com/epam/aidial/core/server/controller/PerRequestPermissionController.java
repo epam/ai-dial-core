@@ -14,7 +14,6 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -100,10 +99,10 @@ public class PerRequestPermissionController {
         if (request.getReceiver() == null) {
             throw new IllegalArgumentException("Receiver is missed");
         }
-        if (request.getResources() == null || request.getResources().isEmpty()) {
+        if (request.getResourcePermissions() == null || request.getResourcePermissions().isEmpty()) {
             throw new IllegalArgumentException("Resources are missed");
         }
-        for (ResourcePermission resourcePermission : request.getResources()) {
+        for (ResourcePermission resourcePermission : request.getResourcePermissions()) {
             if (resourcePermission.getPermissions() == null || resourcePermission.getPermissions().isEmpty()) {
                 throw new IllegalArgumentException("List of permissions is empty for resource: " + resourcePermission.getUrl());
             }
@@ -119,17 +118,11 @@ public class PerRequestPermissionController {
     }
 
     private static <T> T convertJson(Buffer body, Class<T> clazz) {
-        try {
-            T result = ProxyUtil.convertToObject(body, clazz);
-
-            if (result == null) {
-                throw new IllegalArgumentException("No JSON body");
-            }
-
-            return result;
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Not valid JSON body");
+        T result = ProxyUtil.convertToObject(body, clazz);
+        if (result == null) {
+            throw new IllegalArgumentException("No JSON body");
         }
+        return result;
     }
 
     private void respondJson(Object data) {

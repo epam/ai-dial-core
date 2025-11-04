@@ -36,8 +36,17 @@ public class PerRequestPermissionService {
     }
 
     public void grant(ProxyContext context, PerRequestReceiver request) {
+        validatePermissions(request.getResourcePermissions(), context);
         String key = context.getApiKeyData().getPerRequestKey();
-        for (ResourcePermission resourcePermission : request.getResources()) {
+        apiKeyStore.updatePerRequestApiKey(key, json -> {
+            ApiKeyData apiKeyData = convert(json, key);
+            addPermissions(apiKeyData, request);
+            return ProxyUtil.convertToString(apiKeyData);
+        });
+    }
+
+    private void validatePermissions(List<ResourcePermission> resourcePermissions, ProxyContext context) {
+        for (ResourcePermission resourcePermission : resourcePermissions) {
             ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(resourcePermission.getUrl(), encryptionService);
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.lookupPermissions(Set.of(resource), context);
             Set<ResourceAccessType> actual = result.get(resource);
@@ -46,11 +55,6 @@ public class PerRequestPermissionService {
                 throw new PermissionDeniedException("Access to resource is forbidden: " + resourcePermission.getUrl());
             }
         }
-        apiKeyStore.updatePerRequestApiKey(key, json -> {
-            ApiKeyData apiKeyData = convert(json, key);
-            addPermissions(apiKeyData, request);
-            return ProxyUtil.convertToString(apiKeyData);
-        });
     }
 
     private static ApiKeyData convert(String json, String key) {
@@ -65,8 +69,8 @@ public class PerRequestPermissionService {
 
     private void addPermissions(ApiKeyData apiKeyData, PerRequestReceiver request) {
         String receiver = request.getReceiver();
-        Map<String, PerRequestSharedData> resourcePermissions = apiKeyData.getReceivers().computeIfAbsent(receiver, k -> new HashMap<>());
-        for (ResourcePermission resourcePermission : request.getResources()) {
+        Map<String, PerRequestSharedData> resourcePermissions = apiKeyData.getPerRequestReceivers().computeIfAbsent(receiver, k -> new HashMap<>());
+        for (ResourcePermission resourcePermission : request.getResourcePermissions()) {
             String url = resourcePermission.getUrl();
             PerRequestSharedData sharedData = resourcePermissions.computeIfAbsent(url, k -> new PerRequestSharedData(new HashSet<>()));
             sharedData.permissions().addAll(resourcePermission.getPermissions());
@@ -84,11 +88,11 @@ public class PerRequestPermissionService {
 
     private void removePermissions(ApiKeyData apiKeyData, PerRequestReceiver request) {
         String receiver = request.getReceiver();
-        Map<String, PerRequestSharedData> resourcePermissions = apiKeyData.getReceivers().get(receiver);
+        Map<String, PerRequestSharedData> resourcePermissions = apiKeyData.getPerRequestReceivers().get(receiver);
         if (resourcePermissions == null) {
             return;
         }
-        for (ResourcePermission resourcePermission : request.getResources()) {
+        for (ResourcePermission resourcePermission : request.getResourcePermissions()) {
             String url = resourcePermission.getUrl();
             PerRequestSharedData sharedData = resourcePermissions.get(url);
             if (sharedData == null) {
@@ -103,10 +107,10 @@ public class PerRequestPermissionService {
     }
 
     public PerRequestReceiverList listReceivers(ProxyContext context) {
-        List<PerRequestReceiver> result = context.getApiKeyData().getReceivers().entrySet().stream().map(entry -> {
+        List<PerRequestReceiver> result = context.getApiKeyData().getPerRequestReceivers().entrySet().stream().map(entry -> {
             PerRequestReceiver receiver = new PerRequestReceiver();
             receiver.setReceiver(entry.getKey());
-            receiver.setResources(entry.getValue().values().stream().map(data -> {
+            receiver.setResourcePermissions(entry.getValue().values().stream().map(data -> {
                 ResourcePermission resourcePermission = new ResourcePermission();
                 resourcePermission.setPermissions(data.permissions());
                 resourcePermission.setUrl(resourcePermission.getUrl());
