@@ -5,9 +5,22 @@ You can add an additional logic into the processing of every request and respons
 > * Refer to [DIAL Interceptors SDK](https://github.com/epam/ai-dial-interceptors-sdk/blob/development/README.md) for a comprehensive information about interceptors as well as configuration examples.
 > * Refer to [DIAL Admin](https://docs.dialx.ai/tutorials/admin/entities-interceptors) to learn how to manage interceptors in DIAL Admin UI.
 
+## Categories of Interceptors
+
+* **Global interceptors**: Apply to any application. You can specify them in the DIAL Core dynamic settings for the `globalInterceptors` parameter.
+* **Application type interceptors**:  Apply to [schema-rich applications](https://docs.dialx.ai/platform/core/apps#schema-rich-applications). You can specify them in the application root JSON schema in `"dial:applicationTypeInterceptors"`.
+* **Local interceptors**: Apply to an instance of the application. Refer to [Applications](/applications.md) to learn more and see examples.
+
+When all categories of interceptors are configured, they are triggered in the following sequences:
+
+* Chat completion request: `global interceptor -> application type interceptor -> local interceptor`
+* Response for the chat completion request: `local interceptor -> application type interceptor -> global interceptor`
+
+In other words, **global interceptors** have the most strict rules. They receive original input first and examine the response last.
+
 ## interceptors
 
-A list of deployed DIAL Interceptors and their [parameters](#interceptorsinterceptor_name):
+An object containing deployed DIAL Interceptors and their [parameters](#interceptorsinterceptor_name). Interceptors must be defined in the `interceptors` object to be used in any of the [category](#categories-of-interceptors).
 
 * `<interceptor_name>`: A unique key for this interceptor (e.g. reject-external-links, audit-logger). Used when attaching to Models or Applications under their Interceptors tab. Keep it URL-safe and lowercase with hyphens. **Required**.
 
