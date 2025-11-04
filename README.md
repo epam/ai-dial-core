@@ -31,7 +31,7 @@
 > HTTP Proxy provides unified API to different chat completion and embedding models, assistants and applications.
 > Written in Java 21 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
-<img src="images/core-general.svg">
+![ai-dial-core](./images/core-general.svg)
 
 **[Read more about the DIAL Core](https://docs.dialx.ai/platform/core/about-core)**
 
