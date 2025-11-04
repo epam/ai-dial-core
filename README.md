@@ -89,6 +89,7 @@ Or run `com.epam.aidial.core.AIDial` class from your favorite IDE.
 
 You have the option to deploy the DIAL Core on the Kubernetes cluster by utilizing an _umbrella_ [dial](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/README.md) Helm chart, which also deploys other DIAL components. Alternatively, you can use [dial-core](https://github.com/epam/ai-dial-helm/blob/main/charts/dial-core/README.md) Helm chart to deploy just Core. 
 
+> [!NOTE]
 > Refer to [Examples](https://github.com/epam/ai-dial-helm/blob/main/charts/dial/examples/README.md) for guidelines.
 
 In any case, in your Helm values file, it is necessary to provide application's configurations described in the [Configuration](#configuration) section.
@@ -195,6 +196,7 @@ DIAL Core stores user data in the following storages:
 * **Blob Storage** keeps permanent data.
 * **Redis** keeps volatile in-memory data for fast access.
 
+> [!NOTE]
 > Refer to [Storage Requirements](docs/storage-requirements.md) to learn more.
 
 ### Dynamic settings
