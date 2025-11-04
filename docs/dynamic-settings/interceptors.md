@@ -7,9 +7,72 @@ You can add an additional logic into the processing of every request and respons
 
 ## Categories of Interceptors
 
-* **Global interceptors**: Apply to any application. You can specify them in the DIAL Core dynamic settings for the `globalInterceptors` parameter.
-* **Application type interceptors**:  Apply to [schema-rich applications](https://docs.dialx.ai/platform/core/apps#schema-rich-applications). You can specify them in the application root JSON schema in `"dial:applicationTypeInterceptors"`.
-* **Local interceptors**: Apply to an instance of the application. Refer to [Applications](/applications.md) to learn more and see examples.
+### Global interceptors
+
+Apply to any application. You can specify them in the DIAL Core dynamic settings for the `globalInterceptors` parameter.
+
+Configuration example: 
+
+```json
+{
+  "globalInterceptors": ["interceptor1", "interceptor2"]
+}
+```
+
+### Application type interceptors
+
+Apply to [schema-rich applications](https://docs.dialx.ai/platform/core/apps#schema-rich-applications). You can specify them in the application root JSON schema in `"dial:applicationTypeInterceptors"`.
+
+Configuration example: 
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dial.epam.com/application_type_schemas/schema#",
+  "title": "Core meta-schema defining DIAL custom application schemas",
+  "allOf": [
+    {
+      "$ref": "#/definitions/topLevelSchema"
+    },
+    {
+      "$ref": "#/definitions/dialRootSchema"
+    }
+  ],
+  "definitions": {
+    "dialRootSchema": {
+      "properties": {
+        "dial:applicationTypeInterceptors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of application type interceptors"
+        }
+      }
+    }
+  }
+}
+```
+### Local interceptors
+
+Apply to an instance of the application. Refer to [Applications](/applications.md) to learn more and see examples.
+
+Configuration example: 
+
+```json
+{
+"applications": {
+        "app": {
+            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+            "displayName": "App",
+            "iconUrl": "https://host/app.svg",
+            "interceptors": ["interceptor3"]
+        }
+    }
+}
+```
+
+### Execution Logic
 
 When all categories of interceptors are configured, they are triggered in the following sequences:
 
