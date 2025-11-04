@@ -56,7 +56,7 @@ An object containing parameters for each [application](#applications).
             "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
             "displayName": "Forecast",
             "iconUrl": "https://host/app.svg",
-            "description": "Addon that provides forecast",
+            "description": "Application that provides forecast",
             "descriptionKeywords": ["code-gen"],
             "userRoles": [
                 "Forecast"
