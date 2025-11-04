@@ -8,7 +8,7 @@
         </a>
     </p>
 <h4 align="center">
-    <a href="https://discord.gg/TMMwWkEYzS">
+    <a href="https://discord.gg/ukzj9U9tEe">
         <img src="https://img.shields.io/static/v1?label=AI%20DIALX%20Community%20in&message=Discord&color=blue&logo=Discord&style=flat-square" alt="Discord">
     </a>
 </h4>
