@@ -77,30 +77,25 @@ public class ApiKeyStore {
         bucket.expire(ttl);
     }
 
-    public Future<Void> updatePerRequestApiKey(String key, Function<String, String> fn) {
+    public void updatePerRequestApiKey(String key, Function<String, String> fn) {
         if (key == null) {
-            IllegalArgumentException error = new IllegalArgumentException("Per request API key is undefined");
-            log.error("Error occurred at updating api key data: per request API key is undefined");
-            return Future.failedFuture(error);
+            throw new IllegalArgumentException("Per request API key is undefined");
         }
         String redisKey = toRedisKey(key);
-        return taskExecutor.submit(() -> {
-            RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
-            // lock free
-            while (true) {
-                String oldJson = bucket.get();
-                if (oldJson == null) {
-                    throw new IllegalArgumentException("Per request key is not found: " + key);
-                }
-
-                String newJson = fn.apply(oldJson);
-
-                if (Objects.equals(oldJson, newJson) || bucket.compareAndSet(oldJson, newJson)) {
-                    break;
-                }
+        RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
+        // lock free
+        while (true) {
+            String oldJson = bucket.get();
+            if (oldJson == null) {
+                throw new IllegalArgumentException("Per request key is not found: " + key);
             }
-            return null;
-        });
+
+            String newJson = fn.apply(oldJson);
+
+            if (Objects.equals(oldJson, newJson) || bucket.compareAndSet(oldJson, newJson)) {
+                break;
+            }
+        }
     }
 
     /**

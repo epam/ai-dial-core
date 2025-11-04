@@ -275,6 +275,11 @@ public class ControllerSelector {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
             return new ToolSetProxyController(proxy, context, toolSetId);
         }));
+        post(RouteTemplate.PER_REQUEST_PERMISSION, (proxy, context, pathMatcher) -> {
+            String operation = pathMatcher.group(1);
+            PerRequestPermissionController controller = new PerRequestPermissionController(context);
+            return () -> controller.handle(operation);
+        });
         // DELETE routes
         delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
