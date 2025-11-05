@@ -73,9 +73,10 @@ public class ToolSetCredentialsController {
                             verifyAccess(encodedResourceUrl, resourceSignInRequest.getCredentialsLevel());
                             CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
                                     encodedResourceUrl, resourceSignInRequest.getCredentialsLevel(), context);
+                            ResourceDescriptor toolSetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
+                            BucketInfo toolSetBucketInfo = new BucketInfo(toolSetResourceDescriptor.getBucketName(), toolSetResourceDescriptor.getBucketLocation());
                             ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
-                            BucketInfo bucketInfo = new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation());
-                            resourceAuthSettingsEncryptionService.decrypt(deployment.getName(), bucketInfo, resourceAuthSettings);
+                            resourceAuthSettingsEncryptionService.decrypt(toolSetResourceDescriptor.getUrl(), toolSetBucketInfo, resourceAuthSettings);
                             resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
                                     resourceSignInRequest, context.getUserSub());
                             return true;
