@@ -60,6 +60,7 @@ public class DeploymentFeatureController {
 
     @SneakyThrows
     private void handleRequestBody(String endpoint, boolean requireEndpoint, Buffer requestBody) {
+        context.setRequestBody(requestBody);
         if (endpoint == null) {
             if (requireEndpoint) {
                 respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
@@ -69,8 +70,6 @@ public class DeploymentFeatureController {
             }
             return;
         }
-
-        context.setRequestBody(requestBody);
 
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         setupProxyApiKeyData(proxyApiKeyData);
