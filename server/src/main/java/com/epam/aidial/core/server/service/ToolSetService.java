@@ -40,7 +40,7 @@ public class ToolSetService {
     }
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource, EtagHeader etagHeader) {
-        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(resource, etagHeader);
+        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(resource, false, etagHeader);
         ToolSet toolSet = result.getValue();
         ResourceItemMetadata meta = result.getKey();
 
@@ -53,7 +53,7 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
-    private Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource, EtagHeader etagHeader) {
+    private Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource, boolean decryptAuthSettings, EtagHeader etagHeader) {
         verifyToolSet(resource);
         Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource, etagHeader);
 
@@ -68,9 +68,11 @@ public class ToolSetService {
             throw new ResourceNotFoundException("ToolSet is not found: " + resource.getUrl());
         }
 
-        resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
-                new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
-                toolSet.getAuthSettings());
+        if (decryptAuthSettings) {
+            resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
+                    new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
+                    toolSet.getAuthSettings());
+        }
 
         return Pair.of(meta, toolSet);
     }
@@ -116,7 +118,7 @@ public class ToolSetService {
         verifyToolSet(destination);
         verifyCredentials(context, source, credentialsToCopy);
 
-        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, EtagHeader.ANY);
+        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(source, true, EtagHeader.ANY);
         ToolSet toolSet = result.getValue();
         if (author == null) {
             author = result.getKey().getAuthor();

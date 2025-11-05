@@ -187,8 +187,8 @@ public class ToolSetProxyController implements Controller {
                 String perRequestKey = assignPerRequestKey();
                 proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
             }
-        } catch (ResourceNotFoundException e) {
-            log.error(e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
         }
     }
 

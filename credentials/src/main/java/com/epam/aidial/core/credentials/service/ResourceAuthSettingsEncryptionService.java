@@ -66,7 +66,7 @@ public class ResourceAuthSettingsEncryptionService {
             byte[] plain = encryptionService.decrypt(bucketInfo, encrypted, aad);
             return new String(plain, UTF_8);
         } catch (RuntimeException e) {
-            throw new EncryptionException("Failed to decrypt auth setting", e);
+            throw new EncryptionException("Failed to decrypt auth settings", e);
         }
     }
 
