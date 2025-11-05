@@ -10,6 +10,7 @@ import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactory;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
@@ -24,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -86,10 +88,15 @@ public class ResourceCredentialsService {
 
     public List<ResourceCredentials> getAllResourceCredentials(CredentialsLocator credentialsLocator) {
         log.debug("Fetching all resource credentials for resourceId={}", credentialsLocator.getResourceId());
-        return credentialsLocator.getUniqueCredentialsDescriptors().stream()
-                .map(this::getResourceCredentials)
-                .filter(Objects::nonNull)
-                .toList();
+        try {
+            return credentialsLocator.getUniqueCredentialsDescriptors().stream()
+                    .map(this::getResourceCredentials)
+                    .filter(Objects::nonNull)
+                    .toList();
+        } catch (EncryptionException encryptionException) {
+            log.debug("Encryption error. No valid Resource Credentials found.");
+            return new ArrayList<>();
+        }
     }
 
     @Nullable

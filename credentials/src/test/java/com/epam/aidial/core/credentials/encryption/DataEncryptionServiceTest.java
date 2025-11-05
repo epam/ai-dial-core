@@ -1,6 +1,7 @@
 package com.epam.aidial.core.credentials.encryption;
 
 import com.epam.aidial.core.credentials.data.configuration.EncryptionSettings;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -59,20 +60,20 @@ class DataEncryptionServiceTest {
     }
 
     @Test
-    void decrypt_withWrongAad_shouldThrowSecurityException() {
+    void decrypt_withWrongAad_shouldThrowEncryptionException() {
         byte[] plain = "Secret text!".getBytes();
         byte[] aadCorrect = "CorrectAAD".getBytes();
         byte[] aadWrong = "WrongAAD".getBytes();
 
         byte[] encrypted = service.encrypt(plain, key256, aadCorrect);
 
-        SecurityException ex = assertThrows(SecurityException.class,
+        EncryptionException ex = assertThrows(EncryptionException.class,
                 () -> service.decrypt(encrypted, key256, aadWrong));
         assertTrue(ex.getMessage().contains("authentication tag mismatch"));
     }
 
     @Test
-    void decrypt_withWrongKey_shouldThrowSecurityException() {
+    void decrypt_withWrongKey_shouldThrowEncryptionException() {
         byte[] plain = "Secret text!".getBytes();
         byte[] aad = "SomeAAD".getBytes();
 
@@ -81,7 +82,7 @@ class DataEncryptionServiceTest {
         byte[] wrongKey = new byte[32];
         secureRandom.nextBytes(wrongKey);
 
-        SecurityException ex = assertThrows(SecurityException.class,
+        EncryptionException ex = assertThrows(EncryptionException.class,
                 () -> service.decrypt(encrypted, wrongKey, aad));
         assertTrue(ex.getMessage().contains("authentication tag mismatch"));
     }
