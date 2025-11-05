@@ -12,7 +12,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 public interface ContentEncryptionKeyManager {
     /**
      * Returns an existing CEK for the given descriptor, or creates and stores
-     * a new one if none exists.
+     * a new one if none exists or if CEK can't be decrypted
      *
      * @param cekDescriptor descriptor of the CEK resource
      * @return decrypted CEK bytes

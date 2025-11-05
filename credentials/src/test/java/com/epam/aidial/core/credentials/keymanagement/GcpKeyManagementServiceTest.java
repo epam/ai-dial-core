@@ -1,5 +1,8 @@
 package com.epam.aidial.core.credentials.keymanagement;
 
+import com.epam.aidial.core.credentials.exception.EncryptionException;
+import com.google.api.gax.rpc.ApiException;
+import com.google.api.gax.rpc.StatusCode;
 import com.google.cloud.kms.v1.DecryptRequest;
 import com.google.cloud.kms.v1.DecryptResponse;
 import com.google.cloud.kms.v1.EncryptRequest;
@@ -16,8 +19,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -70,6 +75,40 @@ class GcpKeyManagementServiceTest {
     }
 
     @Test
+    void testEncrypt_apiExceptionWithBadRequest() {
+        // Given
+        ApiException apiException = mock(ApiException.class);
+        StatusCode statusCode = mock(StatusCode.class);
+        when(statusCode.getCode()).thenReturn(StatusCode.Code.INVALID_ARGUMENT);
+        when(apiException.getStatusCode()).thenReturn(statusCode);
+        when(mockKmsClient.encrypt(any(EncryptRequest.class))).thenThrow(apiException);
+
+        // When & Then
+        EncryptionException encryptionException = assertThrows(EncryptionException.class, () -> {
+            gcpKeyManagementService.encrypt(PLAINTEXT);
+        });
+        assertEquals("Encryption error", encryptionException.getMessage());
+        assertSame(apiException, encryptionException.getCause());
+    }
+
+    // Test for ApiException with non-BAD_REQUEST status in encrypt
+    @Test
+    void testEncrypt_apiExceptionWithOtherStatus() {
+        // Given
+        ApiException apiException = mock(ApiException.class);
+        StatusCode statusCode = mock(StatusCode.class);
+        when(statusCode.getCode()).thenReturn(StatusCode.Code.INTERNAL);
+        when(apiException.getStatusCode()).thenReturn(statusCode);
+        when(mockKmsClient.encrypt(any(EncryptRequest.class))).thenThrow(apiException);
+
+        // When & Then
+        ApiException thrownException = assertThrows(ApiException.class, () -> {
+            gcpKeyManagementService.encrypt(PLAINTEXT);
+        });
+        assertSame(apiException, thrownException);
+    }
+
+    @Test
     void testDecrypt_success() {
         // Given
         DecryptResponse decryptResponse = DecryptResponse.newBuilder()
@@ -116,5 +155,39 @@ class GcpKeyManagementServiceTest {
             new GcpKeyManagementService(mockKmsClient, null);
         });
         assertEquals("keyName cannot be null.", exception.getMessage());
+    }
+
+    @Test
+    void testDecrypt_apiExceptionWithBadRequest() {
+        // Given
+        ApiException apiException = mock(ApiException.class);
+        StatusCode statusCode = mock(StatusCode.class);
+        when(statusCode.getCode()).thenReturn(StatusCode.Code.INVALID_ARGUMENT);
+        when(apiException.getStatusCode()).thenReturn(statusCode);
+        when(mockKmsClient.decrypt(any(DecryptRequest.class))).thenThrow(apiException);
+
+        // When & Then
+        EncryptionException encryptionException = assertThrows(EncryptionException.class, () -> {
+            gcpKeyManagementService.decrypt(PLAINTEXT);
+        });
+        assertEquals("Decryption error", encryptionException.getMessage());
+        assertSame(apiException, encryptionException.getCause());
+    }
+
+    // Test for ApiException with non-BAD_REQUEST status in encrypt
+    @Test
+    void testDecrypt_apiExceptionWithOtherStatus() {
+        // Given
+        ApiException apiException = mock(ApiException.class);
+        StatusCode statusCode = mock(StatusCode.class);
+        when(statusCode.getCode()).thenReturn(StatusCode.Code.INTERNAL);
+        when(apiException.getStatusCode()).thenReturn(statusCode);
+        when(mockKmsClient.decrypt(any(DecryptRequest.class))).thenThrow(apiException);
+
+        // When & Then
+        ApiException thrownException = assertThrows(ApiException.class, () -> {
+            gcpKeyManagementService.decrypt(PLAINTEXT);
+        });
+        assertSame(apiException, thrownException);
     }
 }

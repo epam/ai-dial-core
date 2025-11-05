@@ -11,6 +11,7 @@ import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactory;
 import com.epam.aidial.core.credentials.factory.ResourceCredentialsFactoryProvider;
 import com.epam.aidial.core.credentials.service.token.ApiKeyRefreshStrategy;
@@ -159,6 +160,33 @@ class ResourceCredentialsServiceTest {
 
         assertNotNull(list);
         assertTrue(list.isEmpty());
+    }
+
+    @Test
+    void testGetAllResourceCredentials_handlesSecurityException() {
+        // Given
+        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        when(credentialsDescriptor.getFullPath()).thenReturn("path");
+        ResourceCredentials creds = createCredentials(CredentialsLevel.USER);
+
+        ResourceDescriptor credentialsResourceDescriptor = Mockito.mock(ResourceDescriptor.class);
+        byte[] body = JsonMapperUtil.convertToString(creds).getBytes(StandardCharsets.UTF_8);
+        when(resourceService.getResourceBytes(credentialsResourceDescriptor)).thenReturn(body);
+
+        when(credentialsDescriptor.toResourceDescriptor()).thenReturn(credentialsResourceDescriptor);
+        when(credentialsLocator.getUniqueCredentialsDescriptors()).thenReturn(List.of(credentialsDescriptor));
+
+        Mockito.doThrow(new EncryptionException("Decryption failed: authentication tag mismatch (AAD, key, or ciphertext wrong)"))
+                .when(credentialEncryptionService)
+                .decrypt(any(), any(), any());
+
+        // When
+        List<ResourceCredentials> result = service.getAllResourceCredentials(credentialsLocator);
+
+        // Then
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
     @Test

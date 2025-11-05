@@ -4,6 +4,8 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -19,6 +21,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -59,6 +62,8 @@ class ToolSetCredentialsControllerTest {
     private Proxy proxy;
     @Mock
     private HttpServerRequest request;
+    @Mock
+    private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
     private ToolSetCredentialsController controller;
 
@@ -69,6 +74,7 @@ class ToolSetCredentialsControllerTest {
         when(proxy.getAccessService()).thenReturn(accessService);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getDeploymentService()).thenReturn(deploymentService);
+        when(proxy.getResourceAuthSettingsEncryptionService()).thenReturn(resourceAuthSettingsEncryptionService);
 
         doAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
@@ -210,6 +216,49 @@ class ToolSetCredentialsControllerTest {
                         HttpStatus.OK,
                         true)
         );
+    }
+
+    @Test
+    void testSignIn_EncryptionException() {
+        // Given
+        String resourceName = "toolset-1";
+        CredentialsLevel credentialsLevel = CredentialsLevel.GLOBAL;
+
+        byte[] requestBody = """
+                {
+                    "url": "toolsets/encrypted-user-bucket/%s",
+                    "credentialsLevel": "%s",
+                    "authenticationType": "OAUTH"
+                }
+                """
+                .formatted(resourceName, credentialsLevel)
+                .getBytes(StandardCharsets.UTF_8);
+        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
+        when(context.getRequest()).thenReturn(request);
+        when(context.getProxy()).thenReturn(proxy);
+
+        ToolSet mockToolSet = mock(ToolSet.class);
+        when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
+
+        String resourceId = "toolsets/encrypted-user-bucket/%s".formatted(resourceName);
+        when(deploymentService.findDeployment(context, resourceId))
+                .thenReturn(mockToolSet);
+        when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
+
+        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, ResourceAccessType.ALL);
+        when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
+
+        doAnswer(invocation -> {
+            throw new EncryptionException("Failed to decrypt auth settings");
+        }).when(resourceAuthSettingsEncryptionService)
+                .decrypt(any(), any(), any());
+
+        // When
+        controller.signIn();
+
+        // Then
+        verify(context).respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to decrypt auth settings");
     }
 
     @ParameterizedTest
