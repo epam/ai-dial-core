@@ -1,5 +1,6 @@
 package com.epam.aidial.core.credentials.encryption;
 
+import com.epam.aidial.core.credentials.exception.CekEncryptionException;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -28,27 +29,24 @@ public class ContentEncryptionKeyManagerImpl implements ContentEncryptionKeyMana
         MutableObject<byte[]> cekHolder = new MutableObject<>();
         resourceService.computeResourceBytes(cekDescriptor, encryptedCek -> {
             if (encryptedCek != null) {
-                byte[] cek = keyManagementService.decrypt(encryptedCek);
-                cekHolder.setValue(cek);
-                return encryptedCek;
+                try {
+                    byte[] cek = keyManagementService.decrypt(encryptedCek);
+                    cekHolder.setValue(cek);
+                    return encryptedCek;
+                } catch (CekEncryptionException e) {
+                    return createKey(cekHolder);
+                }
             } else {
-                byte[] cek = contentEncryptionKeyGenerator.generate();
-                cekHolder.setValue(cek);
-                return keyManagementService.encrypt(cek);
+                return createKey(cekHolder);
             }
         });
         return cekHolder.get();
     }
 
-    @Override
-    public byte[] createKey(ResourceDescriptor cekDescriptor) {
-        MutableObject<byte[]> cekHolder = new MutableObject<>();
-        resourceService.computeResourceBytes(cekDescriptor, encryptedCek -> {
-            byte[] cek = contentEncryptionKeyGenerator.generate();
-            cekHolder.setValue(cek);
-            return keyManagementService.encrypt(cek);
-        });
-        return cekHolder.get();
+    private byte[] createKey(MutableObject<byte[]> cekHolder) {
+        byte[] cek = contentEncryptionKeyGenerator.generate();
+        cekHolder.setValue(cek);
+        return keyManagementService.encrypt(cek);
     }
 
 }

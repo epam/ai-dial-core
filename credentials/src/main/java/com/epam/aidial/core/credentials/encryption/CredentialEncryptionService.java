@@ -1,7 +1,6 @@
 package com.epam.aidial.core.credentials.encryption;
 
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
-import com.epam.aidial.core.credentials.exception.CekEncryptionException;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
@@ -43,17 +42,10 @@ public class CredentialEncryptionService {
     }
 
     private byte[] encryptOrDecrypt(BucketInfo bucketInfo, byte[] data, byte[] aad, boolean isEncrypt) {
-        try {
-            byte[] contentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(bucketInfo);
-            return isEncrypt
-                    ? dataEncryptionService.encrypt(data, contentEncryptionKey, aad)
-                    : dataEncryptionService.decrypt(data, contentEncryptionKey, aad);
-        } catch (CekEncryptionException e) {
-            byte[] contentEncryptionKey = contentEncryptionKeyService.createKey(bucketInfo);
-            return isEncrypt
-                    ? dataEncryptionService.encrypt(data, contentEncryptionKey, aad)
-                    : dataEncryptionService.decrypt(data, contentEncryptionKey, aad);
-        }
+        byte[] existentContentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(bucketInfo);
+        return isEncrypt
+                ? dataEncryptionService.encrypt(data, existentContentEncryptionKey, aad)
+                : dataEncryptionService.decrypt(data, existentContentEncryptionKey, aad);
     }
 
 }

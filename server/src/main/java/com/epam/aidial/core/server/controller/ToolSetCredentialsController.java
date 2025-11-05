@@ -74,14 +74,10 @@ public class ToolSetCredentialsController {
                             CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
                                     encodedResourceUrl, resourceSignInRequest.getCredentialsLevel(), context);
                             ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
-                            resourceAuthSettingsEncryptionService.decrypt(deployment.getName(),
-                                    new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation()),
-                                    resourceAuthSettings);
-                            resourceCredentialsService.addResourceCredentials(
-                                    credentialsDescriptor,
-                                    resourceAuthSettings,
-                                    resourceSignInRequest,
-                                    context.getUserSub());
+                            BucketInfo bucketInfo = new BucketInfo(credentialsDescriptor.getBucketName(), credentialsDescriptor.getBucketLocation());
+                            resourceAuthSettingsEncryptionService.decrypt(deployment.getName(), bucketInfo, resourceAuthSettings);
+                            resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
+                                    resourceSignInRequest, context.getUserSub());
                             return true;
                         }
                         throw new ResourceNotFoundException("Toolset is not found: " + toolsetId);
