@@ -81,7 +81,7 @@ Run the project with Gradle:
 ./gradlew :server:run
 ```
 
-Or run `com.epam.aidial.core.AIDial` class from your favorite IDE.
+Or run [com.epam.aidial.core.server.AiDial](server/src/main/java/com/epam/aidial/core/server/AiDial.java) class from your favorite IDE.
 
 ---
 
