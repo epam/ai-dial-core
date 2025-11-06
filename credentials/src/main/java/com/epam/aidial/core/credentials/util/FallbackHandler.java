@@ -1,7 +1,6 @@
 package com.epam.aidial.core.credentials.util;
 
 import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,26 +34,10 @@ public class FallbackHandler {
                     return result;
                 }
             } catch (HttpException e) {
-                log.debug("Failed to fetch data from endpoint: {}. HttpStatus: {}", endpoint, e.getStatus());
-                if (shouldFallback(e)) {
-                    log.debug("Proceeding to next fallback for endpoint: {}", endpoint);
-                } else {
-                    throw e;
-                }
+                log.debug("Failed to fetch data from endpoint: {}. HttpStatus: {}. Proceeding to next fallback.", endpoint, e.getStatus());
             }
         }
         log.debug("All endpoints failed. Returning null.");
         return null;
-    }
-
-    /**
-     * Determines if fallback should occur based on the exception.
-     *
-     * @param httpException Exception to evaluate.
-     * @return true if fallback should proceed, false otherwise.
-     */
-    private static boolean shouldFallback(HttpException httpException) {
-        HttpStatus status = httpException.getStatus();
-        return status.equals(HttpStatus.UNAUTHORIZED) || status.equals(HttpStatus.NOT_FOUND);
     }
 }
