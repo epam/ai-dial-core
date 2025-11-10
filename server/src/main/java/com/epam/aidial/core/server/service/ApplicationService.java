@@ -485,7 +485,7 @@ public class ApplicationService {
                 throw new IllegalArgumentException("Endpoint must not be set for custom application");
             }
             if (configStore.get().getCustomApplicationSchema(applicationSchemaId) == null) {
-                throw new IllegalArgumentException("application schema is not found by schema id: " + applicationSchemaId);
+                throw new IllegalArgumentException("Application schema is not found by schema id: " + applicationSchemaId);
             }
         } else if (application.getEndpoint() == null && application.getFunction() == null) {
             throw new IllegalArgumentException("Application endpoint or function must be provided");
