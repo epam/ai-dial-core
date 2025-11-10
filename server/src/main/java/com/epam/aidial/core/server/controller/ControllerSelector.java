@@ -47,24 +47,6 @@ public class ControllerSelector {
             ModelController controller = new ModelController(context);
             return controller::getModels;
         });
-        get(RouteTemplate.ADDON, (proxy, context, pathMatcher) -> {
-            AddonController controller = new AddonController(context);
-            String addonId = UrlUtil.decodePath(pathMatcher.group(1));
-            return () -> controller.getAddon(addonId);
-        });
-        get(RouteTemplate.ADDONS, (proxy, context, pathMatcher) -> {
-            AddonController controller = new AddonController(context);
-            return controller::getAddons;
-        });
-        get(RouteTemplate.ASSISTANT, (proxy, context, pathMatcher) -> {
-            AssistantController controller = new AssistantController(context);
-            String assistantId = UrlUtil.decodePath(pathMatcher.group(1));
-            return () -> controller.getAssistant(assistantId);
-        });
-        get(RouteTemplate.ASSISTANTS, (proxy, context, pathMatcher) -> {
-            AssistantController controller = new AssistantController(context);
-            return controller::getAssistants;
-        });
         get(RouteTemplate.APPLICATION, (proxy, context, pathMatcher) -> {
             ApplicationController controller = new ApplicationController(context);
             String application = UrlUtil.decodePath(pathMatcher.group(1));
