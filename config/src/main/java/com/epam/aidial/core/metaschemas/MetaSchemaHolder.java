@@ -43,6 +43,7 @@ public class MetaSchemaHolder {
 
     public static JsonMetaSchema.Builder getMetaschemaBuilder() {
         return JsonMetaSchema.builder(MetaSchemaHolder.CUSTOM_APPLICATION_META_SCHEMA_ID, JsonMetaSchema.getV7())
+                .keyword(new NonValidationKeyword(APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_EDITOR_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_VIEWER_URL))
                 .keyword(new NonValidationKeyword(APPLICATION_TYPE_DISPLAY_NAME))
