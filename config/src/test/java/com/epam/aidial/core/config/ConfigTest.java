@@ -20,16 +20,11 @@ public class ConfigTest {
         config.setToolsets(Map.of("toolset", toolSet));
         Interceptor interceptor = new Interceptor();
         config.setInterceptors(Map.of("interceptor", interceptor));
-        Assistants assistants = new Assistants();
-        Assistant assistant = new Assistant();
-        assistants.setAssistants(Map.of("assist", assistant));
-        config.setAssistant(assistants);
 
         assertEquals(app, config.selectDeployment("app"));
         assertEquals(model, config.selectDeployment("model"));
         assertEquals(toolSet, config.selectDeployment("toolset"));
         assertEquals(interceptor, config.selectDeployment("interceptor"));
-        assertEquals(assistant, config.selectDeployment("assist"));
         assertNull(config.selectDeployment("unknown"));
     }
 }

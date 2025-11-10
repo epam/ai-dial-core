@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
@@ -232,8 +233,8 @@ public class ToolSetProxyController implements Controller {
                 String perRequestKey = assignPerRequestKey();
                 proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
             }
-        } catch (ResourceNotFoundException e) {
-            log.error(e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
         }
     }
 

@@ -1,8 +1,10 @@
 package com.epam.aidial.core.credentials.encryption;
 
+import com.epam.aidial.core.credentials.exception.CekEncryptionException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 import lombok.RequiredArgsConstructor;
 
 import java.util.concurrent.ExecutionException;
@@ -41,6 +43,12 @@ public class CachedContentEncryptionKeyManager implements ContentEncryptionKeyMa
             return cekCache.get(cekDescriptor, () -> contentEncryptionKeyManager.getOrCreateKey(cekDescriptor));
         } catch (ExecutionException e) {
             throw new RuntimeException("Failed to getOrCreateKey for " + cekDescriptor, e);
+        // block for catching and re-throwing CekEncryptionException, which is unchecked Exception and will be handled later
+        } catch (UncheckedExecutionException e) {
+            if (e.getCause() instanceof CekEncryptionException encryptionException) {
+                throw encryptionException;
+            }
+            throw e;
         }
     }
 

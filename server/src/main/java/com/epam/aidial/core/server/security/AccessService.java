@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PublicationService;
@@ -18,6 +19,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.ResourceUtil;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import io.vertx.core.json.JsonArray;
@@ -34,6 +36,7 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 
 
 @Slf4j
@@ -52,6 +55,7 @@ public class AccessService {
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
             AccessService::getAutoSharedAccess,
+            AccessService::getPerRequestPermissions,
             AccessService::getAppResourceAccess,
             this::getReviewAccess,
             this::getPublicAccess,
@@ -230,6 +234,37 @@ public class AccessService {
         }
 
         return result;
+    }
+
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getPerRequestPermissions(Set<ResourceDescriptor> resources,
+                                                                                             ProxyContext context) {
+        Map<String, PerRequestSharedData> perRequestSharedResources = context.getApiKeyData().getPerRequestSharedResources();
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+        for (ResourceDescriptor resource : resources) {
+            String resourceUrl = resource.getUrl();
+            PerRequestSharedData data = perRequestSharedResources.get(resourceUrl);
+            if (data != null) {
+                result.put(resource, data.permissions());
+                continue;
+            }
+            Set<ResourceAccessType> folderPermissions = findFolderPermissions(perRequestSharedResources, resourceUrl);
+            if (folderPermissions != null) {
+                result.put(resource, folderPermissions);
+            }
+        }
+        return result;
+    }
+
+    @Nullable
+    private static Set<ResourceAccessType> findFolderPermissions(Map<String, PerRequestSharedData> perRequestSharedResources,
+                                                                 String resourceUrl) {
+        for (Map.Entry<String, PerRequestSharedData> entry : perRequestSharedResources.entrySet()) {
+            String permittedUrl = entry.getKey();
+            if (ResourceUtil.isFolder(permittedUrl) && resourceUrl.startsWith(permittedUrl)) {
+                return entry.getValue().permissions();
+            }
+        }
+        return null;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(

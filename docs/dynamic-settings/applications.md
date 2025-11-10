@@ -44,7 +44,7 @@ An object containing parameters for each [application](#applications).
 * `viewerUrl`: A string with URL of the application's [custom viewer UI](https://github.com/epam/ai-dial-chat/tree/development/docs). A custom UI, if enabled, will override the standard DIAL Chat UI.
 * `editorUrl`: A string with URL of the application's custom builder UI. Application builder allows DIAL Chat end-users to create instances of apps using a [UI wizards](https://docs.dialx.ai/tutorials/user-guide#application-builder).
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.         
-* `interceptors`: A list of interceptors to be triggered for the given application. Refer to [Interceptors](./interceptors.md) to learn more.
+* `interceptors`: A list of local interceptors to be triggered for the given application. Refer to [Interceptors](./interceptors.md) to learn more.
 * `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
 * `routes`: A list of registered routes in the application. Refer to [applications.<application_name>.routes](#applicationsapplication_nameroutes) for more details.
 
@@ -56,7 +56,7 @@ An object containing parameters for each [application](#applications).
             "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
             "displayName": "Forecast",
             "iconUrl": "https://host/app.svg",
-            "description": "Addon that provides forecast",
+            "description": "Application that provides forecast",
             "descriptionKeywords": ["code-gen"],
             "userRoles": [
                 "Forecast"

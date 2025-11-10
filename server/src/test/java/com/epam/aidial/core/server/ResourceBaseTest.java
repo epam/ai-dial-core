@@ -65,7 +65,6 @@ public class ResourceBaseTest {
             "temperature": 1,
             "folderId": "folder1",
             "messages": [],
-            "selectedAddons": ["R", "T", "G"],
             "assistantModelId": "assistantId",
             "lastActivityDate": 4848683153
             }
@@ -80,7 +79,6 @@ public class ResourceBaseTest {
             "temperature": 0,
             "folderId": "folder1",
             "messages": [],
-            "selectedAddons": [],
             "assistantModelId": "assistantId2",
             "lastActivityDate": 98746886446
             }
