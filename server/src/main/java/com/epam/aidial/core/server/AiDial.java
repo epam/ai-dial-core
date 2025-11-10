@@ -195,7 +195,7 @@ public class AiDial {
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
 
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
-                    resourceService, lockService, operatorService, applicationSchemaService, generator, settings("applications"));
+                    resourceService, lockService, operatorService, applicationSchemaService, configStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             RuleService ruleService = new RuleService(resourceService);
