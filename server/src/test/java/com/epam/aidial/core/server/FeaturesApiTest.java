@@ -47,21 +47,6 @@ public class FeaturesApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRateEndpointAssistant() {
-        String inboundPath = "/v1/search-assistant/rate";
-        String upstream = "http://localhost:7001/openai/deployments/search_assistant/rate_response";
-        testUpstreamEndpoint(inboundPath, upstream);
-    }
-
-    @Test
-    void testRateEndpointAssistantDefaultResponse() {
-        // The rate endpoint is unset. Checking the default empty response.
-        String inboundPath = "/v1/assistant/rate";
-        Response response = send(HttpMethod.POST, inboundPath);
-        verify(response, 200, "");
-    }
-
-    @Test
     void testTokenizeEndpoint() {
         String inboundPath = "/v1/deployments/chat-gpt-35-turbo/tokenize";
         String upstream = "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/tokenizer";

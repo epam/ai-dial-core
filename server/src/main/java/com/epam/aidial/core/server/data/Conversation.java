@@ -7,7 +7,6 @@ import lombok.Data;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -31,7 +30,6 @@ public class Conversation {
     int temperature;
     long lastActivityDate;
     ModelId model;
-    Set<String> selectedAddons;
     List<Message> messages;
     Map<String, Object> customViewState;
 
@@ -43,7 +41,6 @@ public class Conversation {
                         @JsonProperty(value = "temperature", required = true) int temperature,
                         @JsonProperty(value = "lastActivityDate") long lastActivityDate,
                         @JsonProperty(value = "model", required = true) ModelId model,
-                        @JsonProperty(value = "selectedAddons") Set<String> selectedAddons,
                         @JsonProperty(value = "messages", required = true) List<Message> messages,
                         @JsonProperty(value = "customViewState") Map<String, Object> customViewState) {
         this.id = id;
@@ -53,7 +50,6 @@ public class Conversation {
         this.temperature = temperature;
         this.lastActivityDate = lastActivityDate;
         this.model = model;
-        this.selectedAddons = selectedAddons;
         this.messages = messages;
         this.customViewState = customViewState;
     }
@@ -97,15 +93,12 @@ public class Conversation {
     public static class MessageSettings {
         String prompt;
         int temperature;
-        Set<String> selectedAddons;
 
         @JsonCreator
         public MessageSettings(@JsonProperty(value = "prompt", required = true) String prompt,
-                               @JsonProperty(value = "temperature", required = true) int temperature,
-                               @JsonProperty(value = "selectedAddons") Set<String> selectedAddons) {
+                               @JsonProperty(value = "temperature", required = true) int temperature) {
             this.prompt = prompt;
             this.temperature = temperature;
-            this.selectedAddons = selectedAddons;
         }
     }
 }

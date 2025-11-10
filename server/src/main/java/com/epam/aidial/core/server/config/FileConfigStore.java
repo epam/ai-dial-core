@@ -1,9 +1,6 @@
 package com.epam.aidial.core.server.config;
 
-import com.epam.aidial.core.config.Addon;
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Assistant;
-import com.epam.aidial.core.config.Assistants;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
@@ -33,9 +30,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static com.epam.aidial.core.config.Config.ASSISTANT;
-
 
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
@@ -92,35 +86,6 @@ public final class FileConfigStore implements ConfigStore {
                 Model model = entry.getValue();
                 model.setName(name);
                 log.debug("Loading {}", model);
-            }
-
-            for (Map.Entry<String, Addon> entry : config.getAddons().entrySet()) {
-                String name = entry.getKey();
-                Addon addon = entry.getValue();
-                addon.setName(name);
-                log.debug("Loading {}", addon);
-            }
-
-            Assistants assistants = config.getAssistant();
-            for (Map.Entry<String, Assistant> entry : assistants.getAssistants().entrySet()) {
-                String name = entry.getKey();
-                Assistant assistant = entry.getValue();
-                assistant.setName(name);
-
-                if (assistant.getEndpoint() == null) {
-                    assistant.setEndpoint(assistants.getEndpoint());
-                }
-
-                setMissingFeatures(assistant, assistants.getFeatures());
-                log.debug("Loading {}", assistant);
-            }
-            // base assistant
-            if (assistants.getEndpoint() != null) {
-                Assistant baseAssistant = new Assistant();
-                baseAssistant.setName(ASSISTANT);
-                baseAssistant.setEndpoint(assistants.getEndpoint());
-                baseAssistant.setFeatures(assistants.getFeatures());
-                assistants.getAssistants().put(ASSISTANT, baseAssistant);
             }
 
             for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
@@ -241,9 +206,6 @@ public final class FileConfigStore implements ConfigStore {
         }
         if (modelFeatures.getTemperatureSupported() == null) {
             modelFeatures.setTemperatureSupported(features.getTemperatureSupported());
-        }
-        if (modelFeatures.getAddonsSupported() == null) {
-            modelFeatures.setAddonsSupported(features.getAddonsSupported());
         }
         if (modelFeatures.getCacheSupported() == null) {
             modelFeatures.setCacheSupported(features.getCacheSupported());

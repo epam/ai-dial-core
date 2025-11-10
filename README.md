@@ -2,7 +2,7 @@
 
 ## Overview
 
-HTTP Proxy provides unified API to different chat completion and embedding models, assistants and applications.
+HTTP Proxy provides unified API to different chat completion and embedding models, applications.
 Written in Java 21 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ## Build
@@ -176,18 +176,6 @@ Dynamic settings can include the following parameters:
 | keys  | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                    |
 | retriableErrorCodes| List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                |
 | applicationTypeSchemas               | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
-
-#### Obsolete Dynamic Settings
-
-|Parameter          | Description  |
-|----------------------------------------------------------------------------------|----------|
-| addons  | A list of deployed DIAL Addons and their parameters:<br />`<addon_name>`: Unique addon name. |
-| addons.<addon_name>| `endpoint`: DIAL Addon API for chat completions.<br />`iconUrl`: Icon path for the DIAL addon on UI.<br />`description`: Brief DIAL addon description.<br />`displayName`: DIAL addon name on UI.<br />`inputAttachmentTypes`: A list of allowed MIME types for the input attachments.<br />`maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity) <br/> `forwardAuthToken`: If flag is set to `true` forward Http header with authorization token to chat completion endpoint of the addon. <br />`userRoles`: a specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.  <br />`author`: the addon's developer.  <br />`createdAt`: the date of the addon creation. <br />`updatedAt`: the date of the last addon update.     |
-| assistant          | A list of deployed DIAL Assistants and their parameters:<br />`<assistant_name>`: Unique assistan name.        |
-| assistant.endpoint | Assistant main endpoint|
-| assistant.assistants.<assistant_name>| `iconUrl`: Icon path for the DIAL assistant on UI.<br />`description`: Brief DIAL assistant description.<br />`displayName`: DIAL assistant name on UI.<br />`inputAttachmentTypes`: A list of allowed MIME types for the input attachments.<br />`maxInputAttachments`: Maximum number of input attachments (default is zero when `inputAttachmentTypes` is unset, otherwise, infinity) <br/> `forwardAuthToken`: If flag is set to `true` forward Http header with authorization token to chat completion endpoint of the assistant. <br />`userRoles`: a specific claim value provided by a specific IDP. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.<br />`descriptionKeywords`: a list of keywords describes the assistant, e.g. `code-gen`, `text2image`.  <br />`author`: the assistant's developer.  <br />`createdAt`: the date of the assistant creation. <br />`updatedAt`: the date of the last assistant update.    |
-| assistant.assistants.<assistant_name>.defaults                 | Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call            |
-
 
 ## License
 

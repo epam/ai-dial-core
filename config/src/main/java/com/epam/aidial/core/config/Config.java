@@ -22,15 +22,11 @@ import java.util.Set;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @CustomApplicationsConformToTypeSchemas(message = "All custom schema-rich applications should conform to their schemas")
 public class Config {
-    public static final String ASSISTANT = "assistant";
-
     // maintain the order of routes defined in the config
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
     private Map<String, Model> models = Map.of();
-    private Map<String, Addon> addons = Map.of();
     private Map<String, Application> applications = Map.of();
     private Map<String, ToolSet> toolsets = Map.of();
-    private Assistants assistant = new Assistants();
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private Map<String, Key> keys = new HashMap<>();
     private Map<String, Role> roles = new HashMap<>();
@@ -61,13 +57,7 @@ public class Config {
             return toolSet;
         }
 
-        Interceptor interceptor = interceptors.get(deploymentId);
-        if (interceptor != null) {
-            return interceptor;
-        }
-
-        Assistants assistants = assistant;
-        return assistants.getAssistants().get(deploymentId);
+        return interceptors.get(deploymentId);
     }
 
     @JsonIgnore
