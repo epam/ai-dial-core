@@ -5,6 +5,11 @@ import com.amazonaws.services.kms.model.DecryptRequest;
 import com.amazonaws.services.kms.model.DecryptResult;
 import com.amazonaws.services.kms.model.EncryptRequest;
 import com.amazonaws.services.kms.model.EncryptResult;
+import com.amazonaws.services.kms.model.IncorrectKeyException;
+import com.amazonaws.services.kms.model.InvalidCiphertextException;
+import com.amazonaws.services.kms.model.InvalidKeyUsageException;
+import com.amazonaws.services.kms.model.KMSInvalidStateException;
+import com.epam.aidial.core.credentials.exception.CekEncryptionException;
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
@@ -28,31 +33,40 @@ public class AwsKeyManagementService implements KeyManagementService {
 
     @Override
     public byte[] encrypt(byte[] plain) {
-        Objects.requireNonNull(plain, "plain");
-        if (plain.length > KMS_DIRECT_ENCRYPT_LIMIT_BYTES) {
-            throw new IllegalArgumentException("Plaintext too large for direct KMS Encrypt (max 4096 bytes).");
+        try {
+            Objects.requireNonNull(plain, "plain");
+            if (plain.length > KMS_DIRECT_ENCRYPT_LIMIT_BYTES) {
+                throw new IllegalArgumentException("Plaintext too large for direct KMS Encrypt (max 4096 bytes).");
+            }
+
+            EncryptRequest req = new EncryptRequest()
+                    .withKeyId(keyId)
+                    .withEncryptionAlgorithm(encryptionAlgorithm)
+                    .withPlaintext(ByteBuffer.wrap(plain));
+
+            EncryptResult result = kms.encrypt(req);
+            return toByteArray(result.getCiphertextBlob());
+        } catch (InvalidKeyUsageException | KMSInvalidStateException e) {
+            throw new CekEncryptionException("Encryption error", e);
         }
-
-        EncryptRequest req = new EncryptRequest()
-                .withKeyId(keyId)
-                .withEncryptionAlgorithm(encryptionAlgorithm)
-                .withPlaintext(ByteBuffer.wrap(plain));
-
-        EncryptResult result = kms.encrypt(req);
-        return toByteArray(result.getCiphertextBlob());
     }
 
     @Override
     public byte[] decrypt(byte[] encrypted) {
-        Objects.requireNonNull(encrypted, "encrypted");
+        try {
+            Objects.requireNonNull(encrypted, "encrypted");
 
-        DecryptRequest req = new DecryptRequest()
-                .withKeyId(keyId)
-                .withEncryptionAlgorithm(encryptionAlgorithm)
-                .withCiphertextBlob(ByteBuffer.wrap(encrypted));
+            DecryptRequest req = new DecryptRequest()
+                    .withKeyId(keyId)
+                    .withEncryptionAlgorithm(encryptionAlgorithm)
+                    .withCiphertextBlob(ByteBuffer.wrap(encrypted));
 
-        DecryptResult result = kms.decrypt(req);
-        return toByteArray(result.getPlaintext());
+            DecryptResult result = kms.decrypt(req);
+            return toByteArray(result.getPlaintext());
+        } catch (InvalidCiphertextException | InvalidKeyUsageException
+                 | IncorrectKeyException | KMSInvalidStateException e) {
+            throw new CekEncryptionException("Decryption error", e);
+        }
     }
 
     private static byte[] toByteArray(ByteBuffer buffer) {

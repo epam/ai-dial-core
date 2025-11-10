@@ -1,9 +1,12 @@
 package com.epam.aidial.core.credentials.keymanagement;
 
+import com.azure.core.exception.HttpResponseException;
+import com.azure.core.http.HttpResponse;
 import com.azure.security.keyvault.keys.cryptography.CryptographyClient;
 import com.azure.security.keyvault.keys.cryptography.models.KeyWrapAlgorithm;
 import com.azure.security.keyvault.keys.cryptography.models.UnwrapResult;
 import com.azure.security.keyvault.keys.cryptography.models.WrapResult;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,8 +17,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,6 +73,33 @@ class AzureKeyManagementServiceTest {
     }
 
     @Test
+    void testEncrypt_httpResponseExceptionWithBadRequest() {
+        // Given
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        when(httpResponse.getStatusCode()).thenReturn(400);
+        HttpResponseException exception = new HttpResponseException("Bad Request", httpResponse);
+        when(mockCryptoClient.wrapKey(KEY_WRAP_ALGORITHM, PLAINTEXT)).thenThrow(exception);
+
+        // When & Then
+        EncryptionException encryptionException = assertThrows(EncryptionException.class, () -> azureKeyManagementService.encrypt(PLAINTEXT));
+        assertEquals("Encryption error", encryptionException.getMessage());
+        assertSame(exception, encryptionException.getCause());
+    }
+
+    @Test
+    void testEncrypt_httpResponseExceptionWithOtherError() {
+        // Given
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        when(httpResponse.getStatusCode()).thenReturn(500);
+        HttpResponseException exception = new HttpResponseException("Internal Server Error", httpResponse);
+        when(mockCryptoClient.wrapKey(KEY_WRAP_ALGORITHM, PLAINTEXT)).thenThrow(exception);
+
+        // When & Then
+        HttpResponseException thrownException = assertThrows(HttpResponseException.class, () -> azureKeyManagementService.encrypt(PLAINTEXT));
+        assertSame(exception, thrownException);
+    }
+
+    @Test
     void testDecrypt_success() {
         // Given
         UnwrapResult unwrapResult = new UnwrapResult(PLAINTEXT, KEY_WRAP_ALGORITHM, "test-key-id");
@@ -115,4 +147,36 @@ class AzureKeyManagementServiceTest {
         });
         assertEquals("keyWrapAlgorithm cannot be null.", exception.getMessage());
     }
+
+    @Test
+    void testDecrypt_httpResponseExceptionWithBadRequest() {
+        // Given
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        when(httpResponse.getStatusCode()).thenReturn(400);
+        HttpResponseException exception = new HttpResponseException("Bad Request", httpResponse);
+        when(mockCryptoClient.unwrapKey(KEY_WRAP_ALGORITHM, ENCRYPTED_DATA)).thenThrow(exception);
+
+        // When & Then
+        EncryptionException encryptionException = assertThrows(EncryptionException.class, () -> {
+            azureKeyManagementService.decrypt(ENCRYPTED_DATA);
+        });
+        assertEquals("Decryption error", encryptionException.getMessage());
+        assertSame(exception, encryptionException.getCause());
+    }
+
+    @Test
+    void testDecrypt_httpResponseExceptionWithOtherError() {
+        // Given
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        when(httpResponse.getStatusCode()).thenReturn(500);
+        HttpResponseException exception = new HttpResponseException("Internal Server Error", httpResponse);
+        when(mockCryptoClient.unwrapKey(KEY_WRAP_ALGORITHM, ENCRYPTED_DATA)).thenThrow(exception);
+
+        // When & Then
+        HttpResponseException thrownException = assertThrows(HttpResponseException.class, () -> {
+            azureKeyManagementService.decrypt(ENCRYPTED_DATA);
+        });
+        assertSame(exception, thrownException);
+    }
+
 }

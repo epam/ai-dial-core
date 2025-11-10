@@ -33,6 +33,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -115,19 +116,12 @@ class ToolSetServiceTest {
         MockedStatic<ProxyUtil> proxyUtil = Mockito.mockStatic(ProxyUtil.class);
         proxyUtil.when(() -> ProxyUtil.convertToObject(any(String.class), eq(ToolSet.class)))
                 .thenReturn(toolSet);
-        doAnswer(answer -> {
-            ResourceAuthSettings authSettings = answer.getArgument(2);
-            authSettings.setClientSecret("plainClientSecret");
-            return null;
-        }).when(resourceAuthSettingsEncryptionService).decrypt(any(), any(), any());
 
         ResourceItemMetadata metadata = mock(ResourceItemMetadata.class);
         ResourceDescriptor resource = mock(ResourceDescriptor.class);
         when(resource.getUrl()).thenReturn("url");
         when(resource.isFolder()).thenReturn(false);
         when(resource.getType()).thenReturn(ResourceTypes.TOOL_SET);
-        when(resource.getBucketName()).thenReturn("bucket");
-        when(resource.getBucketLocation()).thenReturn("location");
         when(resourceService.getResourceWithMetadata(resource, EtagHeader.ANY))
                 .thenReturn(Pair.of(metadata, "json"));
 
@@ -139,16 +133,12 @@ class ToolSetServiceTest {
                 toolSetService.getToolSet(context, resource, EtagHeader.ANY);
 
         // Then
-        verify(resourceAuthSettingsEncryptionService).decrypt(
-                eq(resource.getUrl()),
-                eq(new BucketInfo("bucket", "location")),
-                eq(toolSet.getAuthSettings())
-        );
+        verifyNoInteractions(resourceAuthSettingsEncryptionService);
         assertNotNull(result);
         assertNotNull(result.getValue());
         ToolSet actualToolSet = result.getValue();
         assertNotNull(actualToolSet.getAuthSettings());
-        assertEquals("plainClientSecret", actualToolSet.getAuthSettings().getClientSecret());
+        assertEquals("ENCRYPTED_CLIENT_SECRET", actualToolSet.getAuthSettings().getClientSecret());
 
         proxyUtil.close();
     }
