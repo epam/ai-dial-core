@@ -29,6 +29,7 @@ public class CacheClientFactory {
                 case AWS_ELASTI_CACHE -> createElastiCacheCredResolver(providerSettings);
                 case GCP_MEMORY_STORE -> createGcpCredResolver(providerSettings);
                 case AZURE_REDIS_CACHE -> createAzureCredResolver();
+                case LOCAL_CACHE -> createLocalCredResolver(providerSettings);
             };
         }
 
@@ -63,4 +64,9 @@ public class CacheClientFactory {
         return new AzureCredentialsResolver();
     }
 
+    private static CredentialsResolver createLocalCredResolver(JsonNode providerSettings) {
+        String userId = Objects.requireNonNull(providerSettings.get("userId"), "User must be provided").asText();
+        String password = Objects.requireNonNull(providerSettings.get("password"), "Password must be provided").asText();
+        return new LocalRedisCredentialsResolver(userId.isEmpty() ? null : userId, password);
+    }
 }

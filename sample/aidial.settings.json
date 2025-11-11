@@ -8,6 +8,17 @@
       "address": "redis://localhost:16370"
     }
   },
+  "redis_local_credential": {
+    "singleServerConfig": {
+      "address": "redis://localhost:6379",
+			"database": 5
+    },
+		"provider": {
+			"name": "local-cache",
+			"userId": "",
+			"password": "very_secure_password"
+		}
+  },
   "identityProviders": {
     "azure": {
       "jwksUrl": "https://login.microsoftonline.com/path/discovery/keys",
