@@ -223,7 +223,9 @@ public class ToolSetProxyController implements Controller {
                     ResourceDescriptor resourceDescriptor = credentialsLocator.getCredentialsDescriptors()
                             .get(CredentialsLevel.GLOBAL)
                             .toResourceDescriptor();
-                    if (accessService.hasReadAccess(resourceDescriptor, context)) {
+                    boolean hasReadAccess = accessService.hasReadAccess(resourceDescriptor, context);
+                    log.debug("Checking READ access for Credentials - Resource: {}, has access: {}", resourceDescriptor.getUrl(), hasReadAccess);
+                    if (hasReadAccess) {
                         addAuthorizationHeader(proxyRequest, resourceCredentials);
                     }
                 }
