@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -39,6 +40,7 @@ import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,7 +58,7 @@ public class ApplicationService {
     private static final String PUBLIC_DEPLOYMENTS_PREFIX = ResourceDescriptor.PUBLIC_BUCKET
             + ResourceDescriptor.PATH_SEPARATOR + DEPLOYMENTS_NAME + ResourceDescriptor.PATH_SEPARATOR;
 
-    private final Vertx vertx;
+    private final ConfigStore configStore;
     private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
@@ -81,16 +83,17 @@ public class ApplicationService {
                               LockService lockService,
                               ApplicationOperatorService operatorService,
                               ApplicationSchemaService applicationSchemaService,
+                              ConfigStore configStore,
                               Supplier<String> idGenerator,
                               JsonObject settings) {
         String pendingApplicationsKey = BlobStorageUtil.toStoragePath(lockService.getPrefix(), "pending-applications");
 
-        this.vertx = vertx;
         this.taskExecutor = taskExecutor;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
+        this.configStore = configStore;
         this.lockService = lockService;
         this.idGenerator = idGenerator;
         this.pendingApplications = redis.getScoredSortedSet(pendingApplicationsKey, StringCodec.INSTANCE);
@@ -476,10 +479,13 @@ public class ApplicationService {
 
     private void prepareApplication(ResourceDescriptor resource, Application application) {
         verifyApplication(resource);
-
-        if (application.getApplicationTypeSchemaId() != null) {
+        URI applicationSchemaId = application.getApplicationTypeSchemaId();
+        if (applicationSchemaId != null) {
             if (application.getEndpoint() != null || application.getFunction() != null) {
                 throw new IllegalArgumentException("Endpoint must not be set for custom application");
+            }
+            if (configStore.get().getCustomApplicationSchema(applicationSchemaId) == null) {
+                throw new IllegalArgumentException("Application schema is not found by schema id: " + applicationSchemaId);
             }
         } else if (application.getEndpoint() == null && application.getFunction() == null) {
             throw new IllegalArgumentException("Application endpoint or function must be provided");
