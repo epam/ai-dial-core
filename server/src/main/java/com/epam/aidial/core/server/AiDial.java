@@ -48,6 +48,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
 import com.epam.aidial.core.server.service.ResourceOperationService;
@@ -194,7 +195,7 @@ public class AiDial {
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
 
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
-                    resourceService, lockService, operatorService, applicationSchemaService, generator, settings("applications"));
+                    resourceService, lockService, operatorService, applicationSchemaService, configStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             RuleService ruleService = new RuleService(resourceService);
@@ -226,6 +227,7 @@ public class AiDial {
 
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
+            PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
 
             proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -234,7 +236,7 @@ public class AiDial {
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
-                    taskExecutor, version());
+                    perRequestPermissionService, resourceAuthSettingsEncryptionService, taskExecutor, version());
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

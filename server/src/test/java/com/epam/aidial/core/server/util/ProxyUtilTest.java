@@ -296,7 +296,6 @@ public class ProxyUtilTest {
                     {
                     "prompt": "sysPrompt",
                     "temperature": 5,
-                    "selectedAddons": ["A", "B", "C"],
                     "assistantModelId": "assistantId"
                     }
                   }
@@ -306,7 +305,6 @@ public class ProxyUtilTest {
                   "replayUserMessagesStack": [],
                   "activeReplayIndex": 0
                   },
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
@@ -332,7 +330,6 @@ public class ProxyUtilTest {
                     {
                     "prompt": "sysPrompt",
                     "temperature": 5,
-                    "selectedAddons": ["A", "B", "C"],
                     "assistantModelId": "assistantId"
                     }
                   }
@@ -342,7 +339,6 @@ public class ProxyUtilTest {
                   "replayUserMessagesStack": [],
                   "activeReplayIndex": 0
                   },
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
@@ -483,7 +479,6 @@ public class ProxyUtilTest {
                     {
                     "prompt": "sysPrompt",
                     "temperature": 5,
-                    "selectedAddons": ["A", "B", "C"],
                     "assistantModelId": "assistantId"
                     }
                   }
@@ -493,7 +488,6 @@ public class ProxyUtilTest {
                   "replayUserMessagesStack": [],
                   "activeReplayIndex": 0
                   },
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153,
                 "customViewState": {

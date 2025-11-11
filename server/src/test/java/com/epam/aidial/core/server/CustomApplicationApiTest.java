@@ -92,6 +92,17 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 }
                 """, "If-None-Match", "*");
         verify(response, 200);
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/unknown-app-schema-case", null, """
+                {
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "applicationTypeSchemaId": "http://unknown/schema/id",
+                "description": "My Custom Application Description"
+                }
+                """);
+        verify(response, 400);
     }
 
     @Test
@@ -469,7 +480,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "accessible_by_per_request_key": true,
                                 "content_parts": false,
                                 "temperature" : true,
-                                "addons" : true,
                                 "cache" : false,
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
@@ -507,7 +517,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "accessible_by_per_request_key" : true,
                                "content_parts" : false,
                                "temperature" : true,
-                               "addons" : true,
                                "cache" : false,
                                "auto_caching" : false,
                                "parallel_tool_calls" : true,
@@ -588,7 +597,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "accessible_by_per_request_key": true,
                         "content_parts": false,
                         "temperature" : true,
-                        "addons" : true,
                         "cache" : false,
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
@@ -635,7 +643,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "accessible_by_per_request_key": true,
                                 "content_parts": false,
                                 "temperature" : true,
-                                "addons" : true,
                                 "cache" : false,
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
@@ -674,7 +681,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "accessible_by_per_request_key" : true,
                               "content_parts" : false,
                               "temperature" : true,
-                              "addons" : true,
                               "cache" : false,
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
@@ -731,7 +737,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "accessible_by_per_request_key": true,
                               "content_parts": false,
                               "temperature" : true,
-                              "addons" : true,
                               "cache" : false,
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
@@ -1227,7 +1232,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "accessible_by_per_request_key" : true,
                        "content_parts" : false,
                        "temperature" : true,
-                       "addons" : true,
                        "cache" : false,
                        "auto_caching" : false,
                        "parallel_tool_calls" : true,

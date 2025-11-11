@@ -25,7 +25,6 @@ public class FeaturesData {
     private boolean accessibleByPerRequestKey = true;
     private boolean contentParts = false;
     private boolean temperature = true;
-    private boolean addons = true;
     private boolean cache = false;
     private boolean autoCaching = false;
     private boolean parallelToolCalls = true;
@@ -78,10 +77,6 @@ public class FeaturesData {
 
         if (features.getTemperatureSupported() != null) {
             data.setTemperature(features.getTemperatureSupported());
-        }
-
-        if (features.getAddonsSupported() != null) {
-            data.setAddons(features.getAddonsSupported());
         }
 
         if (features.getCacheSupported() != null) {

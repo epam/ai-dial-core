@@ -46,7 +46,6 @@ public class PublicationUtilTest {
                 "temperature": 1,
                 "folderId": "conversations/bucketName",
                 "messages": [],
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
@@ -62,7 +61,6 @@ public class PublicationUtilTest {
                 "temperature": 1,
                 "folderId": "conversations/bucketName/folder1",
                 "messages": [],
-                "selectedAddons": ["R", "T", "G"],
                 "assistantModelId": "assistantId",
                 "lastActivityDate": 4848683153
                 }
@@ -127,7 +125,6 @@ public class PublicationUtilTest {
                           }
                         }
                     ],
-                    "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
                     "lastActivityDate": 4848683153,
                     "playback": {
@@ -216,7 +213,6 @@ public class PublicationUtilTest {
                           }
                         }
                     ],
-                    "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
                     "lastActivityDate": 4848683153,
                     "playback" : {
@@ -295,7 +291,6 @@ public class PublicationUtilTest {
                           }
                         }
                     ],
-                    "selectedAddons": ["R", "T", "G"],
                     "assistantModelId": "assistantId",
                     "lastActivityDate": 4848683153,
                     "playback" : {

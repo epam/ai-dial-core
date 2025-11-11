@@ -35,84 +35,12 @@
             "endpoint": "http://localhost:4090/api/v1/interceptor/handle"
         }
     },
-    "addons": {
-        "search": {
-            "endpoint": "http://localhost:7010/search"
-        },
-        "forecast": {
-            "endpoint": "http://localhost:7010/forecast",
-            "displayName": "Forecast",
-            "iconUrl": "https://host/forecast.svg",
-            "description": "Addon that provides forecast",
-            "userRoles": [
-                "Forecast"
-            ],
-            "forwardAuthToken": true,
-            "features": {
-                "rateEndpoint": "http://host/rate",
-                "tokenizeEndpoint": "http://host/tokinize",
-                "truncatePromptEndpoint": "http://host/truncate",
-                "configurationEndpoint": "http://host/configure",
-                "systemPromptSupported": false,
-                "toolsSupported": false,
-                "seedSupported":false,
-                "urlAttachmentsSupported": false,
-                "folderAttachmentsSupported": false,
-                "accessibleByPerRequestKey": true,
-                "contentPartsSupported": false
-            },
-            "maxInputAttachments": 10,
-            "inputAttachmentTypes": ["type1", "type2"]
-        },
-        "calculator": {
-            "endpoint": "http://localhost:7010/calculator"
-        }
-    },
-    "assistant": {
-        "endpoint": "http://localhost:7001/openai/deployments/assistant/chat/completions",
-        "assistants": {
-            "search_assistant": {
-                "prompt": "Commands: sit_down, get_up, run_away",
-                "addons": [
-                    "search"
-                ],
-                "displayName": "Forecast",
-                "iconUrl": "https://host/assistant.svg",
-                "description": "Addon that provides forecast",
-                "userRoles": [
-                    "Forecast"
-                ],
-                "forwardAuthToken": true,
-                "features": {
-                    "rateEndpoint": "http://host/rate",
-                    "tokenizeEndpoint": "http://host/tokinize",
-                    "truncatePromptEndpoint": "http://host/truncate",
-                    "configurationEndpoint": "http://host/configure",
-                    "systemPromptSupported": false,
-                    "toolsSupported": false,
-                    "seedSupported":false,
-                    "urlAttachmentsSupported": false,
-                    "folderAttachmentsSupported": false,
-                    "accessibleByPerRequestKey": true,
-                    "contentPartsSupported": false
-                },
-                "maxInputAttachments": 10,
-                "inputAttachmentTypes": ["type1", "type2"],
-                "defaults": {
-                    "paramStr": "value",
-                    "paramBool": true,
-                    "paramInt": 123,
-                    "paramFloat": 0.25
-                }
-            }
-        }
-    },
     "applications": {
         "app": {
             "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
             "displayName": "Forecast",
             "iconUrl": "https://host/app.svg",
-            "description": "Addon that provides forecast",
+            "description": "Application that provides forecast",
             "descriptionKeywords": ["code-gen"],
             "userRoles": [
                 "Forecast"
@@ -282,7 +210,6 @@
                 "search": {},
                 "forecast": {},
                 "calculator": {},
-                "search_assistant": {},
                 "app": {}
             }
         },

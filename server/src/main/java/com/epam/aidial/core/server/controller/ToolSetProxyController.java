@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
+import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
@@ -215,25 +216,29 @@ public class ToolSetProxyController implements Controller {
 
             if (resourceCredentials != null) {
                 CredentialsLevel level = resourceCredentials.getCredentialsLevel();
+                log.debug("Credentials found: User: {}, Resource: {}, CredentialsLevel: {}", context.getUserSub(), toolSetId, level);
                 if (level.equals(CredentialsLevel.USER)) {
                     addAuthorizationHeader(proxyRequest, resourceCredentials);
                 } else if (level.equals(CredentialsLevel.GLOBAL)) {
                     ResourceDescriptor resourceDescriptor = credentialsLocator.getCredentialsDescriptors()
                             .get(CredentialsLevel.GLOBAL)
                             .toResourceDescriptor();
-                    if (accessService.hasReadAccess(resourceDescriptor, context)) {
+                    boolean hasReadAccess = accessService.hasReadAccess(resourceDescriptor, context);
+                    log.debug("Checking READ access for Credentials - Resource: {}, has access: {}", resourceDescriptor.getUrl(), hasReadAccess);
+                    if (hasReadAccess) {
                         addAuthorizationHeader(proxyRequest, resourceCredentials);
                     }
                 }
-                log.debug("Credential not found - User: {}, Resource: {}", context.getUserSub(), toolSetId);
+            } else {
+                log.debug("Credentials not found - User: {}, Resource: {}", context.getUserSub(), toolSetId);
             }
 
             if (toolSet.isForwardPerRequestKey()) {
                 String perRequestKey = assignPerRequestKey();
                 proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
             }
-        } catch (ResourceNotFoundException e) {
-            log.error(e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
         }
     }
 
@@ -241,6 +246,7 @@ public class ToolSetProxyController implements Controller {
                                         ResourceCredentials resourceCredentials) {
         AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
         if (authorizationHeader != null) {
+            log.debug("AuthorizationHeader added: User: {}, Resource: {}", context.getUserSub(), toolSetId);
             proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
         }
     }

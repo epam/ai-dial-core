@@ -51,7 +51,7 @@ public abstract class Deployment extends RoleBasedEntity {
     private int maxRetryAttempts = 1;
 
     /**
-     * The author who has developed that deployment(application/assistant/model)
+     * The author who has developed that deployment(application/model)
      */
     private String author;
 
