@@ -67,55 +67,55 @@ To enable application type interceptors:
 
 1. Add the interceptor definitions to the main meta-schema via `"dial:applicationTypeInterceptors"` parameter:
 
-  ```json
-  {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "$id": "https://dial.epam.com/application_type_schemas/schema#",
-    "title": "Core meta-schema defining DIAL custom application schemas",
-    "allOf": [
-      {
-        "$ref": "#/definitions/topLevelSchema"
-      },
-      {
-        "$ref": "#/definitions/dialRootSchema"
-      }
-    ],
-    "definitions": {
-      "dialRootSchema": {
-        "properties": {
-          "dial:applicationTypeInterceptors": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "List of application type interceptors"
+    ```json
+    {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "https://dial.epam.com/application_type_schemas/schema#",
+      "title": "Core meta-schema defining DIAL custom application schemas",
+      "allOf": [
+        {
+          "$ref": "#/definitions/topLevelSchema"
+        },
+        {
+          "$ref": "#/definitions/dialRootSchema"
+        }
+      ],
+      "definitions": {
+        "dialRootSchema": {
+          "properties": {
+            "dial:applicationTypeInterceptors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of application type interceptors"
+            }
           }
         }
       }
     }
-  }
-  ```
+    ```
 2. In the JSON schema for each application type, include a `"dial:applicationTypeInterceptors"` property containing a list of interceptors.
 3. Provide this JSON schema as the value for the `"applicationTypeSchemas"` parameter in DIAL Core dynamic settings.
 
-  ```json
-  {
-  "applicationTypeSchemas": [
-      {
-          "$schema": "https://dial.epam.com/application_type_schemas/schema#",
-          "$id": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-          "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
-          "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
-          "dial:applicationTypeDisplayName": "Specific Application Type",
-          "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
-          "dial:applicationTypeInterceptors": [
-              "interceptor1",
-              "interceptor2"
-          ]
-      }
-  ]
-  }
-  ```
+    ```json
+    {
+    "applicationTypeSchemas": [
+        {
+            "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+            "$id": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+            "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
+            "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
+            "dial:applicationTypeDisplayName": "Specific Application Type",
+            "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
+            "dial:applicationTypeInterceptors": [
+                "interceptor1",
+                "interceptor2"
+            ]
+        }
+    ]
+    }
+    ```
 
 ### Local interceptors
 
