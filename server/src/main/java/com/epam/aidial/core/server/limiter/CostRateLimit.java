@@ -8,8 +8,10 @@ import lombok.Data;
 import org.apache.commons.lang3.math.NumberUtils;
 
 import java.math.BigDecimal;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Rate limiter for cost-based limits, using BigDecimal for precision.
@@ -17,6 +19,8 @@ import java.util.List;
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class CostRateLimit {
+
+    private static final NumberFormat CURRENCY_FORMAT = NumberFormat.getCurrencyInstance(Locale.US);
 
     private final CostRateBucket minute = new CostRateBucket(RateWindow.MINUTE);
     private final CostRateBucket day = new CostRateBucket(RateWindow.DAY);
@@ -60,9 +64,9 @@ public class CostRateLimit {
                 
         if (result) {
             String errorMsg = String.format(
-                    "Hit cost rate limit. Minute limit: $%s / $%s. Day limit: $%s / $%s. Week limit: $%s / $%s. Month limit: $%s / $%s.",
-                    minuteTotal, costLimit.getMinute(), dayTotal, costLimit.getDay(), 
-                    weekTotal, costLimit.getWeek(), monthTotal, costLimit.getMonth());
+                    "Hit cost rate limit. Minute limit: %s / %s. Day limit: %s / %s. Week limit: %s / %s. Month limit: %s / %s.",
+                    format(minuteTotal), format(costLimit.getMinute()), format(dayTotal), format(costLimit.getDay()),
+                    format(weekTotal), format(costLimit.getWeek()), format(monthTotal), format(costLimit.getMonth()));
                     
             long minuteRetryAfter = minute.retryAfter(costLimit.getMinute());
             long dayRetryAfter = day.retryAfter(costLimit.getDay());
@@ -108,6 +112,10 @@ public class CostRateLimit {
         } else {
             return RateLimitResult.SUCCESS;
         }
+    }
+
+    private static String format(BigDecimal n) {
+        return CURRENCY_FORMAT.format(n);
     }
 
     /**

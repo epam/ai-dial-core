@@ -208,6 +208,9 @@ public class CostRateLimitTest {
             assertNotNull(checkLimitFuture);
             assertNotNull(checkLimitFuture.result());
             assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
+            assertEquals("Hit cost rate limit. Minute limit: $0.20 / $0.20. Day limit: $0.20 / $20.00."
+                    + " Week limit: $0.20 / $9,223,372,036,854,775,807.00."
+                    + " Month limit: $0.20 / $9,223,372,036,854,775,807.00.",  checkLimitFuture.result().errorMessage());
 
             // Check that the error message mentions cost limit
             String errorMessage = checkLimitFuture.result().displayErrorMessage();
