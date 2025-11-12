@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@2.7.2
+    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@2.7.3
     secrets: inherit
     with:
       platforms: "linux/amd64,linux/arm64"
