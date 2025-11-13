@@ -13,7 +13,7 @@ A list of registered routes in AI DIAL Core. A route is used to proxy request th
 An object containing parameters for each [route](#routes).
 
 * `userRoles`: A list of specific claim values provided by IDP in JWT or an API key role. If not defined, the route is available to all users. Refer to [IDP configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) for details.
-* `response`: Pre-configured route's response. If the `response` is set then AI DIAL Core returns the response immediately. Available parameters:
+* `response`: Pre-configured route's response. If the `response` is set then AI DIAL Core returns the response immediately. Either `response` or `upstreams` must be provided. Available parameters:
     - `status` - http status code
     - `body` - http response body.
 * `rewritePath`: A boolean flag that indicates that the path to the upstream server will be replaced with the path of the original request, if this flag is set to `true`.
@@ -21,7 +21,7 @@ An object containing parameters for each [route](#routes).
 * `methods`: A list of HTTP methods supported by this route. 
 * `maxRetryAttempts`: Maximum number of [retry](https://docs.dialx.ai/platform/core/load-balancer#fallbacks) attempts in case if upstream server returns unsuccessful response code. In this case load balancer will try to find another upstream from the list of available upstreams.
 * `order`: The value of this parameter determines the order within the global routes. The lower value means the higher priority. The value can't be negative integer. The default one is 2^31-1.
-* `upstreams`: A list of upstream servers. Refer to [routes.<route_name>.upstreams](#routesroute_nameupstreams) for more details.
+* `upstreams`: A list of upstream servers. Either `response` or `upstreams` must be provided. Refer to [routes.<route_name>.upstreams](#routesroute_nameupstreams) for more details.
 
 #### routes.<route_name>.upstreams
 
