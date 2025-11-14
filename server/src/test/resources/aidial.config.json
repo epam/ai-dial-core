@@ -113,7 +113,8 @@
         "truncatePromptEndpoint": "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/trim_history",
         "toolsSupported": true,
         "seedSupported": true,
-        "urlAttachmentsSupported": true
+        "urlAttachmentsSupported": true,
+        "supportCommentInRateResponse": true
       }
     },
     "embedding-ada": {
