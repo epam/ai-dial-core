@@ -57,7 +57,8 @@
                 "urlAttachmentsSupported": false,
                 "folderAttachmentsSupported": false,
                 "accessibleByPerRequestKey": true,
-                "contentPartsSupported": false
+                "contentPartsSupported": false,
+                "supportCommentInRateResponse": true
             },
             "maxInputAttachments": 10,
             "inputAttachmentTypes": ["type1", "type2"],
@@ -153,7 +154,8 @@
                 "urlAttachmentsSupported": false,
                 "folderAttachmentsSupported": false,
                 "accessibleByPerRequestKey": true,
-                "contentPartsSupported": false
+                "contentPartsSupported": false,
+                "supportCommentInRateResponse": false
             },
             "maxInputAttachments": 10,
             "inputAttachmentTypes": ["type1", "type2"],
