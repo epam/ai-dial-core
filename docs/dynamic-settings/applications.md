@@ -145,7 +145,8 @@ The following features are supported:
 * `folderAttachmentsSupported`: A boolean parameter that enables/disables attachments of folders (batching multiple files). Default is `false`.
 * `accessibleByPerRequestKey`: A boolean parameter that indicates whether the deployment is accessible using a per-request API key. Default is `true`.
 * `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not.Default is `false`.
-* `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.     
+* `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.
+* `supportCommentInRateResponse`: A boolean parameters that indicates whether the application supports the field `comment` in rate response payload.
 
 **Example**:
 

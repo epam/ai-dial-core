@@ -5,12 +5,15 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -23,7 +26,10 @@ import io.vertx.core.http.RequestOptions;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.InputStream;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -34,6 +40,7 @@ public class DeploymentFeatureController {
 
     private final Proxy proxy;
     private final ProxyContext context;
+    protected final List<BaseRequestFunction<ObjectNode>> enhancementFunctions = new ArrayList<>();
 
     public DeploymentFeatureController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
@@ -75,10 +82,38 @@ public class DeploymentFeatureController {
         setupProxyApiKeyData(proxyApiKeyData);
 
         proxy.getTaskExecutor().submit(() -> {
-            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
-            return null;
-        }).onSuccess(ignore -> sendRequest(endpoint)).onFailure(this::handleError);
+            if (runEnhancementFunctions(requestBody)) {
+                proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+                return true;
+            }
+            return false;
+        }).onSuccess(result -> {
+            if (result) {
+                sendRequest(endpoint);
+            }
+        }).onFailure(this::handleError);
 
+    }
+
+    private boolean runEnhancementFunctions(Buffer requestBody) {
+        if (enhancementFunctions.isEmpty()) {
+            return true;
+        }
+        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+            if (ProxyUtil.processChain(tree, enhancementFunctions)) {
+                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
+            }
+        } catch (Throwable e) {
+            if (e instanceof HttpException httpException) {
+                respond(httpException.getStatus(), httpException.getMessage());
+            } else {
+                respond(HttpStatus.BAD_REQUEST);
+            }
+            log.warn("Can't process JSON request body. Error:", e);
+            return false;
+        }
+        return true;
     }
 
     private void handleError(Throwable error) {

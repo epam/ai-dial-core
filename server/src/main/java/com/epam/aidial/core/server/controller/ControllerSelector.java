@@ -149,7 +149,7 @@ public class ControllerSelector {
                     .map(Features::getRateEndpoint)
                     .orElse(null);
 
-            DeploymentFeatureController controller = new DeploymentFeatureController(proxy, context);
+            DeploymentFeatureController controller = new RateResponseController(proxy, context);
             return () -> controller.handle(deploymentId, getter, false);
         });
         post(RouteTemplate.TOKENIZE, (proxy, context, pathMatcher) -> {
