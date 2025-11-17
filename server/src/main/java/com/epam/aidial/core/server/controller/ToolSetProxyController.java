@@ -160,8 +160,10 @@ public class ToolSetProxyController implements Controller {
         if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
 
             try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-                mcpMethodName = tree.get("method").asText();
+                JsonNode tree = ProxyUtil.MAPPER.readTree(stream);
+                if (tree.has("method")) {
+                    mcpMethodName = tree.get("method").asText();
+                }
             } catch (Throwable e) {
                 if (e instanceof HttpException httpException) {
                     respond(httpException.getStatus(), httpException.getMessage());
