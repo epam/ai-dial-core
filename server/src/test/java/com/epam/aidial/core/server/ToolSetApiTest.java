@@ -55,7 +55,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testToolsetCreation() {
-        Response response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset", null, """
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset", null, """
                 {
                 "endpoint": "http://toolset/v1/mcp",
                 "display_name": "My Toolset",
@@ -71,10 +71,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """);
         verifyJsonNotExact(response, 200, """
                 {
-                "name":"my toolset",
+                "name":"my-toolset",
                 "parentPath":null,
                 "bucket":"3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST",
-                "url":"toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
+                "url":"toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
                 "nodeType":"ITEM",
                 "resourceType":"TOOL_SET",
                 "createdAt": "@ignore",
@@ -84,10 +84,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 }
                 """);
 
-        response = send(HttpMethod.GET, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset", null, "");
+        response = send(HttpMethod.GET, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset", null, "");
         verifyJsonNotExact(response, 200, """
                 {
-                   "name" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
+                   "name" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
                    "endpoint" : "http://toolset/v1/mcp",
                    "display_name" : "My Toolset",
                    "display_version" : "1.0",
