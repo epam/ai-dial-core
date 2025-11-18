@@ -18,6 +18,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
@@ -48,7 +49,7 @@ public class ToolSetController {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetId, context);
+                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
                 resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator,
                         toolSet.getAuthSettings(), context.getUserSub());
                 toolSet.clearAuthSettings();
