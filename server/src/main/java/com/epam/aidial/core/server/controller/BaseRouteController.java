@@ -121,10 +121,10 @@ public abstract class BaseRouteController implements Controller {
     private Future<?> handleRateLimitSuccess() {
         if (context.getResponseBody() == null) {
             setupProxyApiKeyData();
-            return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
+            return proxy.getTokenStatsTracker().startSpan(context).compose(ignore -> {
                 if (isWebSocketUpgrade(context.getRequest())) {
                     Future<ServerWebSocket> future = context.getRequest().toWebSocket();
-                    future.compose(this::handleWebSocket)
+                    return future.compose(this::handleWebSocket)
                             .onFailure(error -> {
                                 if (!(error instanceof HandledException)) {
                                     log.error("WebSocket handler failed", error);
@@ -133,9 +133,8 @@ public abstract class BaseRouteController implements Controller {
                             });
 
                 } else {
-                    handleRequestBody();
+                    return handleRequestBody();
                 }
-                return null;
             });
         } else {
             context.getResponse().send(context.getResponseBody());
@@ -265,6 +264,7 @@ public abstract class BaseRouteController implements Controller {
 
         forwardFrames(serverWebSocket, upstreamSocket);
         forwardFrames(upstreamSocket, serverWebSocket);
+        System.out.println("pipeline is built");
     }
 
     private void forwardFrames(WebSocketBase source, WebSocketBase target) {
@@ -354,13 +354,14 @@ public abstract class BaseRouteController implements Controller {
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private void handleRequestBody() {
+    private Future<Void> handleRequestBody() {
         context.getRequest().body()
                 .onFailure(this::handleRequestBodyError)
                 .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                     handleRequestBody(body);
                     return null;
                 }));
+        return Future.succeededFuture();
     }
 
     private void handleRequestBody(Buffer requestBody) {
