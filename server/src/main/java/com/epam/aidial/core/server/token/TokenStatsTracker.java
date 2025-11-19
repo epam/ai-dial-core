@@ -123,7 +123,7 @@ public class TokenStatsTracker {
             while (parenSpanId != null) {
                 tokenStats = spans.get(parenSpanId);
                 if (tokenStats == null) {
-                    log.warn("Parent span {} was not added to the trace context.");
+                    log.warn("Parent span {} was not added to the trace context.", parenSpanId);
                     break;
                 }
                 tokenStats.tokenUsage.increase(tokenUsage);

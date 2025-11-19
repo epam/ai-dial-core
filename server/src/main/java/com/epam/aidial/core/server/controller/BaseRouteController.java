@@ -149,7 +149,9 @@ public abstract class BaseRouteController implements Controller {
     }
 
     private Future<Void> handleWebSocket(ServerWebSocket serverWebSocket) {
+        serverWebSocket.pause();
         Promise<Void> promise = Promise.promise();
+        promise.future().onComplete(result -> serverWebSocket.resume());
         AtomicBoolean closed = new AtomicBoolean();
         AtomicReference<WebSocket> upstreamRef = new AtomicReference<>();
 
@@ -264,7 +266,6 @@ public abstract class BaseRouteController implements Controller {
 
         forwardFrames(serverWebSocket, upstreamSocket);
         forwardFrames(upstreamSocket, serverWebSocket);
-        System.out.println("pipeline is built");
     }
 
     private void forwardFrames(WebSocketBase source, WebSocketBase target) {

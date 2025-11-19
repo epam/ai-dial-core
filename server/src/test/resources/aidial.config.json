@@ -39,6 +39,11 @@
       "methods": ["GET"],
       "userRoles": ["vstore_user", "vstore_admin"],
       "upstreams": [{"endpoint": "http://localhost:9876"}]
+    },
+    "websocket-router": {
+      "paths": ["/v1/websocket"],
+      "methods": ["GET", "HEAD"],
+      "upstreams": [{"endpoint": "ws://localhost:9876"}]
     }
   },
   "applications": {
