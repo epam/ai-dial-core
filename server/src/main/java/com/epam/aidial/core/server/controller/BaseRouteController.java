@@ -58,7 +58,6 @@ public abstract class BaseRouteController implements Controller {
     private static final short CLOSE_CODE_POLICY_VIOLATION = 1008;
     private static final short CLOSE_CODE_TRY_AGAIN = 1013;
     private static final short CLOSE_CODE_INTERNAL_ERROR = 1011;
-    private static final int MAX_CLOSE_REASON_LENGTH = 120;
 
     protected final Proxy proxy;
     protected final ProxyContext context;
@@ -175,36 +174,34 @@ public abstract class BaseRouteController implements Controller {
         }
     }
 
-    private void attemptConnect(ServerWebSocket clientSocket, AtomicReference<WebSocket> upstreamRef,
+    private void attemptConnect(ServerWebSocket serverWebSocket, AtomicReference<WebSocket> upstreamRef,
                                 AtomicBoolean closed, Promise<Void> promise) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream upstream = upstreamRoute.get();
         if (upstream == null) {
-            close(clientSocket, HttpStatus.BAD_GATEWAY, "No upstream");
+            close(serverWebSocket, HttpStatus.BAD_GATEWAY, "No upstream");
             promise.tryFail(new HandledException());
             return;
         }
 
         WebSocketConnectOptions options = buildConnectOptions(context, upstream);
-        proxy.getClient().webSocket(options).onComplete(ar -> {
-            if (ar.succeeded()) {
-                if (closed.get()) {
-                    ar.result().close();
-                    promise.tryFail(new HandledException());
-                    return;
-                }
-                handleConnectedWebSocket(clientSocket, ar.result(), upstreamRef, closed);
-                promise.tryComplete();
-            } else {
-                log.warn("Failed to connect WebSocket to upstream: {}", ar.cause().getMessage());
-                upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
-                try {
-                    upstreamRoute.next();
-                    attemptConnect(clientSocket, upstreamRef, closed, promise);
-                } catch (HttpException e) {
-                    close(clientSocket, e.getStatus(), e.getMessage());
-                    promise.tryFail(new HandledException());
-                }
+        proxy.getClient().webSocket(options).onSuccess(upstreamWebSocket -> {
+            if (closed.get()) {
+                upstreamWebSocket.close();
+                promise.tryFail(new HandledException());
+                return;
+            }
+            handleConnectedWebSocket(serverWebSocket, upstreamWebSocket, upstreamRef, closed);
+            promise.tryComplete();
+        }).onFailure(error -> {
+            log.warn("Failed to connect WebSocket to upstream: {}", error.getMessage());
+            upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
+            try {
+                upstreamRoute.next();
+                attemptConnect(serverWebSocket, upstreamRef, closed, promise);
+            } catch (HttpException e) {
+                close(serverWebSocket, e.getStatus(), e.getMessage());
+                promise.tryFail(new HandledException());
             }
         });
     }
@@ -215,9 +212,6 @@ public abstract class BaseRouteController implements Controller {
         }
         short code = mapStatusToCloseCode(status);
         String message = reason == null ? status.toString() : reason;
-        if (message.length() > MAX_CLOSE_REASON_LENGTH) {
-            message = message.substring(0, MAX_CLOSE_REASON_LENGTH);
-        }
         clientSocket.close(code, message);
     }
 
@@ -247,7 +241,7 @@ public abstract class BaseRouteController implements Controller {
         return options;
     }
 
-    private void handleConnectedWebSocket(ServerWebSocket clientSocket, WebSocket upstreamSocket,
+    private void handleConnectedWebSocket(ServerWebSocket serverWebSocket, WebSocket upstreamSocket,
                                           AtomicReference<WebSocket> upstreamRef, AtomicBoolean closed) {
         log.info("WebSocket connected to upstream {}", upstreamSocket.remoteAddress());
 
@@ -256,7 +250,7 @@ public abstract class BaseRouteController implements Controller {
 
         upstreamSocket.closeHandler(v -> {
             if (closed.compareAndSet(false, true)) {
-                clientSocket.close();
+                serverWebSocket.close();
                 finalizeRequest();
             }
         });
@@ -264,13 +258,13 @@ public abstract class BaseRouteController implements Controller {
         upstreamSocket.exceptionHandler(error -> {
             log.debug("Upstream WebSocket exception: {}", error.getMessage(), error);
             if (closed.compareAndSet(false, true)) {
-                clientSocket.close();
+                serverWebSocket.close();
                 finalizeRequest();
             }
         });
 
-        forwardFrames(clientSocket, upstreamSocket);
-        forwardFrames(upstreamSocket, clientSocket);
+        forwardFrames(serverWebSocket, upstreamSocket);
+        forwardFrames(upstreamSocket, serverWebSocket);
     }
 
     private void forwardFrames(WebSocketBase source, WebSocketBase target) {
