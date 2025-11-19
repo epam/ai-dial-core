@@ -15,20 +15,20 @@ import java.util.Map;
 public class CredentialsLocatorFactory {
 
     public static CredentialsLocator fromAnyUrl(
-            String resourceId,
+            String resourceIdEncoded,
             ProxyContext proxyContext
     ) {
         ResourceDescriptor resourceDescriptor = null;
         try {
             Proxy proxy = proxyContext.getProxy();
-            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceId, proxy.getEncryptionService());
+            resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(resourceIdEncoded, proxy.getEncryptionService());
         } catch (IllegalArgumentException ignored) {
             // resource might be static, resourceDescriptor remains null
         }
 
         Map<CredentialsLevel, BucketInfo> bucketInfo = resolveBucketInfo(resourceDescriptor, proxyContext);
 
-        return new CredentialsLocator(resourceId, bucketInfo);
+        return new CredentialsLocator(resourceIdEncoded, bucketInfo);
     }
 
     private static Map<CredentialsLevel, BucketInfo> resolveBucketInfo(
