@@ -164,7 +164,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                  }
                 """);
 
-        response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset", null, """
+        response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset", null, """
                 {
                 "endpoint": "http://toolset/v1/mcp",
                 "display_name": "My Toolset",
@@ -180,11 +180,11 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        response = send(HttpMethod.GET, "/openai/toolsets/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset");
+        response = send(HttpMethod.GET, "/openai/toolsets/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset");
         verifyJsonNotExact(response, 200, """
                 {
-                  "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
-                  "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
+                  "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
+                  "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
                   "display_name": "My Toolset",
                   "display_version": "1.0",
                   "icon_url": "http://toolset/icon.svg",
@@ -270,8 +270,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                         "authentication_type" : "NONE"
                      }
                     }, {
-                      "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
-                      "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset",
+                      "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
+                      "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
                       "display_name" : "My Toolset",
                       "display_version" : "1.0",
                       "icon_url" : "http://toolset/icon.svg",
