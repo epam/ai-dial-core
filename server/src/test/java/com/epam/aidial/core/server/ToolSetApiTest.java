@@ -343,6 +343,21 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testProxyMcpPostCall_EmptyPayload() {
+        TestWebServer.Handler handler = request -> {
+            assertEquals("", request.getBody().readString(StandardCharsets.UTF_8));
+            return new MockResponse().setResponseCode(400).setBody("empty payload");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null,
+                    "", "Content-Type", "application/json");
+
+            assertEquals(400, resp.status());
+            assertEquals("empty payload", resp.body());
+        }
+    }
+
+    @Test
     void testProxyMcpPostCall_ListTools() throws JsonProcessingException {
         String mcpRequest = """
                 {
