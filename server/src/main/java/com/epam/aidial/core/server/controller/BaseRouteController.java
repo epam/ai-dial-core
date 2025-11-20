@@ -36,6 +36,7 @@ import io.vertx.core.http.WebSocketFrameType;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.client.utils.URLEncodedUtils;
 
@@ -145,7 +146,7 @@ public abstract class BaseRouteController implements Controller {
 
     static boolean isWebSocketUpgrade(HttpServerRequest request) {
         String upgradeHeader = request.getHeader(HttpHeaders.UPGRADE);
-        return "websocket".equalsIgnoreCase(upgradeHeader);
+        return Strings.CI.contains(upgradeHeader, "websocket");
     }
 
     private Future<Void> handleWebSocket(ServerWebSocket serverWebSocket) {
