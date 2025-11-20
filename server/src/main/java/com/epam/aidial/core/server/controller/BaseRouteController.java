@@ -51,6 +51,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -122,25 +123,39 @@ public abstract class BaseRouteController implements Controller {
     private Future<?> handleRateLimitSuccess() {
         if (context.getResponseBody() == null) {
             setupProxyApiKeyData();
-            return proxy.getTokenStatsTracker().startSpan(context).compose(ignore -> {
-                if (isWebSocketUpgrade(context.getRequest())) {
-                    Future<ServerWebSocket> future = context.getRequest().toWebSocket();
-                    return future.compose(this::handleWebSocket)
-                            .onFailure(error -> {
-                                if (!(error instanceof HandledException)) {
-                                    log.error("WebSocket handler failed", error);
-                                    finalizeRequest();
-                                }
-                            });
+            return proxy.getTokenStatsTracker().startSpan(context)
+                    .compose(ignore -> assignPerRequestKeyIfNeeded())
+                    .compose(ignore -> {
+                        if (isWebSocketUpgrade(context.getRequest())) {
+                            Future<ServerWebSocket> future = context.getRequest().toWebSocket();
+                            return future.compose(this::handleWebSocket)
+                                    .onFailure(error -> {
+                                        if (!(error instanceof HandledException)) {
+                                            log.error("WebSocket handler failed", error);
+                                            finalizeRequest();
+                                        }
+                                    });
 
-                } else {
-                    return handleRequestBody();
-                }
-            });
+                        } else {
+                            return handleRequestBody();
+                        }
+                    });
         } else {
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(context);
             return Future.succeededFuture();
+        }
+    }
+
+    private Future<Void> assignPerRequestKeyIfNeeded() {
+        ApiKeyData proxyApiKeyData = setupProxyApiKeyData();
+        if (proxyApiKeyData == null) {
+            return Future.succeededFuture();
+        } else {
+            return proxy.getTaskExecutor().submit(() -> {
+                proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+                return null;
+            });
         }
     }
 
@@ -153,26 +168,26 @@ public abstract class BaseRouteController implements Controller {
         serverWebSocket.pause();
         Promise<Void> promise = Promise.promise();
         promise.future().onComplete(result -> serverWebSocket.resume());
+
         AtomicBoolean closed = new AtomicBoolean();
         AtomicReference<WebSocket> upstreamRef = new AtomicReference<>();
 
-        serverWebSocket.closeHandler(v -> handleClientClosure(closed, upstreamRef.get(), promise));
+        serverWebSocket.closeHandler(v -> handleWebSocketClosure(closed, upstreamRef.get()));
         serverWebSocket.exceptionHandler(error -> {
             log.debug("Client WebSocket error: {}", error.getMessage(), error);
-            handleClientClosure(closed, upstreamRef.get(), promise);
+            handleWebSocketClosure(closed, upstreamRef.get());
         });
 
         attemptConnect(serverWebSocket, upstreamRef, closed, promise);
         return promise.future();
     }
 
-    private void handleClientClosure(AtomicBoolean closed, WebSocket upstream, Promise<Void> promise) {
+    private void handleWebSocketClosure(AtomicBoolean closed, WebSocketBase webSocket) {
         if (closed.compareAndSet(false, true)) {
-            if (upstream != null) {
-                upstream.close();
+            if (webSocket != null) {
+                webSocket.close();
             }
             finalizeRequest();
-            promise.tryFail(new HandledException());
         }
     }
 
@@ -193,7 +208,7 @@ public abstract class BaseRouteController implements Controller {
                 promise.tryFail(new HandledException());
                 return;
             }
-            handleConnectedWebSocket(serverWebSocket, upstreamWebSocket, upstreamRef, closed);
+            handleUpstreamWebSocket(serverWebSocket, upstreamWebSocket, upstreamRef, closed);
             promise.tryComplete();
         }).onFailure(error -> {
             log.warn("Failed to connect WebSocket to upstream: {}", error.getMessage());
@@ -230,39 +245,25 @@ public abstract class BaseRouteController implements Controller {
                 .setAbsoluteURI(resolveEndpointUri(context, upstream))
                 .setTimeout(proxy.getClientOptions().getConnectTimeout());
 
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        ProxyUtil.copyHeaders(context.getRequest().headers(), headers);
-        if (upstream.getKey() != null) {
-            headers.set(Proxy.HEADER_API_KEY, upstream.getKey());
-        } else {
-            ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
-            headers.set(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
-        }
+        MultiMap proxyHeaders = MultiMap.caseInsensitiveMultiMap();
+        copyHeaders(context.getRequest().headers(), proxyHeaders);
 
-        options.setHeaders(headers);
+        options.setHeaders(proxyHeaders);
         return options;
     }
 
-    private void handleConnectedWebSocket(ServerWebSocket serverWebSocket, WebSocket upstreamSocket,
-                                          AtomicReference<WebSocket> upstreamRef, AtomicBoolean closed) {
+    private void handleUpstreamWebSocket(ServerWebSocket serverWebSocket, WebSocket upstreamSocket,
+                                         AtomicReference<WebSocket> upstreamRef, AtomicBoolean closed) {
         log.info("WebSocket connected to upstream {}", upstreamSocket.remoteAddress());
 
         upstreamRef.set(upstreamSocket);
         context.getUpstreamRoute().succeed();
 
-        upstreamSocket.closeHandler(v -> {
-            if (closed.compareAndSet(false, true)) {
-                serverWebSocket.close();
-                finalizeRequest();
-            }
-        });
+        upstreamSocket.closeHandler(v -> handleWebSocketClosure(closed, serverWebSocket));
 
         upstreamSocket.exceptionHandler(error -> {
             log.debug("Upstream WebSocket exception: {}", error.getMessage(), error);
-            if (closed.compareAndSet(false, true)) {
-                serverWebSocket.close();
-                finalizeRequest();
-            }
+            handleWebSocketClosure(closed, serverWebSocket);
         });
 
         forwardFrames(serverWebSocket, upstreamSocket);
@@ -408,14 +409,16 @@ public abstract class BaseRouteController implements Controller {
         // do nothing by default
     }
 
-    private void setupProxyApiKeyData() {
+    @Nullable
+    private ApiKeyData setupProxyApiKeyData() {
         Upstream upstream = context.getUpstreamRoute().get();
         if (upstream != null && upstream.getKey() != null) {
-            return;
+            return null;
         }
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
+        return proxyApiKeyData;
     }
 
     /**
@@ -427,15 +430,7 @@ public abstract class BaseRouteController implements Controller {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
 
-        Upstream upstream = context.getUpstreamRoute().get();
-        MultiMap excludeHeaders = excludeHeaders();
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
-        if (upstream != null && upstream.getKey() != null) {
-            proxyRequest.putHeader(Proxy.HEADER_API_KEY, upstream.getKey());
-        } else {
-            ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
-            proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
-        }
+        copyHeaders(request.headers(), proxyRequest.headers());
 
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
@@ -445,6 +440,18 @@ public abstract class BaseRouteController implements Controller {
         proxyRequest.send(proxyRequestBody)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyRequestError);
+    }
+
+    private void copyHeaders(MultiMap from, MultiMap to) {
+        Upstream upstream = context.getUpstreamRoute().get();
+        MultiMap excludeHeaders = excludeHeaders();
+        ProxyUtil.copyHeaders(from, to, excludeHeaders);
+        if (upstream != null && upstream.getKey() != null) {
+            to.add(Proxy.HEADER_API_KEY, upstream.getKey());
+        } else {
+            ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+            to.add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
+        }
     }
 
     protected MultiMap excludeHeaders() {

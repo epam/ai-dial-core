@@ -109,6 +109,7 @@ class RouteApiTest extends ResourceBaseTest {
                 @Override
                 public MockResponse dispatch(@NotNull RecordedRequest request) {
                     var mockResponse = new MockResponse();
+                    assertNotNull(request.getHeader("api-key"));
                     mockResponse.withWebSocketUpgrade(serverListener);
                     return mockResponse;
                 }
