@@ -39,6 +39,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import javax.annotation.Nullable;
 
@@ -48,6 +49,7 @@ import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_ROUTES;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TOKENIZE_ENDPOINT;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE_TRUNCATE_PROMPT_ENDPOINT;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_ASSISTANT_ATTACHMENTS_IN_REQUEST;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_INTERCEPTORS;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.getMetaschemaBuilder;
@@ -334,6 +336,15 @@ public class ApplicationSchemaService {
                 application = filterCustomClientProperties(application);
             }
             application = modifyEndpointsForCustomApplication(application);
+            boolean assistantAttachmentsInRequest = getBooleanProperty(application, DIAL_APPLICATION_TYPE_ASSISTANT_ATTACHMENTS_IN_REQUEST);
+            if (assistantAttachmentsInRequest) {
+                Features features = application.getFeatures();
+                if (features == null) {
+                    features = new Features();
+                    application.setFeatures(features);
+                }
+                features.setAssistantAttachmentsInRequestSupported(assistantAttachmentsInRequest);
+            }
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
             log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
             application.setApplicationProperties(null);
@@ -383,6 +394,17 @@ public class ApplicationSchemaService {
             return List.of();
         }
         return ProxyUtil.MAPPER.treeToValue(interceptors, APP_INTERCEPTOR_LIST_REF);
+    }
+
+    @SneakyThrows
+    private boolean getBooleanProperty(Application application, String propName) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application);
+        if (customApplicationSchema == null) {
+            return false;
+        }
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        return Optional.ofNullable(schemaNode.get(propName))
+                .map(JsonNode::asBoolean).orElse(false);
     }
 
 }

@@ -78,6 +78,11 @@
           },
           "description": "List of application type interceptors"
         },
+        "dial:applicationTypeAssistantAttachmentsInRequestSupported": {
+          "type": "boolean",
+          "default": false,
+          "description": "A boolean parameter that indicates whether the deployment supports DIAL attachments in the assistant messages. Default is `false`. When set to `true`, DIAL Chat must preserve attachments in the assistant messages, instead of removing them. The feature is especially useful for models that can generate attachments as well as take attachments in its input. A typical example of such a model is an image-editing model."
+        },
         "dial:applicationTypeRoutes": {
           "type": "object",
           "patternProperties": {
