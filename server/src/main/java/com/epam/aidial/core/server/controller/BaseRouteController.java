@@ -129,12 +129,7 @@ public abstract class BaseRouteController implements Controller {
                         if (isWebSocketUpgrade(context.getRequest())) {
                             Future<ServerWebSocket> future = context.getRequest().toWebSocket();
                             return future.compose(this::handleWebSocket)
-                                    .onFailure(error -> {
-                                        if (!(error instanceof HandledException)) {
-                                            log.error("WebSocket handler failed", error);
-                                            finalizeRequest();
-                                        }
-                                    });
+                                    .onFailure(this::handleWebSocketFailure);
 
                         } else {
                             return handleRequestBody();
@@ -144,6 +139,15 @@ public abstract class BaseRouteController implements Controller {
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(context);
             return Future.succeededFuture();
+        }
+    }
+
+    private void handleWebSocketFailure(Throwable error) {
+        if (!(error instanceof HandledException)) {
+            log.error("WebSocket handler failed", error);
+            finalizeRequest();
+            close(context.getServerWebSocket(), HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Error occurred on handling web socket");
         }
     }
 
@@ -159,7 +163,7 @@ public abstract class BaseRouteController implements Controller {
         }
     }
 
-    static boolean isWebSocketUpgrade(HttpServerRequest request) {
+    private static boolean isWebSocketUpgrade(HttpServerRequest request) {
         String upgradeHeader = request.getHeader(HttpHeaders.UPGRADE);
         return Strings.CI.contains(upgradeHeader, "websocket");
     }
@@ -168,6 +172,7 @@ public abstract class BaseRouteController implements Controller {
         serverWebSocket.pause();
         Promise<Void> promise = Promise.promise();
         promise.future().onComplete(result -> serverWebSocket.resume());
+        context.setServerWebSocket(serverWebSocket);
 
         AtomicBoolean closed = new AtomicBoolean();
         AtomicReference<WebSocket> upstreamRef = new AtomicReference<>();
@@ -223,16 +228,16 @@ public abstract class BaseRouteController implements Controller {
         });
     }
 
-    private void close(ServerWebSocket clientSocket, HttpStatus status, String reason) {
-        if (clientSocket == null || clientSocket.isClosed()) {
+    private static void close(ServerWebSocket serverWebSocket, HttpStatus status, String reason) {
+        if (serverWebSocket == null || serverWebSocket.isClosed()) {
             return;
         }
         short code = mapStatusToCloseCode(status);
         String message = reason == null ? status.toString() : reason;
-        clientSocket.close(code, message);
+        serverWebSocket.close(code, message);
     }
 
-    private short mapStatusToCloseCode(HttpStatus status) {
+    private static short mapStatusToCloseCode(HttpStatus status) {
         return switch (status) {
             case TOO_MANY_REQUESTS -> CLOSE_CODE_TRY_AGAIN;
             case FORBIDDEN, UNAUTHORIZED -> CLOSE_CODE_POLICY_VIOLATION;
@@ -270,7 +275,7 @@ public abstract class BaseRouteController implements Controller {
         forwardFrames(upstreamSocket, serverWebSocket);
     }
 
-    private void forwardFrames(WebSocketBase source, WebSocketBase target) {
+    private static void forwardFrames(WebSocketBase source, WebSocketBase target) {
         source.frameHandler(frame -> {
             if (target.isClosed()) {
                 closeQuietly(source);
@@ -303,7 +308,7 @@ public abstract class BaseRouteController implements Controller {
         });
     }
 
-    private void closeQuietly(WebSocketBase socket) {
+    private static void closeQuietly(WebSocketBase socket) {
         if (socket == null || socket.isClosed()) {
             return;
         }
@@ -679,7 +684,7 @@ public abstract class BaseRouteController implements Controller {
         }
     }
 
-    static class HandledException extends RuntimeException {
+    private static class HandledException extends RuntimeException {
         HandledException() {
             super("Handled WebSocket proxy exception", null, false, false);
         }
