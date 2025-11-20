@@ -87,6 +87,8 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.WebSocketClient;
+import io.vertx.core.http.WebSocketClientOptions;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -127,6 +129,7 @@ public class AiDial {
     private Vertx vertx;
     private HttpServer server;
     private HttpClient client;
+    private WebSocketClient webSocketClient;
 
     private RedissonClient redis;
     private Proxy proxy;
@@ -153,6 +156,8 @@ public class AiDial {
             vertx = Vertx.vertx(vertxOptions);
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
             client = vertx.createHttpClient(clientOptions);
+            WebSocketClientOptions webSocketClientOptions = new WebSocketClientOptions(settings("webSocketClient"));
+            webSocketClient = vertx.createWebSocketClient(webSocketClientOptions);
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
@@ -229,7 +234,7 @@ public class AiDial {
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
 
-            proxy = new Proxy(vertx, clientOptions, client, configStore, logStore,
+            proxy = new Proxy(vertx, clientOptions, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,

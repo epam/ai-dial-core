@@ -186,7 +186,7 @@ public abstract class BaseRouteController implements Controller {
         }
 
         WebSocketConnectOptions options = buildConnectOptions(context, upstream);
-        proxy.getClient().webSocket(options).onSuccess(upstreamWebSocket -> {
+        proxy.getWebSocketClient().connect(options).onSuccess(upstreamWebSocket -> {
             if (closed.get()) {
                 upstreamWebSocket.close();
                 promise.tryFail(new HandledException());

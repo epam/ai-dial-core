@@ -57,6 +57,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
+import io.vertx.core.http.WebSocketClient;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -101,6 +102,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final Vertx vertx;
     private final HttpClientOptions clientOptions;
     private final HttpClient client;
+    private final WebSocketClient webSocketClient;
     private final ConfigStore configStore;
     private final LogStore logStore;
     private final RateLimiter rateLimiter;

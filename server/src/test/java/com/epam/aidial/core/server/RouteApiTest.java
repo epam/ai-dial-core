@@ -38,6 +38,7 @@ class RouteApiTest extends ResourceBaseTest {
 
             @Override
             public void onOpen(@NotNull WebSocket webSocket, @NotNull okhttp3.Response response) {
+                System.out.println("Client WebSocket opened.");
                 webSocket.send("Hello from client!");
             }
 
@@ -50,6 +51,8 @@ class RouteApiTest extends ResourceBaseTest {
             public void onMessage(@NotNull WebSocket webSocket, @NotNull String text) {
                 System.out.println("Client received: " + text);
                 clientReceivedMessages.add(text);
+                // close the socket
+                webSocket.close(1000, "server close");
             }
 
             @Override
@@ -82,7 +85,8 @@ class RouteApiTest extends ResourceBaseTest {
                 System.out.println("Server received: " + text);
                 serverReceivedMessages.add(text);
                 webSocket.send("Hello from server!"); // Respond to the client
-                webSocket.close(1000, "client close");
+                // close the socket
+                // webSocket.close(1000, "client close");
             }
 
             @Override
@@ -110,6 +114,7 @@ class RouteApiTest extends ResourceBaseTest {
                 }
             });
 
+            // start upstream server
             mockWebServer.start(9876);
 
             // Build the client request to the mock WebSocket URL
@@ -119,7 +124,6 @@ class RouteApiTest extends ResourceBaseTest {
                     .build();
 
             var client = new OkHttpClient();
-
 
             // Connect the client WebSocket
             client.newWebSocket(request, clientListener);
@@ -134,8 +138,13 @@ class RouteApiTest extends ResourceBaseTest {
             assertNotNull(serverMessage);
             assertEquals("Hello from client!", serverMessage);
 
-            // Close the client WebSocket
-            //clientWebSocket.close(1000, "Client closing");
+            // https://github.com/square/okhttp/issues/6976
+            // as an alternative way we can close the socket at the server side
+            // but closing web socket as the client side looks like more natural
+            Thread.getAllStackTraces().keySet().stream()
+                    .filter(i -> i.getName()
+                            .contains("MockWebServer /127.0.0.1"))
+                    .forEach(Thread::interrupt);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
