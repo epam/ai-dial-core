@@ -252,23 +252,10 @@ public class ApplicationController {
         @Override
         public Application extract(ResourceDescriptor resource, ProxyContext context) {
             Application application = applicationService.getApplication(resource).getValue();
-            return modifySchemaRichApplication(resource, context, application);
-        }
-
-        private Application modifySchemaRichApplication(ResourceDescriptor resource, ProxyContext ctx, Application application) {
-            try {
-                boolean applicationRequestInfoAboutItSelf = !Objects.equals(ctx.getDecodedSourceDeployment(),
-                        resource.getDecodedUrl());
-                if (applicationRequestInfoAboutItSelf && !accessService.hasWriteAccess(resource, ctx)) {
-                    application = applicationSchemaService.filterCustomClientProperties(application);
-                }
-                application = applicationSchemaService.modifyEndpointsForCustomApplication(application);
-            } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
-                log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
-                application.setApplicationProperties(null);
-                application.setInvalid(true);
-            }
-            return application;
+            boolean applicationRequestInfoAboutItSelf = !Objects.equals(context.getDecodedSourceDeployment(),
+                    resource.getDecodedUrl());
+            boolean filterClientProps = applicationRequestInfoAboutItSelf && !accessService.hasWriteAccess(resource, context);
+            return applicationSchemaService.modifySchemaRichApplication(application, filterClientProps);
         }
     }
 }
