@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.controller;
+package com.epam.aidial.core.server.controller.route;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;

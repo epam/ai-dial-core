@@ -119,15 +119,15 @@ public class TokenStatsTracker {
                 return;
             }
             tokenStats.tokenUsage = tokenUsage;
-            String parenSpanId = tokenStats.parentSpanId;
-            while (parenSpanId != null) {
-                tokenStats = spans.get(parenSpanId);
+            String parentSpanId = tokenStats.parentSpanId;
+            while (parentSpanId != null) {
+                tokenStats = spans.get(parentSpanId);
                 if (tokenStats == null) {
-                    log.warn("Parent span {} was not added to the trace context.");
+                    log.warn("Parent span {} was not added to the trace context.", parentSpanId);
                     break;
                 }
                 tokenStats.tokenUsage.increase(tokenUsage);
-                parenSpanId = tokenStats.parentSpanId;
+                parentSpanId = tokenStats.parentSpanId;
             }
         }
     }

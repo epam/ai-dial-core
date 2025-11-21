@@ -4,6 +4,8 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
+import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;

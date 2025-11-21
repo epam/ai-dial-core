@@ -21,6 +21,7 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.ServerWebSocket;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -101,6 +102,7 @@ public class ProxyContext {
     // userName to be extracted from JWT or project name belongs to API key
     private String userDisplayName;
     private CacheBreakpointContext cacheBreakpointContext;
+    private ServerWebSocket serverWebSocket;
 
     public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {

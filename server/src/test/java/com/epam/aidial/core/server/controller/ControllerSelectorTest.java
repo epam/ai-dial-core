@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.service.ApplicationService;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
