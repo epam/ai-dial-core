@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.controller;
+package com.epam.aidial.core.server.controller.route;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.controller.route.BaseRouteController;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestCustomAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseCustomAttachmentsFn;

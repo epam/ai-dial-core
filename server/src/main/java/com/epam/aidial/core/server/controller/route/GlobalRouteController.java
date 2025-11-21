@@ -1,10 +1,9 @@
-package com.epam.aidial.core.server.controller;
+package com.epam.aidial.core.server.controller.route;
 
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.controller.route.BaseRouteController;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
