@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
+import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -93,6 +94,7 @@ import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.metrics.MetricsOptions;
+import io.vertx.core.net.ProxyOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
 import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
@@ -155,6 +157,7 @@ public class AiDial {
 
             vertx = Vertx.vertx(vertxOptions);
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
+            HttpProxySelector httpProxySelector = createHttpProxySelector(clientOptions);
             client = vertx.createHttpClient(clientOptions);
             WebSocketClientOptions webSocketClientOptions = new WebSocketClientOptions(settings("webSocketClient"));
             webSocketClient = vertx.createWebSocketClient(webSocketClientOptions);
@@ -187,7 +190,7 @@ public class AiDial {
 
             TimeProvider timeProvider = new TimeProvider();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
-            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient();
+            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
             CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
                     tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider);
@@ -251,6 +254,14 @@ public class AiDial {
             stop();
             throw e;
         }
+    }
+
+    private static HttpProxySelector createHttpProxySelector(HttpClientOptions options) {
+        ProxyOptions proxyOptions = options.getProxyOptions();
+        if (proxyOptions == null) {
+            return null;
+        }
+        return new HttpProxySelector(proxyOptions, options.getNonProxyHosts());
     }
 
     private static ResourceRegistrationService getResourceRegistrationService(ResourceAuthorizationClient resourceAuthorizationClient) {

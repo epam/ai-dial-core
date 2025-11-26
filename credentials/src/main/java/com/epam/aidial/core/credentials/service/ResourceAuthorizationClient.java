@@ -8,11 +8,13 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class ResourceAuthorizationClient {
@@ -20,8 +22,12 @@ public class ResourceAuthorizationClient {
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
 
-    public ResourceAuthorizationClient() {
-        this.httpClient = HttpClient.newHttpClient();
+    public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector) {
+        HttpClient.Builder builder = HttpClient.newBuilder();
+        if (proxySelector != null) {
+            builder.proxy(proxySelector);
+        }
+        this.httpClient = builder.build();
         this.httpHeadersHandler = new HttpHeadersHandler();
     }
 
