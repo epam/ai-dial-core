@@ -52,7 +52,7 @@ public class ProtectedResourceMetadataService {
 
     @VisibleForTesting
     private ProtectedResourceMetadataService() {
-        this.resourceAuthorizationClient = new ResourceAuthorizationClient();
+        this.resourceAuthorizationClient = new ResourceAuthorizationClient(null);
         this.protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
         this.httpHeadersHandler = new HttpHeadersHandler();
     }
