@@ -12,18 +12,18 @@ import org.jetbrains.annotations.NotNull;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
-class TestWebServer implements AutoCloseable {
+public class TestWebServer implements AutoCloseable {
 
     private final ConcurrentHashMap<Key, Handler> mapping = new ConcurrentHashMap<>();
     private final MockWebServer server;
     private final Handler fallback;
 
-    TestWebServer(int port) {
+    public TestWebServer(int port) {
         this(port, Handler.NO_MAPPING);
     }
 
     @SneakyThrows
-    TestWebServer(int port, Handler fallback) {
+    public TestWebServer(int port, Handler fallback) {
         this.fallback = fallback;
         this.server = new MockWebServer();
         this.server.setDispatcher(new Router());
