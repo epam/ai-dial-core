@@ -4,7 +4,7 @@ Routes in DIAL are used for communication through registered endpoints in the DI
 
 ## routes
 
-A list of registered routes in AI DIAL Core. A route is used to proxy request through AI DIAL Core to upstream server.<br />AI DIAL Core provides capabilities: rate limiting, role based authorization, request balancing and access to AI DIAL Core resources such as LLMs, applications, file storage.
+A list of registered routes in DIAL Core. A route is used to proxy request through DIAL Core to upstream server.<br />DIAL Core provides capabilities: rate limiting, role based authorization, request balancing and access to DIAL Core resources such as LLMs, applications, file storage.
 
 * `<route_name>`: A unique route name.
 
@@ -13,7 +13,7 @@ A list of registered routes in AI DIAL Core. A route is used to proxy request th
 An object containing parameters for each [route](#routes).
 
 * `userRoles`: A list of specific claim values provided by IDP in JWT or an API key role. If not defined, the route is available to all users. Refer to [IDP configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) for details.
-* `response`: Pre-configured route's response. If the `response` is set then AI DIAL Core returns the response immediately. Either `response` or `upstreams` must be provided. Available parameters:
+* `response`: Pre-configured route's response. If the `response` is set then DIAL Core returns the response immediately. Either `response` or `upstreams` must be provided. Available parameters:
     - `status` - http status code
     - `body` - http response body.
 * `rewritePath`: A boolean flag that indicates that the path to the upstream server will be replaced with the path of the original request, if this flag is set to `true`.
@@ -27,7 +27,7 @@ An object containing parameters for each [route](#routes).
 
 A list of upstream servers with their parameters. Use to configure [load balancing](https://docs.dialx.ai/platform/core/load-balancer).
 
-* `endpoint`: One or more backend URLs to send requests to. Enables round-robin load balancing or fallback among multiple hosts.
+* `endpoint`: One or more backend URLs (e.g., http://, https://, ws://, wss://) to which requests are sent. Supports HTTP and WebSocket protocols. When multiple endpoints are provided, round-robin load balancing and automatic fallback can be enabled among the hosts.
 * `key`: API key, token, or credential passed to the upstream. 
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
@@ -37,29 +37,40 @@ A list of upstream servers with their parameters. Use to configure [load balanci
 
 ```json
 {
-"routes": {
+  "routes": {
     "vector_store_query": {
-        "paths": ["/v1/vector_store(/[^/]+)*$"],
-        "rewritePath": true,
-        "methods": ["GET", "HEAD"],
-        "userRoles": ["role1"],
-        "upstreams": [
-            {
-                "endpoint": "http://localhost:9876"
-            },
-            {
-                "endpoint": "http://localhost:9877"
-            }
-        ]
+      "paths": ["/v1/vector_store(/[^/]+)*$"],
+      "rewritePath": true,
+      "methods": ["GET", "HEAD"],
+      "userRoles": ["role1"],
+      "upstreams": [
+        {
+          "endpoint": "http://localhost:9876"
+        },
+        {
+          "endpoint": "http://localhost:9877"
+        }
+      ]
     },
     "rate": {
-        "paths": ["/v1/rate"],
-        "rewritePath": true,
-        "methods": ["GET", "HEAD"],
-        "response": {
-            "status": 200,
-            "body": "OK"
+      "paths": ["/v1/rate"],
+      "rewritePath": true,
+      "methods": ["GET", "HEAD"],
+      "response": {
+        "status": 200,
+        "body": "OK"
+      }
+    },
+    "websocket-realtime-openai": {
+      "paths": ["/openai/realtime"],
+      "rewritePath": true,
+      "upstreams": [
+        {
+          "endpoint": "wss://${AZURE_FOUNDRY_PROJECT_NAME}.cognitiveservices.azure.com/openai/realtime",
+          "key": "${AZURE_FOUNDRY_API_KEY}"
         }
+      ]
     }
-},
+  }
 }
+```
