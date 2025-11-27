@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
@@ -72,13 +73,17 @@ public class ProxyUtil {
         }
     }
 
-    public static void setOverrideNameHeader(HttpServerRequest request, Deployment deployment) {
+    public static void setOverrideNameHeader(MultiMap headers, Deployment deployment) {
         if (deployment instanceof Model model) {
             String overrideName = model.getOverrideName();
             if (overrideName != null) {
-                request.headers().set(Proxy.HEADER_OVERRIDE_NAME, overrideName);
+                headers.set(Proxy.HEADER_OVERRIDE_NAME, overrideName);
             }
         }
+    }
+
+    public static void setOverrideNameHeader(HttpClientRequest request, Deployment deployment) {
+        setOverrideNameHeader(request.headers(), deployment);
     }
 
     public static int contentLength(HttpServerRequest request, int defaultValue) {

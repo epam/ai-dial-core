@@ -138,7 +138,7 @@ class RouteWebSocketHandler {
 
         MultiMap proxyHeaders = MultiMap.caseInsensitiveMultiMap();
         controller.copyHeaders(context.getRequest().headers(), proxyHeaders);
-        ProxyUtil.setOverrideNameHeader(request, context.getDeployment());
+        ProxyUtil.setOverrideNameHeader(proxyHeaders, context.getDeployment());
 
         options.setHeaders(proxyHeaders);
         return options;
