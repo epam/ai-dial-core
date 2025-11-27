@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -66,6 +68,15 @@ public class ProxyUtil {
 
             if (!HOP_BY_HOP_HEADERS.contains(key) && !TRACE_HEADERS.contains(key) && !excludeHeaders.contains(key)) {
                 to.add(key, value);
+            }
+        }
+    }
+
+    public static void setOverrideNameHeader(HttpServerRequest request, Deployment deployment) {
+        if (deployment instanceof Model model) {
+            String overrideName = model.getOverrideName();
+            if (overrideName != null) {
+                request.headers().set(Proxy.HEADER_OVERRIDE_NAME, overrideName);
             }
         }
     }

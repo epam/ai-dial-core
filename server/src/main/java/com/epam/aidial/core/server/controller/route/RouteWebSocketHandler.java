@@ -4,11 +4,13 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.ServerWebSocket;
 import io.vertx.core.http.WebSocket;
 import io.vertx.core.http.WebSocketBase;
@@ -136,6 +138,7 @@ class RouteWebSocketHandler {
 
         MultiMap proxyHeaders = MultiMap.caseInsensitiveMultiMap();
         controller.copyHeaders(context.getRequest().headers(), proxyHeaders);
+        ProxyUtil.setOverrideNameHeader(request, context.getDeployment());
 
         options.setHeaders(proxyHeaders);
         return options;
