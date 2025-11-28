@@ -78,6 +78,7 @@ import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
@@ -508,6 +509,8 @@ public class AiDial {
                         SpanProcessor.composite(new PathNormalizerSpanProcessor(), spanProcessor)))
                 .build()
                 .getOpenTelemetrySdk();
+
+        OpenTelemetryAppender.install(openTelemetry);
 
         OpenTelemetryOptions otelOpts = new OpenTelemetryOptions(openTelemetry);
         otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
