@@ -290,6 +290,6 @@ public class GfLogStoreTest {
                 + "u001D\\u001E\\u001F !\\\"#$%&'()*+,-.\\/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvw";
         String actual = buffer.toString();
         assertEquals(expected, actual);
-        assertDoesNotThrow(() -> ProxyUtil.MAPPER.writeValueAsString("\"" + actual + "\""));
+        assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
     }
 }
