@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.log;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import io.vertx.core.buffer.Buffer;
 import lombok.SneakyThrows;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -286,6 +288,8 @@ public class GfLogStoreTest {
         String expected = "\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000B\\f\\r\\u000E\\u000F"
                 + "\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001A\\u001B\\u001C\\"
                 + "u001D\\u001E\\u001F !\\\"#$%&'()*+,-.\\/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvw";
-        assertEquals(expected, buffer.toString());
+        String actual = buffer.toString();
+        assertEquals(expected, actual);
+        assertDoesNotThrow(() -> ProxyUtil.MAPPER.writeValueAsString("\"" + actual + "\""));
     }
 }
