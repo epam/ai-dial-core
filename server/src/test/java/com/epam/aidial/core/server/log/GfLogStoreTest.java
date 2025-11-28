@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.log;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.deltix.gflog.api.LogEntry;
 import io.vertx.core.buffer.Buffer;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -11,6 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyChar;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -252,5 +257,35 @@ public class GfLogStoreTest {
         String result = GfLogStore.getParentDeployment(context);
 
         assertNull(result);
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendAndEscape() {
+        final int len = 120;
+        StringBuilder sb = new StringBuilder(len);
+        for (int i = 0; i < len; i++) {
+            sb.append((char) i);
+        }
+        String s = sb.toString();
+        LogEntry entry = mock(LogEntry.class);
+        StringBuilder buffer = new StringBuilder();
+        when(entry.append(anyChar())).thenAnswer(cb -> {
+            buffer.append((char) cb.getArgument(0));
+            return null;
+        });
+        when(entry.append(anyString(), anyInt(), anyInt())).thenAnswer(cb -> {
+            buffer.append((String) cb.getArgument(0), cb.getArgument(1), cb.getArgument(2));
+            return null;
+        });
+        when(entry.append(anyString())).thenAnswer(cb -> {
+            buffer.append((String) cb.getArgument(0));
+            return null;
+        });
+        GfLogStore.append(entry, s, true);
+        String expected = "\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000B\\f\\r\\u000E\\u000F"
+                + "\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001A\\u001B\\u001C\\"
+                + "u001D\\u001E\\u001F !\\\"#$%&'()*+,-.\\/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvw";
+        assertEquals(expected, buffer.toString());
     }
 }
