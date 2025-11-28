@@ -47,6 +47,15 @@ public class GfLogStore implements LogStore {
     // Max allowed size is 4 mb for request/response body
     private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
 
+    private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
+
+    static {
+        for (int i = 0; i < CONTROL_SYMBOLS.length; i++) {
+            String s = String.format("%04x", i);
+            CONTROL_SYMBOLS[i] = s.toUpperCase();
+        }
+    }
+
     private final ExecutorService executor;
 
     public GfLogStore() {
@@ -229,7 +238,8 @@ public class GfLogStore implements LogStore {
         }
     }
 
-    private static void append(LogEntry entry, String chars, boolean escape) {
+    @VisibleForTesting
+    static void append(LogEntry entry, String chars, boolean escape) {
         if (chars == null) {
             return;
         }
@@ -250,6 +260,9 @@ public class GfLogStore implements LogStore {
                 entry.append(chars, j, i);
                 entry.append('\\');
                 entry.append(e);
+                if (e == 'u') {
+                    entry.append(CONTROL_SYMBOLS[c]);
+                }
                 j = i + 1;
             }
         }
@@ -265,7 +278,7 @@ public class GfLogStore implements LogStore {
             case '\r' -> 'r';
             case '\t' -> 't';
             case '"', '\\', '/' -> c;
-            default -> 0;
+            default -> c <= 0x1F ? 'u' : 0;
         };
     }
 
