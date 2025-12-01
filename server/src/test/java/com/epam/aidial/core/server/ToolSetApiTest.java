@@ -719,4 +719,27 @@ public class ToolSetApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    void testCreateToolSetWithOauthUsingInvalidEndpoint() {
+        String requestBody = """
+            {
+                "endpoint": "http://this-hostname-does-not-exist.invalid/mcp",
+                "transport": "HTTP",
+                "allowedTools": [],
+                "auth_settings": {
+                    "authentication_type": "OAUTH",
+                    "redirect_uri": "http://localhost:3000/auth/signin"
+                }
+            }
+            """;
+
+        try (TestWebServer ignore = new TestWebServer(9876)) {
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@",
+                    null, requestBody, "authorization", "admin");
+
+            assertEquals(400, response.status());
+            assertEquals("Connection failed: The specified endpoint 'http://this-hostname-does-not-exist.invalid/mcp' is invalid or unreachable.", response.body());
+        }
+    }
+
 }

@@ -91,14 +91,14 @@ public class ResourceAuthorizationClient {
             return JsonMapperUtil.convertToObject(body, responseType);
         } catch (ConnectException e) {
             if (hasUnresolvedAddressException(e)) {
-                throw new IllegalArgumentException("Connection failed: The specified endpoint '%s' is invalid or unreachable."
-                        .formatted(request.uri()));
+                throw new IllegalArgumentException(
+                        "Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(request.uri()));
             }
             throw e;
         }
     }
 
-    public static boolean hasUnresolvedAddressException(Throwable ex) {
+    private static boolean hasUnresolvedAddressException(Throwable ex) {
         while (ex != null) {
             if (ex instanceof UnresolvedAddressException) {
                 return true;
