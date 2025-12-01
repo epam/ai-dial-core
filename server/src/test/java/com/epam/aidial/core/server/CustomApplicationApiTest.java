@@ -1247,4 +1247,29 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 """);
     }
 
+    @Test
+    void testDeleteApplicationWithTypeSchema_WhenSchemaIsNotfound() {
+
+        Response response = send(HttpMethod.PUT, "/v1/applications/public/test_app_files", null, """
+                  {
+                      "displayName": "test_app",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "application_properties" : null,
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """, "authorization", "admin");
+        Assertions.assertEquals(200, response.status());
+
+        dial.getProxy().getConfigStore().get()
+                .getApplicationTypeSchemas().remove("https://mydial.somewhere.com/custom_application_schemas/specific_application_type");
+
+        response = send(HttpMethod.DELETE, "/v1/applications/public/test_app_files", null, null, "authorization", "admin");
+        Assertions.assertEquals(200, response.status());
+    }
+
 }
