@@ -185,14 +185,14 @@ class ResourceAuthorizationClientTest {
         TestRequest requestPayload = new TestRequest("testValue");
 
         UnresolvedAddressException unresolved = new UnresolvedAddressException();
-        ConnectException innerConnect = new ConnectException("Inner connect");
+        ConnectException innerConnect = new ConnectException("Inner connection error.");
         innerConnect.initCause(unresolved);
-        ConnectException outerConnect = new ConnectException("Outer connect");
+        ConnectException outerConnect = new ConnectException("Outer connection error.");
         outerConnect.initCause(innerConnect);
 
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenThrow(outerConnect);
 
-        // When
+        // When && Then
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
                 resourceAuthorizationClient.executePost(
                         url, requestPayload,
@@ -200,9 +200,30 @@ class ResourceAuthorizationClientTest {
                         TestResponse.class
                 )
         );
-
-        // Then
         assertEquals("Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(url), exception.getMessage());
+    }
+
+    @Test
+    void testExecutePost_ConnectException() throws Exception {
+        // Given
+        String url = "https://example.com/resource";
+        TestRequest requestPayload = new TestRequest("testValue");
+
+        ConnectException innerConnect = new ConnectException("Inner connection error.");
+        ConnectException outerConnect = new ConnectException("Outer connection error.");
+        outerConnect.initCause(innerConnect);
+
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenThrow(outerConnect);
+
+        // When && Then
+        ConnectException exception = assertThrows(ConnectException.class, () ->
+                resourceAuthorizationClient.executePost(
+                        url, requestPayload,
+                        ContentType.APPLICATION_JSON.toString(),
+                        TestResponse.class
+                )
+        );
+        assertEquals("Outer connection error.", exception.getMessage());
     }
 
     @Data
