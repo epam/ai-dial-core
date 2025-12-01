@@ -124,6 +124,7 @@ class RouteRequestBodyHandler {
         context.setProxyRequest(proxyRequest);
 
         controller.copyHeaders(request.headers(), proxyRequest.headers());
+        ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
 
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));

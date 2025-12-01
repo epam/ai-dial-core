@@ -96,6 +96,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
     public static final String HEADER_APPLICATION_PROPERTIES = "X-DIAL-APPLICATION-PROPERTIES";
     public static final String HEADER_APPLICATION_ID = "X-DIAL-APPLICATION-ID";
+    public static final String HEADER_OVERRIDE_NAME = "X-DIAL-OVERRIDE-NAME";
+
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
 
