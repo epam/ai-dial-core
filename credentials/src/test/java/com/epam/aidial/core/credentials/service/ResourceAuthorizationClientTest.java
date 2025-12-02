@@ -223,7 +223,7 @@ class ResourceAuthorizationClientTest {
                         TestResponse.class
                 )
         );
-        assertEquals("Outer connection error.", exception.getMessage());
+        assertEquals("Cannot connect to https://example.com/resource", exception.getMessage());
     }
 
     @Data
