@@ -719,4 +719,72 @@ public class ToolSetApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    void testCreateToolSetWithOauthUsingInvalidEndpoint() {
+        String requestBody = """
+                {
+                    "endpoint": "http://this-hostname-does-not-exist.invalid/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "redirect_uri": "http://localhost:3000/auth/signin"
+                    }
+                }
+                """;
+
+        try (TestWebServer ignore = new TestWebServer(9876)) {
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@",
+                    null, requestBody, "authorization", "admin");
+
+            assertEquals(400, response.status());
+            assertEquals("Connection failed: The specified endpoint 'http://this-hostname-does-not-exist.invalid/mcp' is invalid or unreachable.", response.body());
+        }
+    }
+
+    @Test
+    void testCreateToolSetWithTimeoutOnMetadataDiscovery() {
+        String requestBody = """
+                {
+                    "endpoint": "http://2.1.0.2/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "redirect_uri": "http://localhost:3000/auth/signin"
+                    }
+                }
+                """;
+
+        try (TestWebServer ignore = new TestWebServer(9876)) {
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@",
+                    null, requestBody, "authorization", "admin");
+
+            assertEquals(504, response.status());
+            assertEquals("HTTP connect timed out", response.body());
+        }
+    }
+
+    @Test
+    void testCreateToolSetWithConnectionErrorOnMetadataDiscovery() {
+        String requestBody = """
+                {
+                    "endpoint": "http://localhost:9999/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "redirect_uri": "http://localhost:3000/auth/signin"
+                    }
+                }
+                """;
+
+        try (TestWebServer ignore = new TestWebServer(9876)) {
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@",
+                    null, requestBody, "authorization", "admin");
+
+            assertEquals(502, response.status());
+            assertEquals("Cannot connect to http://localhost:9999/mcp", response.body());
+        }
+    }
 }

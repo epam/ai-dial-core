@@ -12,10 +12,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.net.ConnectException;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.channels.UnresolvedAddressException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,6 +176,54 @@ class ResourceAuthorizationClientTest {
         assertEquals(401, exception.getStatus().getCode());
         assertEquals("Authorization server returns 401 error code", exception.getMessage());
         assertEquals(expectedResponseHeaders, exception.getHeaders());
+    }
+
+    @Test
+    void testExecutePost_UnresolvedAddressException() throws Exception {
+        // Given
+        String url = "https://example.com/resource";
+        TestRequest requestPayload = new TestRequest("testValue");
+
+        UnresolvedAddressException unresolved = new UnresolvedAddressException();
+        ConnectException innerConnect = new ConnectException("Inner connection error.");
+        innerConnect.initCause(unresolved);
+        ConnectException outerConnect = new ConnectException("Outer connection error.");
+        outerConnect.initCause(innerConnect);
+
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenThrow(outerConnect);
+
+        // When && Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
+                resourceAuthorizationClient.executePost(
+                        url, requestPayload,
+                        ContentType.APPLICATION_JSON.toString(),
+                        TestResponse.class
+                )
+        );
+        assertEquals("Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(url), exception.getMessage());
+    }
+
+    @Test
+    void testExecutePost_ConnectException() throws Exception {
+        // Given
+        String url = "https://example.com/resource";
+        TestRequest requestPayload = new TestRequest("testValue");
+
+        ConnectException innerConnect = new ConnectException("Inner connection error.");
+        ConnectException outerConnect = new ConnectException("Outer connection error.");
+        outerConnect.initCause(innerConnect);
+
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenThrow(outerConnect);
+
+        // When && Then
+        ConnectException exception = assertThrows(ConnectException.class, () ->
+                resourceAuthorizationClient.executePost(
+                        url, requestPayload,
+                        ContentType.APPLICATION_JSON.toString(),
+                        TestResponse.class
+                )
+        );
+        assertEquals("Cannot connect to https://example.com/resource", exception.getMessage());
     }
 
     @Data

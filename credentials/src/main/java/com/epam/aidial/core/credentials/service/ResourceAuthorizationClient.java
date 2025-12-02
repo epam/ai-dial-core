@@ -8,12 +8,16 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
+import java.net.ConnectException;
 import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -24,6 +28,7 @@ public class ResourceAuthorizationClient {
 
     public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector) {
         HttpClient.Builder builder = HttpClient.newBuilder();
+        builder.connectTimeout(Duration.of(5, ChronoUnit.SECONDS));
         if (proxySelector != null) {
             builder.proxy(proxySelector);
         }
@@ -69,23 +74,41 @@ public class ResourceAuthorizationClient {
 
     @SneakyThrows
     private <R> R execute(HttpRequest request, Class<R> responseType) {
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        int status = response.statusCode();
-        String body = response.body();
+            int status = response.statusCode();
+            String body = response.body();
 
-        if (status != 200 && status != 201) {
-            log.debug("Error executing request {}: status {}, response {}, headers: {}",
-                    request.uri(), response.statusCode(), response.body(), response.headers());
-            if (status == 401) {
-                throw new HttpException(status, "Authorization server returns 401 error code",
-                        httpHeadersHandler.convertHttpHeadersToMap(response.headers()));
-            } else {
-                throw new HttpException(status, "Authorization server returns error code");
+            if (status != 200 && status != 201) {
+                log.debug("Error executing request {}: status {}, response {}, headers: {}",
+                        request.uri(), response.statusCode(), response.body(), response.headers());
+                if (status == 401) {
+                    throw new HttpException(status, "Authorization server returns 401 error code",
+                            httpHeadersHandler.convertHttpHeadersToMap(response.headers()));
+                } else {
+                    throw new HttpException(status, "Authorization server returns error code");
+                }
             }
-        }
 
-        return JsonMapperUtil.convertToObject(body, responseType);
+            return JsonMapperUtil.convertToObject(body, responseType);
+        } catch (ConnectException e) {
+            if (hasUnresolvedAddressException(e)) {
+                throw new IllegalArgumentException(
+                        "Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(request.uri()));
+            }
+            throw new ConnectException("Cannot connect to %s".formatted(request.uri()));
+        }
+    }
+
+    private static boolean hasUnresolvedAddressException(Throwable ex) {
+        while (ex != null) {
+            if (ex instanceof UnresolvedAddressException) {
+                return true;
+            }
+            ex = ex.getCause();
+        }
+        return false;
     }
 
     private java.time.Duration createRequestConfig() {
