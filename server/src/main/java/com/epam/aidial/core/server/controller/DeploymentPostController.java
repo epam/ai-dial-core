@@ -305,6 +305,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+        ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
 
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());

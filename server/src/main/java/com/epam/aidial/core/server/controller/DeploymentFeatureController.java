@@ -172,6 +172,7 @@ public class DeploymentFeatureController {
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+        ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
 
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {

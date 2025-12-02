@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -224,7 +225,12 @@ public class ApplicationService {
             if (application.getFunction() != null) {
                 deleteFolder(application.getFunction().getSourceFolder());
             }
-            List<ResourceDescriptor> appFiles = applicationSchemaService.getFiles(application);
+            List<ResourceDescriptor> appFiles;
+            try {
+                appFiles = applicationSchemaService.getFiles(application);
+            } catch (ApplicationTypeSchemaValidationException e) {
+                appFiles = List.of();
+            }
             for (ResourceDescriptor file : appFiles) {
                 if (file.isFolder()) {
                     resourceService.deleteFolder(file);
