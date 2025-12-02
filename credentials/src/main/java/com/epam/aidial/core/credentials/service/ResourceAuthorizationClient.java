@@ -16,6 +16,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -26,6 +28,7 @@ public class ResourceAuthorizationClient {
 
     public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector) {
         HttpClient.Builder builder = HttpClient.newBuilder();
+        builder.connectTimeout(Duration.of(5, ChronoUnit.SECONDS));
         if (proxySelector != null) {
             builder.proxy(proxySelector);
         }
@@ -94,7 +97,7 @@ public class ResourceAuthorizationClient {
                 throw new IllegalArgumentException(
                         "Connection failed: The specified endpoint '%s' is invalid or unreachable.".formatted(request.uri()));
             }
-            throw e;
+            throw new ConnectException("Cannot connect to %s".formatted(request.uri()));
         }
     }
 

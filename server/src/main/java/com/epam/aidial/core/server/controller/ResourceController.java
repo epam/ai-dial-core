@@ -33,9 +33,12 @@ import jakarta.validation.ValidationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.net.ConnectException;
+import java.net.http.HttpConnectTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 import static com.epam.aidial.core.storage.http.HttpStatus.INTERNAL_SERVER_ERROR;
@@ -337,6 +340,12 @@ public class ResourceController extends AccessControlBaseController {
             context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
         } else if (error instanceof PermissionDeniedException) {
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+        } else if (error instanceof HttpConnectTimeoutException) {
+            log.error("Timeout connecting to upstream service: {}", descriptor.getUrl(), error);
+            context.respond(HttpStatus.GATEWAY_TIMEOUT, error.getMessage());
+        } else if (error instanceof ConnectException) {
+            log.error("Cannot connect to upstream service: {}", descriptor.getUrl(), error);
+            context.respond(BAD_GATEWAY, error.getMessage());
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
             log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
