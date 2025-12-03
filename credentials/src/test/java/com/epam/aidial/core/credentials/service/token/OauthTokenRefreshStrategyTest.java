@@ -52,14 +52,14 @@ class OauthTokenRefreshStrategyTest {
                         .accessToken("access")
                         .refreshToken(null)
                         .expiresInSeconds(null)
-                        .build(), false),
+                        .build(), true),
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .accessToken("access")
                         .refreshToken("refresh")
                         .updatedAt(now)
                         .expiresInSeconds(null)
-                        .build(), false),
+                        .build(), true),
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .accessToken("access")
