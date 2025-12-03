@@ -73,7 +73,9 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
             AuthorizationServerMetadata authServerMetadata = authorizationServerMetadataService.getAuthorizationServerMetadata(
                     resourceId, resourceEndpoint, protectedResourceMetadata, false);
 
-            supportedScopes = collectSupportedScopes(protectedResourceMetadata, authServerMetadata);
+            if (supportedScopes == null || supportedScopes.isEmpty()) {
+                supportedScopes = collectSupportedScopes(protectedResourceMetadata, authServerMetadata);
+            }
 
             if (authServerMetadata != null) {
                 authorizationEndpoint = Optional.ofNullable(authServerMetadata.getAuthorizationEndpoint())
