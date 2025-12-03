@@ -318,7 +318,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                     if (apiKeyData.getPerRequestKey() != null) {
                         return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
                     } else {
-                        return Future.failedFuture(new HttpException(HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both"));
+                        return Future.failedFuture(new HttpException(HttpStatus.BAD_REQUEST, "Provided API key is not per request key"));
                     }
                 });
 
