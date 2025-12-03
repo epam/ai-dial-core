@@ -10,11 +10,11 @@ import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import org.apache.hc.core5.http.ContentType;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
@@ -29,6 +29,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class DynamicResourceRegistrationStrategyTest {
 
     @Mock
@@ -43,11 +44,6 @@ class DynamicResourceRegistrationStrategyTest {
     @InjectMocks
     private DynamicResourceRegistrationStrategy resourceRegistrationStrategy;
 
-    @BeforeEach
-    void setup() {
-        MockitoAnnotations.openMocks(this);
-    }
-
     @Test
     void testCreateDynamicResourceRegistration_Success() {
         // Given
@@ -59,7 +55,6 @@ class DynamicResourceRegistrationStrategyTest {
         when(resourceAuthSettings.getRedirectUri()).thenReturn(resourceRedirectUri);
 
         AuthorizationServerProtectedResourceMetadata protectedResourceMetadata = mock(AuthorizationServerProtectedResourceMetadata.class);
-        when(protectedResourceMetadata.getAuthorizationServers()).thenReturn(List.of("https://auth.server"));
         when(protectedResourceMetadata.getScopesSupported()).thenReturn(List.of("scope1", "scope2"));
 
         when(protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint)).thenReturn(protectedResourceMetadata);
@@ -67,7 +62,6 @@ class DynamicResourceRegistrationStrategyTest {
         AuthorizationServerMetadata authorizationServerMetadata = mock(AuthorizationServerMetadata.class);
         when(authorizationServerMetadata.getRegistrationEndpoint()).thenReturn("https://auth.server/registration");
         when(authorizationServerMetadata.getCodeChallengeMethodsSupported()).thenReturn(List.of("S256"));
-        when(authorizationServerMetadata.getScopesSupported()).thenReturn(List.of("scope3", "scope4"));
 
         when(authorizationServerMetadataService.getAuthorizationServerMetadata(
                 resourceId, resourceEndpoint, protectedResourceMetadata, true))
