@@ -110,23 +110,12 @@
         }
     },
     "models": {
-        "chat-gpt-35-turbo": {
+        "gpt": {
             "type": "chat",
             "tokenizerModel": "tokenizer",
-            "limits": {
-                "maxTotalTokens": 1000,
-                "maxPromptTokens": 200,
-                "maxCompletionTokens": 800
-            },
-            "pricing": {
-                "unit": "token",
-                "prompt": "0.56",
-                "completion": "0.67"
-            },
-            "overrideName": "/some[!exotic?]/model/name",
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
-            "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
+            "endpoint": "http://localhost:5001/openai/deployments/echo/chat/completions",
             "upstreams": [
                 {
                     "endpoint": "http://localhost:7001",
@@ -140,32 +129,7 @@
                     "endpoint": "http://localhost:7003",
                     "key": "modelKey3"
                 }
-            ],
-            "userRoles": ["role1", "role2"],
-            "forwardAuthToken": true,
-            "features": {
-                "rateEndpoint": "http://host/rate",
-                "tokenizeEndpoint": "http://host/tokinize",
-                "truncatePromptEndpoint": "http://host/truncate",
-                "configurationEndpoint": "http://host/configure",
-                "systemPromptSupported": false,
-                "toolsSupported": false,
-                "seedSupported":false,
-                "urlAttachmentsSupported": false,
-                "folderAttachmentsSupported": false,
-                "accessibleByPerRequestKey": true,
-                "contentPartsSupported": false,
-                "supportCommentInRateResponse": false
-            },
-            "maxInputAttachments": 10,
-            "inputAttachmentTypes": ["type1", "type2"],
-            "defaults": {
-                "paramStr": "value",
-                "paramBool": true,
-                "paramInt": 123,
-                "paramFloat": 0.25
-            },
-            "interceptors": ["interceptor1"]
+            ]
         },
         "embedding-ada": {
             "type": "embedding",
