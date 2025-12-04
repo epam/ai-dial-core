@@ -199,6 +199,11 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
+        if (request.path().equals("/max-lock-time")) {
+            respond(request, HttpStatus.OK, String.format("max acquiring lock time: %d", LockService.MAX_TIME.get()));
+            return;
+        }
+
         String contentType = request.getHeader(HttpHeaders.CONTENT_TYPE);
         int contentLength = ProxyUtil.contentLength(request, 1024);
         if (contentType != null && contentType.startsWith("multipart/form-data")) {

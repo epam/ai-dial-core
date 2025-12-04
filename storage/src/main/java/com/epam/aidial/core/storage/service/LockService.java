@@ -12,6 +12,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
@@ -25,6 +27,7 @@ public class LockService {
     private static final long PERIOD = TimeUnit.SECONDS.toMicros(300);
     private static final long WAIT_MIN = TimeUnit.MILLISECONDS.toNanos(1);
     private static final long WAIT_MAX = TimeUnit.MILLISECONDS.toNanos(128);
+    public static final AtomicLong MAX_TIME = new AtomicLong(Long.MIN_VALUE);
 
     @Getter
     private final String prefix;
@@ -36,6 +39,7 @@ public class LockService {
     }
 
     public Lock lock(String key) {
+        long start = System.currentTimeMillis();
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
         log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
@@ -47,7 +51,8 @@ public class LockService {
             interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
             ttl = tryLock(id, owner);
         }
-
+        long time = System.currentTimeMillis() - start;
+        MAX_TIME.getAndUpdate(v -> Math.max(v, time));
         return () -> unlock(id, owner);
     }
 
