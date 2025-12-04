@@ -311,13 +311,14 @@ public class Proxy implements Handler<HttpServerRequest> {
                     .compose(claims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), claims)),
                             error -> apiKeyStore.getApiKeyData(apiKey).map(apiKeyData -> new AuthorizationResult(apiKeyData, null)));
         }
-        // interceptor case
+        // assume authentication is done by per-request key
         return apiKeyStore.getApiKeyData(apiKey)
                 .compose(apiKeyData -> {
-                    if (apiKeyData.isInterceptor()) {
+                    // allow authentication by per-request key and accept authorization header
+                    if (apiKeyData.getPerRequestKey() != null) {
                         return Future.succeededFuture(new AuthorizationResult(apiKeyData, null));
                     } else {
-                        return Future.failedFuture(new HttpException(HttpStatus.BAD_REQUEST, "Either API-KEY or Authorization header must be provided but not both"));
+                        return Future.failedFuture(new HttpException(HttpStatus.BAD_REQUEST, "Provided API key is not per request key"));
                     }
                 });
 
