@@ -62,7 +62,7 @@
     "heartbeatPeriod": 60000
   },
   "applications": {
-    "includeCustomApps": false
+    "includeCustomApps": true
   },
   "access": {
     "admin": {
