@@ -54,7 +54,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 }
                 """;
 
-    private static final String OPEN_AI_TOOLSETS_LIST_RESPONSE = """
+    private static final String TOOLSETS_LIST_ADMIN_RESPONSE = """
                   {
                    "data" : [ {
                      "id" : "git",
@@ -140,6 +140,52 @@ public class ToolSetApiTest extends ResourceBaseTest {
                  }
             """;
 
+    private static final String TOOLSETS_LIST_USER_RESPONSE = """
+                  {
+                   "data" : [ {
+                     "id" : "git",
+                     "toolset" : "git",
+                     "display_name" : "git",
+                     "description" : "Git remote tool set",
+                     "reference" : "git",
+                     "owner" : "organization-owner",
+                     "object" : "toolset",
+                     "status" : "succeeded",
+                     "created_at" : 1672534800,
+                     "updated_at" : 1672534800,
+                     "features" : {
+                           "rate" : false,
+                           "tokenize" : false,
+                           "truncate_prompt" : false,
+                           "configuration" : false,
+                           "system_prompt" : true,
+                           "tools" : false,
+                           "seed" : false,
+                           "url_attachments" : false,
+                           "folder_attachments" : false,
+                           "allow_resume" : true,
+                           "accessible_by_per_request_key" : true,
+                           "content_parts" : false,
+                           "temperature" : true,
+                           "cache" : false,
+                           "auto_caching" : false,
+                           "parallel_tool_calls" : true,
+                           "assistant_attachments_in_request": false
+                      },
+                     "description_keywords" : [ ],
+                     "max_retry_attempts" : 1,
+                     "transport" : "HTTP",
+                     "allowed_tools" : [ "branch", "remote" ],
+                     "auth_settings" : {
+                        "authentication_type" : "NONE",
+                        "global_auth_status": "SIGNED_OUT",
+                        "user_level_auth_status": "SIGNED_OUT"
+                     }
+                   } ],
+                   "object" : "list"
+                 }
+            """;
+
     @Test
     void testToolsetCreation() {
         Response response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-toolset", null, """
@@ -206,7 +252,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @Test
     void testToolSetListing() {
         Response response = send(HttpMethod.GET, "/openai/toolsets");
-        verifyJsonNotExact(response, 200, OPEN_AI_TOOLSETS_LIST_RESPONSE);
+        verifyJsonNotExact(response, 200, TOOLSETS_LIST_USER_RESPONSE);
 
         response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset", null, """
                 {
@@ -316,45 +362,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                         "user_level_auth_status" : "SIGNED_OUT"
                      }
                     }, {
-                        "id" : "my-toolset_2",
-                        "toolset" : "my-toolset_2",
-                        "display_name" : "my toolset 2",
-                        "reference" : "my-toolset_2",
-                        "owner" : "organization-owner",
-                        "object" : "toolset",
-                        "status" : "succeeded",
-                        "created_at" : 1672534800,
-                        "updated_at" : 1672534800,
-                        "features" : {
-                          "rate" : false,
-                          "tokenize" : false,
-                          "truncate_prompt" : false,
-                          "configuration" : false,
-                          "system_prompt" : true,
-                          "tools" : false,
-                          "seed" : false,
-                          "url_attachments" : false,
-                          "folder_attachments" : false,
-                          "allow_resume" : true,
-                          "accessible_by_per_request_key" : true,
-                          "content_parts" : false,
-                          "temperature" : true,
-                          "cache" : false,
-                          "auto_caching" : false,
-                          "parallel_tool_calls" : true,
-                          "assistant_attachments_in_request" : false
-                        },
-                        "description_keywords" : [ ],
-                        "max_retry_attempts" : 1,
-                        "auth_settings" : {
-                          "authentication_type" : "API_KEY",
-                          "api_key_header" : "Authorization",
-                          "global_auth_status" : "SIGNED_OUT",
-                          "user_level_auth_status" : "SIGNED_OUT"
-                        },
-                        "transport" : "HTTP",
-                        "allowed_tools" : [ ]
-                      }, {
                         "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
                         "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
                         "display_name" : "My Toolset",
@@ -399,7 +406,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "object" : "list"
                   }
                 """);
-
     }
 
     @Test
@@ -877,7 +883,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
     void testProxyMcpCallWithToolSetFromConfig() throws JsonProcessingException {
         // getting list of toolsets (ignoring toolsets with invalid key in config)
         Response response = send(HttpMethod.GET, "/openai/toolsets", null, null,  "authorization", "admin");
-        verifyJsonNotExact(response, 200, OPEN_AI_TOOLSETS_LIST_RESPONSE);
+        verifyJsonNotExact(response, 200, TOOLSETS_LIST_ADMIN_RESPONSE);
 
         String globalSignInRequestJson = """
                 {
@@ -899,7 +905,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
         // getting list of toolsets with changed auth status after sign in
         response = send(HttpMethod.GET, "/openai/toolsets", null, null, "authorization", "admin");
         String expectedResponseJson = replaceValueInJsonArray(
-                OPEN_AI_TOOLSETS_LIST_RESPONSE,
+                TOOLSETS_LIST_ADMIN_RESPONSE,
                 "data",
                 "id",
                 "my-toolset_2",
