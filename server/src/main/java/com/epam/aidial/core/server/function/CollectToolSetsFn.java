@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
@@ -49,7 +50,7 @@ public class CollectToolSetsFn extends BaseRequestFunction<ObjectNode> {
     private void attachToolSetCredentials(AccessService accessService,
                                           ApiKeyData destApiKeyData,
                                           String toolSetUrl) {
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetUrl, context);
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetUrl, context, ResourceTypes.TOOL_SET);
         List<ResourceDescriptor> credentialsResourceDescriptors = credentialsLocator.getUniqueCredentialsDescriptors().stream()
                 .map(CredentialsDescriptor::toResourceDescriptor)
                 .filter(credentialsDescriptor -> accessService.hasReadAccess(credentialsDescriptor, context))

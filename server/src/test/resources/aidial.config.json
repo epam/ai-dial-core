@@ -152,6 +152,27 @@
       "allowed_tools": ["branch", "remote"],
       "description": "Git remote tool set",
       "forwardPerRequestKey": true
+    },
+    "my toolset 1": {
+      "display_name": "my toolset 1",
+      "endpoint": "http://localhost:9876",
+      "transport": "HTTP",
+      "auth_settings": {
+        "authentication_type": "API_KEY",
+        "api_key_header": "Authorization"
+      }
+    },
+    "my-toolset_2": {
+      "display_name": "my toolset 2",
+      "endpoint": "http://localhost:9876",
+      "transport": "HTTP",
+      "auth_settings": {
+        "authentication_type": "API_KEY",
+        "api_key_header": "Authorization"
+      },
+      "userRoles": [
+        "admin"
+      ]
     }
   },
   "keys": {

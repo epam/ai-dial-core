@@ -19,7 +19,6 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -29,6 +28,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import jakarta.validation.ConstraintViolationException;
@@ -58,7 +58,6 @@ public class ToolSetCredentialsController {
         this.resourceAuthSettingsEncryptionService = proxy.getResourceAuthSettingsEncryptionService();
     }
 
-    // TODO: fix case with toolset from config
     public Future<?> signIn() {
         context.getRequest()
                 .body()
@@ -70,13 +69,18 @@ public class ToolSetCredentialsController {
                         Deployment deployment = deploymentService.findDeployment(context, toolsetId);
                         if (deployment instanceof ToolSet toolSet) {
                             String encodedResourceUrl = UrlUtil.encodePath(toolsetId);
-                            verifyAccess(encodedResourceUrl, resourceSignInRequest.getCredentialsLevel());
-                            CredentialsDescriptor credentialsDescriptor = CredentialsDescriptorFactory.fromAnyUrl(
-                                    encodedResourceUrl, resourceSignInRequest.getCredentialsLevel(), context);
-                            ResourceDescriptor toolSetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
-                            BucketInfo toolSetBucketInfo = new BucketInfo(toolSetResourceDescriptor.getBucketName(), toolSetResourceDescriptor.getBucketLocation());
                             ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
-                            resourceAuthSettingsEncryptionService.decrypt(toolSetResourceDescriptor.getUrl(), toolSetBucketInfo, resourceAuthSettings);
+                            CredentialsLevel credentialsLevel = resourceSignInRequest.getCredentialsLevel();
+
+                            if (context.getConfig().isDeploymentExists(deployment.getName())) {
+                                verifyAccess(toolSet, credentialsLevel);
+                            } else {
+                                verifyAccess(encodedResourceUrl, credentialsLevel);
+                                decryptAuthSettings(encodedResourceUrl, resourceAuthSettings);
+                            }
+                            
+                            CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
+                            CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(resourceSignInRequest.getCredentialsLevel());
                             resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
                                     resourceSignInRequest, context.getUserSub());
                             return true;
@@ -91,16 +95,27 @@ public class ToolSetCredentialsController {
         return Future.succeededFuture();
     }
 
-    // TODO: fix case with toolset from config
     public Future<?> signOut() {
         context.getRequest()
                 .body()
                 .compose(body -> taskExecutor.submit(() -> {
                     ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
                     String encodedResourceUrl = UrlUtil.encodePath(resourceSignOutRequest.getUrl());
+                    CredentialsLevel credentialsLevel = resourceSignOutRequest.getCredentialsLevel();
                     ValidationUtil.validate(resourceSignOutRequest);
-                    verifyAccess(encodedResourceUrl, resourceSignOutRequest.getCredentialsLevel());
-                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context);
+
+                    if (context.getConfig().isDeploymentExists(encodedResourceUrl)) {
+                        Deployment deployment = deploymentService.findDeployment(context, encodedResourceUrl);
+                        if (deployment instanceof ToolSet toolSet) {
+                            verifyAccess(toolSet, credentialsLevel);
+                        } else {
+                            throw new ResourceNotFoundException("Toolset is not found: " + encodedResourceUrl);
+                        }
+                    } else {
+                        verifyAccess(encodedResourceUrl, credentialsLevel);
+                    }
+
+                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
                     return resourceCredentialsService.deleteResourceCredentials(
                             credentialsLocator,
                             resourceSignOutRequest,
@@ -113,7 +128,20 @@ public class ToolSetCredentialsController {
         return Future.succeededFuture();
     }
 
-    private void verifyAccess(String encodedResourceUrl, CredentialsLevel credentialsLevel) {
+    private void verifyAccess(ToolSet toolSet,
+                              CredentialsLevel credentialsLevel) {
+        if (!toolSet.hasAccess(context.getUserRoles())) {
+            throw new PermissionDeniedException("No read access to ToolSet resource");
+        }
+
+        if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
+                && !accessService.hasAdminAccess(context)) {
+            throw new PermissionDeniedException("No read and write access to ToolSet resource");
+        }
+    }
+
+    private void verifyAccess(String encodedResourceUrl,
+                              CredentialsLevel credentialsLevel) {
         ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
@@ -125,6 +153,12 @@ public class ToolSetCredentialsController {
         if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
             throw new PermissionDeniedException("No read access to ToolSet resource");
         }
+    }
+
+    private void decryptAuthSettings(String encodedResourceUrl, ResourceAuthSettings resourceAuthSettings) {
+        ResourceDescriptor toolSetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
+        BucketInfo toolSetBucketInfo = new BucketInfo(toolSetResourceDescriptor.getBucketName(), toolSetResourceDescriptor.getBucketLocation());
+        resourceAuthSettingsEncryptionService.decrypt(toolSetResourceDescriptor.getUrl(), toolSetBucketInfo, resourceAuthSettings);
     }
 
     private void respondError(String message, Throwable error) {

@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
-import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -27,7 +26,6 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Answers.RETURNS_DEEP_STUBS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -119,18 +117,14 @@ class ToolSetServiceTest {
 
         ResourceItemMetadata metadata = mock(ResourceItemMetadata.class);
         ResourceDescriptor resource = mock(ResourceDescriptor.class);
-        when(resource.getUrl()).thenReturn("url");
         when(resource.isFolder()).thenReturn(false);
         when(resource.getType()).thenReturn(ResourceTypes.TOOL_SET);
         when(resourceService.getResourceWithMetadata(resource, EtagHeader.ANY))
                 .thenReturn(Pair.of(metadata, "json"));
 
-        ProxyContext context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
-        when(context.getUserSub()).thenReturn("userSub");
-
         // When
         Pair<ResourceItemMetadata, ToolSet> result =
-                toolSetService.getToolSet(context, resource, EtagHeader.ANY);
+                toolSetService.getToolSet(resource, EtagHeader.ANY);
 
         // Then
         verifyNoInteractions(resourceAuthSettingsEncryptionService);

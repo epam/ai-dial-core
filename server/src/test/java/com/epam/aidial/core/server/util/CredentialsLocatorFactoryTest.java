@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
@@ -8,7 +9,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -35,6 +38,8 @@ public class CredentialsLocatorFactoryTest {
     private EncryptionService encryptionService;
     @Mock
     private ApiKeyData apiKeyData;
+    @Mock
+    private Config config;
 
     private static final String USER_SUB = "userSub";
     private static final String PROJECT = "project";
@@ -54,8 +59,7 @@ public class CredentialsLocatorFactoryTest {
     private static Stream<Arguments> testCases() {
         return Stream.of(
                 Arguments.of("toolsets/resourceOwnerBucket/id", RESOURCE_OWNER_BUCKET, RESOURCE_OWNER_BUCKET_LOCATION),
-                Arguments.of("toolsets/public/id", ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION),
-                Arguments.of("toolset/id", ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION)
+                Arguments.of("toolsets/public/id", ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION)
         );
     }
 
@@ -65,12 +69,13 @@ public class CredentialsLocatorFactoryTest {
         // Given
         when(encryptionService.encrypt(eq(USER_SUB_LOCATION))).thenReturn(USER_BUCKET);
         when(proxyContext.getUserSub()).thenReturn(USER_SUB);
+        when(proxyContext.getConfig()).thenReturn(config);
         if (resourceId.contains(RESOURCE_OWNER_BUCKET)) {
             when(encryptionService.decrypt(eq(RESOURCE_OWNER_BUCKET))).thenReturn(RESOURCE_OWNER_BUCKET_LOCATION);
         }
 
         // When
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceId, proxyContext);
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceId, proxyContext, ResourceTypes.TOOL_SET);
 
         // Then
         assertNotNull(credentialsLocator);
@@ -89,12 +94,13 @@ public class CredentialsLocatorFactoryTest {
         // Given
         when(encryptionService.encrypt(eq(PROJECT_LOCATION))).thenReturn(USER_BUCKET);
         when(proxyContext.getProject()).thenReturn(PROJECT);
+        when(proxyContext.getConfig()).thenReturn(config);
         if (resourceId.contains(RESOURCE_OWNER_BUCKET)) {
             when(encryptionService.decrypt(eq(RESOURCE_OWNER_BUCKET))).thenReturn(RESOURCE_OWNER_BUCKET_LOCATION);
         }
 
         // When
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceId, proxyContext);
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceId, proxyContext, ResourceTypes.TOOL_SET);
 
         // Then
         assertNotNull(credentialsLocator);
@@ -105,6 +111,29 @@ public class CredentialsLocatorFactoryTest {
 
         assertBucketInfo(buckets.get(CredentialsLevel.USER), USER_BUCKET, PROJECT_LOCATION);
         assertBucketInfo(buckets.get(CredentialsLevel.GLOBAL), expectedGlobalBucket, expectedGlobalLocation);
+    }
+
+    @Test
+    void fromAnyUrl_ResourceFromConfig() {
+        // Given
+        String resourceId = "my-toolset";
+        when(encryptionService.encrypt(USER_SUB_LOCATION)).thenReturn(USER_BUCKET);
+        when(proxyContext.getUserSub()).thenReturn(USER_SUB);
+        when(proxyContext.getConfig()).thenReturn(config);
+        when(config.isDeploymentExists(resourceId)).thenReturn(true);
+
+        // When
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceId, proxyContext, ResourceTypes.TOOL_SET);
+
+        // Then
+        assertNotNull(credentialsLocator);
+        assertEquals("toolsets/config/my-toolset", credentialsLocator.getResourceId());
+
+        Map<CredentialsLevel, BucketInfo> buckets = credentialsLocator.getBuckets();
+        assertEquals(2, buckets.size());
+
+        assertBucketInfo(buckets.get(CredentialsLevel.USER), USER_BUCKET, USER_SUB_LOCATION);
+        assertBucketInfo(buckets.get(CredentialsLevel.GLOBAL), ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION);
     }
 
     private void assertBucketInfo(BucketInfo bucketInfo, String expectedName, String expectedLocation) {

@@ -27,6 +27,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,10 +65,10 @@ public final class FileConfigStore implements ConfigStore {
     private Config load(boolean fail) {
         try {
             log.debug("Config loading is started");
-            Config config = loadConfig();
+            Config loadedConfig = loadConfig();
 
             List<Route> sortedRoutes = new ArrayList<>();
-            for (Map.Entry<String, Route> entry : config.getRoutes().entrySet()) {
+            for (Map.Entry<String, Route> entry : loadedConfig.getRoutes().entrySet()) {
                 String name = entry.getKey();
                 Route route = entry.getValue();
                 route.setName(name);
@@ -75,29 +76,29 @@ public final class FileConfigStore implements ConfigStore {
                 sortedRoutes.add(route);
             }
             sortedRoutes.sort(Comparator.comparingInt(Route::getOrder));
-            LinkedHashMap<String, Route> routes = config.getRoutes();
+            LinkedHashMap<String, Route> routes = loadedConfig.getRoutes();
             routes.clear();
             for (Route route : sortedRoutes) {
                 routes.put(route.getName(), route);
             }
 
-            for (Map.Entry<String, Model> entry : config.getModels().entrySet()) {
+            for (Map.Entry<String, Model> entry : loadedConfig.getModels().entrySet()) {
                 String name = entry.getKey();
                 Model model = entry.getValue();
                 model.setName(name);
                 log.debug("Loading {}", model);
             }
 
-            for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
+            for (Map.Entry<String, Application> entry : loadedConfig.getApplications().entrySet()) {
                 String name = entry.getKey();
                 Application application = entry.getValue();
                 application.setName(name);
                 log.debug("Loading {}", application);
             }
 
-            apiKeyStore.addProjectKeys(config.getKeys());
+            apiKeyStore.addProjectKeys(loadedConfig.getKeys());
 
-            for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
+            for (Map.Entry<String, Role> entry : loadedConfig.getRoles().entrySet()) {
                 String name = entry.getKey();
                 Role role = entry.getValue();
                 role.setName(name);
@@ -108,23 +109,30 @@ public final class FileConfigStore implements ConfigStore {
                 log.debug("End loading role `{}`", role.getName());
             }
 
-            for (Map.Entry<String, Interceptor> entry : config.getInterceptors().entrySet()) {
+            for (Map.Entry<String, Interceptor> entry : loadedConfig.getInterceptors().entrySet()) {
                 String name = entry.getKey();
                 Interceptor interceptor = entry.getValue();
                 interceptor.setName(name);
                 log.debug("Loading {}", interceptor);
             }
 
-            for (Map.Entry<String, ToolSet> entry : config.getToolsets().entrySet()) {
+            Iterator<Map.Entry<String, ToolSet>> iterator = loadedConfig.getToolsets().entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, ToolSet> entry = iterator.next();
                 String name = entry.getKey();
-                ToolSet toolSet = entry.getValue();
-                toolSet.setName(name);
-                log.debug("Loading {}", toolSet);
+                if (isValidResourceKey(name)) {
+                    ToolSet toolSet = entry.getValue();
+                    toolSet.setName(name);
+                    log.debug("Loading {}", entry.getValue());
+                } else {
+                    log.warn("Invalid ToolSet name: {}", name);
+                    iterator.remove();
+                }
             }
 
-            this.config = config;
+            this.config = loadedConfig;
             log.debug("Config loading is completed");
-            return config;
+            return loadedConfig;
         } catch (Throwable e) {
             if (fail) {
                 throw e;
@@ -133,6 +141,10 @@ public final class FileConfigStore implements ConfigStore {
             log.warn("Failed to reload config: {}", e.getMessage());
         }
         return null;
+    }
+
+    private boolean isValidResourceKey(String resourceKey) {
+        return resourceKey.matches("^[A-Za-z0-9-_]+$");
     }
 
     private Config loadConfig() throws Exception {
