@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.config.SecuredResource;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
@@ -38,7 +39,7 @@ import java.util.Map;
 import java.util.Set;
 
 @Slf4j
-public class ToolSetCredentialsController {
+public class ResourceCredentialsController {
 
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
@@ -48,7 +49,7 @@ public class ToolSetCredentialsController {
     private final DeploymentService deploymentService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
-    public ToolSetCredentialsController(Proxy proxy, ProxyContext context) {
+    public ResourceCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
         this.taskExecutor = proxy.getTaskExecutor();
         this.accessService = proxy.getAccessService();
@@ -64,11 +65,11 @@ public class ToolSetCredentialsController {
                 .compose(body -> {
                     ResourceSignInRequest resourceSignInRequest = ProxyUtil.convertToObject(body, ResourceSignInRequest.class);
                     ValidationUtil.validate(resourceSignInRequest);
-                    String toolsetId = resourceSignInRequest.getUrl();
+                    String resourceId = resourceSignInRequest.getUrl();
                     return taskExecutor.submit(() -> {
-                        Deployment deployment = deploymentService.findDeployment(context, toolsetId);
+                        Deployment deployment = deploymentService.findDeployment(context, resourceId);
                         if (deployment instanceof ToolSet toolSet) {
-                            String encodedResourceUrl = UrlUtil.encodePath(toolsetId);
+                            String encodedResourceUrl = UrlUtil.encodePath(resourceId);
                             ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
                             CredentialsLevel credentialsLevel = resourceSignInRequest.getCredentialsLevel();
 
@@ -85,12 +86,12 @@ public class ToolSetCredentialsController {
                                     resourceSignInRequest, context.getUserSub());
                             return true;
                         }
-                        throw new ResourceNotFoundException("Toolset is not found: " + toolsetId);
+                        throw new ResourceNotFoundException("Resource is not found: " + resourceId);
                     });
                 })
                 .onSuccess(added -> context.respond(HttpStatus.OK, added))
                 .onFailure(error ->
-                        respondError("Can't signIn into Toolset", error));
+                        respondError("Can't signIn into Resource", error));
 
         return Future.succeededFuture();
     }
@@ -123,20 +124,20 @@ public class ToolSetCredentialsController {
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->
-                        respondError("Can't signOut from Toolset", error));
+                        respondError("Can't signOut from Resource", error));
 
         return Future.succeededFuture();
     }
 
-    private void verifyAccess(ToolSet toolSet,
+    private void verifyAccess(SecuredResource securedResource,
                               CredentialsLevel credentialsLevel) {
-        if (!toolSet.hasAccess(context.getUserRoles())) {
-            throw new PermissionDeniedException("No read access to ToolSet resource");
+        if (!securedResource.hasAccess(context.getUserRoles())) {
+            throw new PermissionDeniedException("No read access to Resource");
         }
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
                 && !accessService.hasAdminAccess(context)) {
-            throw new PermissionDeniedException("No read and write access to ToolSet resource");
+            throw new PermissionDeniedException("No read and write access to Resource");
         }
     }
 
@@ -147,11 +148,11 @@ public class ToolSetCredentialsController {
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
                 && !permissions.get(resourceDescriptor).containsAll(ResourceAccessType.ALL)) {
-            throw new PermissionDeniedException("No read and write access to ToolSet resource");
+            throw new PermissionDeniedException("No read and write access to Resource");
         }
 
         if (!permissions.get(resourceDescriptor).contains(ResourceAccessType.READ)) {
-            throw new PermissionDeniedException("No read access to ToolSet resource");
+            throw new PermissionDeniedException("No read access to Resource");
         }
     }
 

@@ -65,10 +65,10 @@ public final class FileConfigStore implements ConfigStore {
     private Config load(boolean fail) {
         try {
             log.debug("Config loading is started");
-            Config loadedConfig = loadConfig();
+            Config config = loadConfig();
 
             List<Route> sortedRoutes = new ArrayList<>();
-            for (Map.Entry<String, Route> entry : loadedConfig.getRoutes().entrySet()) {
+            for (Map.Entry<String, Route> entry : config.getRoutes().entrySet()) {
                 String name = entry.getKey();
                 Route route = entry.getValue();
                 route.setName(name);
@@ -76,29 +76,29 @@ public final class FileConfigStore implements ConfigStore {
                 sortedRoutes.add(route);
             }
             sortedRoutes.sort(Comparator.comparingInt(Route::getOrder));
-            LinkedHashMap<String, Route> routes = loadedConfig.getRoutes();
+            LinkedHashMap<String, Route> routes = config.getRoutes();
             routes.clear();
             for (Route route : sortedRoutes) {
                 routes.put(route.getName(), route);
             }
 
-            for (Map.Entry<String, Model> entry : loadedConfig.getModels().entrySet()) {
+            for (Map.Entry<String, Model> entry : config.getModels().entrySet()) {
                 String name = entry.getKey();
                 Model model = entry.getValue();
                 model.setName(name);
                 log.debug("Loading {}", model);
             }
 
-            for (Map.Entry<String, Application> entry : loadedConfig.getApplications().entrySet()) {
+            for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
                 String name = entry.getKey();
                 Application application = entry.getValue();
                 application.setName(name);
                 log.debug("Loading {}", application);
             }
 
-            apiKeyStore.addProjectKeys(loadedConfig.getKeys());
+            apiKeyStore.addProjectKeys(config.getKeys());
 
-            for (Map.Entry<String, Role> entry : loadedConfig.getRoles().entrySet()) {
+            for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
                 String name = entry.getKey();
                 Role role = entry.getValue();
                 role.setName(name);
@@ -109,14 +109,14 @@ public final class FileConfigStore implements ConfigStore {
                 log.debug("End loading role `{}`", role.getName());
             }
 
-            for (Map.Entry<String, Interceptor> entry : loadedConfig.getInterceptors().entrySet()) {
+            for (Map.Entry<String, Interceptor> entry : config.getInterceptors().entrySet()) {
                 String name = entry.getKey();
                 Interceptor interceptor = entry.getValue();
                 interceptor.setName(name);
                 log.debug("Loading {}", interceptor);
             }
 
-            Iterator<Map.Entry<String, ToolSet>> iterator = loadedConfig.getToolsets().entrySet().iterator();
+            Iterator<Map.Entry<String, ToolSet>> iterator = config.getToolsets().entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, ToolSet> entry = iterator.next();
                 String name = entry.getKey();
@@ -130,9 +130,9 @@ public final class FileConfigStore implements ConfigStore {
                 }
             }
 
-            this.config = loadedConfig;
+            this.config = config;
             log.debug("Config loading is completed");
-            return loadedConfig;
+            return config;
         } catch (Throwable e) {
             if (fail) {
                 throw e;

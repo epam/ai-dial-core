@@ -45,7 +45,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class ToolSetCredentialsControllerTest {
+class ResourceCredentialsControllerTest {
 
     @Mock
     private ProxyContext context;
@@ -66,7 +66,7 @@ class ToolSetCredentialsControllerTest {
     @Mock
     private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
-    private ToolSetCredentialsController controller;
+    private ResourceCredentialsController controller;
 
     @BeforeEach
     void setup() {
@@ -87,7 +87,7 @@ class ToolSetCredentialsControllerTest {
             }
         }).when(taskExecutor).submit(any(Callable.class));
 
-        controller = new ToolSetCredentialsController(proxy, context);
+        controller = new ResourceCredentialsController(proxy, context);
     }
 
     private static Stream<Arguments> testDataForTestSignIn() {
@@ -154,14 +154,14 @@ class ToolSetCredentialsControllerTest {
                         CredentialsLevel.GLOBAL,
                         Set.of(ResourceAccessType.READ),
                         HttpStatus.FORBIDDEN,
-                        "No read and write access to ToolSet resource"),
+                        "No read and write access to Resource"),
 
                 Arguments.of(
                         "toolset-1",
                         CredentialsLevel.USER,
                         Set.of(),
                         HttpStatus.FORBIDDEN,
-                        "No read access to ToolSet resource")
+                        "No read access to Resource")
         );
     }
 
@@ -308,14 +308,14 @@ class ToolSetCredentialsControllerTest {
                         CredentialsLevel.GLOBAL,
                         Set.of(ResourceAccessType.READ),
                         HttpStatus.FORBIDDEN,
-                        "No read and write access to ToolSet resource"),
+                        "No read and write access to Resource"),
 
                 Arguments.of(
                         "toolset-1",
                         CredentialsLevel.USER,
                         Set.of(),
                         HttpStatus.FORBIDDEN,
-                        "No read access to ToolSet resource")
+                        "No read access to Resource")
         );
     }
 
