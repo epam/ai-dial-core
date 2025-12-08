@@ -3,6 +3,7 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableObject;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -10,11 +11,12 @@ import org.redisson.client.codec.StringCodec;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
@@ -32,10 +34,23 @@ public class LockService {
     @Getter
     private final String prefix;
     private final RScript script;
+    private final ConcurrentHashMap<String, LocalLock> locks;
+
+    private static class LocalLock {
+        int waitersCount = 1;
+        ReentrantLock lock = new ReentrantLock();
+        void lock() {
+            lock.lock();
+        }
+        void unlock() {
+            lock.unlock();
+        }
+    }
 
     public LockService(RedissonClient redis, @Nullable String prefix) {
         this.prefix = prefix;
         this.script = redis.getScript(StringCodec.INSTANCE);
+        this.locks = new ConcurrentHashMap<>();
     }
 
     public Lock lock(String key) {
@@ -43,9 +58,17 @@ public class LockService {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
         log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
-        long ttl = tryLock(id, owner);
+        LocalLock lock = locks.compute(id, (k, cur) -> {
+            if (cur == null) {
+                return new LocalLock();
+            } else {
+                cur.waitersCount++;
+            }
+            return cur;
+        });
+        lock.lock();
+        long ttl =tryLock(id, owner);
         long interval = WAIT_MIN;
-
         while (ttl > 0) {
             LockSupport.parkNanos(interval);
             interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
@@ -111,6 +134,17 @@ public class LockService {
     }
 
     private void unlock(String id, long owner) {
+        MutableObject<LocalLock> lockRef = new MutableObject<>();
+        locks.compute(id, (k, cur) -> {
+            lockRef.setValue(cur);
+            if (cur == null || --cur.waitersCount == 0) {
+                return null;
+            }
+            return cur;
+        });
+        if (lockRef.get() != null) {
+            lockRef.get().unlock();
+        }
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
             log.warn("Lock service failed to unlock: {}", id);
