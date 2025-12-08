@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.vertx.core.MultiMap;
 import lombok.Data;
@@ -44,8 +45,9 @@ public class ApiKeyData {
     // list of attached file URLs collected from conversation history of the current request
     private Map<String, AutoSharedData> attachedFiles = new HashMap<>();
     private Map<String, AutoSharedData> attachedFolders = new HashMap<>();
-    // list of toolsets included into application properties
-    private Map<String, AutoSharedData> attachedToolSets = new HashMap<>();
+    // list of deployments included into application properties
+    @JsonAlias({"attachedToolSets", "attachedDeployments"})
+    private Map<String, AutoSharedData> attachedDeployments = new HashMap<>();
     private Map<String, AutoSharedData> attachedResourceCredentials = new HashMap<>();
     // deployment name of the source(application/model/interceptor) associated with the current request
     private String sourceDeployment;
