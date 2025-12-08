@@ -72,6 +72,27 @@ public class ApplicationSchemaServiceTest {
                   },
                   "dial:file" : true
                 },
+                "application": {
+                     "properties": {
+                            "name": {
+                              "description": "The name of the tool set.",
+                              "title": "Name",
+                              "type": "string"
+                            },
+                            "dial_id": {
+                              "description": "The Dial ID associated with this MCP toolset.",
+                              "title": "Dial Id",
+                              "type": "string",
+                              "dial:resource": true
+                            }
+                     },
+                     "required": [
+                            "name",
+                            "dial_id"
+                          ],
+                     "title": "DialApp",
+                     "type": "object"
+                   },
                 "toolset": {
                           "properties": {
                             "name": {
@@ -517,14 +538,17 @@ public class ApplicationSchemaServiceTest {
     @Test
     public void testGetToolsets_ToolsetExistsAndHasDialResourceFormat() {
         customProperties.put("toolset", Map.of("name", "my-toolset", "dial_id", "toolsets/bucket/my-toolset"));
+        customProperties.put("application", Map.of("name", "my-app", "dial_id", "applications/bucket/my-app"));
         when(configStore.get()).thenReturn(config);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(resourceService.hasResource(any())).thenReturn(true);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
-        List<ResourceDescriptor> result = service.getToolSets(application);
-        Assertions.assertFalse(result.isEmpty());
+        List<ResourceDescriptor> result = service.getDeployments(application);
+        Assertions.assertEquals(2, result.size());
+        var sorted = result.stream().map(ResourceDescriptor::getName).sorted().toList();
+        Assertions.assertEquals(List.of("my-app", "my-toolset"), sorted);
     }
 
     @Test
@@ -534,7 +558,7 @@ public class ApplicationSchemaServiceTest {
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
         application.setApplicationProperties(customProperties);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
-        List<ResourceDescriptor> result = service.getToolSets(application);
+        List<ResourceDescriptor> result = service.getDeployments(application);
         Assertions.assertTrue(result.isEmpty());
         when(resourceService.hasResource(any(ResourceDescriptor.class))).thenReturn(true);
         List<ResourceDescriptor> files = service.getFiles(application);

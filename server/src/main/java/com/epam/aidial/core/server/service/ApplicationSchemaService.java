@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.validation.DialMetaKeyword;
 import com.epam.aidial.core.server.validation.DialResourceKeyKeyword;
 import com.epam.aidial.core.server.validation.ListCollector;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -283,7 +284,7 @@ public class ApplicationSchemaService {
     }
 
     @SuppressWarnings("unchecked")
-    public List<ResourceDescriptor> getToolSets(Application application) {
+    public List<ResourceDescriptor> getDeployments(Application application) {
         try {
             ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application,
                     ListCollector.ResourceCollectorType.ALL_RESOURCES.getValue());
@@ -294,13 +295,13 @@ public class ApplicationSchemaService {
             for (String item : propsCollector.collect()) {
                 try {
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
-                    if (descriptor.getType() != ResourceTypes.TOOL_SET) {
-                        continue;
+                    ResourceType type = descriptor.getType();
+                    if (type == ResourceTypes.TOOL_SET || type == ResourceTypes.APPLICATION) {
+                        if (descriptor.isFolder() || !resourceService.hasResource(descriptor)) {
+                            throw new ApplicationTypeResourceException("Deployment listed as dependent to the application is not found or inaccessible", item);
+                        }
+                        result.add(descriptor);
                     }
-                    if (descriptor.isFolder() || !resourceService.hasResource(descriptor)) {
-                        throw new ApplicationTypeResourceException("Toolset listed as dependent to the application not found or inaccessible", item);
-                    }
-                    result.add(descriptor);
                 } catch (IllegalArgumentException e) {
                     // ignore resource to be defined in DIAL config
                 }

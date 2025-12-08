@@ -64,17 +64,17 @@ public class DialResourceKeyKeyword implements Keyword {
         public Set<ValidationMessage> validate(ExecutionContext executionContext, JsonNode jsonNode, JsonNode jsonNode1, JsonNodePath jsonNodePath) {
             if (value) {
                 CollectorContext collectorContext = executionContext.getCollectorContext();
-                ListCollector<String> toolsetCollector = (ListCollector<String>) collectorContext.getCollectorMap()
+                ListCollector<String> resourceCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                         .computeIfAbsent(ListCollector.ResourceCollectorType.ALL_RESOURCES.getValue(), k -> new ListCollector<String>());
                 String nodeValue = jsonNode.asText();
                 if (nodeValue == null || nodeValue.isEmpty()) {
                     return Set.of();
                 }
-                toolsetCollector.combine(List.of(nodeValue));
+                resourceCollector.combine(List.of(nodeValue));
                 if (isServerProp) {
-                    ListCollector<String> serverFileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
+                    ListCollector<String> serverResourceCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                             .computeIfAbsent(ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES.getValue(), k -> new ListCollector<String>());
-                    serverFileCollector.combine(List.of(nodeValue));
+                    serverResourceCollector.combine(List.of(nodeValue));
                 }
             }
             return Set.of();
