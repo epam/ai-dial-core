@@ -3,6 +3,7 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableObject;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -10,9 +11,11 @@ import org.redisson.client.codec.StringCodec;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
@@ -29,19 +32,39 @@ public class LockService {
     @Getter
     private final String prefix;
     private final RScript script;
+    private final ConcurrentHashMap<String, LocalLock> locks;
+
+    private static class LocalLock {
+        // number of threads requested this lock
+        int threadCount = 1;
+
+        ReentrantLock lock = new ReentrantLock();
+
+        void lock() {
+            lock.lock();
+        }
+
+        void unlock() {
+            lock.unlock();
+        }
+    }
 
     public LockService(RedissonClient redis, @Nullable String prefix) {
         this.prefix = prefix;
         this.script = redis.getScript(StringCodec.INSTANCE);
+        this.locks = new ConcurrentHashMap<>();
     }
 
     public Lock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
         log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
+        // try to get a local lock the first
+        acquireLocalLock(id);
+
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
-
+        // it seems the lock has been acquired by another instance of Core
         while (ttl > 0) {
             LockSupport.parkNanos(interval);
             interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
@@ -49,6 +72,18 @@ public class LockService {
         }
 
         return () -> unlock(id, owner);
+    }
+
+    private void acquireLocalLock(String id) {
+        LocalLock localLock = locks.compute(id, (k, cur) -> {
+            if (cur == null) {
+                return new LocalLock();
+            } else {
+                cur.threadCount++;
+            }
+            return cur;
+        });
+        localLock.lock();
     }
 
     public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
@@ -111,6 +146,24 @@ public class LockService {
             log.warn("Lock service failed to unlock: {}", id);
         } else {
             log.debug("Thread {} releases a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
+        }
+        releaseLocalLock(id);
+    }
+
+    private void releaseLocalLock(String id) {
+        MutableObject<LocalLock> lockRef = new MutableObject<>();
+        locks.compute(id, (k, cur) -> {
+            lockRef.setValue(cur);
+            if (cur == null || --cur.threadCount == 0) {
+                return null;
+            }
+            return cur;
+        });
+        LocalLock localLock = lockRef.get();
+        if (localLock != null) {
+            localLock.unlock();
+        } else {
+            log.warn("Local lock is not found for the key: {}", id);
         }
     }
 
