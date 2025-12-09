@@ -3,11 +3,11 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.mutable.MutableObject;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -17,7 +17,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
-import javax.annotation.Nullable;
 
 /**
  * Simple spin-lock implementation which works with Redis as cache. Supports volatile-* eviction policies.
@@ -60,7 +59,8 @@ public class LockService {
         long owner = ThreadLocalRandom.current().nextLong();
         log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         // try to get a local lock the first
-        acquireLocalLock(id);
+        LocalLock localLock = acquireLocalLock(id);
+        localLock.lock();
 
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
@@ -71,11 +71,11 @@ public class LockService {
             ttl = tryLock(id, owner);
         }
 
-        return () -> unlock(id, owner);
+        return () -> unlock(id, owner, localLock);
     }
 
-    private void acquireLocalLock(String id) {
-        LocalLock localLock = locks.compute(id, (k, cur) -> {
+    private LocalLock acquireLocalLock(String id) {
+        return locks.compute(id, (k, cur) -> {
             if (cur == null) {
                 return new LocalLock();
             } else {
@@ -83,7 +83,6 @@ public class LockService {
             }
             return cur;
         });
-        localLock.lock();
     }
 
     public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
@@ -140,6 +139,15 @@ public class LockService {
                         """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
+    private void unlock(String id, long owner, LocalLock localLock) {
+        try {
+            unlock(id, owner);
+        } finally {
+            localLock.unlock();
+            releaseLocalLock(id);
+        }
+    }
+
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
@@ -147,24 +155,15 @@ public class LockService {
         } else {
             log.debug("Thread {} releases a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         }
-        releaseLocalLock(id);
     }
 
     private void releaseLocalLock(String id) {
-        MutableObject<LocalLock> lockRef = new MutableObject<>();
         locks.compute(id, (k, cur) -> {
-            lockRef.setValue(cur);
             if (cur == null || --cur.threadCount == 0) {
                 return null;
             }
             return cur;
         });
-        LocalLock localLock = lockRef.get();
-        if (localLock != null) {
-            localLock.unlock();
-        } else {
-            log.warn("Local lock is not found for the key: {}", id);
-        }
     }
 
     private boolean tryUnlock(String id, long owner) {
