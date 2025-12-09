@@ -10,9 +10,11 @@ import org.redisson.client.codec.StringCodec;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
@@ -29,26 +31,58 @@ public class LockService {
     @Getter
     private final String prefix;
     private final RScript script;
+    private final ConcurrentHashMap<String, LocalLock> locks;
+
+    private static class LocalLock {
+        // number of threads requested this lock
+        int threadCount = 1;
+
+        ReentrantLock lock = new ReentrantLock();
+
+        void lock() {
+            lock.lock();
+        }
+
+        void unlock() {
+            lock.unlock();
+        }
+    }
 
     public LockService(RedissonClient redis, @Nullable String prefix) {
         this.prefix = prefix;
         this.script = redis.getScript(StringCodec.INSTANCE);
+        this.locks = new ConcurrentHashMap<>();
     }
 
     public Lock lock(String key) {
         String id = id(key);
         long owner = ThreadLocalRandom.current().nextLong();
         log.debug("Thread {} acquires a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
+        // try to get a local lock the first
+        LocalLock localLock = acquireLocalLock(id);
+        localLock.lock();
+
         long ttl = tryLock(id, owner);
         long interval = WAIT_MIN;
-
+        // it seems the lock has been acquired by another instance of Core
         while (ttl > 0) {
             LockSupport.parkNanos(interval);
             interval = Math.min(2 * interval, Math.min(WAIT_MAX, ttl + 1));
             ttl = tryLock(id, owner);
         }
 
-        return () -> unlock(id, owner);
+        return () -> unlock(id, owner, localLock);
+    }
+
+    private LocalLock acquireLocalLock(String id) {
+        return locks.compute(id, (k, cur) -> {
+            if (cur == null) {
+                return new LocalLock();
+            } else {
+                cur.threadCount++;
+            }
+            return cur;
+        });
     }
 
     public <T> T underBucketLock(String bucketLocation, Supplier<T> function) {
@@ -105,6 +139,15 @@ public class LockService {
                         """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
+    private void unlock(String id, long owner, LocalLock localLock) {
+        try {
+            unlock(id, owner);
+        } finally {
+            localLock.unlock();
+            releaseLocalLock(id);
+        }
+    }
+
     private void unlock(String id, long owner) {
         boolean ok = tryUnlock(id, owner);
         if (!ok) {
@@ -112,6 +155,15 @@ public class LockService {
         } else {
             log.debug("Thread {} releases a lock to the resource {} with owner {}", Thread.currentThread().getName(), id, owner);
         }
+    }
+
+    private void releaseLocalLock(String id) {
+        locks.compute(id, (k, cur) -> {
+            if (cur == null || --cur.threadCount == 0) {
+                return null;
+            }
+            return cur;
+        });
     }
 
     private boolean tryUnlock(String id, long owner) {
