@@ -32,7 +32,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class CollectToolSetsFnTest {
+public class CollectDeploymentsFnTest {
 
     @Mock
     private Proxy proxy;
@@ -53,7 +53,7 @@ public class CollectToolSetsFnTest {
     private Config config;
 
     @InjectMocks
-    private CollectToolSetsFn fn;
+    private CollectDeploymentsFn fn;
 
     private static final ObjectNode EMPTY_OBJECT = ProxyUtil.MAPPER.createObjectNode();
 
@@ -68,7 +68,7 @@ public class CollectToolSetsFnTest {
         Application application = new Application();
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
-        when(applicationSchemaService.getToolSets(application)).thenReturn(List.of());
+        when(applicationSchemaService.getDeployments(application)).thenReturn(List.of());
         assertFalse(fn.apply(EMPTY_OBJECT));
     }
 
@@ -87,7 +87,7 @@ public class CollectToolSetsFnTest {
         when(privateTool.getUrl()).thenReturn("tools/bucket/my-tool");
         ResourceDescriptor publicTool = mock(ResourceDescriptor.class);
         when(publicTool.isPublic()).thenReturn(true);
-        when(applicationSchemaService.getToolSets(application)).thenReturn(List.of(privateTool, publicTool));
+        when(applicationSchemaService.getDeployments(application)).thenReturn(List.of(privateTool, publicTool));
 
         when(proxy.getAccessService()).thenReturn(accessService);
         when(accessService.hasReadAccess(privateTool, context)).thenReturn(true);
@@ -99,10 +99,10 @@ public class CollectToolSetsFnTest {
 
         assertFalse(fn.apply(EMPTY_OBJECT));
 
-        Assertions.assertEquals(1, dest.getAttachedToolSets().size());
-        String toolsetId = dest.getAttachedToolSets().keySet().iterator().next();
+        Assertions.assertEquals(1, dest.getAttachedDeployments().size());
+        String toolsetId = dest.getAttachedDeployments().keySet().iterator().next();
         Assertions.assertEquals("tools/bucket/my-tool", toolsetId);
-        Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedToolSets().get(toolsetId).accessTypes());
+        Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedDeployments().get(toolsetId).accessTypes());
     }
 
     @Test
@@ -121,7 +121,7 @@ public class CollectToolSetsFnTest {
         when(privateTool.getUrl()).thenReturn("toolsets/encryptedBucket/my%20tool");
         ResourceDescriptor publicTool = mock(ResourceDescriptor.class);
         when(publicTool.isPublic()).thenReturn(true);
-        when(applicationSchemaService.getToolSets(application)).thenReturn(List.of(privateTool, publicTool));
+        when(applicationSchemaService.getDeployments(application)).thenReturn(List.of(privateTool, publicTool));
 
         when(proxy.getAccessService()).thenReturn(accessService);
         when(accessService.hasReadAccess(any(ResourceDescriptor.class), eq(context))).thenReturn(true);
@@ -133,10 +133,10 @@ public class CollectToolSetsFnTest {
 
         assertFalse(fn.apply(EMPTY_OBJECT));
 
-        Assertions.assertEquals(1, dest.getAttachedToolSets().size());
-        String toolsetId = dest.getAttachedToolSets().keySet().iterator().next();
+        Assertions.assertEquals(1, dest.getAttachedDeployments().size());
+        String toolsetId = dest.getAttachedDeployments().keySet().iterator().next();
         Assertions.assertEquals("toolsets/encryptedBucket/my%20tool", toolsetId);
-        Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedToolSets().get(toolsetId).accessTypes());
+        Assertions.assertEquals(ResourceAccessType.READ_ONLY, dest.getAttachedDeployments().get(toolsetId).accessTypes());
 
         Map<String, AutoSharedData> attachedResourceCredentials = dest.getAttachedResourceCredentials();
         Assertions.assertEquals(1, dest.getAttachedResourceCredentials().size());

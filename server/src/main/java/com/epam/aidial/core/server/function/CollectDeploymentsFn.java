@@ -13,44 +13,46 @@ import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 
-public class CollectToolSetsFn extends BaseRequestFunction<ObjectNode> {
+public class CollectDeploymentsFn extends BaseRequestFunction<ObjectNode> {
 
-    public CollectToolSetsFn(Proxy proxy, ProxyContext context) {
+    public CollectDeploymentsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     @Override
     public Boolean apply(ObjectNode tree) {
         if (context.getDeployment() instanceof Application application) {
-            List<ResourceDescriptor> toolsets = proxy.getApplicationSchemaService().getToolSets(application);
+            List<ResourceDescriptor> deployments = proxy.getApplicationSchemaService().getDeployments(application);
             ApiKeyData sourceApiKeyData = context.getApiKeyData();
             ApiKeyData destApiKeyData = context.getProxyApiKeyData();
             AccessService accessService = proxy.getAccessService();
-            for (var toolset : toolsets) {
-                if (toolset.isPublic()) {
+            for (var deployment : deployments) {
+                if (deployment.isPublic()) {
                     continue;
                 }
-                String resourceUrl = toolset.getUrl();
-                if (sourceApiKeyData.getAttachedToolSets().containsKey(resourceUrl) || accessService.hasReadAccess(toolset, context)) {
-                    destApiKeyData.getAttachedToolSets().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
-                    attachToolSetCredentials(accessService, destApiKeyData, resourceUrl);
+                String resourceUrl = deployment.getUrl();
+                if (sourceApiKeyData.getAttachedDeployments().containsKey(resourceUrl) || accessService.hasReadAccess(deployment, context)) {
+                    destApiKeyData.getAttachedDeployments().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
+                    ResourceType resourceType = deployment.getType();
+                    attachDeploymentCredentials(accessService, destApiKeyData, resourceUrl, resourceType);
                 } else {
-                    throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the toolset %s".formatted(resourceUrl));
+                    throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the deployment %s".formatted(resourceUrl));
                 }
             }
         }
         return false;
     }
 
-    private void attachToolSetCredentials(AccessService accessService,
-                                          ApiKeyData destApiKeyData,
-                                          String toolSetUrl) {
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetUrl, context, ResourceTypes.TOOL_SET);
+    private void attachDeploymentCredentials(AccessService accessService,
+                                             ApiKeyData destApiKeyData,
+                                             String resourceUrl,
+                                             ResourceType resourceType) {
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceUrl, context, resourceType);
         List<ResourceDescriptor> credentialsResourceDescriptors = credentialsLocator.getUniqueCredentialsDescriptors().stream()
                 .map(CredentialsDescriptor::toResourceDescriptor)
                 .filter(credentialsDescriptor -> accessService.hasReadAccess(credentialsDescriptor, context))
