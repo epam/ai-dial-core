@@ -106,6 +106,8 @@ JClouds property `jclouds.oauth.credential-type` should be set to `bearerTokenCr
 
 ## Azure Blob Store
 
+The feature `hierarchical namespace (HNS)` must be disabled in Azure Blob Storage account. DIAL Core doesn't support folders in Azure bucket.
+
 There are two types of credential providers supported:
 - User credentials. You can create a service principle and authenticate using its secret from the Azure console.
 - Temporary credentials with Azure AD Workload Identity.
